@@ -50,7 +50,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             }
             // Concatenate all text segments in the output content
             var fullText = ""
-            var collectedImages: [UIImage] = []
+            let collectedImages: [UIImage] = []
             if let contentItems = output.content {
                 for item in contentItems {
                     if let textSegment = item.text, !textSegment.isEmpty {

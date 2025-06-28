@@ -18,9 +18,12 @@ struct SettingsView: View {
     @AppStorage("enableWebSearch") private var enableWebSearch: Bool = true
     @AppStorage("enableCodeInterpreter") private var enableCodeInterpreter: Bool = true
     @AppStorage("enableImageGeneration") private var enableImageGeneration: Bool = true
+    @AppStorage("enableFileSearch") private var enableFileSearch: Bool = false
     
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
+    
+    @State private var showingFileManager = false
     
     // Supported models list for the Picker
     private let modelOptions: [String] = ["gpt-4o", "o3", "o3-mini", "o1"]
@@ -61,6 +64,14 @@ struct SettingsView: View {
                 Toggle("Web Search", isOn: $enableWebSearch)
                 Toggle("Code Interpreter", isOn: $enableCodeInterpreter)
                 Toggle("Image Generation", isOn: $enableImageGeneration)
+                Toggle("File Search", isOn: $enableFileSearch)
+                
+                if enableFileSearch {
+                    Button("Manage Files & Vector Stores") {
+                        showingFileManager = true
+                    }
+                    .foregroundColor(.accentColor)
+                }
             }
 
             Section {
@@ -75,9 +86,12 @@ struct SettingsView: View {
             // Set default values if not already set
             setDefaultToolSettings()
         }
-        .onChange(of: selectedModel) { newModel in
+        .onChange(of: selectedModel) { _, _ in
             // If model changes, clear conversation to avoid cross-model threading issues
             viewModel.clearConversation()
+        }
+        .sheet(isPresented: $showingFileManager) {
+            FileManagerView()
         }
     }
     
@@ -92,6 +106,9 @@ struct SettingsView: View {
         }
         if UserDefaults.standard.object(forKey: "enableImageGeneration") == nil {
             UserDefaults.standard.set(true, forKey: "enableImageGeneration")
+        }
+        if UserDefaults.standard.object(forKey: "enableFileSearch") == nil {
+            UserDefaults.standard.set(false, forKey: "enableFileSearch")
         }
     }
 }

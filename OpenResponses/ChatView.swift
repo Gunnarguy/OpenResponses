@@ -29,7 +29,7 @@ struct ChatView: View {
                     }
                     .background(.ultraThinMaterial)
                 }
-                .onChange(of: viewModel.messages.count) { _ in
+                .onChange(of: viewModel.messages.count) { _, _ in
                     // Scroll to the bottom whenever a new message is added
                     if let lastMessage = viewModel.messages.last {
                         proxy.scrollTo(lastMessage.id, anchor: .bottom)

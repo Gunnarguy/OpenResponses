@@ -59,3 +59,110 @@ struct ImageURLContent: Decodable {
 struct ImageFileContent: Decodable {
     let file_id: String
 }
+
+// MARK: - File Management Models
+
+/// Represents a file uploaded to OpenAI
+struct OpenAIFile: Decodable, Identifiable {
+    let id: String
+    let object: String // "file"
+    let bytes: Int
+    let createdAt: Int
+    let filename: String
+    let purpose: String
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, bytes, filename, purpose
+        case createdAt = "created_at"
+    }
+}
+
+/// Response when listing files
+struct FileListResponse: Decodable {
+    let object: String // "list"
+    let data: [OpenAIFile]
+}
+
+// MARK: - Vector Store Models
+
+/// Represents a vector store
+struct VectorStore: Decodable, Identifiable {
+    let id: String
+    let object: String // "vector_store"
+    let createdAt: Int
+    let name: String?
+    let usageBytes: Int
+    let fileCounts: FileCounts
+    let status: String
+    let expiresAfter: ExpiresAfter?
+    let expiresAt: Int?
+    let lastActiveAt: Int?
+    let metadata: [String: String]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, name, status, metadata
+        case createdAt = "created_at"
+        case usageBytes = "usage_bytes"
+        case fileCounts = "file_counts"
+        case expiresAfter = "expires_after"
+        case expiresAt = "expires_at"
+        case lastActiveAt = "last_active_at"
+    }
+}
+
+/// File counts in a vector store
+struct FileCounts: Decodable {
+    let inProgress: Int
+    let completed: Int
+    let failed: Int
+    let cancelled: Int
+    let total: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case total, completed, failed, cancelled
+        case inProgress = "in_progress"
+    }
+}
+
+/// Expiration settings for vector store
+struct ExpiresAfter: Decodable {
+    let anchor: String
+    let days: Int
+}
+
+/// Response when listing vector stores
+struct VectorStoreListResponse: Decodable {
+    let object: String // "list"
+    let data: [VectorStore]
+}
+
+/// Vector store file relationship
+struct VectorStoreFile: Decodable, Identifiable {
+    let id: String
+    let object: String // "vector_store.file"
+    let usageBytes: Int
+    let createdAt: Int
+    let vectorStoreId: String
+    let status: String
+    let lastError: VectorStoreFileError?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, status
+        case usageBytes = "usage_bytes"
+        case createdAt = "created_at"
+        case vectorStoreId = "vector_store_id"
+        case lastError = "last_error"
+    }
+}
+
+/// Error information for vector store files
+struct VectorStoreFileError: Decodable {
+    let code: String
+    let message: String
+}
+
+/// Response when listing vector store files
+struct VectorStoreFileListResponse: Decodable {
+    let object: String // "list"
+    let data: [VectorStoreFile]
+}
