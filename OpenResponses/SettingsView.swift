@@ -13,6 +13,8 @@ struct SettingsView: View {
     @AppStorage("openAIModel") private var selectedModel: String = "gpt-4o"
     @AppStorage("reasoningEffort") private var reasoningEffort: String = "medium"
     @AppStorage("temperature") private var temperature: Double = 1.0
+    /// System instructions for the assistant (persistent system prompt)
+    @AppStorage("systemInstructions") private var systemInstructions: String = ""
     
     // Tool configuration settings
     @AppStorage("enableWebSearch") private var enableWebSearch: Bool = true
@@ -20,13 +22,16 @@ struct SettingsView: View {
     @AppStorage("enableImageGeneration") private var enableImageGeneration: Bool = true
     @AppStorage("enableFileSearch") private var enableFileSearch: Bool = false
     
+    // Response streaming setting
+    @AppStorage("enableStreaming") private var enableStreaming: Bool = true
+    
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
     
     @State private var showingFileManager = false
     
     // Supported models list for the Picker
-    private let modelOptions: [String] = ["gpt-4o", "o3", "o3-mini", "o1"]
+    private let modelOptions: [String] = ["gpt-4o", "o3", "o3-mini", "o1", "gpt-4-1106-preview"]
     
     var body: some View {
         Form {
@@ -34,6 +39,21 @@ struct SettingsView: View {
                 SecureField("API Key (sk-...)", text: $apiKey)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+            }
+            // System instructions section
+            Section(header: Text("System Instructions"), footer: Text("Set a persistent system prompt to guide the assistant's behavior. This will be sent as the 'instructions' field in every request.")) {
+                TextEditor(text: $systemInstructions)
+                    .frame(minHeight: 80)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.2))
+                    )
+                    .padding(.vertical, 2)
+                if systemInstructions.isEmpty {
+                    Text("e.g. 'You are a helpful assistant.'")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
             }
             Section(header: Text("Model"), footer: Text("Reasoning effort is only available for 'o' models. Temperature is only available for other models.")) {
                 Picker("Model", selection: $selectedModel) {
@@ -60,10 +80,22 @@ struct SettingsView: View {
                 .disabled(selectedModel.starts(with: "o"))
             }
             
-            Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use.")) {
+            Section(header: Text("Response Settings"), footer: Text("Streaming shows responses as they're generated, providing a more interactive experience. Disable streaming when using image generation or when you prefer to receive complete responses at once.")) {
+                Toggle("Enable Streaming", isOn: $enableStreaming)
+            }
+            
+            Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use. Note: Image generation is automatically disabled when streaming is enabled.")) {
                 Toggle("Web Search", isOn: $enableWebSearch)
                 Toggle("Code Interpreter", isOn: $enableCodeInterpreter)
-                Toggle("Image Generation", isOn: $enableImageGeneration)
+                HStack {
+                    Toggle("Image Generation", isOn: $enableImageGeneration)
+                        .disabled(enableStreaming)
+                    if enableStreaming && enableImageGeneration {
+                        Text("(Disabled in streaming mode)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 Toggle("File Search", isOn: $enableFileSearch)
                 
                 if enableFileSearch {
@@ -110,5 +142,20 @@ struct SettingsView: View {
         if UserDefaults.standard.object(forKey: "enableFileSearch") == nil {
             UserDefaults.standard.set(false, forKey: "enableFileSearch")
         }
+        if UserDefaults.standard.object(forKey: "enableStreaming") == nil {
+            UserDefaults.standard.set(true, forKey: "enableStreaming")
+        }
+    }
+    
+    /// Provides a recommendation on whether streaming should be enabled based on current tool selection
+    /// - Returns: A tuple with (shouldStream: Bool, reason: String?)
+    private func getStreamingRecommendation() -> (shouldStream: Bool, reason: String?) {
+        // If image generation is enabled, recommend disabling streaming
+        if enableImageGeneration {
+            return (false, "Image generation works better without streaming")
+        }
+        
+        // For most other cases, streaming is beneficial
+        return (true, nil)
     }
 }

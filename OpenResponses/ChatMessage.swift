@@ -8,15 +8,22 @@ struct ChatMessage: Identifiable {
         case assistant
         case system  // Used for errors or system notices
     }
-    let id = UUID()
+    let id: UUID
     let role: Role
-    let text: String?
+    var text: String?
     var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
+
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.images = images
+    }
 }
 
 /// Codable models for decoding OpenAI /v1/responses API JSON.
 struct OpenAIResponse: Decodable {
-    let id: String                // The response ID (used for continuity in follow-ups)
+    let id: String?               // The response ID (used for continuity in follow-ups)
     let output: [OutputItem]      // List of output items returned by the model (messages, tool outputs, etc.)
     // We omit other fields like 'status' for brevity, assuming each call completes with final output.
 }
@@ -165,4 +172,82 @@ struct VectorStoreFileError: Decodable {
 struct VectorStoreFileListResponse: Decodable {
     let object: String // "list"
     let data: [VectorStoreFile]
+}
+
+// MARK: - New Streaming API Models
+
+/// Represents different types of streaming events from the new OpenAI Responses API
+struct StreamingEvent: Decodable {
+    let type: String
+    let sequenceNumber: Int
+    let response: StreamingResponse?
+    let outputIndex: Int?
+    let itemId: String?
+    let contentIndex: Int?
+    let delta: String?
+    let item: StreamingItem?
+    let part: StreamingPart?
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case sequenceNumber = "sequence_number"
+        case response
+        case outputIndex = "output_index"
+        case itemId = "item_id"
+        case contentIndex = "content_index"
+        case delta
+        case item
+        case part
+    }
+}
+
+/// Streaming response object
+struct StreamingResponse: Decodable {
+    let id: String
+    let status: String?
+    let output: [StreamingOutputItem]?
+    let usage: StreamingUsage?
+}
+
+/// Streaming output item
+struct StreamingOutputItem: Decodable {
+    let id: String
+    let type: String
+    let status: String?
+    let content: [StreamingContentItem]?
+    let role: String?
+}
+
+/// Streaming content item
+struct StreamingContentItem: Decodable {
+    let type: String
+    let text: String?
+}
+
+/// Streaming item
+struct StreamingItem: Decodable {
+    let id: String
+    let type: String
+    let status: String?
+    let content: [StreamingContentItem]?
+    let role: String?
+}
+
+/// Streaming part
+struct StreamingPart: Decodable {
+    let type: String
+    let text: String?
+}
+
+/// Usage information
+struct StreamingUsage: Decodable {
+    let inputTokens: Int
+    let outputTokens: Int
+    let totalTokens: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case totalTokens = "total_tokens"
+    }
 }

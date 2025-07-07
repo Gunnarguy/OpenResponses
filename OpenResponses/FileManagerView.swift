@@ -15,6 +15,11 @@ struct FileManagerView: View {
     
     @AppStorage("enableFileSearch") private var enableFileSearch: Bool = false
     @AppStorage("selectedVectorStore") private var selectedVectorStoreId: String = ""
+    @AppStorage("selectedVectorStoreIds") private var selectedVectorStoreIds: String = "" // Comma-separated for multi-select
+    @AppStorage("multiStoreMode") private var multiStoreMode: Bool = false // Persist multi-store toggle
+    @State private var multiSelectVectorStores: Set<String> = []
+    @State private var showSaveMultiSelect: Bool = false // Show save button when multi-select changes
+    @State private var multiStoreInit: Bool = false // Track if we've initialized multi-store toggle
     
     private let api = OpenAIService()
     
@@ -27,12 +32,38 @@ struct FileManagerView: View {
                         .onChange(of: enableFileSearch) { _, newValue in
                             if !newValue {
                                 selectedVectorStoreId = ""
+                                selectedVectorStoreIds = ""
+                                multiSelectVectorStores.removeAll()
+                                multiStoreMode = false
                             }
                         }
+                    Toggle("Enable Multi-Store File Search", isOn: $multiStoreMode)
+                        .disabled(!enableFileSearch)
+                        .onChange(of: multiStoreMode) { _, newValue in
+                            if newValue {
+                                // Restore selection from saved IDs
+                                if !selectedVectorStoreIds.isEmpty {
+                                    let ids = Set(selectedVectorStoreIds.split(separator: ",").map { String($0) })
+                                    multiSelectVectorStores = ids
+                                }
+                            } else {
+                                multiSelectVectorStores.removeAll()
+                                selectedVectorStoreIds = ""
+                            }
+                        }
+                    // Show save button if multi-select is enabled
+                    if multiStoreMode {
+                        Button("Save Selected Vector Stores") {
+                            selectedVectorStoreIds = multiSelectVectorStores.joined(separator: ",")
+                            showSaveMultiSelect = false
+                        }
+                        .disabled(multiSelectVectorStores.isEmpty)
+                        .foregroundColor(.accentColor)
+                        .opacity(showSaveMultiSelect ? 1 : 0.5)
+                    }
                 }
-                
                 // Vector Stores Section
-                Section(header: Text("Vector Stores")) {
+                Section(header: Text(multiStoreMode ? "Vector Stores (Multi-Select)" : "Vector Stores")) {
                     if vectorStores.isEmpty && !isLoading {
                         Text("No vector stores found")
                             .foregroundColor(.secondary)
@@ -40,9 +71,23 @@ struct FileManagerView: View {
                         ForEach(vectorStores) { store in
                             VectorStoreRow(
                                 store: store,
-                                isSelected: store.id == selectedVectorStoreId,
+                                isSelected: multiStoreMode ? multiSelectVectorStores.contains(store.id) : (store.id == selectedVectorStoreId),
                                 onSelect: {
                                     if enableFileSearch {
+                                        if multiStoreMode {
+                                            if multiSelectVectorStores.contains(store.id) {
+                                                multiSelectVectorStores.remove(store.id)
+                                            } else {
+                                                multiSelectVectorStores.insert(store.id)
+                                            }
+                                            showSaveMultiSelect = true
+                                        } else {
+                                            selectedVectorStoreId = store.id
+                                            // Also clear multi-select if switching back
+                                            multiSelectVectorStores.removeAll()
+                                            selectedVectorStoreIds = ""
+                                        }
+                                    } else {
                                         selectedVectorStoreId = store.id
                                     }
                                 },
@@ -60,13 +105,11 @@ struct FileManagerView: View {
                             )
                         }
                     }
-                    
                     Button("Create Vector Store") {
                         showingCreateVectorStore = true
                     }
                     .foregroundColor(.accentColor)
                 }
-                
                 // Files Section
                 Section(header: Text("Uploaded Files")) {
                     if files.isEmpty && !isLoading {
@@ -102,6 +145,18 @@ struct FileManagerView: View {
                 await loadData()
             }
             .task {
+                // Only initialize toggle/selection once per view appearance
+                if !multiStoreInit {
+                    multiStoreInit = true
+                    if multiStoreMode {
+                        if !selectedVectorStoreIds.isEmpty {
+                            let ids = Set(selectedVectorStoreIds.split(separator: ",").map { String($0) })
+                            multiSelectVectorStores = ids
+                        }
+                    } else {
+                        multiSelectVectorStores.removeAll()
+                    }
+                }
                 await loadData()
             }
             .alert("Error", isPresented: .constant(errorMessage != nil)) {
@@ -123,9 +178,9 @@ struct FileManagerView: View {
                 }
             }
             .sheet(isPresented: $showingCreateVectorStore) {
-                CreateVectorStoreView { name, selectedFileIds in
+                CreateVectorStoreView { name, selectedFileIds, expiresAfterDays in
                     Task {
-                        await createVectorStore(name: name, fileIds: selectedFileIds)
+                        await createVectorStore(name: name, fileIds: selectedFileIds, expiresAfterDays: expiresAfterDays)
                     }
                 }
                 .environmentObject(FileManagerStore(files: files))
@@ -134,6 +189,7 @@ struct FileManagerView: View {
                 VectorStoreDetailView(
                     vectorStore: store,
                     files: vectorStoreFiles,
+                    allFiles: files,
                     onRemoveFile: { fileId in
                         Task {
                             await removeFileFromVectorStore(store.id, fileId: fileId)
@@ -225,11 +281,12 @@ struct FileManagerView: View {
     // MARK: - Vector Store Operations
     
     @MainActor
-    private func createVectorStore(name: String, fileIds: [String]) async {
+    private func createVectorStore(name: String, fileIds: [String], expiresAfterDays: Int?) async {
         do {
             let newStore = try await api.createVectorStore(
                 name: name.isEmpty ? nil : name,
-                fileIds: fileIds.isEmpty ? nil : fileIds
+                fileIds: fileIds.isEmpty ? nil : fileIds,
+                expiresAfterDays: expiresAfterDays
             )
             vectorStores.append(newStore)
             showingCreateVectorStore = false
@@ -278,18 +335,24 @@ struct VectorStoreRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(store.name ?? "Unnamed Vector Store")
                     .font(.headline)
-                
                 Text("\(store.fileCounts.total) files • \(formatBytes(store.usageBytes))")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
                 Text("Status: \(store.status)")
                     .font(.caption)
                     .foregroundColor(store.status == "completed" ? .green : .orange)
+                if let expiresAfter = store.expiresAfter {
+                    Text("Expires after: \(expiresAfter.days) days (") + Text(expiresAfter.anchor)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                if let expiresAt = store.expiresAt {
+                    Text("Expires at: \(Self.formatDate(expiresAt))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
-            
             Spacer()
-            
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.accentColor)
@@ -303,7 +366,6 @@ struct VectorStoreRow: View {
             Button("View Files") {
                 onViewFiles()
             }
-            
             Button("Delete", role: .destructive) {
                 onDelete()
             }
@@ -314,6 +376,15 @@ struct VectorStoreRow: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    /// Formats a UNIX timestamp (seconds) to a short date string.
+    private static func formatDate(_ timestamp: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
 
@@ -387,16 +458,20 @@ struct CreateVectorStoreView: View {
     
     @State private var vectorStoreName = ""
     @State private var selectedFileIds: Set<String> = []
+    @State private var expiresAfterDays: String = "" // For expiration
     
-    let onCreate: (String, [String]) -> Void
+    let onCreate: (String, [String], Int?) -> Void
     
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Vector Store Details")) {
-                    TextField("Name (optional)", text: $vectorStoreName)
+                Section(header: Text("Vector Store Name")) {
+                    TextField("Optional name", text: $vectorStoreName)
                 }
-                
+                Section(header: Text("Expiration (days, optional)"), footer: Text("Leave blank for no expiration. The store will expire after this many days from creation.")) {
+                    TextField("e.g. 30", text: $expiresAfterDays)
+                        .keyboardType(.numberPad)
+                }
                 Section(header: Text("Files to Include")) {
                     if fileStore.files.isEmpty {
                         Text("No files available")
@@ -411,9 +486,7 @@ struct CreateVectorStoreView: View {
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
-                                
                                 Spacer()
-                                
                                 if selectedFileIds.contains(file.id) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.accentColor)
@@ -433,21 +506,19 @@ struct CreateVectorStoreView: View {
                         }
                     }
                 }
+                Section {
+                    Button("Create") {
+                        let days = Int(expiresAfterDays.trimmingCharacters(in: .whitespacesAndNewlines))
+                        onCreate(vectorStoreName, Array(selectedFileIds), days)
+                        dismiss()
+                    }
+                    .disabled(selectedFileIds.isEmpty)
+                }
             }
             .navigationTitle("Create Vector Store")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Create") {
-                        onCreate(vectorStoreName, Array(selectedFileIds))
-                        dismiss()
-                    }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
             }
         }
@@ -465,9 +536,17 @@ struct CreateVectorStoreView: View {
 struct VectorStoreDetailView: View {
     let vectorStore: VectorStore
     let files: [VectorStoreFile]
+    let allFiles: [OpenAIFile]
     let onRemoveFile: (String) -> Void
     
     @Environment(\.dismiss) private var dismiss
+    
+    private func getFilename(for fileId: String) -> String {
+        if let file = allFiles.first(where: { $0.id == fileId }) {
+            return file.filename
+        }
+        return fileId // Fallback to ID
+    }
     
     var body: some View {
         NavigationView {
@@ -477,14 +556,29 @@ struct VectorStoreDetailView: View {
                         Text(vectorStore.name ?? "Unnamed Vector Store")
                             .font(.title2)
                             .fontWeight(.semibold)
-                        
                         Text("Status: \(vectorStore.status)")
                             .font(.subheadline)
                             .foregroundColor(vectorStore.status == "completed" ? .green : .orange)
-                        
                         Text("Total Size: \(formatBytes(vectorStore.usageBytes))")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                        if let expiresAfter = vectorStore.expiresAfter {
+                            Text("Expires after: \(expiresAfter.days) days (") + Text(expiresAfter.anchor)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        if let expiresAt = vectorStore.expiresAt {
+                            Text("Expires at: \(Self.formatDate(expiresAt))")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        if let metadata = vectorStore.metadata, !metadata.isEmpty {
+                            ForEach(metadata.sorted(by: { $0.key < $1.key }), id: \ .key) { key, value in
+                                Text("\(key): \(value)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -497,7 +591,7 @@ struct VectorStoreDetailView: View {
                         ForEach(files) { file in
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("File ID: \(file.id)")
+                                    Text(getFilename(for: file.id))
                                         .font(.headline)
                                         .lineLimit(1)
                                     
@@ -512,6 +606,11 @@ struct VectorStoreDetailView: View {
                                         .cornerRadius(8)
                                 }
                                 
+                                Text("ID: \(file.id)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+
                                 Text("Size: \(formatBytes(file.usageBytes))")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -548,7 +647,16 @@ struct VectorStoreDetailView: View {
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
+    /// Formats a UNIX timestamp (seconds) to a short date string.
+    private static func formatDate(_ timestamp: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":

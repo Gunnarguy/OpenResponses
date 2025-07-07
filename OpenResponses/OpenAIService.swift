@@ -34,16 +34,25 @@ class OpenAIService {
         // Build the request JSON payload
         var requestObject: [String: Any] = [
             "model": model,
-            "input": [
-                [
-                    "role": "user",
-                    "content": userMessage  // Sending the user message as the conversation input
-                ]
-            ],
-            "store": true  // store conversation on API side to enable previous_response_id continuity
+            "store": true
         ]
+
+        var inputMessages: [[String: Any]] = []
+
+        // Add system instructions based on model preference
+        if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if modelPrefersSystemMessage(model) {
+                inputMessages.append(["role": "system", "content": instructions])
+            } else {
+                requestObject["instructions"] = instructions
+            }
+        }
         
-        // Build tools array based on user preferences
+        // Add the user's message to the input
+        inputMessages.append(["role": "user", "content": userMessage])
+        requestObject["input"] = inputMessages
+        
+        // Build tools array based on user preferences and model compatibility
         var tools: [[String: Any]] = []
         
         // Add web search tool if enabled
@@ -51,19 +60,24 @@ class OpenAIService {
             tools.append(createToolConfiguration(for: "web_search_preview"))
         }
         
-        // Add code interpreter tool if enabled
-        if UserDefaults.standard.bool(forKey: "enableCodeInterpreter") {
+        // Add code interpreter tool if enabled and supported by the model
+        if UserDefaults.standard.bool(forKey: "enableCodeInterpreter") && isToolSupported("code_interpreter", for: model, isStreaming: false) {
             tools.append(createToolConfiguration(for: "code_interpreter"))
         }
         
-        // Add image generation tool if enabled
-        if UserDefaults.standard.bool(forKey: "enableImageGeneration") {
+        // Add image generation tool if enabled and supported by the model
+        if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: false) {
             tools.append(createToolConfiguration(for: "image_generation"))
         }
         
-        // Add file search tool if enabled and vector store is selected
+        // Add file search tool if enabled and vector store(s) are selected
         if UserDefaults.standard.bool(forKey: "enableFileSearch") {
-            if let vectorStoreId = UserDefaults.standard.string(forKey: "selectedVectorStore"), !vectorStoreId.isEmpty {
+            // Support multi-store selection (comma-separated IDs)
+            let multiIds = UserDefaults.standard.string(forKey: "selectedVectorStoreIds") ?? ""
+            let idsArray = multiIds.split(separator: ",").map { String($0) }.filter { !$0.isEmpty }
+            if !idsArray.isEmpty {
+                tools.append(["type": "file_search", "vector_store_ids": idsArray])
+            } else if let vectorStoreId = UserDefaults.standard.string(forKey: "selectedVectorStore"), !vectorStoreId.isEmpty {
                 tools.append(createToolConfiguration(for: "file_search", vectorStoreId: vectorStoreId))
             }
         }
@@ -74,7 +88,7 @@ class OpenAIService {
         }
         
         // Debug: Print tools configuration
-        print("Tools enabled: \(tools.count) tools")
+        print("Non-streaming request - Tools enabled: \(tools.count) tools")
         for (index, tool) in tools.enumerated() {
             print("Tool \(index): \(tool["type"] ?? "unknown")")
         }
@@ -95,6 +109,8 @@ class OpenAIService {
             requestObject["previous_response_id"] = prevId  // Link to last response for context continuity
         }
         
+        // Note: Do not set stream parameter for non-streaming requests
+
         // Serialize JSON payload
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
         
@@ -140,6 +156,155 @@ class OpenAIService {
         }
     }
     
+    /// Sends a chat request and streams the response back.
+    /// - Parameters:
+    ///   - userMessage: The user's input prompt.
+    ///   - model: The model name to use.
+    ///   - previousResponseId: The ID of the previous response for continuity.
+    /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
+    func streamChatRequest(userMessage: String, model: String, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    // Ensure API key is set
+                    guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+                        throw OpenAIServiceError.missingAPIKey
+                    }
+                    
+                    // Build the request JSON payload (same as non-streaming, but with stream: true)
+                    var requestObject: [String: Any] = [
+                        "model": model,
+                        "store": true,
+                        "stream": true // Enable streaming
+                    ]
+                    
+                    var inputMessages: [[String: Any]] = []
+
+                    // Add system instructions if they exist
+                    if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        if modelPrefersSystemMessage(model) {
+                            inputMessages.append(["role": "system", "content": instructions])
+                        } else {
+                            requestObject["instructions"] = instructions
+                        }
+                    }
+
+                    // Add the user's message to the input
+                    inputMessages.append(["role": "user", "content": userMessage])
+                    requestObject["input"] = inputMessages
+                    
+                    var tools: [[String: Any]] = []
+                    if UserDefaults.standard.bool(forKey: "enableWebSearch") {
+                        tools.append(createToolConfiguration(for: "web_search_preview"))
+                    }
+                    if UserDefaults.standard.bool(forKey: "enableCodeInterpreter") && isToolSupported("code_interpreter", for: model, isStreaming: true) {
+                        tools.append(createToolConfiguration(for: "code_interpreter"))
+                    }
+                    if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: true) {
+                        tools.append(createToolConfiguration(for: "image_generation"))
+                    }
+                    if UserDefaults.standard.bool(forKey: "enableFileSearch") {
+                        let multiIds = UserDefaults.standard.string(forKey: "selectedVectorStoreIds") ?? ""
+                        let idsArray = multiIds.split(separator: ",").map { String($0) }.filter { !$0.isEmpty }
+                        if !idsArray.isEmpty {
+                            tools.append(["type": "file_search", "vector_store_ids": idsArray])
+                        } else if let vectorStoreId = UserDefaults.standard.string(forKey: "selectedVectorStore"), !vectorStoreId.isEmpty {
+                            tools.append(createToolConfiguration(for: "file_search", vectorStoreId: vectorStoreId))
+                        }
+                    }
+                    
+                    if !tools.isEmpty {
+                        requestObject["tools"] = tools
+                    }
+
+                    // Set appropriate sampling or reasoning parameters based on model type
+                    if model.starts(with: "o") {
+                        let effort = UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium"
+                        requestObject["reasoning"] = ["effort": effort]
+                    } else {
+                        let temp = UserDefaults.standard.double(forKey: "temperature")
+                        requestObject["temperature"] = temp == 0.0 ? 1.0 : temp
+                        requestObject["top_p"] = 1.0
+                    }
+                    
+                    if let prevId = previousResponseId {
+                        requestObject["previous_response_id"] = prevId
+                    }
+                    
+                    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
+                    
+                    // For debugging: Print the JSON request for streaming
+                    print("Streaming request - Tools enabled: \(tools.count) tools")
+                    for (index, tool) in tools.enumerated() {
+                        print("Tool \(index): \(tool["type"] ?? "unknown")")
+                    }
+                    if let jsonString = String(data: jsonData, encoding: .utf8) {
+                        print("OpenAI Streaming Request JSON: \(jsonString)")
+                    }
+                    
+                    var request = URLRequest(url: apiURL)
+                    request.httpMethod = "POST"
+                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = jsonData
+                    
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        throw OpenAIServiceError.invalidResponseData
+                    }
+                    
+                    // Check status code and provide detailed error information
+                    if httpResponse.statusCode != 200 {
+                        // Collect error response data by reading the bytes
+                        var errorData = Data()
+                        for try await byte in bytes {
+                            errorData.append(byte)
+                        }
+                        
+                        // Print raw response for debugging
+                        if let responseString = String(data: errorData, encoding: .utf8) {
+                            print("Streaming error response: \(responseString)")
+                        }
+                        
+                        // Try to decode structured error message
+                        let errorMessage: String
+                        if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: errorData) {
+                            errorMessage = errorResponse.error.message
+                        } else {
+                            errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                        }
+                        
+                        throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+                    }
+                    
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("data: ") {
+                            let dataString = String(line.dropFirst(6))
+                            if dataString == "[DONE]" {
+                                continuation.finish()
+                                return
+                            }
+                            
+                            guard let data = dataString.data(using: .utf8) else { continue }
+                            
+                            do {
+                                let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
+                                continuation.yield(decodedChunk)
+                            } catch {
+                                print("Stream decoding error: \(error) for data: \(dataString)")
+                                // Continue processing other chunks even if one fails to decode
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+    
     /// Fetches image data either from an OpenAI file ID or a direct URL.
     /// - Parameter imageContent: The content object containing either a file_id or url.
     /// - Returns: Raw image data.
@@ -169,6 +334,15 @@ class OpenAIService {
             return data
         }
         throw OpenAIServiceError.invalidResponseData
+    }
+    
+    /// Determines if a model prefers receiving instructions via a system message in the input array.
+    /// - Parameter model: The model name.
+    /// - Returns: `true` if the model prefers a system message.
+    private func modelPrefersSystemMessage(_ model: String) -> Bool {
+        // O-series models prefer instructions via a system message.
+        // GPT-series models prefer the top-level 'instructions' parameter.
+        return model.starts(with: "o")
     }
     
     /// Creates a properly formatted tool configuration based on current API requirements
@@ -204,6 +378,35 @@ class OpenAIService {
             return config
         default:
             return [:]
+        }
+    }
+    
+    /// Checks if a tool is supported by the given model
+    /// - Parameters:
+    ///   - toolType: The type of tool to check
+    ///   - model: The model to check compatibility with
+    ///   - isStreaming: Whether the request is using streaming mode
+    /// - Returns: True if the tool is supported by the model and streaming mode
+    private func isToolSupported(_ toolType: String, for model: String, isStreaming: Bool = false) -> Bool {
+        switch toolType {
+        case "code_interpreter":
+            // Code interpreter is supported by GPT-4 models and newer o-series models.
+            return model.starts(with: "gpt-4") || model.starts(with: "o1") || model.starts(with: "o3")
+        case "image_generation":
+            // Image generation is supported by GPT-4 models.
+            // It is disabled in streaming mode as images are sent as a complete block.
+            if isStreaming {
+                return false
+            }
+            return model.starts(with: "gpt-4")
+        case "web_search_preview":
+            // Web search is generally supported across models and works with both streaming and non-streaming
+            return true
+        case "file_search":
+            // File search is supported by most models and works with both streaming and non-streaming
+            return true
+        default:
+            return false
         }
     }
     
