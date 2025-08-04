@@ -3,6 +3,7 @@ import Combine
 
 class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var messages: [ChatMessage] = []
+    @Published var streamingStatus: StreamingStatus = .idle // Tracks the streaming state
     private let api = OpenAIService()              // Service for API calls
     private var lastResponseId: String? = nil      // Store the last response ID for continuity
     private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
@@ -29,6 +30,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         
         // Call the OpenAI API asynchronously
         Task {
+            await MainActor.run { self.streamingStatus = .connecting }
             do {
                 if streamingEnabled {
                     // Use streaming API
@@ -53,11 +55,19 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
                     self.handleError(error)
                     // Remove the placeholder message on error
                     self.messages.removeAll { $0.id == assistantMsgId }
+                    self.streamingStatus = .idle // Reset on error
                 }
             }
             // Ensure we clear the streaming ID when the task is done, after do-catch
             await MainActor.run {
                 self.streamingMessageId = nil
+                // Mark as done and reset after a delay
+                if self.streamingStatus != .idle {
+                    self.streamingStatus = .done
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        self.streamingStatus = .idle
+                    }
+                }
             }
         }
     }
@@ -69,6 +79,14 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         // Store the response ID for conversation continuity
         if let responseId = response.id {
             lastResponseId = responseId
+        }
+        
+        // Check for and handle function calls
+        if let outputItem = response.output.first, outputItem.type == "function_call" {
+            Task {
+                await handleFunctionCall(outputItem, for: messageId)
+            }
+            return // Stop further processing, as we'll get a new response
         }
         
         // Update the message with the complete response
@@ -108,6 +126,61 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         messages[messageIndex] = updatedMessage
     }
     
+    /// Handles a function call from the API by executing the function and sending the result back.
+    private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+        guard let functionName = call.name, let callId = call.callId else {
+            handleError(OpenAIServiceError.invalidResponseData)
+            return
+        }
+        
+        // For now, we only handle the calculator
+        guard functionName == "calculator" else {
+            let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
+            await MainActor.run { messages.append(errorMsg) }
+            return
+        }
+        
+        // Execute the calculator function
+        var functionResult: String
+        do {
+            // Safely decode the expression from the arguments JSON
+            struct CalcArgs: Decodable { let expression: String }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                throw NSError(domain: "CalcError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid arguments format"])
+            }
+            let decodedArgs = try JSONDecoder().decode(CalcArgs.self, from: argsData)
+            
+            // Evaluate the expression
+            let expression = NSExpression(format: decodedArgs.expression)
+            if let result = expression.expressionValue(with: nil, context: nil) as? NSNumber {
+                functionResult = result.stringValue
+            } else {
+                throw NSError(domain: "CalcError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid math expression"])
+            }
+        } catch {
+            functionResult = "Error: \(error.localizedDescription)"
+        }
+        
+        // Send the result back to the API
+        do {
+            let finalResponse = try await api.sendFunctionOutput(
+                call: call,
+                output: functionResult,
+                model: currentModel(),
+                previousResponseId: lastResponseId
+            )
+            
+            // Handle the final response from the model
+            await MainActor.run {
+                self.handleNonStreamingResponse(finalResponse, for: messageId)
+            }
+        } catch {
+            await MainActor.run {
+                self.handleError(error)
+            }
+        }
+    }
+    
     /// Determines the current model to use from UserDefaults (or default).
     private func currentModel() -> String {
         return UserDefaults.standard.string(forKey: "openAIModel") ?? "gpt-4o"
@@ -123,6 +196,9 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
 
         // Find the message to update
         guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        
+        // Update the streaming status based on the event
+        updateStreamingStatus(for: chunk.type)
         
         // Update the last response ID for continuity if we have a response object
         if let response = chunk.response {
@@ -155,8 +231,23 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             print("Streaming response completed for message: \(messageId)")
             
         default:
-            // Handle other streaming event types or log for debugging
-            print("Received streaming event type: \(chunk.type)")
+            // Other events are handled by the status updater
+            break
+        }
+    }
+    
+    /// Updates the streaming status based on the event type from the API.
+    private func updateStreamingStatus(for eventType: String) {
+        switch eventType {
+        case "response.created", "response.queued":
+            if streamingStatus != .connecting { streamingStatus = .connecting }
+        case "response.in_progress", "response.output_item.added", "response.content_part.added", "response.output_item.done":
+            if streamingStatus != .processing { streamingStatus = .processing }
+        case "response.output_text.delta":
+            if streamingStatus != .streaming { streamingStatus = .streaming }
+        default:
+            // No status change for other events
+            break
         }
     }
     

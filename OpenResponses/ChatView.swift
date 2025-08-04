@@ -20,13 +20,22 @@ struct ChatView: View {
                     .padding(.top, 10)
                 }
                 .safeAreaInset(edge: .bottom) {
-                    // Input area at the bottom, inset from safe area so it moves with the keyboard
-                    ChatInputView(text: $userInput, isFocused: $inputFocused) {
-                        // Send action
-                        viewModel.sendUserMessage(userInput)
-                        userInput = ""              // Clear the input field
-                        inputFocused = false        // Dismiss keyboard
+                    VStack(spacing: 0) {
+                        // Show streaming status when not idle
+                        if viewModel.streamingStatus != .idle && viewModel.streamingStatus != .done {
+                            StreamingStatusView(status: viewModel.streamingStatus)
+                                .padding(.bottom, 4)
+                        }
+                        
+                        // Input area at the bottom
+                        ChatInputView(text: $userInput, isFocused: $inputFocused) {
+                            // Send action
+                            viewModel.sendUserMessage(userInput)
+                            userInput = ""              // Clear the input field
+                            inputFocused = false        // Dismiss keyboard
+                        }
                     }
+                    .padding(.top, 8)
                     .background(.ultraThinMaterial)
                 }
                 .onChange(of: viewModel.messages.count) { _, _ in

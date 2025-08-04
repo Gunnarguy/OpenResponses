@@ -34,8 +34,14 @@ struct OutputItem: Decodable {
     let summary: [SummaryItem]?   // Chain-of-thought summary items (if reasoning summary was requested)
     let content: [ContentItem]?   // Content items (text segments, images, etc.) for this output
     
+    // Fields for function/tool calls
+    let name: String?
+    let arguments: String? // JSON string
+    let callId: String?
+    
     enum CodingKeys: String, CodingKey {
-        case id, type, summary, content
+        case id, type, summary, content, name, arguments
+        case callId = "call_id"
     }
 }
 
@@ -231,6 +237,16 @@ struct StreamingItem: Decodable {
     let status: String?
     let content: [StreamingContentItem]?
     let role: String?
+    
+    // Fields for function/tool calls
+    let name: String?
+    let arguments: String? // JSON string
+    let callId: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, type, status, content, role, name, arguments
+        case callId = "call_id"
+    }
 }
 
 /// Streaming part

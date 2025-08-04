@@ -48,6 +48,11 @@ class OpenAIService {
             }
         }
         
+        // Add developer instructions
+        if let developerInstructions = UserDefaults.standard.string(forKey: "developerInstructions"), !developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            inputMessages.append(["role": "developer", "content": developerInstructions])
+        }
+        
         // Add the user's message to the input
         inputMessages.append(["role": "user", "content": userMessage])
         requestObject["input"] = inputMessages
@@ -68,6 +73,11 @@ class OpenAIService {
         // Add image generation tool if enabled and supported by the model
         if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: false) {
             tools.append(createToolConfiguration(for: "image_generation"))
+        }
+        
+        // Add custom calculator tool if enabled
+        if UserDefaults.standard.bool(forKey: "enableCalculator") {
+            tools.append(createCalculatorToolConfiguration())
         }
         
         // Add file search tool if enabled and vector store(s) are selected
@@ -110,6 +120,88 @@ class OpenAIService {
         }
         
         // Note: Do not set stream parameter for non-streaming requests
+
+        // --- Advanced API parameters ---
+        requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
+        let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
+        if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
+        
+        // Add presence and frequency penalties
+        let presencePenalty = UserDefaults.standard.double(forKey: "presencePenalty")
+        if presencePenalty != 0.0 {
+            requestObject["presence_penalty"] = presencePenalty
+        }
+        let frequencyPenalty = UserDefaults.standard.double(forKey: "frequencyPenalty")
+        if frequencyPenalty != 0.0 {
+            requestObject["frequency_penalty"] = frequencyPenalty
+        }
+        
+        let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
+        if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
+        requestObject["parallel_tool_calls"] = UserDefaults.standard.bool(forKey: "parallelToolCalls")
+        let serviceTier = UserDefaults.standard.string(forKey: "serviceTier") ?? "auto"
+        if !serviceTier.isEmpty { requestObject["service_tier"] = serviceTier }
+        let topLogprobs = UserDefaults.standard.integer(forKey: "topLogprobs")
+        if topLogprobs > 0 { requestObject["top_logprobs"] = topLogprobs }
+        
+        // Only apply sampling parameters to non-O-series models
+        if !model.starts(with: "o") {
+            let topP = UserDefaults.standard.double(forKey: "topP")
+            if topP != 1.0 { requestObject["top_p"] = topP }
+        }
+        
+        let truncation = UserDefaults.standard.string(forKey: "truncationStrategy") ?? "disabled"
+        if !truncation.isEmpty { requestObject["truncation"] = truncation }
+        let userId = UserDefaults.standard.string(forKey: "userIdentifier") ?? ""
+        if !userId.isEmpty { requestObject["user"] = userId }
+        
+        // --- API include parameter ---
+        var include: [String] = []
+        if UserDefaults.standard.bool(forKey: "includeCodeInterpreterOutputs") { include.append("code_interpreter_call.outputs") }
+        if UserDefaults.standard.bool(forKey: "includeFileSearchResults") { include.append("file_search_call.results") }
+        if UserDefaults.standard.bool(forKey: "includeInputImageUrls") { include.append("message.input_image.image_url") }
+        if UserDefaults.standard.bool(forKey: "includeOutputLogprobs") { include.append("message.output_text.logprobs") }
+        
+        // Reasoning content can only be included when persistence is disabled
+        // Since we use store: true for conversation continuity, we cannot include encrypted reasoning content
+        // if UserDefaults.standard.bool(forKey: "includeReasoningContent") { include.append("reasoning.encrypted_content") }
+        
+        if !include.isEmpty { requestObject["include"] = include }
+        
+        // --- Text formatting ---
+        let textFormatType = UserDefaults.standard.string(forKey: "textFormatType") ?? "text"
+        if textFormatType == "json_schema" {
+            var textObj: [String: Any] = ["format": ["type": "json_schema"]]
+            let schemaName = UserDefaults.standard.string(forKey: "jsonSchemaName") ?? ""
+            let schemaDesc = UserDefaults.standard.string(forKey: "jsonSchemaDescription") ?? ""
+            let schemaStrict = UserDefaults.standard.bool(forKey: "jsonSchemaStrict")
+            let schemaContent = UserDefaults.standard.string(forKey: "jsonSchemaContent") ?? ""
+            if !schemaName.isEmpty && !schemaContent.isEmpty {
+                textObj["format"] = [
+                    "type": "json_schema",
+                    "name": schemaName,
+                    "description": schemaDesc,
+                    "strict": schemaStrict,
+                    "schema": try? JSONSerialization.jsonObject(with: Data(schemaContent.utf8))
+                ]
+            }
+            requestObject["text"] = textObj
+        } else {
+            requestObject["text"] = ["format": ["type": "text"]]
+        }
+        
+        // --- Advanced reasoning ---
+        if model.starts(with: "o") {
+            let summary = UserDefaults.standard.string(forKey: "reasoningSummary") ?? "auto"
+            requestObject["reasoning"] = ["effort": UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium", "summary": summary]
+        }
+        
+        // --- Advanced image generation ---
+        // (Handled in createToolConfiguration for image_generation)
+        // --- Advanced web search location ---
+        // (Handled in createWebSearchConfiguration)
+        // --- Metadata (optional, not exposed in UI yet) ---
+        // --- Prompt object (optional, not exposed in UI yet) ---
 
         // Serialize JSON payload
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
@@ -189,6 +281,11 @@ class OpenAIService {
                         }
                     }
 
+                    // Add developer instructions
+                    if let developerInstructions = UserDefaults.standard.string(forKey: "developerInstructions"), !developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        inputMessages.append(["role": "developer", "content": developerInstructions])
+                    }
+
                     // Add the user's message to the input
                     inputMessages.append(["role": "user", "content": userMessage])
                     requestObject["input"] = inputMessages
@@ -202,6 +299,9 @@ class OpenAIService {
                     }
                     if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: true) {
                         tools.append(createToolConfiguration(for: "image_generation"))
+                    }
+                    if UserDefaults.standard.bool(forKey: "enableCalculator") {
+                        tools.append(createCalculatorToolConfiguration())
                     }
                     if UserDefaults.standard.bool(forKey: "enableFileSearch") {
                         let multiIds = UserDefaults.standard.string(forKey: "selectedVectorStoreIds") ?? ""
@@ -231,6 +331,88 @@ class OpenAIService {
                         requestObject["previous_response_id"] = prevId
                     }
                     
+                    // --- Advanced API parameters ---
+                    requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
+                    let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
+                    if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
+                    
+                    // Add presence and frequency penalties
+                    let presencePenalty = UserDefaults.standard.double(forKey: "presencePenalty")
+                    if presencePenalty != 0.0 {
+                        requestObject["presence_penalty"] = presencePenalty
+                    }
+                    let frequencyPenalty = UserDefaults.standard.double(forKey: "frequencyPenalty")
+                    if frequencyPenalty != 0.0 {
+                        requestObject["frequency_penalty"] = frequencyPenalty
+                    }
+                    
+                    let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
+                    if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
+                    requestObject["parallel_tool_calls"] = UserDefaults.standard.bool(forKey: "parallelToolCalls")
+                    let serviceTier = UserDefaults.standard.string(forKey: "serviceTier") ?? "auto"
+                    if !serviceTier.isEmpty { requestObject["service_tier"] = serviceTier }
+                    let topLogprobs = UserDefaults.standard.integer(forKey: "topLogprobs")
+                    if topLogprobs > 0 { requestObject["top_logprobs"] = topLogprobs }
+                    
+                    // Only apply sampling parameters to non-O-series models
+                    if !model.starts(with: "o") {
+                        let topP = UserDefaults.standard.double(forKey: "topP")
+                        if topP != 1.0 { requestObject["top_p"] = topP }
+                    }
+                    
+                    let truncation = UserDefaults.standard.string(forKey: "truncationStrategy") ?? "disabled"
+                    if !truncation.isEmpty { requestObject["truncation"] = truncation }
+                    let userId = UserDefaults.standard.string(forKey: "userIdentifier") ?? ""
+                    if !userId.isEmpty { requestObject["user"] = userId }
+                    
+                    // --- API include parameter ---
+                    var include: [String] = []
+                    if UserDefaults.standard.bool(forKey: "includeCodeInterpreterOutputs") { include.append("code_interpreter_call.outputs") }
+                    if UserDefaults.standard.bool(forKey: "includeFileSearchResults") { include.append("file_search_call.results") }
+                    if UserDefaults.standard.bool(forKey: "includeInputImageUrls") { include.append("message.input_image.image_url") }
+                    if UserDefaults.standard.bool(forKey: "includeOutputLogprobs") { include.append("message.output_text.logprobs") }
+                    
+                    // Reasoning content can only be included when persistence is disabled
+                    // Since we use store: true for conversation continuity, we cannot include encrypted reasoning content
+                    // if UserDefaults.standard.bool(forKey: "includeReasoningContent") { include.append("reasoning.encrypted_content") }
+                    
+                    if !include.isEmpty { requestObject["include"] = include }
+                    
+                    // --- Text formatting ---
+                    let textFormatType = UserDefaults.standard.string(forKey: "textFormatType") ?? "text"
+                    if textFormatType == "json_schema" {
+                        var textObj: [String: Any] = ["format": ["type": "json_schema"]]
+                        let schemaName = UserDefaults.standard.string(forKey: "jsonSchemaName") ?? ""
+                        let schemaDesc = UserDefaults.standard.string(forKey: "jsonSchemaDescription") ?? ""
+                        let schemaStrict = UserDefaults.standard.bool(forKey: "jsonSchemaStrict")
+                        let schemaContent = UserDefaults.standard.string(forKey: "jsonSchemaContent") ?? ""
+                        if !schemaName.isEmpty && !schemaContent.isEmpty {
+                            textObj["format"] = [
+                                "type": "json_schema",
+                                "name": schemaName,
+                                "description": schemaDesc,
+                                "strict": schemaStrict,
+                                "schema": try? JSONSerialization.jsonObject(with: Data(schemaContent.utf8))
+                            ]
+                        }
+                        requestObject["text"] = textObj
+                    } else {
+                        requestObject["text"] = ["format": ["type": "text"]]
+                    }
+                    
+                    // --- Advanced reasoning ---
+                    if model.starts(with: "o") {
+                        let summary = UserDefaults.standard.string(forKey: "reasoningSummary") ?? "auto"
+                        requestObject["reasoning"] = ["effort": UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium", "summary": summary]
+                    }
+                    
+                    // --- Advanced image generation ---
+                    // (Handled in createToolConfiguration for image_generation)
+                    // --- Advanced web search location ---
+                    // (Handled in createWebSearchConfiguration)
+                    // --- Metadata (optional, not exposed in UI yet) ---
+                    // --- Prompt object (optional, not exposed in UI yet) ---
+
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
                     
                     // For debugging: Print the JSON request for streaming
@@ -305,6 +487,76 @@ class OpenAIService {
         }
     }
     
+    /// Sends the output of a function call back to the API to get a final response.
+    /// - Parameters:
+    ///   - call: The original `OutputItem` that represented the function call.
+    ///   - output: The string result from executing the function locally.
+    ///   - model: The model name to use.
+    ///   - previousResponseId: The ID of the response that contained the function call.
+    /// - Returns: The final `OpenAIResponse` from the assistant.
+    func sendFunctionOutput(call: OutputItem, output: String, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        // The original function call from the assistant
+        let functionCallMessage: [String: Any] = [
+            "type": "function_call",
+            "name": call.name ?? "",
+            "arguments": call.arguments ?? "",
+            "call_id": call.callId ?? ""
+        ]
+        
+        // The result from our local execution
+        let functionOutputMessage: [String: Any] = [
+            "type": "function_call_output",
+            "call_id": call.callId ?? "",
+            "output": output
+        ]
+        
+        // We need to send back the function call and our output
+        let inputMessages = [functionCallMessage, functionOutputMessage]
+        
+        var requestObject: [String: Any] = [
+            "model": model,
+            "store": true,
+            "input": inputMessages,
+            "previous_response_id": previousResponseId
+        ]
+        
+        // We don't need to resend tools or other complex parameters,
+        // as we are continuing a specific tool-use turn.
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+        
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("OpenAI Function Output Request JSON: \(jsonString)")
+        }
+        
+        var request = URLRequest(url: apiURL)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            print("Function output response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
     /// Fetches image data either from an OpenAI file ID or a direct URL.
     /// - Parameter imageContent: The content object containing either a file_id or url.
     /// - Returns: Raw image data.
@@ -350,22 +602,32 @@ class OpenAIService {
     ///   - toolType: The type of tool ("web_search_preview", "code_interpreter", "image_generation", "file_search")
     ///   - vectorStoreId: Optional vector store ID for file_search tool
     /// - Returns: A dictionary representing the tool configuration
+    /// 
+    /// Note: Tool configurations have been simplified to avoid API parameter errors.
+    /// The OpenAI API is strict about which parameters are accepted for each tool type.
     private func createToolConfiguration(for toolType: String, vectorStoreId: String? = nil) -> [String: Any] {
         switch toolType {
         case "web_search_preview":
+            // Simplified to basic configuration to avoid "unknown parameter" errors
             return [
-                "type": "web_search_preview",
-                "user_location": [ "type": "approximate", "country": "US" ],
-                "search_context_size": "medium"
+                "type": "web_search_preview"
             ]
         case "code_interpreter":
+            // Code interpreter requires specifying a container type
             return [
                 "type": "code_interpreter",
                 "container": [ "type": "auto" ]
             ]
         case "image_generation":
+            // Image generation parameters are set based on user preferences
             return [
-                "type": "image_generation"
+                "type": "image_generation",
+                "size": "auto",
+                "quality": "high",
+                "output_format": "png",
+                "background": "auto",
+                "moderation": "low",
+                "partial_images": 3
             ]
         case "file_search":
             var config: [String: Any] = [
@@ -379,6 +641,30 @@ class OpenAIService {
         default:
             return [:]
         }
+    }
+    
+    
+    /// Creates the configuration for the custom calculator tool
+    /// - Returns: A dictionary representing the calculator tool configuration
+    private func createCalculatorToolConfiguration() -> [String: Any] {
+        return [
+            "type": "function",
+            "function": [
+                "name": "calculator",
+                "description": "Evaluate mathematical expressions and return the result.",
+                "parameters": [
+                    "type": "object",
+                    "properties": [
+                        "expression": [
+                            "type": "string",
+                            "description": "A mathematical expression to evaluate, e.g., '5+3*2'"
+                        ]
+                    ],
+                    "required": ["expression"]
+                ],
+                "strict": true
+            ]
+        ]
     }
     
     /// Checks if a tool is supported by the given model
@@ -690,6 +976,76 @@ class OpenAIService {
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+    }
+    
+    /// Updates a vector store
+    /// - Parameters:
+    ///   - vectorStoreId: The ID of the vector store to update
+    ///   - name: Optional new name for the vector store
+    ///   - expiresAfter: Optional new expiration settings
+    ///   - metadata: Optional new metadata
+    /// - Returns: The updated vector store object
+    func updateVectorStore(vectorStoreId: String, name: String?, expiresAfter: ExpiresAfter?, metadata: [String: Any]?) async throws -> VectorStore {
+        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)")!
+        
+        var requestObject: [String: Any] = [:]
+        
+        if let name = name, !name.isEmpty {
+            requestObject["name"] = name
+        }
+        
+        if let expiresAfter = expiresAfter {
+            requestObject["expires_after"] = [
+                "anchor": expiresAfter.anchor,
+                "days": expiresAfter.days
+            ]
+        }
+        
+        if let metadata = metadata {
+            requestObject["metadata"] = metadata
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
+        
+        // Debug: Print the update request
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("Vector Store Update Request JSON: \(jsonString)")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"  // OpenAI uses POST for vector store updates
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Error updating vector store: \(responseString)")
+            }
+            let errorMessage: String
+            if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                errorMessage = errorResponse.error.message
+            } else {
+                errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            }
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        do {
+            return try JSONDecoder().decode(VectorStore.self, from: data)
+        } catch {
+            print("Decoding error for vector store update: \(error)")
+            throw OpenAIServiceError.invalidResponseData
         }
     }
     
