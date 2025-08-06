@@ -78,6 +78,13 @@ File Search is not just a toggle; it's a complete management system.
 
 This makes a highly complex workflow intuitive and manageable for the end-user.
 
+#### D. File Attachments: Immediate Context
+
+Distinct from the persistent, searchable knowledge base of Vector Stores, OpenResponses also supports direct file attachments. This feature allows a user to upload a file and have it included as context for the *very next* message.
+
+- **The Use Case**: Providing one-off context, such as asking the model to summarize a document, analyze a log file, or answer questions about a specific PDF without first adding it to a permanent vector store.
+- **Implementation**: The flow is streamlined for simplicity. The `ChatViewModel` manages a temporary list of pending file IDs. When the user sends a message, these IDs are formatted into the `attachments` array of the API request and the list is cleared. This provides immediate, ephemeral context for a single turn of conversation.
+
 ### 4. Conclusion: A Foundation for Exploration
 
 OpenResponses successfully achieves its goal of being more than just a chat client. It is a robust, feature-complete, and highly customizable tool that demonstrates how to properly handle the complexity of a modern AI API in a native application.
