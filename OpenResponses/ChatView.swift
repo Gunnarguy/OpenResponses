@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @State private var userInput: String = ""
     @State private var showSettings: Bool = false
+    @State private var showFilePicker: Bool = false // To present the file importer
     @FocusState private var inputFocused: Bool  // Focus state for the input field
     
     var body: some View {
@@ -28,12 +30,15 @@ struct ChatView: View {
                         }
                         
                         // Input area at the bottom
-                        ChatInputView(text: $userInput, isFocused: $inputFocused) {
+                        ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
                             // Send action
                             viewModel.sendUserMessage(userInput)
                             userInput = ""              // Clear the input field
                             inputFocused = false        // Dismiss keyboard
-                        }
+                        }, onAttach: {
+                            // Attachment action
+                            showFilePicker = true
+                        })
                     }
                     .padding(.top, 8)
                     .background(.ultraThinMaterial)
@@ -71,6 +76,14 @@ struct ChatView: View {
                             }
                         }
                 }
+            }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data]) { result in
+            switch result {
+            case .success(let url):
+                viewModel.attachFile(from: url)
+            case .failure(let error):
+                viewModel.handleError(error)
             }
         }
     }

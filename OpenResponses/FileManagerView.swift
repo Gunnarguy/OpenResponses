@@ -200,6 +200,11 @@ struct FileManagerView: View {
                         Task {
                             await removeFileFromVectorStore(store.id, fileId: fileId)
                         }
+                    },
+                    onAddFile: { fileURL in
+                        Task {
+                            await handleFileSelection(Result.success([fileURL]), for: store.id)
+                        }
                     }
                 )
             }
@@ -248,24 +253,25 @@ struct FileManagerView: View {
     // MARK: - File Operations
     
     @MainActor
-    private func handleFileSelection(_ result: Result<[URL], Error>) async {
+    private func handleFileSelection(_ result: Result<[URL], Error>, for vectorStoreId: String? = nil) async {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
             
             do {
-                let data = try Data(contentsOf: url)
-                let filename = url.lastPathComponent
+                let uploadedFileId = try await api.uploadFile(from: url)
                 
-                let uploadedFile = try await api.uploadFile(
-                    fileData: data,
-                    filename: filename,
-                    purpose: "assistants"
-                )
-                
-                files.append(uploadedFile)
+                if let vectorStoreId = vectorStoreId {
+                    // If a vector store is specified, add the file directly to it
+                    try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFileId)
+                    // Refresh the files for that specific vector store
+                    await loadVectorStoreFiles(vectorStoreId)
+                } else {
+                    // Otherwise, just add to the general list
+                    await loadData() // Reload all data to see the new file
+                }
             } catch {
-                errorMessage = "Failed to upload file: \(error.localizedDescription)"
+                errorMessage = "Failed to upload and process file: \(error.localizedDescription)"
             }
             
         case .failure(let error):
@@ -525,8 +531,10 @@ struct VectorStoreDetailView: View {
     let files: [VectorStoreFile]
     let allFiles: [OpenAIFile]
     let onRemoveFile: (String) -> Void
+    let onAddFile: (URL) -> Void // Callback for adding a file
     
     @Environment(\.dismiss) private var dismiss
+    @State private var showingFilePicker = false
     
     private func getFilename(for fileId: String) -> String {
         if let file = allFiles.first(where: { $0.id == fileId }) {
@@ -621,9 +629,19 @@ struct VectorStoreDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add File") {
+                        showingFilePicker = true
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                }
+            }
+            .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: [.plainText, .pdf, .json, .data]) { result in
+                if case .success(let url) = result {
+                    onAddFile(url)
                 }
             }
         }

@@ -23,9 +23,10 @@ class OpenAIService {
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
     ///   - model: The model name to use (e.g., "gpt-4o", "o3", "o3-mini").
+    ///   - attachments: An optional array of file attachments.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, model: String, attachments: [[String: Any]]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -39,13 +40,9 @@ class OpenAIService {
 
         var inputMessages: [[String: Any]] = []
 
-        // Add system instructions based on model preference
+        // Add system instructions
         if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if modelPrefersSystemMessage(model) {
-                inputMessages.append(["role": "system", "content": instructions])
-            } else {
-                requestObject["instructions"] = instructions
-            }
+            requestObject["instructions"] = instructions
         }
         
         // Add developer instructions
@@ -56,6 +53,11 @@ class OpenAIService {
         // Add the user's message to the input
         inputMessages.append(["role": "user", "content": userMessage])
         requestObject["input"] = inputMessages
+        
+        // Add attachments if provided
+        if let attachments = attachments {
+            requestObject["attachments"] = attachments
+        }
         
         // Build tools array based on user preferences and model compatibility
         var tools: [[String: Any]] = []
@@ -125,16 +127,6 @@ class OpenAIService {
         requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
         let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
         if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
-        
-        // Add presence and frequency penalties
-        let presencePenalty = UserDefaults.standard.double(forKey: "presencePenalty")
-        if presencePenalty != 0.0 {
-            requestObject["presence_penalty"] = presencePenalty
-        }
-        let frequencyPenalty = UserDefaults.standard.double(forKey: "frequencyPenalty")
-        if frequencyPenalty != 0.0 {
-            requestObject["frequency_penalty"] = frequencyPenalty
-        }
         
         let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
         if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
@@ -252,9 +244,10 @@ class OpenAIService {
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
     ///   - model: The model name to use.
+    ///   - attachments: An optional array of file attachments.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, model: String, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, model: String, attachments: [[String: Any]]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -272,13 +265,9 @@ class OpenAIService {
                     
                     var inputMessages: [[String: Any]] = []
 
-                    // Add system instructions if they exist
+                    // Add system instructions
                     if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if modelPrefersSystemMessage(model) {
-                            inputMessages.append(["role": "system", "content": instructions])
-                        } else {
-                            requestObject["instructions"] = instructions
-                        }
+                        requestObject["instructions"] = instructions
                     }
 
                     // Add developer instructions
@@ -289,6 +278,11 @@ class OpenAIService {
                     // Add the user's message to the input
                     inputMessages.append(["role": "user", "content": userMessage])
                     requestObject["input"] = inputMessages
+                    
+                    // Add attachments if provided
+                    if let attachments = attachments {
+                        requestObject["attachments"] = attachments
+                    }
                     
                     var tools: [[String: Any]] = []
                     if UserDefaults.standard.bool(forKey: "enableWebSearch") {
@@ -335,16 +329,6 @@ class OpenAIService {
                     requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
                     let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
                     if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
-                    
-                    // Add presence and frequency penalties
-                    let presencePenalty = UserDefaults.standard.double(forKey: "presencePenalty")
-                    if presencePenalty != 0.0 {
-                        requestObject["presence_penalty"] = presencePenalty
-                    }
-                    let frequencyPenalty = UserDefaults.standard.double(forKey: "frequencyPenalty")
-                    if frequencyPenalty != 0.0 {
-                        requestObject["frequency_penalty"] = frequencyPenalty
-                    }
                     
                     let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
                     if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
@@ -586,15 +570,6 @@ class OpenAIService {
             return data
         }
         throw OpenAIServiceError.invalidResponseData
-    }
-    
-    /// Determines if a model prefers receiving instructions via a system message in the input array.
-    /// - Parameter model: The model name.
-    /// - Returns: `true` if the model prefers a system message.
-    private func modelPrefersSystemMessage(_ model: String) -> Bool {
-        // O-series models prefer instructions via a system message.
-        // GPT-series models prefer the top-level 'instructions' parameter.
-        return model.starts(with: "o")
     }
     
     /// Creates a properly formatted tool configuration based on current API requirements
@@ -1171,6 +1146,66 @@ class OpenAIService {
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+    }
+    
+    /// Uploads a file to OpenAI from a local URL
+    /// - Parameter url: The URL of the file to upload.
+    /// - Returns: The ID of the uploaded file.
+    func uploadFile(from url: URL) async throws -> String {
+        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let uploadURL = URL(string: "https://api.openai.com/v1/files")!
+        
+        // Prepare multipart form data
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = URLRequest(url: uploadURL)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        
+        // Add purpose field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"purpose\"\r\n\r\n".data(using: .utf8)!)
+        body.append("assistants\r\n".data(using: .utf8)!)
+        
+        // Add file data
+        let filename = url.lastPathComponent
+        let fileData = try Data(contentsOf: url)
+        
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n".data(using: .utf8)!)
+        
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        // Perform the request
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(statusCode, "File upload failed: \(errorMessage)")
+        }
+        
+        // Decode the response to get the file ID
+        struct FileUploadResponse: Decodable {
+            let id: String
+        }
+        
+        do {
+            let decodedResponse = try JSONDecoder().decode(FileUploadResponse.self, from: data)
+            return decodedResponse.id
+        } catch {
+            throw OpenAIServiceError.invalidResponseData
         }
     }
 }

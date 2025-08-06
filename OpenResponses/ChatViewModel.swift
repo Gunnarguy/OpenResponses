@@ -4,6 +4,8 @@ import Combine
 class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var messages: [ChatMessage] = []
     @Published var streamingStatus: StreamingStatus = .idle // Tracks the streaming state
+    @Published var isStreaming: Bool = false // To disable UI during streaming
+    @Published var pendingFileAttachments: [String] = [] // To hold file IDs for the next message
     private let api = OpenAIService()              // Service for API calls
     private var lastResponseId: String? = nil      // Store the last response ID for continuity
     private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
@@ -24,6 +26,19 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
         
+        // Disable input while processing
+        isStreaming = true
+        
+        // Prepare attachments if any are pending
+        let attachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
+            return ["file_id": fileId, "tools": [["type": "file_search"]]]
+        }
+        
+        // Clear pending attachments now that they are included in the request
+        if attachments != nil {
+            pendingFileAttachments.removeAll()
+        }
+        
         // Check if streaming is enabled
         let streamingEnabled = UserDefaults.standard.bool(forKey: "enableStreaming")
         print("Using \(streamingEnabled ? "streaming" : "non-streaming") mode")
@@ -34,16 +49,16 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: trimmed, model: currentModel(), previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: trimmed, model: currentModel(), attachments: attachments, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
-                        await MainActor.run { 
+                        await MainActor.run {
                             self.handleStreamChunk(chunk, for: assistantMsgId)
                         }
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: trimmed, model: currentModel(), previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: trimmed, model: currentModel(), attachments: attachments, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -61,11 +76,54 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             // Ensure we clear the streaming ID when the task is done, after do-catch
             await MainActor.run {
                 self.streamingMessageId = nil
+                self.isStreaming = false // Re-enable input
                 // Mark as done and reset after a delay
                 if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         self.streamingStatus = .idle
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Handles the selection of a file, uploads it, and prepares it for the next message.
+    func attachFile(from url: URL) {
+        // Ensure we can access the file's data
+        guard url.startAccessingSecurityScopedResource() else {
+            handleError(NSError(domain: "FileAttachmentError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not access file."]))
+            return
+        }
+        
+        // Show a status message
+        let attachingMessage = ChatMessage(role: .system, text: "Attaching \(url.lastPathComponent)...", images: nil)
+        messages.append(attachingMessage)
+        
+        Task {
+            do {
+                // Upload the file using the API service
+                let fileId = try await api.uploadFile(from: url)
+                
+                // Stop accessing the resource once we're done
+                url.stopAccessingSecurityScopedResource()
+                
+                await MainActor.run {
+                    // Add the file ID to the pending list
+                    self.pendingFileAttachments.append(fileId)
+                    
+                    // Update the status message
+                    if let lastMessageIndex = self.messages.lastIndex(where: { $0.id == attachingMessage.id }) {
+                        self.messages[lastMessageIndex].text = "✅ File '\(url.lastPathComponent)' attached. It will be sent with your next message."
+                    }
+                }
+            } catch {
+                url.stopAccessingSecurityScopedResource()
+                await MainActor.run {
+                    self.handleError(error)
+                    // Update the status message to show failure
+                    if let lastMessageIndex = self.messages.lastIndex(where: { $0.id == attachingMessage.id }) {
+                        self.messages[lastMessageIndex].text = "❌ Failed to attach file: \(error.localizedDescription)"
                     }
                 }
             }
@@ -239,12 +297,20 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     /// Updates the streaming status based on the event type from the API.
     private func updateStreamingStatus(for eventType: String) {
         switch eventType {
-        case "response.created", "response.queued":
-            if streamingStatus != .connecting { streamingStatus = .connecting }
-        case "response.in_progress", "response.output_item.added", "response.content_part.added", "response.output_item.done":
-            if streamingStatus != .processing { streamingStatus = .processing }
+        case "response.created":
+            streamingStatus = .connecting
+        case "response.output_item.added":
+            // Set to processing only if it's a tool call, otherwise wait for text
+            // This logic can be refined if we know the item type
+            if streamingStatus == .connecting {
+                streamingStatus = .processing
+            }
         case "response.output_text.delta":
-            if streamingStatus != .streaming { streamingStatus = .streaming }
+            if streamingStatus != .streaming {
+                streamingStatus = .streaming
+            }
+        case "response.done":
+            streamingStatus = .done
         default:
             // No status change for other events
             break
@@ -278,7 +344,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     }
     
     /// Handle errors by appending a system message describing the issue.
-    private func handleError(_ error: Error) {
+    func handleError(_ error: Error) {
         var errorText = "An error occurred."
         if let serviceError = error as? OpenAIServiceError {
             switch serviceError {

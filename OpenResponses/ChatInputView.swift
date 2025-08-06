@@ -4,9 +4,19 @@ struct ChatInputView: View {
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
     var onSend: () -> Void
+    var onAttach: () -> Void // Callback for attachment button
     
     var body: some View {
         HStack(alignment: .center) {
+            // Attachment button
+            Button(action: {
+                onAttach()
+            }) {
+                Image(systemName: "paperclip")
+                    .foregroundColor(.gray)
+                    .padding(8)
+            }
+            
             ZStack(alignment: .leading) {
                 // Placeholder text
                 if text.isEmpty {
