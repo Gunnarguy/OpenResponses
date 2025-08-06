@@ -10,8 +10,12 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
   - **Web Search**: Real-time web browsing with advanced configuration for location, search quality, language, and recency.
   - **Code Interpreter**: Write and execute code in a secure sandbox.
   - **Image Generation**: Create images from text prompts.
+  - **File Attachments**: Attach files directly to your messages to provide context to the model.
   - **File Search**: Search through one or multiple user-managed vector stores.
   - **Custom Calculator**: A built-in function-calling tool for evaluating mathematical expressions.
+- **UI/UX Enhancements**:
+  - **Real-time UI Updates**: The UI updates instantly to reflect the current state of the app.
+  - **Responsive Design**: The app is designed to work seamlessly on both iOS and macOS.
 - **Advanced Customizable Settings**:
   - **Basic**: Securely store your API key, adjust `temperature`, and set `reasoning effort` for o-series models.
   - **Power User Controls**: Fine-tune API calls with parameters like `max_output_tokens`, `presence_penalty`, `frequency_penalty`, `top_p`, and `parallel_tool_calls`.
@@ -41,31 +45,37 @@ OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) 
     - **`MessageBubbleView`**: Renders individual messages, including special formatting for code blocks.
     - **`ChatInputView`**: The text input component.
     - **`StreamingStatusView`**: A visual indicator for the status of streaming responses.
-9.  **Data Models**: `ChatMessage` and a full set of `Codable` structs that precisely match the OpenAI API's JSON structure.
+9.  **Data Models**: `ChatMessage`, `StreamingStatus`, and a full set of `Codable` structs that precisely match the OpenAI API's JSON structure.
 
 ### Data Flow: A User's Message
 
-1.  **Input**: The user types a message in `ChatInputView` and taps "Send".
-2.  **Action**: `ChatView` calls `viewModel.sendUserMessage()`.
-3.  **UI Update (User)**: `ChatViewModel` immediately appends the user's message to the chat history. If streaming, it also appends a placeholder for the assistant's response.
-4.  **API Call**: The view model creates a `Task` to call the appropriate method in `OpenAIService` (`sendChatRequest` or `streamChatRequest`), which builds the request from the latest settings in `UserDefaults`.
-5.  **Network & Response**: The service sends the request.
+1.  **File Attachment (Optional)**:
+    - The user taps the paperclip icon in `ChatInputView`.
+    - `ChatView` presents a file picker.
+    - On selection, `ChatView` calls `viewModel.attachFile(from: url)`.
+    - `ChatViewModel` calls `api.uploadFile(from: url)` in `OpenAIService`.
+    - The file is uploaded, and its ID is stored in the view model's `pendingFileAttachments`.
+2.  **Input**: The user types a message in `ChatInputView` and taps "Send".
+3.  **Action**: `ChatView` calls `viewModel.sendUserMessage()`.
+4.  **UI Update (User)**: `ChatViewModel` immediately appends the user's message to the chat history. If streaming, it also appends a placeholder for the assistant's response.
+5.  **API Call**: The view model creates a `Task` to call the appropriate method in `OpenAIService` (`sendChatRequest` or `streamChatRequest`), which builds the request from the latest settings in `UserDefaults`. Any pending file attachment IDs are included in the request.
+6.  **Network & Response**: The service sends the request.
     - **Non-Streaming**: It awaits the full response, decodes it, and returns it to the view model.
     - **Streaming**: It opens a connection and yields response chunks (`StreamingEvent`) as they arrive.
-6.  **UI Update (Assistant)**: The view model, on the main thread, processes the response.
+7.  **UI Update (Assistant)**: The view model, on the main thread, processes the response.
     - **Non-Streaming**: It updates the placeholder with the final text and images.
     - **Streaming**: It incrementally updates the placeholder message and the `StreamingStatusView` as data arrives.
-7.  **Function Calls**: If the model returns a function call (e.g., `calculator`), the view model executes it, sends the result back via `OpenAIService`, and processes the final response.
+8.  **Function Calls**: If the model returns a function call (e.g., `calculator`), the view model executes it, sends the result back via `OpenAIService`, and processes the final response.
 
 ## 🔧 Getting Started
 
 1.  **Clone the repository.**
-2.  **Get an OpenAI API Key**: [OpenAI Platform](https://platform.openai.com/)
-3.  **Build & Run**: Open `.xcodeproj` in Xcode and run on your device or simulator.
+2.  **Get an OpenAI API Key**: You'll need an API key from the [OpenAI Platform](https://platform.openai.com/).
+3.  **Build & Run**: Open the `.xcodeproj` file in Xcode and run the app on your iOS device, macOS machine, or a simulator.
 4.  **Configure Settings**:
-    - Go to the settings screen and enter your API key.
-    - Select your preferred model and enable desired tools.
-    - Explore the advanced settings to customize the experience.
+    - Upon first launch, navigate to the settings screen.
+    - Enter your OpenAI API key to enable communication with the API.
+    - Select your preferred model, enable your desired tools (like Web Search or Code Interpreter), and explore the advanced settings to customize the experience.
 5.  **Start Chatting!**
 
 ## 🤖 Agent-Driven Development
