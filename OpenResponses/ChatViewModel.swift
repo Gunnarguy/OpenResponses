@@ -6,15 +6,40 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var streamingStatus: StreamingStatus = .idle // Tracks the streaming state
     @Published var isStreaming: Bool = false // To disable UI during streaming
     @Published var pendingFileAttachments: [String] = [] // To hold file IDs for the next message
+    @Published var activePrompt: Prompt // Holds the current settings configuration
+    @Published var errorMessage: String? // Holds the current error message for display
+
     private let api = OpenAIService()              // Service for API calls
     private var lastResponseId: String? = nil      // Store the last response ID for continuity
     private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
+    private var cancellables = Set<AnyCancellable>()
+    private var streamingTask: Task<Void, Never>? // Task for managing the streaming process
+
+    init() {
+        // Initialize with a default prompt configuration
+        self.activePrompt = Prompt.defaultPrompt()
+        
+        // Load the last used prompt from UserDefaults or create a default
+        loadActivePrompt()
+        
+        // Observe changes to the active prompt and save them
+        $activePrompt
+            .debounce(for: .seconds(1), scheduler: RunLoop.main) // Debounce to avoid excessive saving
+            .sink { [weak self] updatedPrompt in
+                self?.saveActivePrompt()
+            }
+            .store(in: &cancellables)
+    }
     
     /// Sends a user message and processes the assistant's response.
     /// This appends the user message to the chat and interacts with the OpenAI service.
     func sendUserMessage(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        
+        // Cancel any existing streaming task before starting a new one.
+        // This prevents receiving chunks from a previous, unfinished stream.
+        streamingTask?.cancel()
         
         // Append the user's message to the chat
         let userMsg = ChatMessage(role: .user, text: trimmed, images: nil)
@@ -39,42 +64,56 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             pendingFileAttachments.removeAll()
         }
         
-        // Check if streaming is enabled
-        let streamingEnabled = UserDefaults.standard.bool(forKey: "enableStreaming")
+        // Check if streaming is enabled from the active prompt
+        let streamingEnabled = activePrompt.enableStreaming
         print("Using \(streamingEnabled ? "streaming" : "non-streaming") mode")
         
         // Call the OpenAI API asynchronously
-        Task {
+        streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: trimmed, model: currentModel(), attachments: attachments, previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: attachments, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
+                        // Check for cancellation before handling the next chunk
+                        if Task.isCancelled {
+                            await MainActor.run {
+                                self.handleError(CancellationError())
+                            }
+                            break
+                        }
                         await MainActor.run {
                             self.handleStreamChunk(chunk, for: assistantMsgId)
                         }
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: trimmed, model: currentModel(), attachments: attachments, previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: attachments, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
                     }
                 }
             } catch {
-                // Handle errors on main thread
-                await MainActor.run {
-                    self.handleError(error)
-                    // Remove the placeholder message on error
-                    self.messages.removeAll { $0.id == assistantMsgId }
-                    self.streamingStatus = .idle // Reset on error
+                // Handle errors on main thread, unless it's a cancellation
+                if !(error is CancellationError) {
+                    await MainActor.run {
+                        self.handleError(error)
+                        // Remove the placeholder message on error
+                        self.messages.removeAll { $0.id == assistantMsgId }
+                        self.streamingStatus = .idle // Reset on error
+                    }
                 }
             }
             // Ensure we clear the streaming ID when the task is done, after do-catch
             await MainActor.run {
+                // Log the final streamed message
+                if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
+                    print("Finished streaming response: \(finalMessage.text ?? "No text content")")
+                }
+                
                 self.streamingMessageId = nil
                 self.isStreaming = false // Re-enable input
                 // Mark as done and reset after a delay
@@ -152,7 +191,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         
         // Extract text content from the response
         if let outputItem = response.output.first,
-           let textContent = outputItem.content?.first(where: { $0.type == "text" }) {
+           let textContent = outputItem.content?.first(where: { $0.type == "output_text" }) {
             updatedMessage.text = textContent.text ?? ""
         }
         
@@ -182,11 +221,14 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         }
         
         messages[messageIndex] = updatedMessage
+        
+        // Log the final response
+        print("Received non-streaming response: \(updatedMessage.text ?? "No text content")")
     }
     
     /// Handles a function call from the API by executing the function and sending the result back.
     private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
-        guard let functionName = call.name, let callId = call.callId else {
+        guard let functionName = call.name, let _ = call.callId else {
             handleError(OpenAIServiceError.invalidResponseData)
             return
         }
@@ -224,7 +266,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             let finalResponse = try await api.sendFunctionOutput(
                 call: call,
                 output: functionResult,
-                model: currentModel(),
+                model: activePrompt.openAIModel,
                 previousResponseId: lastResponseId
             )
             
@@ -241,7 +283,30 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     
     /// Determines the current model to use from UserDefaults (or default).
     private func currentModel() -> String {
-        return UserDefaults.standard.string(forKey: "openAIModel") ?? "gpt-4o"
+        return activePrompt.openAIModel
+    }
+    
+    // MARK: - Active Prompt Management
+    
+    /// Saves the current `activePrompt` to UserDefaults.
+    private func saveActivePrompt() {
+        if let encoded = try? JSONEncoder().encode(activePrompt) {
+            UserDefaults.standard.set(encoded, forKey: "activePrompt")
+            print("Active prompt saved.")
+        }
+    }
+    
+    /// Loads the `activePrompt` from UserDefaults.
+    private func loadActivePrompt() {
+        if let data = UserDefaults.standard.data(forKey: "activePrompt"),
+           let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
+            self.activePrompt = decoded
+            print("Active prompt loaded.")
+        } else {
+            // If no saved prompt is found, use the default
+            self.activePrompt = Prompt.defaultPrompt()
+            print("No saved prompt found, initialized with default.")
+        }
     }
     
     /// Process a single chunk from the OpenAI streaming response.
@@ -349,22 +414,55 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         if let serviceError = error as? OpenAIServiceError {
             switch serviceError {
             case .missingAPIKey:
-                errorText = "⚠️ API Key is missing. Please set your OpenAI API key in Settings."
+                errorText = "API Key is missing. Please set your OpenAI API key in Settings."
             case .requestFailed(_, let message):
-                errorText = "⚠️ API request failed: \(message)"
+                errorText = "API request failed: \(message)"
             case .invalidResponseData:
-                errorText = "⚠️ Received invalid data from the API."
+                errorText = "Received invalid data from the API."
             }
+        } else if error is CancellationError {
+            errorText = "The request was cancelled."
         } else {
-            errorText = "⚠️ \(error.localizedDescription)"
+            errorText = error.localizedDescription
         }
-        let errorMsg = ChatMessage(role: .system, text: errorText, images: nil)
+        
+        // Set the error message to be displayed in an alert
+        self.errorMessage = errorText
+        
+        // Also append a system message to the chat for context
+        let errorMsg = ChatMessage(role: .system, text: "⚠️ \(errorText)", images: nil)
         messages.append(errorMsg)
+        
+        // Set the error message for display
+        self.errorMessage = errorText
     }
     
     /// Resets the conversation by clearing messages and forgetting the last response ID.
     func clearConversation() {
         messages.removeAll()
         lastResponseId = nil
+    }
+    
+    /// Cancels the ongoing streaming request.
+    func cancelStreaming() {
+        streamingTask?.cancel()
+        streamingTask = nil
+        
+        // Update UI immediately
+        isStreaming = false
+        streamingStatus = .idle
+        
+        // If there was a message being streamed, update its text to show it was cancelled
+        if let streamingId = streamingMessageId, let msgIndex = messages.firstIndex(where: { $0.id == streamingId }) {
+            if messages[msgIndex].text?.isEmpty ?? true {
+                // If no content was received, remove the placeholder message
+                messages.remove(at: msgIndex)
+            } else {
+                // If some content was received, mark it as cancelled
+                messages[msgIndex].text = (messages[msgIndex].text ?? "") + "\n\n[Streaming cancelled by user]"
+            }
+        }
+        
+        streamingMessageId = nil
     }
 }

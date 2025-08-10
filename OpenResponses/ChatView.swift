@@ -30,15 +30,28 @@ struct ChatView: View {
                         }
                         
                         // Input area at the bottom
-                        ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
-                            // Send action
-                            viewModel.sendUserMessage(userInput)
-                            userInput = ""              // Clear the input field
-                            inputFocused = false        // Dismiss keyboard
-                        }, onAttach: {
-                            // Attachment action
-                            showFilePicker = true
-                        })
+                        HStack(alignment: .bottom, spacing: 12) {
+                            if viewModel.isStreaming {
+                                Button(action: {
+                                    viewModel.cancelStreaming()
+                                }) {
+                                    Image(systemName: "stop.circle.fill")
+                                        .font(.title)
+                                        .foregroundColor(.red)
+                                }
+                                .padding(.bottom, 8)
+                            }
+                            
+                            ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
+                                // Send action
+                                viewModel.sendUserMessage(userInput)
+                                userInput = ""              // Clear the input field
+                                inputFocused = false        // Dismiss keyboard
+                            }, onAttach: {
+                                // Attachment action
+                                showFilePicker = true
+                            })
+                        }
                     }
                     .padding(.top, 8)
                     .background(.ultraThinMaterial)
@@ -86,5 +99,12 @@ struct ChatView: View {
                 viewModel.handleError(error)
             }
         }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
+            Button("OK") {
+                viewModel.errorMessage = nil
+            }
+        }, message: {
+            Text(viewModel.errorMessage ?? "An unknown error occurred.")
+        })
     }
 }

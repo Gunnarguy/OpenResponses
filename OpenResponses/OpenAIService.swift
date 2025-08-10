@@ -22,178 +22,24 @@ class OpenAIService {
     /// Sends a chat request to the OpenAI Responses API with the given user message and parameters.
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
-    ///   - model: The model name to use (e.g., "gpt-4o", "o3", "o3-mini").
+    ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, model: String, attachments: [[String: Any]]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
-        // Build the request JSON payload
-        var requestObject: [String: Any] = [
-            "model": model,
-            "store": true
-        ]
 
-        var inputMessages: [[String: Any]] = []
-
-        // Add system instructions
-        if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            requestObject["instructions"] = instructions
-        }
-        
-        // Add developer instructions
-        if let developerInstructions = UserDefaults.standard.string(forKey: "developerInstructions"), !developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            inputMessages.append(["role": "developer", "content": developerInstructions])
-        }
-        
-        // Add the user's message to the input
-        inputMessages.append(["role": "user", "content": userMessage])
-        requestObject["input"] = inputMessages
-        
-        // Add attachments if provided
-        if let attachments = attachments {
-            requestObject["attachments"] = attachments
-        }
-        
-        // Build tools array based on user preferences and model compatibility
-        var tools: [[String: Any]] = []
-        
-        // Add web search tool if enabled
-        if UserDefaults.standard.bool(forKey: "enableWebSearch") {
-            tools.append(createToolConfiguration(for: "web_search_preview"))
-        }
-        
-        // Add code interpreter tool if enabled and supported by the model
-        if UserDefaults.standard.bool(forKey: "enableCodeInterpreter") && isToolSupported("code_interpreter", for: model, isStreaming: false) {
-            tools.append(createToolConfiguration(for: "code_interpreter"))
-        }
-        
-        // Add image generation tool if enabled and supported by the model
-        if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: false) {
-            tools.append(createToolConfiguration(for: "image_generation"))
-        }
-        
-        // Add custom calculator tool if enabled
-        if UserDefaults.standard.bool(forKey: "enableCalculator") {
-            tools.append(createCalculatorToolConfiguration())
-        }
-        
-        // Add file search tool if enabled and vector store(s) are selected
-        if UserDefaults.standard.bool(forKey: "enableFileSearch") {
-            // Support multi-store selection (comma-separated IDs)
-            let multiIds = UserDefaults.standard.string(forKey: "selectedVectorStoreIds") ?? ""
-            let idsArray = multiIds.split(separator: ",").map { String($0) }.filter { !$0.isEmpty }
-            if !idsArray.isEmpty {
-                tools.append(["type": "file_search", "vector_store_ids": idsArray])
-            } else if let vectorStoreId = UserDefaults.standard.string(forKey: "selectedVectorStore"), !vectorStoreId.isEmpty {
-                tools.append(createToolConfiguration(for: "file_search", vectorStoreId: vectorStoreId))
-            }
-        }
-        
-        // Only add tools array if there are tools enabled
-        if !tools.isEmpty {
-            requestObject["tools"] = tools
-        }
-        
-        // Debug: Print tools configuration
-        print("Non-streaming request - Tools enabled: \(tools.count) tools")
-        for (index, tool) in tools.enumerated() {
-            print("Tool \(index): \(tool["type"] ?? "unknown")")
-        }
-        
-        // Set appropriate sampling or reasoning parameters based on model type
-        if model.starts(with: "o") {
-            // O-series reasoning model: use reasoning.effort parameter
-            let effort = UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium"
-            requestObject["reasoning"] = ["effort": effort]
-        } else {
-            // Standard model (e.g. GPT-4/GPT-4o): use temperature and top_p
-            let temp = UserDefaults.standard.double(forKey: "temperature")
-            requestObject["temperature"] = temp == 0.0 ? 1.0 : temp  // default to 1.0 if not set
-            requestObject["top_p"] = 1.0  // using full distribution by default (top_p=1)
-        }
-        
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId  // Link to last response for context continuity
-        }
-        
-        // Note: Do not set stream parameter for non-streaming requests
-
-        // --- Advanced API parameters ---
-        requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
-        let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
-        if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
-        
-        let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
-        if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
-        requestObject["parallel_tool_calls"] = UserDefaults.standard.bool(forKey: "parallelToolCalls")
-        let serviceTier = UserDefaults.standard.string(forKey: "serviceTier") ?? "auto"
-        if !serviceTier.isEmpty { requestObject["service_tier"] = serviceTier }
-        let topLogprobs = UserDefaults.standard.integer(forKey: "topLogprobs")
-        if topLogprobs > 0 { requestObject["top_logprobs"] = topLogprobs }
-        
-        // Only apply sampling parameters to non-O-series models
-        if !model.starts(with: "o") {
-            let topP = UserDefaults.standard.double(forKey: "topP")
-            if topP != 1.0 { requestObject["top_p"] = topP }
-        }
-        
-        let truncation = UserDefaults.standard.string(forKey: "truncationStrategy") ?? "disabled"
-        if !truncation.isEmpty { requestObject["truncation"] = truncation }
-        let userId = UserDefaults.standard.string(forKey: "userIdentifier") ?? ""
-        if !userId.isEmpty { requestObject["user"] = userId }
-        
-        // --- API include parameter ---
-        var include: [String] = []
-        if UserDefaults.standard.bool(forKey: "includeCodeInterpreterOutputs") { include.append("code_interpreter_call.outputs") }
-        if UserDefaults.standard.bool(forKey: "includeFileSearchResults") { include.append("file_search_call.results") }
-        if UserDefaults.standard.bool(forKey: "includeInputImageUrls") { include.append("message.input_image.image_url") }
-        if UserDefaults.standard.bool(forKey: "includeOutputLogprobs") { include.append("message.output_text.logprobs") }
-        
-        // Reasoning content can only be included when persistence is disabled
-        // Since we use store: true for conversation continuity, we cannot include encrypted reasoning content
-        // if UserDefaults.standard.bool(forKey: "includeReasoningContent") { include.append("reasoning.encrypted_content") }
-        
-        if !include.isEmpty { requestObject["include"] = include }
-        
-        // --- Text formatting ---
-        let textFormatType = UserDefaults.standard.string(forKey: "textFormatType") ?? "text"
-        if textFormatType == "json_schema" {
-            var textObj: [String: Any] = ["format": ["type": "json_schema"]]
-            let schemaName = UserDefaults.standard.string(forKey: "jsonSchemaName") ?? ""
-            let schemaDesc = UserDefaults.standard.string(forKey: "jsonSchemaDescription") ?? ""
-            let schemaStrict = UserDefaults.standard.bool(forKey: "jsonSchemaStrict")
-            let schemaContent = UserDefaults.standard.string(forKey: "jsonSchemaContent") ?? ""
-            if !schemaName.isEmpty && !schemaContent.isEmpty {
-                textObj["format"] = [
-                    "type": "json_schema",
-                    "name": schemaName,
-                    "description": schemaDesc,
-                    "strict": schemaStrict,
-                    "schema": try? JSONSerialization.jsonObject(with: Data(schemaContent.utf8))
-                ]
-            }
-            requestObject["text"] = textObj
-        } else {
-            requestObject["text"] = ["format": ["type": "text"]]
-        }
-        
-        // --- Advanced reasoning ---
-        if model.starts(with: "o") {
-            let summary = UserDefaults.standard.string(forKey: "reasoningSummary") ?? "auto"
-            requestObject["reasoning"] = ["effort": UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium", "summary": summary]
-        }
-        
-        // --- Advanced image generation ---
-        // (Handled in createToolConfiguration for image_generation)
-        // --- Advanced web search location ---
-        // (Handled in createWebSearchConfiguration)
-        // --- Metadata (optional, not exposed in UI yet) ---
-        // --- Prompt object (optional, not exposed in UI yet) ---
+        // Build the request JSON payload from the prompt object
+        let requestObject = buildRequestObject(
+            for: prompt,
+            userMessage: userMessage,
+            attachments: attachments,
+            previousResponseId: previousResponseId,
+            stream: false
+        )
 
         // Serialize JSON payload
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
@@ -243,167 +89,31 @@ class OpenAIService {
     /// Sends a chat request and streams the response back.
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
-    ///   - model: The model name to use.
+    ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, model: String, attachments: [[String: Any]]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
                     // Ensure API key is set
-                    guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+                    guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
                         throw OpenAIServiceError.missingAPIKey
                     }
                     
-                    // Build the request JSON payload (same as non-streaming, but with stream: true)
-                    var requestObject: [String: Any] = [
-                        "model": model,
-                        "store": true,
-                        "stream": true // Enable streaming
-                    ]
+                    // Build the request JSON payload from the prompt object
+                    let requestObject = buildRequestObject(
+                        for: prompt,
+                        userMessage: userMessage,
+                        attachments: attachments,
+                        previousResponseId: previousResponseId,
+                        stream: true
+                    )
                     
-                    var inputMessages: [[String: Any]] = []
-
-                    // Add system instructions
-                    if let instructions = UserDefaults.standard.string(forKey: "systemInstructions"), !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        requestObject["instructions"] = instructions
-                    }
-
-                    // Add developer instructions
-                    if let developerInstructions = UserDefaults.standard.string(forKey: "developerInstructions"), !developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        inputMessages.append(["role": "developer", "content": developerInstructions])
-                    }
-
-                    // Add the user's message to the input
-                    inputMessages.append(["role": "user", "content": userMessage])
-                    requestObject["input"] = inputMessages
-                    
-                    // Add attachments if provided
-                    if let attachments = attachments {
-                        requestObject["attachments"] = attachments
-                    }
-                    
-                    var tools: [[String: Any]] = []
-                    if UserDefaults.standard.bool(forKey: "enableWebSearch") {
-                        tools.append(createToolConfiguration(for: "web_search_preview"))
-                    }
-                    if UserDefaults.standard.bool(forKey: "enableCodeInterpreter") && isToolSupported("code_interpreter", for: model, isStreaming: true) {
-                        tools.append(createToolConfiguration(for: "code_interpreter"))
-                    }
-                    if UserDefaults.standard.bool(forKey: "enableImageGeneration") && isToolSupported("image_generation", for: model, isStreaming: true) {
-                        tools.append(createToolConfiguration(for: "image_generation"))
-                    }
-                    if UserDefaults.standard.bool(forKey: "enableCalculator") {
-                        tools.append(createCalculatorToolConfiguration())
-                    }
-                    if UserDefaults.standard.bool(forKey: "enableFileSearch") {
-                        let multiIds = UserDefaults.standard.string(forKey: "selectedVectorStoreIds") ?? ""
-                        let idsArray = multiIds.split(separator: ",").map { String($0) }.filter { !$0.isEmpty }
-                        if !idsArray.isEmpty {
-                            tools.append(["type": "file_search", "vector_store_ids": idsArray])
-                        } else if let vectorStoreId = UserDefaults.standard.string(forKey: "selectedVectorStore"), !vectorStoreId.isEmpty {
-                            tools.append(createToolConfiguration(for: "file_search", vectorStoreId: vectorStoreId))
-                        }
-                    }
-                    
-                    if !tools.isEmpty {
-                        requestObject["tools"] = tools
-                    }
-
-                    // Set appropriate sampling or reasoning parameters based on model type
-                    if model.starts(with: "o") {
-                        let effort = UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium"
-                        requestObject["reasoning"] = ["effort": effort]
-                    } else {
-                        let temp = UserDefaults.standard.double(forKey: "temperature")
-                        requestObject["temperature"] = temp == 0.0 ? 1.0 : temp
-                        requestObject["top_p"] = 1.0
-                    }
-                    
-                    if let prevId = previousResponseId {
-                        requestObject["previous_response_id"] = prevId
-                    }
-                    
-                    // --- Advanced API parameters ---
-                    requestObject["background"] = UserDefaults.standard.bool(forKey: "backgroundMode")
-                    let maxOutputTokens = UserDefaults.standard.integer(forKey: "maxOutputTokens")
-                    if maxOutputTokens > 0 { requestObject["max_output_tokens"] = maxOutputTokens }
-                    
-                    let maxToolCalls = UserDefaults.standard.integer(forKey: "maxToolCalls")
-                    if maxToolCalls > 0 { requestObject["max_tool_calls"] = maxToolCalls }
-                    requestObject["parallel_tool_calls"] = UserDefaults.standard.bool(forKey: "parallelToolCalls")
-                    let serviceTier = UserDefaults.standard.string(forKey: "serviceTier") ?? "auto"
-                    if !serviceTier.isEmpty { requestObject["service_tier"] = serviceTier }
-                    let topLogprobs = UserDefaults.standard.integer(forKey: "topLogprobs")
-                    if topLogprobs > 0 { requestObject["top_logprobs"] = topLogprobs }
-                    
-                    // Only apply sampling parameters to non-O-series models
-                    if !model.starts(with: "o") {
-                        let topP = UserDefaults.standard.double(forKey: "topP")
-                        if topP != 1.0 { requestObject["top_p"] = topP }
-                    }
-                    
-                    let truncation = UserDefaults.standard.string(forKey: "truncationStrategy") ?? "disabled"
-                    if !truncation.isEmpty { requestObject["truncation"] = truncation }
-                    let userId = UserDefaults.standard.string(forKey: "userIdentifier") ?? ""
-                    if !userId.isEmpty { requestObject["user"] = userId }
-                    
-                    // --- API include parameter ---
-                    var include: [String] = []
-                    if UserDefaults.standard.bool(forKey: "includeCodeInterpreterOutputs") { include.append("code_interpreter_call.outputs") }
-                    if UserDefaults.standard.bool(forKey: "includeFileSearchResults") { include.append("file_search_call.results") }
-                    if UserDefaults.standard.bool(forKey: "includeInputImageUrls") { include.append("message.input_image.image_url") }
-                    if UserDefaults.standard.bool(forKey: "includeOutputLogprobs") { include.append("message.output_text.logprobs") }
-                    
-                    // Reasoning content can only be included when persistence is disabled
-                    // Since we use store: true for conversation continuity, we cannot include encrypted reasoning content
-                    // if UserDefaults.standard.bool(forKey: "includeReasoningContent") { include.append("reasoning.encrypted_content") }
-                    
-                    if !include.isEmpty { requestObject["include"] = include }
-                    
-                    // --- Text formatting ---
-                    let textFormatType = UserDefaults.standard.string(forKey: "textFormatType") ?? "text"
-                    if textFormatType == "json_schema" {
-                        var textObj: [String: Any] = ["format": ["type": "json_schema"]]
-                        let schemaName = UserDefaults.standard.string(forKey: "jsonSchemaName") ?? ""
-                        let schemaDesc = UserDefaults.standard.string(forKey: "jsonSchemaDescription") ?? ""
-                        let schemaStrict = UserDefaults.standard.bool(forKey: "jsonSchemaStrict")
-                        let schemaContent = UserDefaults.standard.string(forKey: "jsonSchemaContent") ?? ""
-                        if !schemaName.isEmpty && !schemaContent.isEmpty {
-                            textObj["format"] = [
-                                "type": "json_schema",
-                                "name": schemaName,
-                                "description": schemaDesc,
-                                "strict": schemaStrict,
-                                "schema": try? JSONSerialization.jsonObject(with: Data(schemaContent.utf8))
-                            ]
-                        }
-                        requestObject["text"] = textObj
-                    } else {
-                        requestObject["text"] = ["format": ["type": "text"]]
-                    }
-                    
-                    // --- Advanced reasoning ---
-                    if model.starts(with: "o") {
-                        let summary = UserDefaults.standard.string(forKey: "reasoningSummary") ?? "auto"
-                        requestObject["reasoning"] = ["effort": UserDefaults.standard.string(forKey: "reasoningEffort") ?? "medium", "summary": summary]
-                    }
-                    
-                    // --- Advanced image generation ---
-                    // (Handled in createToolConfiguration for image_generation)
-                    // --- Advanced web search location ---
-                    // (Handled in createWebSearchConfiguration)
-                    // --- Metadata (optional, not exposed in UI yet) ---
-                    // --- Prompt object (optional, not exposed in UI yet) ---
-
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
                     
                     // For debugging: Print the JSON request for streaming
-                    print("Streaming request - Tools enabled: \(tools.count) tools")
-                    for (index, tool) in tools.enumerated() {
-                        print("Tool \(index): \(tool["type"] ?? "unknown")")
-                    }
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
                         print("OpenAI Streaming Request JSON: \(jsonString)")
                     }
@@ -470,6 +180,183 @@ class OpenAIService {
             }
         }
     }
+
+    /// Retrieves a model response with the given ID.
+    /// - Parameter responseId: The ID of the response to retrieve.
+    /// - Returns: The `OpenAIResponse` object.
+    func getResponse(responseId: String) async throws -> OpenAIResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            print("Get response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+
+    /// Builds the request dictionary from a Prompt object and other parameters.
+    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+        var requestObject: [String: Any] = [:]
+
+        // If a published prompt ID is provided, use it.
+        if prompt.enablePublishedPrompt, !prompt.publishedPromptId.isEmpty {
+            requestObject = [
+                "prompt": [
+                    "id": prompt.publishedPromptId,
+                    "version": prompt.publishedPromptVersion
+                ],
+                "store": true
+            ]
+            
+            var inputMessages: [[String: Any]] = [["role": "user", "content": userMessage]]
+            
+            if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                inputMessages.insert(["role": "developer", "content": prompt.developerInstructions], at: 0)
+            }
+            requestObject["input"] = inputMessages
+
+        } else {
+            // Build the request from individual settings in the prompt object
+            requestObject = [
+                "model": prompt.openAIModel,
+                "store": true
+            ]
+
+            var inputMessages: [[String: Any]] = []
+
+            if !prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                requestObject["instructions"] = prompt.systemInstructions
+            }
+            
+            if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                inputMessages.append(["role": "developer", "content": [["type": "input_text", "text": prompt.developerInstructions]]])
+            }
+            
+            // Handle user message and attachments
+            var userContent: [[String: Any]] = [["type": "input_text", "text": userMessage]]
+            if let attachments = attachments {
+                userContent.append(contentsOf: attachments)
+            }
+            inputMessages.append(["role": "user", "content": userContent])
+            
+            requestObject["input"] = inputMessages
+            
+            var tools: [[String: Any]] = []
+            if prompt.enableWebSearch {
+                tools.append(createWebSearchToolConfiguration(from: prompt))
+            }
+            if prompt.enableCodeInterpreter {
+                tools.append(["type": "code_interpreter", "container": ["type": "auto"]])
+            }
+            if prompt.enableImageGeneration && !stream { // Image generation not supported in streaming
+                // Image generation parameters are set based on user preferences
+                tools.append([
+                    "type": "image_generation",
+                    "size": "auto",
+                    "quality": "high",
+                    "output_format": "png",
+                    "background": "auto",
+                    "moderation": "low",
+                    "partial_images": 3
+                ])
+            }
+            if prompt.enableCalculator {
+                tools.append(createCalculatorToolConfiguration())
+            }
+            if prompt.enableMCPTool {
+                tools.append(createMCPToolConfiguration(from: prompt))
+            }
+            if prompt.enableCustomTool {
+                tools.append(createCustomToolConfiguration(from: prompt))
+            }
+            if prompt.enableFileSearch {
+                let idsArray = (prompt.selectedVectorStoreIds ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
+                if !idsArray.isEmpty {
+                    tools.append(["type": "file_search", "vector_store_ids": idsArray])
+                }
+            }
+            
+            if !tools.isEmpty {
+                requestObject["tools"] = tools
+            }
+
+            if prompt.openAIModel.starts(with: "o") {
+                requestObject["reasoning"] = [
+                    "effort": prompt.reasoningEffort,
+                    "summary": prompt.reasoningSummary
+                ]
+            } else {
+                requestObject["temperature"] = prompt.temperature
+                requestObject["top_p"] = prompt.topP
+            }
+
+            // Advanced API parameters
+            requestObject["background"] = prompt.backgroundMode
+            if prompt.maxOutputTokens > 0 { requestObject["max_output_tokens"] = prompt.maxOutputTokens }
+            if prompt.maxToolCalls > 0 { requestObject["max_tool_calls"] = prompt.maxToolCalls }
+            requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
+            if !prompt.serviceTier.isEmpty { requestObject["service_tier"] = prompt.serviceTier }
+            if prompt.topLogprobs > 0 { requestObject["top_logprobs"] = prompt.topLogprobs }
+            if !prompt.truncationStrategy.isEmpty { requestObject["truncation"] = prompt.truncationStrategy }
+            if !prompt.userIdentifier.isEmpty { requestObject["user"] = prompt.userIdentifier }
+            
+            var include: [String] = []
+            if prompt.includeCodeInterpreterOutputs { include.append("code_interpreter_call.outputs") }
+            if prompt.includeFileSearchResults { include.append("file_search_call.results") }
+            if prompt.includeInputImageUrls { include.append("message.input_image.image_url") }
+            if prompt.includeOutputLogprobs { include.append("message.output_text.logprobs") }
+            if !include.isEmpty { requestObject["include"] = include }
+
+            if prompt.textFormatType == "json_schema", !prompt.jsonSchemaName.isEmpty, !prompt.jsonSchemaContent.isEmpty {
+                requestObject["text"] = [
+                    "format": [
+                        "type": "json_schema",
+                        "name": prompt.jsonSchemaName,
+                        "description": prompt.jsonSchemaDescription,
+                        "strict": prompt.jsonSchemaStrict,
+                        "schema": try? JSONSerialization.jsonObject(with: Data(prompt.jsonSchemaContent.utf8))
+                    ]
+                ]
+            } else {
+                var textObject: [String: Any] = ["format": ["type": "text"]]
+                if prompt.openAIModel.starts(with: "o3") {
+                    textObject["verbosity"] = "medium"
+                }
+                requestObject["text"] = textObject
+            }
+        }
+
+        if stream {
+            requestObject["stream"] = true
+        }
+        
+        // Attachments are now handled within the input construction
+        
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
+        
+        return requestObject
+    }
     
     /// Sends the output of a function call back to the API to get a final response.
     /// - Parameters:
@@ -479,7 +366,7 @@ class OpenAIService {
     ///   - previousResponseId: The ID of the response that contained the function call.
     /// - Returns: The final `OpenAIResponse` from the assistant.
     func sendFunctionOutput(call: OutputItem, output: String, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -504,9 +391,12 @@ class OpenAIService {
         var requestObject: [String: Any] = [
             "model": model,
             "store": true,
-            "input": inputMessages,
-            "previous_response_id": previousResponseId
+            "input": inputMessages
         ]
+        
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
         
         // We don't need to resend tools or other complex parameters,
         // as we are continuing a specific tool-use turn.
@@ -545,7 +435,7 @@ class OpenAIService {
     /// - Parameter imageContent: The content object containing either a file_id or url.
     /// - Returns: Raw image data.
     func fetchImageData(for imageContent: ContentItem) async throws -> Data {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         if let fileInfo = imageContent.imageFile {
@@ -622,24 +512,87 @@ class OpenAIService {
     /// Creates the configuration for the custom calculator tool
     /// - Returns: A dictionary representing the calculator tool configuration
     private func createCalculatorToolConfiguration() -> [String: Any] {
+        // Responses API expects function tools to have top-level 'name' & 'parameters'
+        return [
+            "type": "function",
+            "name": "calculator",
+            "description": "Evaluate mathematical expressions and return the result.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "expression": [
+                        "type": "string",
+                        "description": "A mathematical expression to evaluate, e.g., '5+3*2'"
+                    ]
+                ],
+                "required": ["expression"],
+                "additionalProperties": false
+            ],
+            "strict": true
+        ]
+    }
+    
+    /// Creates the configuration for the MCP tool
+    /// - Returns: A dictionary representing the MCP tool configuration
+    private func createMCPToolConfiguration(from prompt: Prompt) -> [String: Any] {
+        var headers: [String: String] = [:]
+        if let data = prompt.mcpHeaders.data(using: .utf8),
+           let parsedHeaders = try? JSONDecoder().decode([String: String].self, from: data) {
+            headers = parsedHeaders
+        }
+
+        return [
+            "type": "mcp",
+            "server_label": prompt.mcpServerLabel,
+            "server_url": prompt.mcpServerURL,
+            "headers": headers,
+            "require_approval": prompt.mcpRequireApproval,
+            "allowed_tools": [] // This could be made configurable in the future
+        ]
+    }
+
+    /// Creates the configuration for the custom tool
+    /// - Returns: A dictionary representing the custom tool configuration
+    private func createCustomToolConfiguration(from prompt: Prompt) -> [String: Any] {
         return [
             "type": "function",
             "function": [
-                "name": "calculator",
-                "description": "Evaluate mathematical expressions and return the result.",
-                "parameters": [
-                    "type": "object",
-                    "properties": [
-                        "expression": [
-                            "type": "string",
-                            "description": "A mathematical expression to evaluate, e.g., '5+3*2'"
-                        ]
-                    ],
-                    "required": ["expression"]
-                ],
-                "strict": true
+                "name": prompt.customToolName,
+                "description": prompt.customToolDescription,
+                "parameters": ["type": "object", "properties": [:]] // Assuming no parameters for simplicity
             ]
         ]
+    }
+    
+    /// Creates the configuration for the web search tool
+    /// - Returns: A dictionary representing the web search tool configuration
+    private func createWebSearchToolConfiguration(from prompt: Prompt) -> [String: Any] {
+        var config: [String: Any] = ["type": "web_search_preview"]
+        
+        if let searchContextSize = prompt.searchContextSize, !searchContextSize.isEmpty {
+            config["search_context_size"] = searchContextSize
+        }
+        
+        var userLocation: [String: String] = [:]
+        if let userLocationCity = prompt.userLocationCity, !userLocationCity.isEmpty {
+            userLocation["city"] = userLocationCity
+        }
+        if let userLocationCountry = prompt.userLocationCountry, !userLocationCountry.isEmpty {
+            userLocation["country"] = userLocationCountry
+        }
+        if let userLocationRegion = prompt.userLocationRegion, !userLocationRegion.isEmpty {
+            userLocation["region"] = userLocationRegion
+        }
+        if let userLocationTimezone = prompt.userLocationTimezone, !userLocationTimezone.isEmpty {
+            userLocation["timezone"] = userLocationTimezone
+        }
+        
+        if !userLocation.isEmpty {
+            userLocation["type"] = "approximate"
+            config["user_location"] = userLocation
+        }
+        
+        return config
     }
     
     /// Checks if a tool is supported by the given model
@@ -652,7 +605,7 @@ class OpenAIService {
         switch toolType {
         case "code_interpreter":
             // Code interpreter is supported by GPT-4 models and newer o-series models.
-            return model.starts(with: "gpt-4") || model.starts(with: "o1") || model.starts(with: "o3")
+            return model.starts(with: "gpt-4") || model.starts(with: "o1") || model.starts(with: "o3") || model.starts(with: "gpt-5")
         case "image_generation":
             // Image generation is supported by GPT-4 models.
             // It is disabled in streaming mode as images are sent as a complete block.
@@ -680,7 +633,7 @@ class OpenAIService {
     ///   - purpose: The purpose of the file (e.g., "assistants", "fine-tune", "vision")
     /// - Returns: The uploaded file information
     func uploadFile(fileData: Data, filename: String, purpose: String = "assistants") async throws -> OpenAIFile {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -740,7 +693,7 @@ class OpenAIService {
     /// - Parameter purpose: Optional filter by purpose
     /// - Returns: List of files
     func listFiles(purpose: String? = nil) async throws -> [OpenAIFile] {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -787,7 +740,7 @@ class OpenAIService {
     /// Deletes a file from OpenAI
     /// - Parameter fileId: The ID of the file to delete
     func deleteFile(fileId: String) async throws {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -825,7 +778,7 @@ class OpenAIService {
     ///   - expiresAfterDays: Optional expiration in days
     /// - Returns: The created vector store
     func createVectorStore(name: String? = nil, fileIds: [String]? = nil, expiresAfterDays: Int? = nil) async throws -> VectorStore {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -885,7 +838,7 @@ class OpenAIService {
     /// Lists all vector stores
     /// - Returns: List of vector stores
     func listVectorStores() async throws -> [VectorStore] {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -925,7 +878,7 @@ class OpenAIService {
     /// Deletes a vector store
     /// - Parameter vectorStoreId: The ID of the vector store to delete
     func deleteVectorStore(vectorStoreId: String) async throws {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -962,7 +915,7 @@ class OpenAIService {
     ///   - metadata: Optional new metadata
     /// - Returns: The updated vector store object
     func updateVectorStore(vectorStoreId: String, name: String?, expiresAfter: ExpiresAfter?, metadata: [String: Any]?) async throws -> VectorStore {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1030,7 +983,7 @@ class OpenAIService {
     ///   - fileId: The ID of the file to add
     /// - Returns: The vector store file relationship
     func addFileToVectorStore(vectorStoreId: String, fileId: String) async throws -> VectorStoreFile {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1078,7 +1031,7 @@ class OpenAIService {
     /// - Parameter vectorStoreId: The ID of the vector store
     /// - Returns: List of files in the vector store
     func listVectorStoreFiles(vectorStoreId: String) async throws -> [VectorStoreFile] {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1120,7 +1073,7 @@ class OpenAIService {
     ///   - vectorStoreId: The ID of the vector store
     ///   - fileId: The ID of the file to remove
     func removeFileFromVectorStore(vectorStoreId: String, fileId: String) async throws {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1153,7 +1106,7 @@ class OpenAIService {
     /// - Parameter url: The URL of the file to upload.
     /// - Returns: The ID of the uploaded file.
     func uploadFile(from url: URL) async throws -> String {
-        guard let apiKey = UserDefaults.standard.string(forKey: "openAIKey"), !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1207,5 +1160,32 @@ class OpenAIService {
         } catch {
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+    
+    private func createWebSearchConfiguration() -> [String: Any] {
+        // The API seems to have changed and no longer accepts these detailed parameters.
+        // Simplified to basic configuration to avoid "unknown parameter" errors.
+        return [
+            "type": "web_search_preview"
+        ]
+    }
+
+    private func createImageGenerationConfiguration() -> [String: Any] {
+        let defaults = UserDefaults.standard
+        var config: [String: Any] = [
+            "type": "image_generation",
+            "size": defaults.string(forKey: "imageGenerationSize") ?? "auto",
+            "quality": defaults.string(forKey: "imageGenerationQuality") ?? "auto",
+            "background": defaults.string(forKey: "imageGenerationBackground") ?? "auto",
+            "output_format": defaults.string(forKey: "imageGenerationOutputFormat") ?? "png",
+            "moderation": defaults.string(forKey: "imageGenerationModeration") ?? "auto"
+        ]
+        
+        let partialImages = defaults.integer(forKey: "imageGenerationPartialImages")
+        if partialImages > 0 {
+            config["partial_images"] = partialImages
+        }
+        
+        return config
     }
 }

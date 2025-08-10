@@ -23,6 +23,12 @@ struct FileManagerView: View {
     @State private var showSaveMultiSelect: Bool = false // Show save button when multi-select changes
     @State private var multiStoreInit: Bool = false // Track if we've initialized multi-store toggle
     
+    // New state variables for delete confirmation
+    @State private var fileToDelete: OpenAIFile?
+    @State private var vectorStoreToDelete: VectorStore?
+    @State private var showingDeleteFileConfirmation = false
+    @State private var showingDeleteVectorStoreConfirmation = false
+    
     private let api = OpenAIService()
     
     var body: some View {
@@ -94,9 +100,8 @@ struct FileManagerView: View {
                                     }
                                 },
                                 onDelete: {
-                                    Task {
-                                        await deleteVectorStore(store)
-                                    }
+                                    vectorStoreToDelete = store
+                                    showingDeleteVectorStoreConfirmation = true
                                 },
                                 onEdit: {
                                     vectorStoreToEdit = store
@@ -126,9 +131,8 @@ struct FileManagerView: View {
                             FileRow(
                                 file: file,
                                 onDelete: {
-                                    Task {
-                                        await deleteFile(file)
-                                    }
+                                    fileToDelete = file
+                                    showingDeleteFileConfirmation = true
                                 },
                                 onAddToVectorStore: { vectorStore in
                                     Task {
@@ -218,6 +222,34 @@ struct FileManagerView: View {
                     }
                 )
             }
+            .alert("Confirm Deletion", isPresented: $showingDeleteFileConfirmation) {
+                Button("Delete", role: .destructive) {
+                    if let file = fileToDelete {
+                        Task {
+                            await deleteFile(file)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    fileToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to delete the file '\(fileToDelete?.filename ?? "this file")'? This action cannot be undone.")
+            }
+            .alert("Confirm Deletion", isPresented: $showingDeleteVectorStoreConfirmation) {
+                Button("Delete", role: .destructive) {
+                    if let store = vectorStoreToDelete {
+                        Task {
+                            await deleteVectorStore(store)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    vectorStoreToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to delete the vector store '\(vectorStoreToDelete?.name ?? "this store")'? This action cannot be undone.")
+            }
         }
     }
     
@@ -263,7 +295,7 @@ struct FileManagerView: View {
                 
                 if let vectorStoreId = vectorStoreId {
                     // If a vector store is specified, add the file directly to it
-                    try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFileId)
+                    _ = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFileId)
                     // Refresh the files for that specific vector store
                     await loadVectorStoreFiles(vectorStoreId)
                 } else {

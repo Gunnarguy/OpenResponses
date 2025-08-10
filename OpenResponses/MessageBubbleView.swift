@@ -15,8 +15,8 @@ struct MessageBubbleView: View {
             // Bubble content
             VStack(alignment: .leading, spacing: 8) {
                 // Text content (formatted for Markdown and code if needed)
-                if let text = message.text {
-                    FormattedTextView(text: text, isAssistant: message.role == .assistant)
+                if let text = message.text, !text.isEmpty {
+                    FormattedTextView(text: text)
                 }
                 // Image content (if any images in the message)
                 if let images = message.images {
@@ -75,45 +75,6 @@ struct MessageBubbleView: View {
             return .body                        // normal font for user and assistant
         case .system:
             return .subheadline.italic()        // smaller italic font for system messages
-        }
-    }
-}
-
-/// A view that formats a text string from the assistant, rendering Markdown and code blocks.
-struct FormattedTextView: View {
-    let text: String
-    let isAssistant: Bool
-    
-    var body: some View {
-        // We will manually handle code blocks for better formatting
-        if text.contains("```") {
-            // Split text by triple backticks to identify code blocks
-            let parts = text.components(separatedBy: "```")
-            VStack(alignment: .leading, spacing: 0) {
-                // Use ForEach instead of for loop to work with ViewBuilder
-                ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-                    if index % 2 == 0 {
-                        // Regular text (outside code blocks) - render as Markdown
-                        Text((try? AttributedString(markdown: part, options: .init())) ?? AttributedString(part))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.bottom, 4)
-                    } else {
-                        // Code block content
-                        Text(part)
-                            .font(.system(size: 14, design: .monospaced))
-                            .foregroundColor(.primary)
-                            .padding(8)
-                            .background(Color(white: 0.9))
-                            .cornerRadius(8)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.bottom, 4)
-                    }
-                }
-            }
-        } else {
-            // No code block present, render the text as attributed Markdown
-            Text((try? AttributedString(markdown: text, options: .init())) ?? AttributedString(text))
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

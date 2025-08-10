@@ -9,7 +9,7 @@ import SwiftUI
 /// - Temperature setting for non-reasoning models
 /// - Reasoning effort setting for O-series models
 struct SettingsView: View {
-    @AppStorage("openAIKey") private var apiKey: String = ""
+    @State private var apiKey: String = ""
     @AppStorage("openAIModel") private var selectedModel: String = "gpt-4o"
     @AppStorage("reasoningEffort") private var reasoningEffort: String = "medium"
     @AppStorage("temperature") private var temperature: Double = 1.0
@@ -25,6 +25,18 @@ struct SettingsView: View {
     @AppStorage("enableFileSearch") private var enableFileSearch: Bool = false
     @AppStorage("enableCalculator") private var enableCalculator: Bool = true
     
+    // MCP Tool Settings
+    @AppStorage("enableMCPTool") private var enableMCPTool: Bool = false
+    @AppStorage("mcpServerLabel") private var mcpServerLabel: String = "paypal"
+    @AppStorage("mcpServerURL") private var mcpServerURL: String = "https://mcp.paypal.com/sse"
+    @AppStorage("mcpHeaders") private var mcpHeaders: String = "{\"Authorization\": \"Bearer s\"}"
+    @AppStorage("mcpRequireApproval") private var mcpRequireApproval: String = "always"
+
+    // Custom Tool Settings
+    @AppStorage("enableCustomTool") private var enableCustomTool: Bool = false
+    @AppStorage("customToolName") private var customToolName: String = "custom_tool_placeholder"
+    @AppStorage("customToolDescription") private var customToolDescription: String = "A placeholder for a custom tool."
+
     // Web Search configuration settings
     @AppStorage("webSearchLocationType") private var webSearchLocationType: String = "approximate"
     @AppStorage("webSearchTimezone") private var webSearchTimezone: String = "America/Los_Angeles"
@@ -84,333 +96,266 @@ struct SettingsView: View {
     // Response streaming setting
     @AppStorage("enableStreaming") private var enableStreaming: Bool = true
     
+    // Published Prompt settings
+    @AppStorage("enablePublishedPrompt") private var enablePublishedPrompt: Bool = false
+    @AppStorage("publishedPromptId") private var publishedPromptId: String = ""
+    @AppStorage("publishedPromptVersion") private var publishedPromptVersion: String = "1"
+    
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
     
     @State private var showingFileManager = false
-    
+    @State private var showingPromptLibrary = false
+    @StateObject private var promptLibrary = PromptLibrary()
+    @State private var selectedPresetId: UUID?
+
     // Supported models list for the Picker
-    private let modelOptions: [String] = ["gpt-4o", "o3", "o3-mini", "o1", "gpt-4-1106-preview"]
+    private let modelOptions: [String] = ["gpt-5", "gpt-4o", "o3", "o3-mini", "o1", "gpt-4-1106-preview"]
     
     var body: some View {
         Form {
+            Section(header: Text("Preset Library")) {
+                Picker("Load Preset", selection: $selectedPresetId) {
+                    Text("None (Current Settings)").tag(nil as UUID?)
+                    ForEach(promptLibrary.prompts) { prompt in
+                        Text(prompt.name).tag(prompt.id as UUID?)
+                    }
+                }
+                .onChange(of: selectedPresetId) { _, newValue in
+                    if let preset = promptLibrary.prompts.first(where: { $0.id == newValue }) {
+                        applyPreset(preset)
+                    }
+                }
+                
+                Button("Manage Presets") {
+                    showingPromptLibrary = true
+                }
+                .foregroundColor(.accentColor)
+            }
+
             Section(header: Text("OpenAI API")) {
                 SecureField("API Key (sk-...)", text: $apiKey)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
             }
+            
+            Section(header: Text("Published Prompt"), footer: Text("Use a prompt published from the OpenAI Playground. When enabled, this will override most other settings.")) {
+                Toggle("Use Published Prompt", isOn: $viewModel.activePrompt.enablePublishedPrompt)
+                if viewModel.activePrompt.enablePublishedPrompt {
+                    TextField("Prompt ID (pmpt_...)", text: Binding(
+                        get: { viewModel.activePrompt.publishedPromptId },
+                        set: { viewModel.activePrompt.publishedPromptId = $0 }
+                    ))
+                    TextField("Prompt Version", text: $viewModel.activePrompt.publishedPromptVersion)
+                }
+            }
+            
             // System instructions section
             Section(header: Text("System Instructions"), footer: Text("Set a persistent system prompt to guide the assistant's behavior. This will be sent as the 'instructions' field in every request.")) {
-                TextEditor(text: $systemInstructions)
+                TextEditor(text: Binding(
+                    get: { viewModel.activePrompt.systemInstructions },
+                    set: { viewModel.activePrompt.systemInstructions = $0 }
+                ))
                     .frame(minHeight: 80)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.secondary.opacity(0.2))
                     )
                     .padding(.vertical, 2)
-                if systemInstructions.isEmpty {
+                if viewModel.activePrompt.systemInstructions.isEmpty {
                     Text("e.g. 'You are a helpful assistant.'")
                         .foregroundColor(.secondary)
                         .font(.caption)
                 }
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            
             Section(header: Text("Developer Instructions"), footer: Text("Set hidden developer instructions to fine-tune the assistant's behavior with higher priority.")) {
-                TextEditor(text: $developerInstructions)
+                TextEditor(text: Binding(
+                    get: { viewModel.activePrompt.developerInstructions },
+                    set: { viewModel.activePrompt.developerInstructions = $0 }
+                ))
                     .frame(minHeight: 60)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.secondary.opacity(0.2))
                     )
                     .padding(.vertical, 2)
-                if developerInstructions.isEmpty {
+                if viewModel.activePrompt.developerInstructions.isEmpty {
                     Text("e.g. 'Always respond in Markdown.'")
                         .foregroundColor(.secondary)
                         .font(.caption)
                 }
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+
             Section(header: Text("Model"), footer: Text("Reasoning effort is only available for 'o' models. Temperature is only available for other models.")) {
-                Picker("Model", selection: $selectedModel) {
+                Picker("Model", selection: $viewModel.activePrompt.openAIModel) {
                     ForEach(modelOptions, id: \.self) { model in
                         Text(model).tag(model)
                     }
                 }
-                .pickerStyle(.navigationLink)  // Use a navigation link style for model selection
+                .pickerStyle(.navigationLink)
 
-                // Reasoning models: O1, O3, etc.
-                Picker("Reasoning Effort", selection: $reasoningEffort) {
+                Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
                     Text("Low").tag("low")
                     Text("Medium").tag("medium")
                     Text("High").tag("high")
                 }
                 .pickerStyle(.segmented)
-                .disabled(!selectedModel.starts(with: "o"))
+                .disabled(!viewModel.activePrompt.openAIModel.starts(with: "o"))
                 
-                // Standard models: provide temperature slider
                 VStack(alignment: .leading) {
-                    Text("Temperature: \(String(format: "%.1f", temperature))")
-                    Slider(value: $temperature, in: 0...2, step: 0.1)
+                    Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
+                    Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
                 }
-                .disabled(selectedModel.starts(with: "o"))
+                .disabled(viewModel.activePrompt.openAIModel.starts(with: "o"))
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
-                Toggle("Enable Streaming", isOn: $enableStreaming)
+                Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
                 
                 VStack(alignment: .leading) {
-                    Text("Max Output Tokens: \(maxOutputTokens == 0 ? "Default" : String(maxOutputTokens))")
+                    Text("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
                     Slider(value: Binding(
-                        get: { Double(maxOutputTokens) },
-                        set: { maxOutputTokens = Int($0) }
+                        get: { Double(viewModel.activePrompt.maxOutputTokens) },
+                        set: { viewModel.activePrompt.maxOutputTokens = Int($0) }
                     ), in: 0...4096, step: 64)
                 }
                 
                 VStack(alignment: .leading) {
-                    Text("Presence Penalty: \(String(format: "%.1f", presencePenalty))")
-                    Slider(value: $presencePenalty, in: -2.0...2.0, step: 0.1)
+                    Text("Presence Penalty: \(String(format: "%.1f", viewModel.activePrompt.presencePenalty))")
+                    Slider(value: $viewModel.activePrompt.presencePenalty, in: -2.0...2.0, step: 0.1)
                 }
                 
                 VStack(alignment: .leading) {
-                    Text("Frequency Penalty: \(String(format: "%.1f", frequencyPenalty))")
-                    Slider(value: $frequencyPenalty, in: -2.0...2.0, step: 0.1)
+                    Text("Frequency Penalty: \(String(format: "%.1f", viewModel.activePrompt.frequencyPenalty))")
+                    Slider(value: $viewModel.activePrompt.frequencyPenalty, in: -2.0...2.0, step: 0.1)
                 }
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use. Note: Image generation is automatically disabled when streaming is enabled.")) {
-                Toggle("Web Search", isOn: $enableWebSearch)
-                Toggle("Code Interpreter", isOn: $enableCodeInterpreter)
-                Toggle("Calculator (Custom Tool)", isOn: $enableCalculator)
+                Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+                Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
                 HStack {
-                    Toggle("Image Generation", isOn: $enableImageGeneration)
-                        .disabled(enableStreaming)
-                    if enableStreaming && enableImageGeneration {
+                    Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
+                        .disabled(viewModel.activePrompt.enableStreaming)
+                    if viewModel.activePrompt.enableStreaming && viewModel.activePrompt.enableImageGeneration {
                         Text("(Disabled in streaming mode)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
-                Toggle("File Search", isOn: $enableFileSearch)
+                Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
                 
-                if enableFileSearch {
+                if viewModel.activePrompt.enableFileSearch {
                     Button("Manage Files & Vector Stores") {
                         showingFileManager = true
                     }
                     .foregroundColor(.accentColor)
                 }
             }
-            
-            // Web Search Configuration Section
-            if enableWebSearch {
-                Section(header: Text("Web Search Configuration"), footer: Text("Customize how the web search tool behaves. Location settings help provide geographically relevant results.")) {
-                    // Location settings
-                    Picker("Location Type", selection: $webSearchLocationType) {
-                        Text("Approximate").tag("approximate")
-                        Text("Exact").tag("exact")
-                        Text("Disabled").tag("disabled")
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+
+            // MCP Tool Configuration Section
+            if viewModel.activePrompt.enableMCPTool {
+                Section(header: Text("MCP Tool Configuration")) {
+                    TextField("Server Label", text: Binding(get: { viewModel.activePrompt.mcpServerLabel }, set: { viewModel.activePrompt.mcpServerLabel = $0 }))
+                    TextField("Server URL", text: Binding(get: { viewModel.activePrompt.mcpServerURL }, set: { viewModel.activePrompt.mcpServerURL = $0 }))
+                    TextEditor(text: Binding(get: { viewModel.activePrompt.mcpHeaders }, set: { viewModel.activePrompt.mcpHeaders = $0 }))
+                        .frame(minHeight: 60)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                    Picker("Require Approval", selection: Binding(get: { viewModel.activePrompt.mcpRequireApproval }, set: { viewModel.activePrompt.mcpRequireApproval = $0 })) {
+                        Text("Always").tag("always")
+                        Text("Never").tag("never")
                     }
                     .pickerStyle(.segmented)
-                    
-                    if webSearchLocationType != "disabled" {
-                        Picker("Timezone", selection: $webSearchTimezone) {
-                            Text("Pacific (Los Angeles)").tag("America/Los_Angeles")
-                            Text("Mountain (Denver)").tag("America/Denver")
-                            Text("Central (Chicago)").tag("America/Chicago")
-                            Text("Eastern (New York)").tag("America/New_York")
-                            Text("UTC").tag("UTC")
-                            Text("London").tag("Europe/London")
-                            Text("Tokyo").tag("Asia/Tokyo")
-                            Text("Sydney").tag("Australia/Sydney")
-                        }
-                        .pickerStyle(.navigationLink)
-                        
-                        if webSearchLocationType == "exact" {
-                            VStack(alignment: .leading) {
-                                Text("Latitude: \(String(format: "%.4f", webSearchLatitude))")
-                                Slider(value: $webSearchLatitude, in: -90...90, step: 0.1)
-                                
-                                Text("Longitude: \(String(format: "%.4f", webSearchLongitude))")
-                                Slider(value: $webSearchLongitude, in: -180...180, step: 0.1)
-                            }
-                        }
-                    }
-                    
-                    // Search context and quality settings
-                    Picker("Search Context Size", selection: $webSearchContextSize) {
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Picker("Language", selection: $webSearchLanguage) {
-                        Text("English").tag("en")
-                        Text("Spanish").tag("es")
-                        Text("French").tag("fr")
-                        Text("German").tag("de")
-                        Text("Italian").tag("it")
-                        Text("Portuguese").tag("pt")
-                        Text("Japanese").tag("ja")
-                        Text("Chinese").tag("zh")
-                        Text("Korean").tag("ko")
-                        Text("Russian").tag("ru")
-                    }
-                    .pickerStyle(.navigationLink)
-                    
-                    Picker("Region", selection: $webSearchRegion) {
-                        Text("United States").tag("us")
-                        Text("Canada").tag("ca")
-                        Text("United Kingdom").tag("uk")
-                        Text("Germany").tag("de")
-                        Text("France").tag("fr")
-                        Text("Japan").tag("jp")
-                        Text("Australia").tag("au")
-                        Text("Global").tag("wt")
-                    }
-                    .pickerStyle(.navigationLink)
-                    
-                    // Advanced settings
-                    VStack(alignment: .leading) {
-                        Text("Max Results: \(webSearchMaxResults)")
-                        Slider(value: Binding(
-                            get: { Double(webSearchMaxResults) },
-                            set: { webSearchMaxResults = Int($0) }
-                        ), in: 5...50, step: 5)
-                    }
-                    
-                    Picker("Safe Search", selection: $webSearchSafeSearch) {
-                        Text("Strict").tag("strict")
-                        Text("Moderate").tag("moderate")
-                        Text("Off").tag("off")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Picker("Recency Filter", selection: $webSearchRecency) {
-                        Text("Auto").tag("auto")
-                        Text("Recent (24h)").tag("day")
-                        Text("This Week").tag("week")
-                        Text("This Month").tag("month")
-                        Text("This Year").tag("year")
-                    }
-                    .pickerStyle(.navigationLink)
                 }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
-            
-            // Advanced Web Search Location Section
-            if enableWebSearch {
-                Section(header: Text("Advanced Web Search Location"), footer: Text("Optionally specify city, country, and region for more precise web search relevance.")) {
-                    TextField("City", text: $webSearchCity)
-                    TextField("Country (ISO code, e.g. US)", text: $webSearchCountry)
-                    TextField("Region (e.g. California)", text: $webSearchLocationRegion)
+
+            // Custom Tool Configuration Section
+            if viewModel.activePrompt.enableCustomTool {
+                Section(header: Text("Custom Tool Configuration")) {
+                    TextField("Tool Name", text: Binding(get: { viewModel.activePrompt.customToolName }, set: { viewModel.activePrompt.customToolName = $0 }))
+                    TextField("Tool Description", text: Binding(get: { viewModel.activePrompt.customToolDescription }, set: { viewModel.activePrompt.customToolDescription = $0 }))
                 }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
             
             // Advanced API Settings Section
             Section(header: Text("Advanced API Settings"), footer: Text("These options provide fine-grained control over the OpenAI Responses API. Defaults are recommended for most users.")) {
-                Toggle("Background Mode", isOn: $backgroundMode)
-                Stepper("Max Tool Calls: \(maxToolCalls)", value: $maxToolCalls, in: 0...20)
-                Toggle("Parallel Tool Calls", isOn: $parallelToolCalls)
-                Picker("Service Tier", selection: $serviceTier) {
+                Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
+                Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)", value: $viewModel.activePrompt.maxToolCalls, in: 0...20)
+                Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
+                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
                     Text("Auto").tag("auto")
                     Text("Default").tag("default")
                     Text("Flex").tag("flex")
                     Text("Priority").tag("priority")
                 }
                 .pickerStyle(.segmented)
-                Stepper("Top Logprobs: \(topLogprobs)", value: $topLogprobs, in: 0...20)
-                Slider(value: $topP, in: 0.0...1.0, step: 0.01) {
+                Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
+                Slider(value: $viewModel.activePrompt.topP, in: 0.0...1.0, step: 0.01) {
                     Text("Top P")
                 } minimumValueLabel: {
                     Text("0.0")
                 } maximumValueLabel: {
                     Text("1.0")
                 }
-                Text("Top P: \(String(format: "%.2f", topP))")
-                Picker("Truncation", selection: $truncationStrategy) {
+                Text("Top P: \(String(format: "%.2f", viewModel.activePrompt.topP))")
+                Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
                     Text("Disabled").tag("disabled")
                     Text("Auto").tag("auto")
                 }
                 .pickerStyle(.segmented)
-                TextField("User Identifier", text: $userIdentifier)
+                TextField("User Identifier", text: Binding(get: { viewModel.activePrompt.userIdentifier }, set: { viewModel.activePrompt.userIdentifier = $0 }))
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Advanced Include Section
             Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Reasoning content cannot be included when conversation persistence is enabled.")) {
-                Toggle("Include Code Interpreter Outputs", isOn: $includeCodeInterpreterOutputs)
-                Toggle("Include File Search Results", isOn: $includeFileSearchResults)
-                Toggle("Include Input Image URLs", isOn: $includeInputImageUrls)
-                Toggle("Include Output Logprobs", isOn: $includeOutputLogprobs)
-                Toggle("Include Reasoning Content", isOn: $includeReasoningContent)
-                    .disabled(true) // Disabled because it conflicts with store: true (conversation persistence)
-                    .foregroundColor(.secondary)
+                Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
+                Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Text Formatting Section
             Section(header: Text("Text Output Formatting"), footer: Text("Configure the output format for text responses. Use JSON Schema for structured outputs.")) {
-                Picker("Format Type", selection: $textFormatType) {
+                Picker("Format Type", selection: $viewModel.activePrompt.textFormatType) {
                     Text("Text").tag("text")
                     Text("JSON Schema").tag("json_schema")
                 }
                 .pickerStyle(.segmented)
-                if textFormatType == "json_schema" {
-                    TextField("Schema Name", text: $jsonSchemaName)
-                    TextField("Schema Description", text: $jsonSchemaDescription)
-                    Toggle("Strict Schema", isOn: $jsonSchemaStrict)
-                    TextEditor(text: $jsonSchemaContent)
+                if viewModel.activePrompt.textFormatType == "json_schema" {
+                    TextField("Schema Name", text: Binding(get: { viewModel.activePrompt.jsonSchemaName }, set: { viewModel.activePrompt.jsonSchemaName = $0 }))
+                    TextField("Schema Description", text: Binding(get: { viewModel.activePrompt.jsonSchemaDescription }, set: { viewModel.activePrompt.jsonSchemaDescription = $0 }))
+                    Toggle("Strict Schema", isOn: $viewModel.activePrompt.jsonSchemaStrict)
+                    TextEditor(text: Binding(get: { viewModel.activePrompt.jsonSchemaContent }, set: { viewModel.activePrompt.jsonSchemaContent = $0 }))
                         .frame(minHeight: 60)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
                 }
             }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Advanced Reasoning Section
-            if selectedModel.starts(with: "o") {
+            if viewModel.activePrompt.openAIModel.starts(with: "o") {
                 Section(header: Text("Advanced Reasoning"), footer: Text("Configure summary output for reasoning models.")) {
-                    Picker("Reasoning Summary", selection: $reasoningSummary) {
+                    Picker("Reasoning Summary", selection: $viewModel.activePrompt.reasoningSummary) {
                         Text("Auto").tag("auto")
                         Text("Concise").tag("concise")
                         Text("Detailed").tag("detailed")
                     }
                     .pickerStyle(.segmented)
                 }
-            }
-            
-            // Image Generation Section
-            if enableImageGeneration {
-                Section(header: Text("Image Generation Settings"), footer: Text("Advanced options for image generation tool.")) {
-                    Picker("Size", selection: $imageGenerationSize) {
-                        Text("Auto").tag("auto")
-                        Text("1024x1024").tag("1024x1024")
-                        Text("1024x1536").tag("1024x1536")
-                        Text("1536x1024").tag("1536x1024")
-                    }
-                    .pickerStyle(.navigationLink)
-                    Picker("Quality", selection: $imageGenerationQuality) {
-                        Text("Auto").tag("auto")
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                    }
-                    .pickerStyle(.segmented)
-                    Picker("Background", selection: $imageGenerationBackground) {
-                        Text("Auto").tag("auto")
-                        Text("Transparent").tag("transparent")
-                        Text("Opaque").tag("opaque")
-                    }
-                    .pickerStyle(.segmented)
-                    Picker("Output Format", selection: $imageGenerationOutputFormat) {
-                        Text("PNG").tag("png")
-                        Text("WEBP").tag("webp")
-                        Text("JPEG").tag("jpeg")
-                    }
-                    .pickerStyle(.segmented)
-                    Picker("Moderation", selection: $imageGenerationModeration) {
-                        Text("Auto").tag("auto")
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                    }
-                    .pickerStyle(.segmented)
-                    Stepper("Partial Images: \(imageGenerationPartialImages)", value: $imageGenerationPartialImages, in: 0...3)
-                    Stepper("Output Compression: \(imageGenerationOutputCompression)", value: $imageGenerationOutputCompression, in: 0...100)
-                }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
             
             Section {
@@ -422,75 +367,54 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            // Set default values if not already set
-            setDefaultToolSettings()
+            // When the view appears, if no preset is selected, it means we are using the "live" settings.
+            // We can set the selectedPresetId to nil to reflect this.
+            // Reload presets from storage to ensure the Picker shows the latest list
+            promptLibrary.reload()
+            if promptLibrary.prompts.first(where: { $0.id == viewModel.activePrompt.id }) == nil {
+                selectedPresetId = nil
+            } else {
+                selectedPresetId = viewModel.activePrompt.id
+            }
+            
+            apiKey = KeychainService.shared.load(forKey: "openAIKey") ?? ""
         }
-        .onChange(of: selectedModel) { _, _ in
-            // If model changes, clear conversation to avoid cross-model threading issues
-            viewModel.clearConversation()
+        .onChange(of: viewModel.activePrompt) { _, _ in
+            // If the active prompt changes to one that isn't in the library, deselect the picker.
+            if promptLibrary.prompts.first(where: { $0.id == viewModel.activePrompt.id }) == nil {
+                selectedPresetId = nil
+            }
+        }
+        .onChange(of: apiKey) { _, newValue in
+            KeychainService.shared.save(value: newValue, forKey: "openAIKey")
         }
         .sheet(isPresented: $showingFileManager) {
             FileManagerView()
         }
+        .sheet(isPresented: $showingPromptLibrary) {
+            // Pass a method to the library view to create a prompt from current settings
+            PromptLibraryView(library: promptLibrary, createPromptFromCurrentSettings: {
+                // Return the current state of the view model's active prompt
+                return viewModel.activePrompt
+            })
+            .onDisappear {
+                // Refresh after managing presets to reflect changes in the Picker
+                promptLibrary.reload()
+            }
+        }
     }
-    
-    /// Sets default values for tool settings if they haven't been configured yet
-    private func setDefaultToolSettings() {
-        // Check if these keys exist, if not set defaults
-        if UserDefaults.standard.object(forKey: "enableWebSearch") == nil {
-            UserDefaults.standard.set(true, forKey: "enableWebSearch")
-        }
-        if UserDefaults.standard.object(forKey: "enableCodeInterpreter") == nil {
-            UserDefaults.standard.set(true, forKey: "enableCodeInterpreter")
-        }
-        if UserDefaults.standard.object(forKey: "enableImageGeneration") == nil {
-            UserDefaults.standard.set(true, forKey: "enableImageGeneration")
-        }
-        if UserDefaults.standard.object(forKey: "enableFileSearch") == nil {
-            UserDefaults.standard.set(false, forKey: "enableFileSearch")
-        }
-        if UserDefaults.standard.object(forKey: "enableStreaming") == nil {
-            UserDefaults.standard.set(true, forKey: "enableStreaming")
-        }
-        
-        // Set defaults for web search configuration
-        if UserDefaults.standard.object(forKey: "webSearchLocationType") == nil {
-            UserDefaults.standard.set("approximate", forKey: "webSearchLocationType")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchTimezone") == nil {
-            UserDefaults.standard.set("America/Los_Angeles", forKey: "webSearchTimezone")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchContextSize") == nil {
-            UserDefaults.standard.set("high", forKey: "webSearchContextSize")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchLanguage") == nil {
-            UserDefaults.standard.set("en", forKey: "webSearchLanguage")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchRegion") == nil {
-            UserDefaults.standard.set("us", forKey: "webSearchRegion")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchMaxResults") == nil {
-            UserDefaults.standard.set(10, forKey: "webSearchMaxResults")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchSafeSearch") == nil {
-            UserDefaults.standard.set("moderate", forKey: "webSearchSafeSearch")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchRecency") == nil {
-            UserDefaults.standard.set("auto", forKey: "webSearchRecency")
-        }
-        if UserDefaults.standard.object(forKey: "webSearchLatitude") == nil {
-            UserDefaults.standard.set(37.7749, forKey: "webSearchLatitude") // San Francisco
-        }
-        if UserDefaults.standard.object(forKey: "webSearchLongitude") == nil {
-            UserDefaults.standard.set(-122.4194, forKey: "webSearchLongitude") // San Francisco
-        }
+
+    /// Applies a saved preset to the active prompt in the view model.
+    private func applyPreset(_ preset: Prompt) {
+        viewModel.activePrompt = preset
+        // The view will automatically update because it's bound to viewModel.activePrompt
     }
     
     /// Provides a recommendation on whether streaming should be enabled based on current tool selection
     /// - Returns: A tuple with (shouldStream: Bool, reason: String?)
     private func getStreamingRecommendation() -> (shouldStream: Bool, reason: String?) {
         // If image generation is enabled, recommend disabling streaming
-        if enableImageGeneration {
+        if viewModel.activePrompt.enableImageGeneration {
             return (false, "Image generation works better without streaming")
         }
         

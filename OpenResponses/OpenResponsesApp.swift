@@ -11,6 +11,11 @@ import SwiftUI
 struct OpenResponsesApp: App {
     @StateObject private var chatViewModel = ChatViewModel()
 
+    init() {
+        // Migrate API key from UserDefaults to Keychain on first launch
+        KeychainService.shared.migrateApiKeyFromUserDefaults()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
