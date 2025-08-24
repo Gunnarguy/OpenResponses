@@ -10,9 +10,22 @@
 		B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenResponses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B0F51BEA2E5AF26A008E0AF1 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B0F51BEA2E5AF26A008E0AF1 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */,
+			);
 			path = OpenResponses;
 			sourceTree = "<group>";
 		};

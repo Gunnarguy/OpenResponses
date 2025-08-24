@@ -180,18 +180,47 @@ struct VectorStoreFileListResponse: Decodable {
     let data: [VectorStoreFile]
 }
 
-// MARK: - New Streaming API Models
+// MARK: - Streaming API Models
 
-/// Represents different types of streaming events from the new OpenAI Responses API
-struct StreamingEvent: Decodable {
+/// Represents different types of streaming events from the OpenAI Responses API.
+/// Documentation based on: https://platform.openai.com/docs/api-reference/streaming
+struct StreamingEvent: Decodable, CustomStringConvertible {
+    /// Type of the streaming event.
+    /// Common types include:
+    /// - "response.created" - Initial event when response is created
+    /// - "response.queued" - Response is queued for processing
+    /// - "response.in_progress" - Response generation has started
+    /// - "response.completed" - Final event with complete response
+    /// - "response.output_item.added" - New output item (message, reasoning, etc.) added
+    /// - "response.output_item.done" - Output item is complete
+    /// - "response.content_part.added" - Content part added to an output item
+    /// - "response.content_part.done" - Content part is complete
+    /// - "response.output_text.delta" - Text token added to content
+    /// - "response.output_text.done" - Text content is complete
     let type: String
+    
+    /// Sequence number to maintain ordering of events
     let sequenceNumber: Int
+    
+    /// Full response object, present in some events like "response.created"
     let response: StreamingResponse?
+    
+    /// Index in the output array where the item belongs
     let outputIndex: Int?
+    
+    /// ID of the item this event relates to
     let itemId: String?
+    
+    /// Index in the content array where the content belongs
     let contentIndex: Int?
+    
+    /// Text delta for output_text.delta events
     let delta: String?
+    
+    /// Item object for output_item events
     let item: StreamingItem?
+    
+    /// Part object for content_part events
     let part: StreamingPart?
     
     enum CodingKeys: String, CodingKey {
@@ -205,65 +234,192 @@ struct StreamingEvent: Decodable {
         case item
         case part
     }
+    
+    /// Provides a readable description of the event
+    var description: String {
+        var desc = "StreamingEvent(type: \"\(type)\", seq: \(sequenceNumber)"
+        
+        if let response = response {
+            desc += ", response: \(response.id)"
+        }
+        
+        if let outputIndex = outputIndex {
+            desc += ", outputIndex: \(outputIndex)"
+        }
+        
+        if let itemId = itemId {
+            desc += ", itemId: \"\(itemId)\""
+        }
+        
+        if let contentIndex = contentIndex {
+            desc += ", contentIndex: \(contentIndex)"
+        }
+        
+        if let delta = delta {
+            let safeText = delta.count > 20 ? "\(delta.prefix(20))..." : delta
+            desc += ", delta: \"\(safeText)\""
+        }
+        
+        return desc + ")"
+    }
 }
 
-/// Streaming response object
-struct StreamingResponse: Decodable {
+/// Streaming response object with metadata
+struct StreamingResponse: Decodable, CustomStringConvertible {
+    /// Unique identifier for this response
     let id: String
+    
+    /// Status of the response: "queued", "in_progress", "completed", "error"
     let status: String?
+    
+    /// Array of output items (messages, reasoning, etc.)
     let output: [StreamingOutputItem]?
+    
+    /// Token usage statistics (only in final response.completed event)
     let usage: StreamingUsage?
+    
+    /// Provides a readable description of the response
+    var description: String {
+        var desc = "StreamingResponse(id: \"\(id)\""
+        
+        if let status = status {
+            desc += ", status: \"\(status)\""
+        }
+        
+        if let output = output, !output.isEmpty {
+            desc += ", output: [\(output.count) items]"
+        }
+        
+        if let usage = usage {
+            desc += ", usage: \(usage)"
+        }
+        
+        return desc + ")"
+    }
 }
 
-/// Streaming output item
-struct StreamingOutputItem: Decodable {
+/// Streaming output item (message, reasoning, etc.)
+struct StreamingOutputItem: Decodable, CustomStringConvertible {
+    /// Unique identifier for this output item
     let id: String
+    
+    /// Type of output: "message", "reasoning", "tool_call", etc.
     let type: String
+    
+    /// Status of the item: "in_progress", "completed", etc.
     let status: String?
+    
+    /// Array of content items (text, images, etc.)
     let content: [StreamingContentItem]?
+    
+    /// Role for message items: "user", "assistant", etc.
     let role: String?
+    
+    /// Provides a readable description of the output item
+    var description: String {
+        "StreamingOutputItem(id: \"\(id)\", type: \"\(type)\")"
+    }
 }
 
-/// Streaming content item
-struct StreamingContentItem: Decodable {
+/// Content item within an output item
+struct StreamingContentItem: Decodable, CustomStringConvertible {
+    /// Type of content: "text", "image_url", etc.
     let type: String
+    
+    /// Text content if present
     let text: String?
+    
+    /// Provides a readable description of the content item
+    var description: String {
+        var desc = "StreamingContentItem(type: \"\(type)\""
+        
+        if let text = text {
+            let safeText = text.count > 20 ? "\(text.prefix(20))..." : text
+            desc += ", text: \"\(safeText)\""
+        }
+        
+        return desc + ")"
+    }
 }
 
-/// Streaming item
-struct StreamingItem: Decodable {
+/// Streaming item object
+struct StreamingItem: Decodable, CustomStringConvertible {
+    /// Unique identifier for this item
     let id: String
+    
+    /// Type of item: "message", "reasoning", "tool_call", etc.
     let type: String
+    
+    /// Status of the item: "in_progress", "completed", etc.
     let status: String?
+    
+    /// Array of content items (text, images, etc.)
     let content: [StreamingContentItem]?
+    
+    /// Role for message items: "user", "assistant", etc.
     let role: String?
     
     // Fields for function/tool calls
+    /// Name of the tool or function (for tool_call items)
     let name: String?
-    let arguments: String? // JSON string
+    
+    /// JSON string of arguments (for tool_call items)
+    let arguments: String?
+    
+    /// ID of the call (for tool_call items)
     let callId: String?
     
     enum CodingKeys: String, CodingKey {
         case id, type, status, content, role, name, arguments
         case callId = "call_id"
     }
+    
+    /// Provides a readable description of the item
+    var description: String {
+        "StreamingItem(id: \"\(id)\", type: \"\(type)\")"
+    }
 }
 
-/// Streaming part
-struct StreamingPart: Decodable {
+/// Content part object
+struct StreamingPart: Decodable, CustomStringConvertible {
+    /// Type of part: "output_text", etc.
     let type: String
+    
+    /// Text content if present
     let text: String?
+    
+    /// Provides a readable description of the part
+    var description: String {
+        var desc = "StreamingPart(type: \"\(type)\""
+        
+        if let text = text {
+            let safeText = text.count > 20 ? "\(text.prefix(20))..." : text
+            desc += ", text: \"\(safeText)\""
+        }
+        
+        return desc + ")"
+    }
 }
 
-/// Usage information
-struct StreamingUsage: Decodable {
+/// Token usage information
+struct StreamingUsage: Decodable, CustomStringConvertible {
+    /// Number of tokens in the input/prompt
     let inputTokens: Int
+    
+    /// Number of tokens in the output/completion
     let outputTokens: Int
+    
+    /// Total number of tokens used (input + output)
     let totalTokens: Int
     
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
+    }
+    
+    /// Provides a readable description of the usage
+    var description: String {
+        "StreamingUsage(in: \(inputTokens), out: \(outputTokens), total: \(totalTokens))"
     }
 }

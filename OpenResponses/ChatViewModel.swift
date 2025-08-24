@@ -68,6 +68,17 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         let streamingEnabled = activePrompt.enableStreaming
         print("Using \(streamingEnabled ? "streaming" : "non-streaming") mode")
         
+        // Log the message sending event
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageSent,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: trimmed.count,
+                AnalyticsParameter.streamingEnabled: streamingEnabled,
+                "has_attachments": attachments != nil
+            ]
+        )
+        
         // Call the OpenAI API asynchronously
         streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
@@ -112,6 +123,17 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
                 // Log the final streamed message
                 if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
                     print("Finished streaming response: \(finalMessage.text ?? "No text content")")
+                    
+                    // Log the received message
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.messageReceived,
+                        parameters: [
+                            AnalyticsParameter.model: self.activePrompt.openAIModel,
+                            AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                            AnalyticsParameter.streamingEnabled: true,
+                            "has_images": finalMessage.images?.isEmpty == false
+                        ]
+                    )
                 }
                 
                 self.streamingMessageId = nil
@@ -224,6 +246,17 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         
         // Log the final response
         print("Received non-streaming response: \(updatedMessage.text ?? "No text content")")
+        
+        // Log the received message
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageReceived,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: updatedMessage.text?.count ?? 0,
+                AnalyticsParameter.streamingEnabled: false,
+                "has_images": updatedMessage.images?.isEmpty == false
+            ]
+        )
     }
     
     /// Handles a function call from the API by executing the function and sending the result back.
@@ -411,20 +444,66 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     /// Handle errors by appending a system message describing the issue.
     func handleError(_ error: Error) {
         var errorText = "An error occurred."
+        var errorCode = -1
+        var errorDomain = "Unknown"
+        
         if let serviceError = error as? OpenAIServiceError {
             switch serviceError {
             case .missingAPIKey:
                 errorText = "API Key is missing. Please set your OpenAI API key in Settings."
-            case .requestFailed(_, let message):
+                errorCode = 401
+                errorDomain = "OpenAICredentials"
+            case .requestFailed(let code, let message):
                 errorText = "API request failed: \(message)"
+                errorCode = code
+                errorDomain = "OpenAIAPI"
             case .invalidResponseData:
                 errorText = "Received invalid data from the API."
+                errorCode = 400
+                errorDomain = "OpenAIResponseParsing"
+            case .invalidRequest(let message):
+                errorText = "Invalid request: \(message)"
+                errorCode = 400
+                errorDomain = "OpenAIRequestFormat"
+            case .networkError(let underlyingError):
+                errorText = "Network error: \(underlyingError.localizedDescription)"
+                errorCode = -1009 // NSURLErrorDomain's common network error code
+                errorDomain = "NetworkConnectivity"
+            case .decodingError(let underlyingError):
+                errorText = "Failed to decode response: \(underlyingError.localizedDescription)"
+                errorCode = 422
+                errorDomain = "ResponseParsing"
+            case .rateLimited(let seconds, let message):
+                errorText = "Rate limited by OpenAI. Please try again in \(seconds) seconds. \(message)"
+                errorCode = 429
+                errorDomain = "RateLimiting"
+            case .fileError(let message):
+                errorText = "File error: \(message)"
+                errorCode = 500
+                errorDomain = "FileOperation"
             }
         } else if error is CancellationError {
             errorText = "The request was cancelled."
+            errorCode = 0
+            errorDomain = "UserCancelled"
         } else {
             errorText = error.localizedDescription
+            if let nsError = error as NSError? {
+                errorCode = nsError.code
+                errorDomain = nsError.domain
+            }
         }
+        
+        // Log the error with analytics
+        AnalyticsService.shared.trackError(error, context: "ChatViewModel")
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.networkError,
+            parameters: [
+                AnalyticsParameter.errorCode: errorCode,
+                AnalyticsParameter.errorDomain: errorDomain,
+                "error_description": errorText
+            ]
+        )
         
         // Set the error message to be displayed in an alert
         self.errorMessage = errorText
@@ -432,9 +511,6 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         // Also append a system message to the chat for context
         let errorMsg = ChatMessage(role: .system, text: "⚠️ \(errorText)", images: nil)
         messages.append(errorMsg)
-        
-        // Set the error message for display
-        self.errorMessage = errorText
     }
     
     /// Resets the conversation by clearing messages and forgetting the last response ID.

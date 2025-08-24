@@ -93,6 +93,9 @@ struct SettingsView: View {
     @AppStorage("includeOutputLogprobs") private var includeOutputLogprobs: Bool = false
     @AppStorage("includeReasoningContent") private var includeReasoningContent: Bool = false
     
+    // Debugging settings
+    @AppStorage("detailedNetworkLogging") private var detailedNetworkLogging: Bool = true
+    
     // Response streaming setting
     @AppStorage("enableStreaming") private var enableStreaming: Bool = true
     
@@ -344,6 +347,14 @@ struct SettingsView: View {
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            
+            // Debugging Section
+            Section(header: Text("Debugging"), footer: Text("Settings for debugging and development purposes.")) {
+                Toggle("Detailed Network Logging", isOn: $detailedNetworkLogging)
+                    .onChange(of: detailedNetworkLogging) { _, newValue in
+                        print("Detailed network logging \(newValue ? "enabled" : "disabled")")
+                    }
+            }
             
             // Advanced Reasoning Section
             if viewModel.activePrompt.openAIModel.starts(with: "o") {

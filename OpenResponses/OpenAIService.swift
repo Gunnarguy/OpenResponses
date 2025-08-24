@@ -1,11 +1,6 @@
 import Foundation
-
-/// Errors that can occur when calling the OpenAI API.
-enum OpenAIServiceError: Error {
-    case missingAPIKey
-    case requestFailed(Int, String)  // HTTP status code and message
-    case invalidResponseData
-}
+// Import the StreamingEvent model
+import SwiftUI  // This should already be there for access to UI types
 
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService {
@@ -56,6 +51,24 @@ class OpenAIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
         
+        // Log the API request with detailed information
+        AnalyticsService.shared.logAPIRequest(
+            url: apiURL,
+            method: "POST",
+            headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+            body: jsonData
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses",
+                AnalyticsParameter.requestMethod: "POST",
+                AnalyticsParameter.requestSize: jsonData.count,
+                AnalyticsParameter.model: prompt.openAIModel,
+                AnalyticsParameter.streamingEnabled: false
+            ]
+        )
+        
         // Perform HTTP request
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -73,8 +86,43 @@ class OpenAIService {
             } else {
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: statusCode)
             }
+            
+            // Log the error response
+            AnalyticsService.shared.logAPIResponse(
+                url: apiURL,
+                statusCode: statusCode,
+                headers: httpResponse.allHeaderFields,
+                body: data
+            )
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "responses",
+                    AnalyticsParameter.statusCode: statusCode,
+                    AnalyticsParameter.errorCode: statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAIAPI"
+                ]
+            )
+            
             throw OpenAIServiceError.requestFailed(statusCode, errorMessage)
         }
+        
+        // Log the successful response
+        AnalyticsService.shared.logAPIResponse(
+            url: apiURL,
+            statusCode: statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses",
+                AnalyticsParameter.statusCode: statusCode,
+                AnalyticsParameter.responseSize: data.count,
+                AnalyticsParameter.model: prompt.openAIModel
+            ]
+        )
         
         // Decode JSON data into OpenAIResponse model
         do {
@@ -124,6 +172,24 @@ class OpenAIService {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = jsonData
                     
+                    // Log the streaming API request
+                    AnalyticsService.shared.logAPIRequest(
+                        url: apiURL,
+                        method: "POST",
+                        headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+                        body: jsonData
+                    )
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.apiRequestSent,
+                        parameters: [
+                            AnalyticsParameter.endpoint: "responses",
+                            AnalyticsParameter.requestMethod: "POST",
+                            AnalyticsParameter.requestSize: jsonData.count,
+                            AnalyticsParameter.model: prompt.openAIModel,
+                            AnalyticsParameter.streamingEnabled: true
+                        ]
+                    )
+                    
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -151,13 +217,48 @@ class OpenAIService {
                             errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
                         }
                         
+                        // Log the error response
+                        AnalyticsService.shared.logAPIResponse(
+                            url: apiURL, 
+                            statusCode: httpResponse.statusCode,
+                            headers: httpResponse.allHeaderFields,
+                            body: errorData
+                        )
+                        AnalyticsService.shared.trackEvent(
+                            name: AnalyticsEvent.networkError,
+                            parameters: [
+                                AnalyticsParameter.endpoint: "responses",
+                                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                                AnalyticsParameter.streamingEnabled: true,
+                                AnalyticsParameter.errorCode: httpResponse.statusCode,
+                                AnalyticsParameter.errorDomain: "OpenAIStreamingAPI"
+                            ]
+                        )
+                        
                         throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
                     }
+                    
+                    // Log the initial successful response headers
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.apiResponseReceived,
+                        parameters: [
+                            AnalyticsParameter.endpoint: "responses",
+                            AnalyticsParameter.statusCode: httpResponse.statusCode,
+                            AnalyticsParameter.streamingEnabled: true,
+                            AnalyticsParameter.model: prompt.openAIModel
+                        ]
+                    )
                     
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: ") {
                             let dataString = String(line.dropFirst(6))
                             if dataString == "[DONE]" {
+                                // Log the completion of the stream
+                                AppLogger.log(
+                                    "Stream completed with [DONE] marker",
+                                    category: .streaming,
+                                    level: .debug
+                                )
                                 continuation.finish()
                                 return
                             }
@@ -166,9 +267,38 @@ class OpenAIService {
                             
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
+                                
+                                // Log the streaming event using the enhanced structured logging
+                                AnalyticsService.shared.logStreamingEvent(
+                                    eventType: decodedChunk.type,
+                                    data: dataString,
+                                    parsedEvent: decodedChunk
+                                )
+                                
+                                // Track analytics event (high-level metrics)
+                                AnalyticsService.shared.trackEvent(
+                                    name: AnalyticsEvent.streamingEventReceived,
+                                    parameters: [
+                                        AnalyticsParameter.eventType: decodedChunk.type,
+                                        AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
+                                    ]
+                                )
+                                
                                 continuation.yield(decodedChunk)
                             } catch {
-                                print("Stream decoding error: \(error) for data: \(dataString)")
+                                // Use the structured logging format for decoding errors
+                                AppLogger.log(
+                                    "Stream decoding error: \(error.localizedDescription)\nData: \(dataString)",
+                                    category: .streaming,
+                                    level: .warning
+                                )
+                                
+                                // Still log via analytics service for consistency
+                                AnalyticsService.shared.logStreamingEvent(
+                                    eventType: "decoding_error",
+                                    data: dataString,
+                                    parsedEvent: ["error": error.localizedDescription]
+                                )
                                 // Continue processing other chunks even if one fails to decode
                             }
                         }
@@ -254,7 +384,16 @@ class OpenAIService {
             // Handle user message and attachments
             var userContent: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             if let attachments = attachments {
-                userContent.append(contentsOf: attachments)
+                // Ensure each attachment has a "type" field to avoid the "Missing required parameter" error
+                let validatedAttachments = attachments.map { attachment -> [String: Any] in
+                    var attachment = attachment
+                    // If the attachment doesn't have a "type" field, default to "file_search"
+                    if attachment["type"] == nil {
+                        attachment["type"] = "file_search"
+                    }
+                    return attachment
+                }
+                userContent.append(contentsOf: validatedAttachments)
             }
             inputMessages.append(["role": "user", "content": userContent])
             
@@ -413,15 +552,62 @@ class OpenAIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
         
+        // Log the function output API request
+        AnalyticsService.shared.logAPIRequest(
+            url: apiURL,
+            method: "POST",
+            headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+            body: jsonData
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses_function_output",
+                AnalyticsParameter.requestMethod: "POST",
+                AnalyticsParameter.requestSize: jsonData.count,
+                AnalyticsParameter.model: model
+            ]
+        )
+        
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
         
+        
+        // Log the response
+        AnalyticsService.shared.logAPIResponse(
+            url: apiURL,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "responses_function_output",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAIFunctionAPI"
+                ]
+            )
+            
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses_function_output",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count,
+                AnalyticsParameter.model: model
+            ]
+        )
         
         do {
             return try JSONDecoder().decode(OpenAIResponse.self, from: data)
