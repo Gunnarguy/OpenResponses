@@ -384,16 +384,51 @@ class OpenAIService {
             // Handle user message and attachments
             var userContent: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             if let attachments = attachments {
-                // Ensure each attachment has a "type" field to avoid the "Missing required parameter" error
-                let validatedAttachments = attachments.map { attachment -> [String: Any] in
-                    var attachment = attachment
-                    // If the attachment doesn't have a "type" field, default to "file_search"
-                    if attachment["type"] == nil {
-                        attachment["type"] = "file_search"
+                // The OpenAI API has strict requirements for content objects
+                // We need to transform our attachments to valid content objects
+                let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
+                    // Start with a clean slate for each attachment
+                    var validContent: [String: Any] = [:]
+                    
+                    // Check file type if file_search is enabled - we only want to include PDFs
+                    if prompt.enableFileSearch {
+                        if let filename = attachment["filename"] as? String, 
+                           !filename.lowercased().hasSuffix(".pdf") {
+                            AppLogger.log(
+                                "File search enabled but non-PDF file attached: \(filename). Only PDF files are supported for file search.",
+                                category: .openAI,
+                                level: .warning
+                            )
+                            // Skip this attachment or return a message about unsupported file type
+                            return nil
+                        }
                     }
-                    return attachment
+                    
+                    // Set the correct type based on what we're attaching
+                    validContent["type"] = "input_file"
+                    
+                    // Extract file_id from the attachment
+                    if let fileId = attachment["file_id"] as? String {
+                        validContent["file_id"] = fileId
+                    } else if let fileId = attachment["id"] as? String {
+                        validContent["file_id"] = fileId
+                    } else {
+                        // If we can't find a file ID, we can't create a valid attachment
+                        AppLogger.log(
+                            "Missing file_id in attachment: \(attachment)",
+                            category: .openAI,
+                            level: .warning
+                        )
+                        return nil
+                    }
+                    
+                    return validContent
                 }
-                userContent.append(contentsOf: validatedAttachments)
+                
+                // Only add attachments that we successfully validated
+                if !validatedAttachments.isEmpty {
+                    userContent.append(contentsOf: validatedAttachments)
+                }
             }
             inputMessages.append(["role": "user", "content": userContent])
             
@@ -428,9 +463,41 @@ class OpenAIService {
                 tools.append(createCustomToolConfiguration(from: prompt))
             }
             if prompt.enableFileSearch {
+                // Check if we have any PDF attachments (needed for file search)
+                let hasPdfAttachments = attachments?.contains { attachment in
+                    if let filename = attachment["filename"] as? String,
+                       filename.lowercased().hasSuffix(".pdf") {
+                        return true
+                    }
+                    return false
+                } ?? false
+                
+                // Only add file search if we have PDFs or if specific vector stores are provided
                 let idsArray = (prompt.selectedVectorStoreIds ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
-                if !idsArray.isEmpty {
-                    tools.append(["type": "file_search", "vector_store_ids": idsArray])
+                
+                if !idsArray.isEmpty || hasPdfAttachments {
+                    if !idsArray.isEmpty {
+                        // We have actual vector store IDs, use them
+                        tools.append(createFileSearchToolConfiguration(fileIds: idsArray))
+                    } else {
+                        // If we have no vector store IDs, use our placeholder solution
+                        // The API requires at least one vector store ID
+                        tools.append(createFileSearchToolConfiguration())
+                        
+                        // Log that we're using a placeholder
+                        AppLogger.log(
+                            "Using placeholder vector store ID for file search",
+                            category: .openAI,
+                            level: .warning
+                        )
+                    }
+                } else {
+                    // Log that we're skipping file search tool due to no PDFs
+                    AppLogger.log(
+                        "Skipping file search tool: No PDF files attached and no vector stores provided",
+                        category: .openAI,
+                        level: .warning
+                    )
                 }
             }
             
@@ -648,9 +715,25 @@ class OpenAIService {
         throw OpenAIServiceError.invalidResponseData
     }
     
+    /// Prepares file attachment objects for inclusion in API requests
+    /// - Parameters:
+    ///   - fileIds: Array of file IDs to attach
+    /// - Returns: Array of properly formatted file attachment objects
+    func prepareFileAttachments(fileIds: [String]) -> [[String: Any]] {
+        return fileIds.map { fileId in
+            // The only required properties for input_file objects are:
+            // 1. type: "input_file"
+            // 2. file_id: the ID of the uploaded file
+            return [
+                "type": "input_file",
+                "file_id": fileId
+            ]
+        }
+    }
+    
     /// Creates a properly formatted tool configuration based on current API requirements
     /// - Parameters:
-    ///   - toolType: The type of tool ("web_search_preview", "code_interpreter", "image_generation", "file_search")
+    ///   - toolType: The type of tool ("web_search_preview", "code_interpreter", etc.)
     ///   - vectorStoreId: Optional vector store ID for file_search tool
     /// - Returns: A dictionary representing the tool configuration
     /// 
@@ -748,6 +831,23 @@ class OpenAIService {
                 "parameters": ["type": "object", "properties": [:]] // Assuming no parameters for simplicity
             ]
         ]
+    }
+    
+    /// Creates the configuration for the file search tool
+    /// - Parameter fileIds: Array of file IDs to search
+    /// - Returns: A dictionary representing the file search tool configuration
+    private func createFileSearchToolConfiguration(fileIds: [String]? = nil) -> [String: Any] {
+        var config: [String: Any] = ["type": "file_search"]
+        
+        if let fileIds = fileIds, !fileIds.isEmpty {
+            config["file_ids"] = fileIds
+        }
+        
+        // Add a placeholder vector store ID - required by the API
+        // The API requires at least one vector store ID
+        config["vector_store_ids"] = ["vs_placeholder"]
+        
+        return config
     }
     
     /// Creates the configuration for the web search tool
