@@ -3,6 +3,9 @@ import SwiftUI
 struct MessageBubbleView: View {
     let message: ChatMessage
     
+    @ScaledMetric private var bubblePadding: CGFloat = 12
+    @ScaledMetric private var cornerRadius: CGFloat = 16
+    
     var body: some View {
         HStack {
             if message.role == .assistant || message.role == .system {
@@ -29,12 +32,15 @@ struct MessageBubbleView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(bubblePadding)
             .background(backgroundColor(for: message.role))
             .foregroundColor(foregroundColor(for: message.role))
             .font(font(for: message.role))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel(for: message))
+            .accessibilityHint(accessibilityHint(for: message.role))
             
             if message.role == .user {
                 Spacer().frame(width: 0)  // Preserve spacing for user-aligned bubble
@@ -72,9 +78,37 @@ struct MessageBubbleView: View {
     private func font(for role: ChatMessage.Role) -> Font {
         switch role {
         case .user, .assistant:
-            return .body                        // normal font for user and assistant
+            return .body                        // normal font for user and assistant - supports Dynamic Type
         case .system:
-            return .subheadline.italic()        // smaller italic font for system messages
+            return .subheadline.italic()        // smaller italic font for system messages - supports Dynamic Type
+        }
+    }
+    
+    // Helper: create accessibility label for message
+    private func accessibilityLabel(for message: ChatMessage) -> String {
+        let roleText: String
+        switch message.role {
+        case .user:
+            roleText = "Your message"
+        case .assistant:
+            roleText = "AI response"
+        case .system:
+            roleText = "System message"
+        }
+        
+        let messageText = message.text ?? "Image content"
+        return "\(roleText): \(messageText)"
+    }
+    
+    // Helper: create accessibility hint for message role
+    private func accessibilityHint(for role: ChatMessage.Role) -> String {
+        switch role {
+        case .user:
+            return "Message you sent to the AI"
+        case .assistant:
+            return "Response from the AI assistant"
+        case .system:
+            return "System notification or error message"
         }
     }
 }

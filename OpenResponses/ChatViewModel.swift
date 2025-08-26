@@ -9,15 +9,16 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var activePrompt: Prompt // Holds the current settings configuration
     @Published var errorMessage: String? // Holds the current error message for display
 
-    private let api = OpenAIService()              // Service for API calls
+    private let api: OpenAIServiceProtocol              // Service for API calls
     private var lastResponseId: String? = nil      // Store the last response ID for continuity
     private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>? // Task for managing the streaming process
 
-    init() {
+    init(api: OpenAIServiceProtocol = OpenAIService()) {
         // Initialize with a default prompt configuration
         self.activePrompt = Prompt.defaultPrompt()
+        self.api = api
         
         // Load the last used prompt from UserDefaults or create a default
         loadActivePrompt()
@@ -163,15 +164,23 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         
         Task {
             do {
+                // Read file data
+                let fileData = try Data(contentsOf: url)
+                let filename = url.lastPathComponent
+                
                 // Upload the file using the API service
-                let fileId = try await api.uploadFile(from: url)
+                let openAIFile = try await api.uploadFile(
+                    fileData: fileData,
+                    filename: filename,
+                    purpose: "assistants"
+                )
                 
                 // Stop accessing the resource once we're done
                 url.stopAccessingSecurityScopedResource()
                 
                 await MainActor.run {
                     // Add the file ID to the pending list
-                    self.pendingFileAttachments.append(fileId)
+                    self.pendingFileAttachments.append(openAIFile.id)
                     
                     // Update the status message
                     if let lastMessageIndex = self.messages.lastIndex(where: { $0.id == attachingMessage.id }) {
@@ -195,9 +204,11 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
         guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
         
-        // Store the response ID for conversation continuity
+        // CRITICAL: Update the lastResponseId to maintain conversation state.
+        // This ID is required for the next message to continue the conversation.
         if let responseId = response.id {
-            lastResponseId = responseId
+            self.lastResponseId = responseId
+            print("Updated lastResponseId to: \(responseId)")
         }
         
         // Check for and handle function calls
@@ -261,7 +272,7 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     
     /// Handles a function call from the API by executing the function and sending the result back.
     private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
-        guard let functionName = call.name, let _ = call.callId else {
+        guard let functionName = call.name else {
             handleError(OpenAIServiceError.invalidResponseData)
             return
         }
@@ -353,10 +364,11 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         // Find the message to update
         guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
         
-        // Update the streaming status based on the event
-        updateStreamingStatus(for: chunk.type)
+        // Update the streaming status based on the event, passing the item for context
+        updateStreamingStatus(for: chunk.type, item: chunk.item)
         
-        // Update the last response ID for continuity if we have a response object
+        // Update the last response ID for continuity. This is critical for maintaining conversation state.
+        // The ID is received in events like 'response.created' and 'response.output_item.added'.
         if let response = chunk.response {
             lastResponseId = response.id
         }
@@ -392,26 +404,87 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         }
     }
     
-    /// Updates the streaming status based on the event type from the API.
-    private func updateStreamingStatus(for eventType: String) {
-        switch eventType {
-        case "response.created":
-            streamingStatus = .connecting
-        case "response.output_item.added":
-            // Set to processing only if it's a tool call, otherwise wait for text
-            // This logic can be refined if we know the item type
-            if streamingStatus == .connecting {
-                streamingStatus = .processing
+    /// Updates the streaming status based on the event type from the API, providing more granular feedback.
+    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil) {
+        // Use a dispatch queue to ensure status updates are processed sequentially
+        // and don't get overwritten by rapid-fire events.
+        DispatchQueue.main.async {
+            switch eventType {
+            case "response.created":
+                self.streamingStatus = .responseCreated
+            case "response.queued":
+                self.streamingStatus = .connecting
+            case "response.in_progress":
+                self.streamingStatus = .connecting
+            case "response.output_item.added":
+                // Check the item type to determine what the model is doing
+                if let item = item {
+                    switch item.type {
+                    case "reasoning":
+                        self.streamingStatus = .thinking
+                    case "message":
+                        // This indicates we're about to receive text
+                        self.streamingStatus = .streamingText
+                    case "tool_call":
+                        // Handle specific tools
+                        if let toolName = item.name {
+                            switch toolName {
+                            case "web_search_preview":
+                                self.streamingStatus = .searchingWeb
+                            case "code_interpreter":
+                                self.streamingStatus = .generatingCode
+                            case "image_generation":
+                                self.streamingStatus = .generatingImage
+                            default:
+                                self.streamingStatus = .runningTool(toolName)
+                            }
+                        } else {
+                            self.streamingStatus = .runningTool("Unknown")
+                        }
+                    default:
+                        break
+                    }
+                }
+            case "response.output_item.reasoning.started":
+                self.streamingStatus = .thinking
+            case "response.output_item.tool_call.started":
+                // Determine the specific tool being used
+                if let toolName = item?.name {
+                    switch toolName {
+                    case "web_search_preview":
+                        self.streamingStatus = .searchingWeb
+                    case "code_interpreter":
+                        self.streamingStatus = .generatingCode
+                    case "image_generation":
+                        self.streamingStatus = .generatingImage
+                    default:
+                        self.streamingStatus = .runningTool(toolName)
+                    }
+                }
+            case "response.content_part.added":
+                // We're about to start receiving content
+                self.streamingStatus = .streamingText
+            case "response.output_text.delta":
+                // Once we receive the first text delta, we are actively streaming.
+                if self.streamingStatus != .streamingText {
+                    self.streamingStatus = .streamingText
+                }
+            case "response.output_item.done":
+                // An output item finished, but we might have more coming
+                break
+            case "response.output_text.done":
+                // Text output is complete for this item
+                break
+            case "response.content_part.done":
+                // Content part is complete
+                break
+            case "response.completed", "response.done":
+                self.streamingStatus = .finalizing
+            default:
+                // No status change for other events, but let's log what we're missing
+                print("Unhandled streaming event: \(eventType)")
+                break
             }
-        case "response.output_text.delta":
-            if streamingStatus != .streaming {
-                streamingStatus = .streaming
-            }
-        case "response.done":
-            streamingStatus = .done
-        default:
-            // No status change for other events
-            break
         }
     }
     
@@ -443,67 +516,11 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     
     /// Handle errors by appending a system message describing the issue.
     func handleError(_ error: Error) {
-        var errorText = "An error occurred."
-        var errorCode = -1
-        var errorDomain = "Unknown"
-        
-        if let serviceError = error as? OpenAIServiceError {
-            switch serviceError {
-            case .missingAPIKey:
-                errorText = "API Key is missing. Please set your OpenAI API key in Settings."
-                errorCode = 401
-                errorDomain = "OpenAICredentials"
-            case .requestFailed(let code, let message):
-                errorText = "API request failed: \(message)"
-                errorCode = code
-                errorDomain = "OpenAIAPI"
-            case .invalidResponseData:
-                errorText = "Received invalid data from the API."
-                errorCode = 400
-                errorDomain = "OpenAIResponseParsing"
-            case .invalidRequest(let message):
-                errorText = "Invalid request: \(message)"
-                errorCode = 400
-                errorDomain = "OpenAIRequestFormat"
-            case .networkError(let underlyingError):
-                errorText = "Network error: \(underlyingError.localizedDescription)"
-                errorCode = -1009 // NSURLErrorDomain's common network error code
-                errorDomain = "NetworkConnectivity"
-            case .decodingError(let underlyingError):
-                errorText = "Failed to decode response: \(underlyingError.localizedDescription)"
-                errorCode = 422
-                errorDomain = "ResponseParsing"
-            case .rateLimited(let seconds, let message):
-                errorText = "Rate limited by OpenAI. Please try again in \(seconds) seconds. \(message)"
-                errorCode = 429
-                errorDomain = "RateLimiting"
-            case .fileError(let message):
-                errorText = "File error: \(message)"
-                errorCode = 500
-                errorDomain = "FileOperation"
-            }
-        } else if error is CancellationError {
-            errorText = "The request was cancelled."
-            errorCode = 0
-            errorDomain = "UserCancelled"
-        } else {
-            errorText = error.localizedDescription
-            if let nsError = error as NSError? {
-                errorCode = nsError.code
-                errorDomain = nsError.domain
-            }
-        }
+        let specificError = OpenAIServiceError.from(error: error)
+        let errorText = specificError.userFriendlyDescription
         
         // Log the error with analytics
-        AnalyticsService.shared.trackError(error, context: "ChatViewModel")
-        AnalyticsService.shared.trackEvent(
-            name: AnalyticsEvent.networkError,
-            parameters: [
-                AnalyticsParameter.errorCode: errorCode,
-                AnalyticsParameter.errorDomain: errorDomain,
-                "error_description": errorText
-            ]
-        )
+        AnalyticsService.shared.trackError(specificError, context: "ChatViewModel")
         
         // Set the error message to be displayed in an alert
         self.errorMessage = errorText
@@ -511,6 +528,12 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         // Also append a system message to the chat for context
         let errorMsg = ChatMessage(role: .system, text: "⚠️ \(errorText)", images: nil)
         messages.append(errorMsg)
+        
+        // If rate limited, you could add logic here to disable the send button
+        if case .rateLimited(let retryAfter, _) = specificError {
+            // Example: disable UI for `retryAfter` seconds
+            print("Rate limited. Try again in \(retryAfter) seconds.")
+        }
     }
     
     /// Resets the conversation by clearing messages and forgetting the last response ID.

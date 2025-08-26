@@ -10,6 +10,18 @@ enum AccessibilityUtils {
         static let clearConversationButton = "clearConversationButton"
         static let apiKeyField = "apiKeySecureField"
         static let messagesScrollView = "messagesScrollView"
+        static let stopStreamingButton = "stopStreamingButton"
+        static let fileAttachButton = "fileAttachButton"
+        static let modelPicker = "modelPicker"
+        static let systemInstructionsField = "systemInstructionsField"
+        static let uploadFileButton = "uploadFileButton"
+        static let createVectorStoreButton = "createVectorStoreButton"
+        static let addPresetButton = "addPresetButton"
+        static let editButton = "editButton"
+        static let webSearchLocationPicker = "webSearchLocationPicker"
+        static let imageGenerationSizePicker = "imageGenerationSizePicker"
+        static let mcpServerURLField = "mcpServerURLField"
+        static let customToolNameField = "customToolNameField"
     }
     
     /// Common accessibility hints for UI elements.
@@ -20,6 +32,13 @@ enum AccessibilityUtils {
         static let clearConversation = "Clear the current conversation history"
         static let apiKeyField = "Enter your OpenAI API key here"
         static let fileAttachButton = "Attach a file to your message"
+        static let stopStreaming = "Cancels the current AI response"
+        static let modelPicker = "Select which OpenAI model to use for conversations"
+        static let systemInstructions = "Enter instructions that will guide the AI assistant's behavior"
+        static let uploadFile = "Upload documents or images for the AI to analyze"
+        static let createVectorStore = "Create a new vector store to organize files for AI search"
+        static let addPreset = "Create a new prompt preset from current settings"
+        static let editMode = "Enter edit mode to delete items"
     }
 }
 

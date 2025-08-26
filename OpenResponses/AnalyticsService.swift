@@ -1,17 +1,49 @@
 import Foundation
 import SwiftUI
 import OSLog
+import Combine
 // Import necessary for StreamingEvent model
 // Note: If SwiftUI is importing the model automatically, this may not be needed
+
+/// Represents an API request for inspection and debugging
+class APIRequestRecord: Identifiable, ObservableObject {
+    let id = UUID()
+    let timestamp = Date()
+    let url: URL
+    let method: String
+    let headers: [String: Any]
+    let body: Data
+    @Published var response: APIResponseRecord?
+    
+    init(url: URL, method: String, headers: [String: Any], body: Data) {
+        self.url = url
+        self.method = method
+        self.headers = headers
+        self.body = body
+    }
+}
+
+/// Represents an API response for inspection and debugging
+struct APIResponseRecord {
+    let timestamp = Date()
+    let statusCode: Int
+    let headers: [String: Any]
+    let body: Data
+}
 
 /// A lightweight analytics service for tracking app usage and events.
 /// This implementation doesn't send data to any external service by default.
 /// Replace the implementation with your preferred analytics provider when ready.
-class AnalyticsService {
+class AnalyticsService: ObservableObject {
     // MARK: - Singleton
     
     static let shared = AnalyticsService()
     private init() {}
+    
+    // MARK: - API Request History
+    
+    @Published var apiRequestHistory: [APIRequestRecord] = []
+    private let maxHistorySize = 20 // Keep last 20 requests
     
     // MARK: - Configuration
     
@@ -78,6 +110,22 @@ class AnalyticsService {
     func logAPIRequest(url: URL, method: String, headers: [String: String], body: Data?) {
         guard detailedNetworkLogging else { return }
         
+        // Store request for inspection
+        let requestRecord = APIRequestRecord(
+            url: url,
+            method: method,
+            headers: headers,
+            body: body ?? Data()
+        )
+        
+        DispatchQueue.main.async {
+            self.apiRequestHistory.append(requestRecord)
+            // Keep only the most recent requests
+            if self.apiRequestHistory.count > self.maxHistorySize {
+                self.apiRequestHistory.removeFirst()
+            }
+        }
+        
         // Use the enhanced AppLogger method for OpenAI API requests
         if url.absoluteString.contains("openai.com") {
             AppLogger.logOpenAIRequest(url: url, method: method, headers: headers, body: body)
@@ -101,6 +149,18 @@ class AnalyticsService {
     ///   - body: The response body, if any.
     func logAPIResponse(url: URL, statusCode: Int, headers: [AnyHashable: Any], body: Data?) {
         guard detailedNetworkLogging else { return }
+        
+        // Find the corresponding request and attach the response
+        if let lastRequest = apiRequestHistory.last(where: { $0.url == url }) {
+            let responseRecord = APIResponseRecord(
+                statusCode: statusCode,
+                headers: Dictionary(uniqueKeysWithValues: headers.map { (String(describing: $0.key), $0.value) }),
+                body: body ?? Data()
+            )
+            DispatchQueue.main.async {
+                lastRequest.response = responseRecord
+            }
+        }
         
         // Use the enhanced AppLogger method for OpenAI API responses
         if url.absoluteString.contains("openai.com") {
@@ -139,6 +199,13 @@ class AnalyticsService {
     }
     
     // MARK: - Helper Methods
+    
+    /// Clears the API request history.
+    func clearRequestHistory() {
+        DispatchQueue.main.async {
+            self.apiRequestHistory.removeAll()
+        }
+    }
     
     /// Formats JSON data for better readability.
     /// - Parameter data: The JSON data to format.

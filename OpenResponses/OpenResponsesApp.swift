@@ -9,7 +9,7 @@ import SwiftUI
 
 @main
 struct OpenResponsesApp: App {
-    @StateObject private var chatViewModel = ChatViewModel()
+    @StateObject private var chatViewModel = AppContainer.shared.makeChatViewModel()
 
     init() {
         // Migrate API key from UserDefaults to Keychain on first launch

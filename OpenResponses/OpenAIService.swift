@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI  // This should already be there for access to UI types
 
 /// A service class responsible for communicating with the OpenAI API.
-class OpenAIService {
+class OpenAIService: OpenAIServiceProtocol {
     private let apiURL = URL(string: "https://api.openai.com/v1/responses")!
     
     private struct ErrorResponse: Decodable {
@@ -46,6 +46,7 @@ class OpenAIService {
         
         // Prepare URLRequest with authorization header
         var request = URLRequest(url: apiURL)
+        request.timeoutInterval = 120 // Increased timeout
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -69,28 +70,33 @@ class OpenAIService {
             ]
         )
         
-        // Perform HTTP request
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        let statusCode = httpResponse.statusCode
-        if statusCode != 200 {
-            // Try to decode error message from response - print raw response for debugging
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("Error response: \(responseString)")
-            }
-            let errorMessage: String
+        
+        // Check for non-200 status codes and handle errors gracefully
+        if httpResponse.statusCode != 200 {
+            // Attempt to decode the structured error response from OpenAI
+            var errorMessage: String
             if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
                 errorMessage = errorResponse.error.message
             } else {
-                errorMessage = HTTPURLResponse.localizedString(forStatusCode: statusCode)
+                // Fallback to a generic status code message if decoding fails
+                errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
             
-            // Log the error response
+            // Specifically handle rate limiting (429)
+            if httpResponse.statusCode == 429 {
+                // Extract the retry-after header value if available
+                let retryAfterSeconds = httpResponse.value(forHTTPHeaderField: "retry-after").flatMap(Int.init) ?? 60
+                throw OpenAIServiceError.rateLimited(retryAfterSeconds, errorMessage)
+            }
+            
+            // Log the detailed error
             AnalyticsService.shared.logAPIResponse(
                 url: apiURL,
-                statusCode: statusCode,
+                statusCode: httpResponse.statusCode,
                 headers: httpResponse.allHeaderFields,
                 body: data
             )
@@ -98,19 +104,20 @@ class OpenAIService {
                 name: AnalyticsEvent.networkError,
                 parameters: [
                     AnalyticsParameter.endpoint: "responses",
-                    AnalyticsParameter.statusCode: statusCode,
-                    AnalyticsParameter.errorCode: statusCode,
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
                     AnalyticsParameter.errorDomain: "OpenAIAPI"
                 ]
             )
             
-            throw OpenAIServiceError.requestFailed(statusCode, errorMessage)
+            // Throw a specific error with the decoded message
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
         
         // Log the successful response
         AnalyticsService.shared.logAPIResponse(
             url: apiURL,
-            statusCode: statusCode,
+            statusCode: httpResponse.statusCode,
             headers: httpResponse.allHeaderFields,
             body: data
         )
@@ -118,7 +125,7 @@ class OpenAIService {
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
                 AnalyticsParameter.endpoint: "responses",
-                AnalyticsParameter.statusCode: statusCode,
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
                 AnalyticsParameter.responseSize: data.count,
                 AnalyticsParameter.model: prompt.openAIModel
             ]
@@ -167,6 +174,7 @@ class OpenAIService {
                     }
                     
                     var request = URLRequest(url: apiURL)
+                    request.timeoutInterval = 120
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -204,22 +212,23 @@ class OpenAIService {
                             errorData.append(byte)
                         }
                         
-                        // Print raw response for debugging
-                        if let responseString = String(data: errorData, encoding: .utf8) {
-                            print("Streaming error response: \(responseString)")
-                        }
-                        
                         // Try to decode structured error message
-                        let errorMessage: String
+                        var errorMessage: String
                         if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: errorData) {
                             errorMessage = errorResponse.error.message
                         } else {
                             errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
                         }
                         
+                        // Specifically handle rate limiting (429)
+                        if httpResponse.statusCode == 429 {
+                            let retryAfterSeconds = httpResponse.value(forHTTPHeaderField: "retry-after").flatMap(Int.init) ?? 60
+                            throw OpenAIServiceError.rateLimited(retryAfterSeconds, errorMessage)
+                        }
+                        
                         // Log the error response
                         AnalyticsService.shared.logAPIResponse(
-                            url: apiURL, 
+                            url: apiURL,
                             statusCode: httpResponse.statusCode,
                             headers: httpResponse.allHeaderFields,
                             body: errorData
@@ -322,6 +331,7 @@ class OpenAIService {
         let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)")!
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         
@@ -378,57 +388,33 @@ class OpenAIService {
             }
             
             if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                inputMessages.append(["role": "developer", "content": [["type": "input_text", "text": prompt.developerInstructions]]])
+                // The developer message content should be a simple string, not an array.
+                inputMessages.append(["role": "developer", "content": prompt.developerInstructions])
             }
             
             // Handle user message and attachments
-            var userContent: [[String: Any]] = [["type": "input_text", "text": userMessage]]
-            if let attachments = attachments {
-                // The OpenAI API has strict requirements for content objects
-                // We need to transform our attachments to valid content objects
+            var userContent: Any = userMessage
+            if let attachments = attachments, !attachments.isEmpty {
+                // If there are attachments, the content becomes an array of dictionaries
+                var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
+                
                 let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
-                    // Start with a clean slate for each attachment
                     var validContent: [String: Any] = [:]
-                    
-                    // Check file type if file_search is enabled - we only want to include PDFs
-                    if prompt.enableFileSearch {
-                        if let filename = attachment["filename"] as? String, 
-                           !filename.lowercased().hasSuffix(".pdf") {
-                            AppLogger.log(
-                                "File search enabled but non-PDF file attached: \(filename). Only PDF files are supported for file search.",
-                                category: .openAI,
-                                level: .warning
-                            )
-                            // Skip this attachment or return a message about unsupported file type
-                            return nil
-                        }
-                    }
-                    
-                    // Set the correct type based on what we're attaching
                     validContent["type"] = "input_file"
                     
-                    // Extract file_id from the attachment
                     if let fileId = attachment["file_id"] as? String {
                         validContent["file_id"] = fileId
-                    } else if let fileId = attachment["id"] as? String {
-                        validContent["file_id"] = fileId
                     } else {
-                        // If we can't find a file ID, we can't create a valid attachment
-                        AppLogger.log(
-                            "Missing file_id in attachment: \(attachment)",
-                            category: .openAI,
-                            level: .warning
-                        )
+                        AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
                         return nil
                     }
-                    
                     return validContent
                 }
                 
-                // Only add attachments that we successfully validated
                 if !validatedAttachments.isEmpty {
-                    userContent.append(contentsOf: validatedAttachments)
+                    contentArray.append(contentsOf: validatedAttachments)
                 }
+                userContent = contentArray
             }
             inputMessages.append(["role": "user", "content": userContent])
             
@@ -439,7 +425,17 @@ class OpenAIService {
                 tools.append(createWebSearchToolConfiguration(from: prompt))
             }
             if prompt.enableCodeInterpreter {
-                tools.append(["type": "code_interpreter", "container": ["type": "auto"]])
+                var container: [String: Any] = ["type": "auto"]
+                
+                // Extract file_ids from attachments for the code interpreter
+                if let attachments = attachments {
+                    let fileIds = attachments.compactMap { $0["file_id"] as? String }
+                    if !fileIds.isEmpty {
+                        container["file_ids"] = fileIds
+                    }
+                }
+                
+                tools.append(["type": "code_interpreter", "container": container])
             }
             if prompt.enableImageGeneration && !stream { // Image generation not supported in streaming
                 // Image generation parameters are set based on user preferences
@@ -463,40 +459,18 @@ class OpenAIService {
                 tools.append(createCustomToolConfiguration(from: prompt))
             }
             if prompt.enableFileSearch {
-                // Check if we have any PDF attachments (needed for file search)
-                let hasPdfAttachments = attachments?.contains { attachment in
-                    if let filename = attachment["filename"] as? String,
-                       filename.lowercased().hasSuffix(".pdf") {
-                        return true
-                    }
-                    return false
-                } ?? false
-                
-                // Only add file search if we have PDFs or if specific vector stores are provided
-                let idsArray = (prompt.selectedVectorStoreIds ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
-                
-                if !idsArray.isEmpty || hasPdfAttachments {
-                    if !idsArray.isEmpty {
-                        // We have actual vector store IDs, use them
-                        tools.append(createFileSearchToolConfiguration(fileIds: idsArray))
-                    } else {
-                        // If we have no vector store IDs, use our placeholder solution
-                        // The API requires at least one vector store ID
-                        tools.append(createFileSearchToolConfiguration())
-                        
-                        // Log that we're using a placeholder
-                        AppLogger.log(
-                            "Using placeholder vector store ID for file search",
-                            category: .openAI,
-                            level: .warning
-                        )
-                    }
+                let vectorStoreIds = (prompt.selectedVectorStoreIds ?? "")
+                    .split(separator: ",")
+                    .map { String($0).trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+
+                if !vectorStoreIds.isEmpty {
+                    tools.append(createFileSearchToolConfiguration(vectorStoreIds: vectorStoreIds))
                 } else {
-                    // Log that we're skipping file search tool due to no PDFs
                     AppLogger.log(
-                        "Skipping file search tool: No PDF files attached and no vector stores provided",
+                        "Skipping file search tool: No vector store IDs provided in the prompt.",
                         category: .openAI,
-                        level: .warning
+                        level: .info
                     )
                 }
             }
@@ -505,7 +479,8 @@ class OpenAIService {
                 requestObject["tools"] = tools
             }
 
-            if prompt.openAIModel.starts(with: "o") {
+            // Enable reasoning for o-series models and GPT-5 variants
+            if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5") {
                 requestObject["reasoning"] = [
                     "effort": prompt.reasoningEffort,
                     "summary": prompt.reasoningSummary
@@ -614,12 +589,11 @@ class OpenAIService {
         }
         
         var request = URLRequest(url: apiURL)
+        request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = jsonData
-        
-        // Log the function output API request
+        request.httpBody = jsonData        // Log the function output API request
         AnalyticsService.shared.logAPIRequest(
             url: apiURL,
             method: "POST",
@@ -696,6 +670,7 @@ class OpenAIService {
             let fileId = fileInfo.file_id
             let fileURL = URL(string: "https://api.openai.com/v1/files/\(fileId)/content")!
             var req = URLRequest(url: fileURL)
+            req.timeoutInterval = 120
             req.httpMethod = "GET"
             req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await URLSession.shared.data(for: req)
@@ -706,7 +681,9 @@ class OpenAIService {
         } else if let urlInfo = imageContent.imageURL {
             // Download image from the provided URL
             let url = URL(string: urlInfo.url)!
-            let (data, response) = try await URLSession.shared.data(from: url)
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 120
+            let (data, response) = try await URLSession.shared.data(for: req)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                 throw OpenAIServiceError.requestFailed((response as? HTTPURLResponse)?.statusCode ?? -1, "Failed to fetch image URL")
             }
@@ -834,20 +811,13 @@ class OpenAIService {
     }
     
     /// Creates the configuration for the file search tool
-    /// - Parameter fileIds: Array of file IDs to search
+    /// - Parameter vectorStoreIds: Array of vector store IDs to search
     /// - Returns: A dictionary representing the file search tool configuration
-    private func createFileSearchToolConfiguration(fileIds: [String]? = nil) -> [String: Any] {
-        var config: [String: Any] = ["type": "file_search"]
-        
-        if let fileIds = fileIds, !fileIds.isEmpty {
-            config["file_ids"] = fileIds
-        }
-        
-        // Add a placeholder vector store ID - required by the API
-        // The API requires at least one vector store ID
-        config["vector_store_ids"] = ["vs_placeholder"]
-        
-        return config
+    private func createFileSearchToolConfiguration(vectorStoreIds: [String]) -> [String: Any] {
+        return [
+            "type": "file_search",
+            "vector_store_ids": vectorStoreIds
+        ]
     }
     
     /// Creates the configuration for the web search tool
@@ -927,6 +897,7 @@ class OpenAIService {
         let url = URL(string: "https://api.openai.com/v1/files")!
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -1033,6 +1004,7 @@ class OpenAIService {
         let url = URL(string: "https://api.openai.com/v1/files/\(fileId)")!
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         
@@ -1171,6 +1143,7 @@ class OpenAIService {
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)")!
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         
@@ -1232,6 +1205,7 @@ class OpenAIService {
         }
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120 // Increased timeout
         request.httpMethod = "POST"  // OpenAI uses POST for vector store updates
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1366,6 +1340,7 @@ class OpenAIService {
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)/files/\(fileId)")!
         
         var request = URLRequest(url: url)
+        request.timeoutInterval = 120 // Increased timeout
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         
@@ -1401,6 +1376,7 @@ class OpenAIService {
         // Prepare multipart form data
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: uploadURL)
+        request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -1410,7 +1386,7 @@ class OpenAIService {
         // Add purpose field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"purpose\"\r\n\r\n".data(using: .utf8)!)
-        body.append("assistants\r\n".data(using: .utf8)!)
+        body.append("user_data\r\n".data(using: .utf8)!)
         
         // Add file data
         let filename = url.lastPathComponent
@@ -1473,5 +1449,48 @@ class OpenAIService {
         }
         
         return config
+    }
+    
+    /// Lists available models from the OpenAI API.
+    /// - Returns: An array of OpenAIModel objects representing available models.
+    func listModels() async throws -> [OpenAIModel] {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/models")!
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        do {
+            let modelsResponse = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
+            return modelsResponse.data.sorted { $0.id < $1.id }
+        } catch {
+            print("Models decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    /// Creates a new vector store (protocol conformance method)
+    /// - Parameters:
+    ///   - name: Name for the vector store
+    ///   - fileIds: Optional list of file IDs to add to the vector store
+    /// - Returns: The created vector store
+    func createVectorStore(name: String, fileIds: [String]?) async throws -> VectorStore {
+        return try await createVectorStore(name: name, fileIds: fileIds, expiresAfterDays: nil)
     }
 }

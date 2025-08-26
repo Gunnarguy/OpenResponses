@@ -4,6 +4,8 @@ import SwiftUI
 struct FormattedTextView: View {
     let text: String
     
+    @Environment(\.sizeCategory) private var sizeCategory
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Split the text by code blocks to handle them separately
@@ -17,12 +19,14 @@ struct FormattedTextView: View {
                     // This is a code block
                     ScrollView(.horizontal, showsIndicators: true) {
                         Text(part.trimmingCharacters(in: .whitespacesAndNewlines))
-                            .font(.system(size: 14, design: .monospaced))
+                            .font(.system(size: codeBlockFontSize, design: .monospaced))
                             .padding(10)
                             .background(Color.black.opacity(0.8))
                             .foregroundColor(Color.white)
                             .cornerRadius(8)
                             .textSelection(.enabled)
+                            .accessibilityLabel("Code block")
+                            .accessibilityHint("Swipe horizontally to view more code")
                     }
                 }
             }
@@ -55,7 +59,7 @@ struct FormattedTextView: View {
             case "*":
                 styledContent.font = .body.italic()
             case "`":
-                styledContent.font = .system(size: 14, design: .monospaced)
+                styledContent.font = .system(size: inlineCodeFontSize, design: .monospaced)
                 styledContent.backgroundColor = .gray.opacity(0.2)
             default:
                 break
@@ -72,5 +76,48 @@ struct FormattedTextView: View {
         
         return Text(attributedString)
             .textSelection(.enabled)
+            .accessibilityElement()
+            .accessibilityLabel(cleanTextForAccessibility(string))
     }
+    
+    /// Removes markdown formatting for accessibility readers
+    private func cleanTextForAccessibility(_ text: String) -> String {
+        return text
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "`", with: "")
+    }
+    
+    /// Responsive font size for code blocks based on accessibility settings
+    private var codeBlockFontSize: CGFloat {
+        switch sizeCategory {
+        case .accessibilityExtraExtraExtraLarge:
+            return 20
+        case .accessibilityExtraExtraLarge:
+            return 18
+        case .accessibilityExtraLarge:
+            return 16
+        case .accessibilityLarge:
+            return 15
+        default:
+            return 14
+        }
+    }
+    
+    /// Responsive font size for inline code based on accessibility settings
+    private var inlineCodeFontSize: CGFloat {
+        switch sizeCategory {
+        case .accessibilityExtraExtraExtraLarge:
+            return 18
+        case .accessibilityExtraExtraLarge:
+            return 16
+        case .accessibilityExtraLarge:
+            return 15
+        case .accessibilityLarge:
+            return 14
+        default:
+            return 13
+        }
+    }
+    
 }

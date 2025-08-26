@@ -5,14 +5,25 @@ import SwiftUI
 struct StreamingStatusView: View {
     let status: StreamingStatus
     
+    private var showAnimatedIndicator: Bool {
+        switch status {
+        case .thinking, .searchingWeb, .generatingCode, .runningTool:
+            return true
+        default:
+            return false
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 8) {
-            // Animated ellipsis for processing, or a static icon for other statuses
-            if status == .processing {
+            // Show an animated indicator for most "in-progress" states
+            if showAnimatedIndicator {
                 DotLoadingView()
+                    .accessibilityHidden(true) // Hide animation from VoiceOver
             } else {
                 Image(systemName: icon(for: status))
                     .font(.system(size: 12, weight: .semibold))
+                    .accessibilityHidden(true) // Hide decorative icon
             }
             
             // Display the status text from the enum's description
@@ -26,6 +37,9 @@ struct StreamingStatusView: View {
         .background(Color(.systemGray6))
         .cornerRadius(12)
         .transition(.opacity.animation(.easeInOut))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("AI status: \(status.description)")
+        .accessibilityHint("Current activity of the AI assistant")
     }
     
     /// Returns the appropriate system icon name for a given status.
@@ -33,38 +47,54 @@ struct StreamingStatusView: View {
         switch status {
         case .connecting:
             return "wifi"
-        case .streaming:
-            return "sparkles"
-        case .done:
+        case .responseCreated:
+            return "sparkles.rectangle.stack"
+        case .thinking:
+            return "brain.head.profile"
+        case .searchingWeb:
+            return "magnifyingglass"
+        case .generatingCode:
+            return "chevron.left.forward.slash.chevron.right"
+        case .runningTool:
+            return "gear"
+        case .generatingImage:
+            return "photo"
+        case .streamingText:
+            return "text.alignleft"
+        case .finalizing:
             return "checkmark.circle"
+        case .done:
+            return "checkmark.circle.fill"
         default:
-            return "hourglass" // For idle and processing
+            return "hourglass" // For idle
         }
     }
 }
 
-/// A view that creates an animated ellipsis (...) effect.
+/// A view that creates an animated ellipsis (...) effect with a more fluid motion.
 struct DotLoadingView: View {
-    @State private var scale: CGFloat = 1.0
-    
+    @State private var animationStates = [false, false, false]
+
     var body: some View {
         HStack(spacing: 4) {
-            // Three dots that scale up and down with a delay
             ForEach(0..<3) { index in
                 Circle()
-                    .frame(width: 4, height: 4)
-                    .scaleEffect(scale)
+                    .frame(width: 5, height: 5)
+                    .opacity(animationStates[index] ? 1 : 0.3)
+                    .offset(y: animationStates[index] ? -3 : 0)
                     .animation(
-                        Animation.easeInOut(duration: 0.6)
-                            .repeatForever()
-                            .delay(0.2 * Double(index)),
-                        value: scale
+                        Animation.easeInOut(duration: 0.5)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.2),
+                        value: animationStates[index]
                     )
             }
         }
         .onAppear {
-            // Trigger the animation when the view appears
-            self.scale = 0.5
+            // Trigger the animation for all dots
+            for i in 0..<animationStates.count {
+                animationStates[i] = true
+            }
         }
     }
 }

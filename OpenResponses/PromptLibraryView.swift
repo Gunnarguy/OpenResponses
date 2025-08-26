@@ -17,6 +17,9 @@ struct PromptLibraryView: View {
                         Text(prompt.name).font(.headline)
                         Text(prompt.description).font(.caption).foregroundColor(.gray)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(prompt.name). \(prompt.description)")
+                    .accessibilityHint("Tap to edit this preset")
                     .onTapGesture {
                         promptToEdit = prompt
                         showingAddEditPrompt = true
@@ -33,9 +36,18 @@ struct PromptLibraryView: View {
                     }) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityConfiguration(
+                        label: "Add preset",
+                        hint: AccessibilityUtils.Hint.addPreset,
+                        identifier: AccessibilityUtils.Identifier.addPresetButton
+                    )
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
                     EditButton()
+                        .accessibilityConfiguration(
+                            hint: AccessibilityUtils.Hint.editMode,
+                            identifier: AccessibilityUtils.Identifier.editButton
+                        )
                 }
             }
             .sheet(isPresented: $showingAddEditPrompt, onDismiss: {

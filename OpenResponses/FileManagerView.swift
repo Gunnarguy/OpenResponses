@@ -37,6 +37,7 @@ struct FileManagerView: View {
                 // File Search Toggle Section
                 Section(header: Text("File Search Tool")) {
                     Toggle("Enable File Search", isOn: $enableFileSearch)
+                        .accessibilityHint("Enables the AI to search through uploaded files and documents")
                         .onChange(of: enableFileSearch) { _, newValue in
                             if !newValue {
                                 selectedVectorStoreId = ""
@@ -47,6 +48,7 @@ struct FileManagerView: View {
                         }
                     Toggle("Enable Multi-Store File Search", isOn: $multiStoreMode)
                         .disabled(!enableFileSearch)
+                        .accessibilityHint("Allows searching across multiple vector stores simultaneously")
                         .onChange(of: multiStoreMode) { _, newValue in
                             if newValue {
                                 // Restore selection from saved IDs
@@ -120,6 +122,10 @@ struct FileManagerView: View {
                         showingCreateVectorStore = true
                     }
                     .foregroundColor(.accentColor)
+                    .accessibilityConfiguration(
+                        hint: AccessibilityUtils.Hint.createVectorStore,
+                        identifier: AccessibilityUtils.Identifier.createVectorStoreButton
+                    )
                 }
                 // Files Section
                 Section(header: Text("Uploaded Files")) {
@@ -148,6 +154,10 @@ struct FileManagerView: View {
                         showingFilePicker = true
                     }
                     .foregroundColor(.accentColor)
+                    .accessibilityConfiguration(
+                        hint: AccessibilityUtils.Hint.uploadFile,
+                        identifier: AccessibilityUtils.Identifier.uploadFileButton
+                    )
                 }
             }
             .navigationTitle("File Manager")

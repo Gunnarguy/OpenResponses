@@ -48,10 +48,12 @@ protocol OpenAIServiceProtocol {
     
     /// Creates a vector store.
     func createVectorStore(
-        name: String?,
-        fileIds: [String]?,
-        expiresAfterDays: Int?
+        name: String,
+        fileIds: [String]?
     ) async throws -> VectorStore
+    
+    /// Lists available models from the OpenAI API.
+    func listModels() async throws -> [OpenAIModel]
 }
 
 /// Network client protocol for handling HTTP requests to OpenAI.
@@ -167,5 +169,18 @@ enum OpenAIServiceError: Error {
         default:
             return false
         }
+    }
+    
+    /// Converts a general Error into a specific OpenAIServiceError case.
+    static func from(error: Error) -> OpenAIServiceError {
+        if let serviceError = error as? OpenAIServiceError {
+            return serviceError
+        }
+        if let nsError = error as NSError? {
+            if nsError.domain == NSURLErrorDomain {
+                return .networkError(error)
+            }
+        }
+        return .decodingError(error) // Fallback
     }
 }

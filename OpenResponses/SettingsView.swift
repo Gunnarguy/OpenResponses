@@ -96,6 +96,10 @@ struct SettingsView: View {
     // Debugging settings
     @AppStorage("detailedNetworkLogging") private var detailedNetworkLogging: Bool = true
     
+    // UI state for modals
+    @State private var showingAPIInspector = false
+    @State private var showingDebugConsole = false
+    
     // Response streaming setting
     @AppStorage("enableStreaming") private var enableStreaming: Bool = true
     
@@ -111,9 +115,6 @@ struct SettingsView: View {
     @State private var showingPromptLibrary = false
     @StateObject private var promptLibrary = PromptLibrary()
     @State private var selectedPresetId: UUID?
-
-    // Supported models list for the Picker
-    private let modelOptions: [String] = ["gpt-5", "gpt-4o", "o3", "o3-mini", "o1", "gpt-4-1106-preview"]
     
     var body: some View {
         Form {
@@ -140,6 +141,11 @@ struct SettingsView: View {
                 SecureField("API Key (sk-...)", text: $apiKey)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .accessibilityConfiguration(
+                        label: "API Key",
+                        hint: AccessibilityUtils.Hint.apiKeyField,
+                        identifier: AccessibilityUtils.Identifier.apiKeyField
+                    )
             }
             
             Section(header: Text("Published Prompt"), footer: Text("Use a prompt published from the OpenAI Playground. When enabled, this will override most other settings.")) {
@@ -165,6 +171,11 @@ struct SettingsView: View {
                             .stroke(Color.secondary.opacity(0.2))
                     )
                     .padding(.vertical, 2)
+                    .accessibilityConfiguration(
+                        label: "System instructions",
+                        hint: AccessibilityUtils.Hint.systemInstructions,
+                        identifier: AccessibilityUtils.Identifier.systemInstructionsField
+                    )
                 if viewModel.activePrompt.systemInstructions.isEmpty {
                     Text("e.g. 'You are a helpful assistant.'")
                         .foregroundColor(.secondary)
@@ -192,13 +203,11 @@ struct SettingsView: View {
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
 
-            Section(header: Text("Model"), footer: Text("Reasoning effort is only available for 'o' models. Temperature is only available for other models.")) {
-                Picker("Model", selection: $viewModel.activePrompt.openAIModel) {
-                    ForEach(modelOptions, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                }
-                .pickerStyle(.navigationLink)
+            Section(header: Text("Model"), footer: Text("Reasoning effort is available for 'o' models and GPT-5. Temperature is available for other models.")) {
+                DynamicModelSelector(
+                    selectedModel: $viewModel.activePrompt.openAIModel,
+                    openAIService: AppContainer.shared.openAIService
+                )
 
                 Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
                     Text("Low").tag("low")
@@ -206,18 +215,19 @@ struct SettingsView: View {
                     Text("High").tag("high")
                 }
                 .pickerStyle(.segmented)
-                .disabled(!viewModel.activePrompt.openAIModel.starts(with: "o"))
+                .disabled(!viewModel.activePrompt.openAIModel.starts(with: "o") && !viewModel.activePrompt.openAIModel.starts(with: "gpt-5"))
                 
                 VStack(alignment: .leading) {
                     Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
                     Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
                 }
-                .disabled(viewModel.activePrompt.openAIModel.starts(with: "o"))
+                .disabled(viewModel.activePrompt.openAIModel.starts(with: "o") || viewModel.activePrompt.openAIModel.starts(with: "gpt-5"))
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
                 Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
+                    .accessibilityHint("Enables real-time response streaming from the AI")
                 
                 VStack(alignment: .leading) {
                     Text("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
@@ -225,59 +235,252 @@ struct SettingsView: View {
                         get: { Double(viewModel.activePrompt.maxOutputTokens) },
                         set: { viewModel.activePrompt.maxOutputTokens = Int($0) }
                     ), in: 0...4096, step: 64)
+                    .accessibilityLabel("Max output tokens")
+                    .accessibilityHint("Limits the maximum number of tokens in AI responses")
+                    .accessibilityValue("\(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
                 }
                 
                 VStack(alignment: .leading) {
                     Text("Presence Penalty: \(String(format: "%.1f", viewModel.activePrompt.presencePenalty))")
                     Slider(value: $viewModel.activePrompt.presencePenalty, in: -2.0...2.0, step: 0.1)
+                        .accessibilityLabel("Presence penalty")
+                        .accessibilityHint("Controls repetition in responses. Higher values reduce repetition")
+                        .accessibilityValue(String(format: "%.1f", viewModel.activePrompt.presencePenalty))
                 }
                 
                 VStack(alignment: .leading) {
                     Text("Frequency Penalty: \(String(format: "%.1f", viewModel.activePrompt.frequencyPenalty))")
                     Slider(value: $viewModel.activePrompt.frequencyPenalty, in: -2.0...2.0, step: 0.1)
+                        .accessibilityLabel("Frequency penalty")
+                        .accessibilityHint("Controls word frequency in responses. Higher values increase vocabulary diversity")
+                        .accessibilityValue(String(format: "%.1f", viewModel.activePrompt.frequencyPenalty))
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use. Note: Image generation is automatically disabled when streaming is enabled.")) {
                 Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+                    .accessibilityHint("Allows the AI to search the internet for current information")
                 Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                    .accessibilityHint("Enables the AI to run Python code and analyze data")
                 Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
+                    .accessibilityHint("Provides mathematical calculation capabilities")
                 HStack {
                     Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
                         .disabled(viewModel.activePrompt.enableStreaming)
+                        .accessibilityHint("Allows the AI to create images with DALL-E")
                     if viewModel.activePrompt.enableStreaming && viewModel.activePrompt.enableImageGeneration {
                         Text("(Disabled in streaming mode)")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                            .accessibilityLabel("Image generation disabled")
                     }
                 }
                 Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                    .accessibilityHint("Enables searching through uploaded files and documents")
                 Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                    .accessibilityHint("Connects to Model Context Protocol servers")
                 Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
+                    .accessibilityHint("Enables user-defined custom tools")
                 
                 if viewModel.activePrompt.enableFileSearch {
                     Button("Manage Files & Vector Stores") {
                         showingFileManager = true
                     }
                     .foregroundColor(.accentColor)
+                    .accessibilityHint("Open file management interface for organizing uploaded documents")
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            
+            // Web Search Configuration Section
+            if viewModel.activePrompt.enableWebSearch {
+                Section(header: Text("Web Search Configuration"), footer: Text("Customize web search behavior including location, language, and result filtering.")) {
+                    Picker("Location Type", selection: $webSearchLocationType) {
+                        Text("Approximate").tag("approximate")
+                        Text("Exact").tag("exact")
+                        Text("Disabled").tag("disabled")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("How location context is provided to web searches")
+                    
+                    Picker("Timezone", selection: $webSearchTimezone) {
+                        Text("Pacific").tag("America/Los_Angeles")
+                        Text("Mountain").tag("America/Denver")
+                        Text("Central").tag("America/Chicago")
+                        Text("Eastern").tag("America/New_York")
+                        Text("UTC").tag("UTC")
+                        Text("London").tag("Europe/London")
+                        Text("Tokyo").tag("Asia/Tokyo")
+                        Text("Sydney").tag("Australia/Sydney")
+                    }
+                    .accessibilityHint("Timezone for time-relevant search results")
+                    
+                    if webSearchLocationType == "exact" {
+                        VStack(alignment: .leading) {
+                            Text("Latitude: \(String(format: "%.4f", webSearchLatitude))")
+                            Slider(value: $webSearchLatitude, in: -90.0...90.0)
+                                .accessibilityLabel("Latitude")
+                                .accessibilityValue(String(format: "%.4f", webSearchLatitude))
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Text("Longitude: \(String(format: "%.4f", webSearchLongitude))")
+                            Slider(value: $webSearchLongitude, in: -180.0...180.0)
+                                .accessibilityLabel("Longitude")
+                                .accessibilityValue(String(format: "%.4f", webSearchLongitude))
+                        }
+                        
+                        TextField("City", text: $webSearchCity)
+                            .accessibilityHint("Optional city name for location context")
+                        TextField("Country", text: $webSearchCountry)
+                            .accessibilityHint("Optional country name for location context")
+                        TextField("Region", text: $webSearchLocationRegion)
+                            .accessibilityHint("Optional region name for location context")
+                    }
+                    
+                    Picker("Search Context Size", selection: $webSearchContextSize) {
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Controls the depth and detail of web search results")
+                    
+                    Picker("Language", selection: $webSearchLanguage) {
+                        Text("English").tag("en")
+                        Text("Spanish").tag("es")
+                        Text("French").tag("fr")
+                        Text("German").tag("de")
+                        Text("Italian").tag("it")
+                        Text("Portuguese").tag("pt")
+                        Text("Japanese").tag("ja")
+                        Text("Chinese").tag("zh")
+                        Text("Korean").tag("ko")
+                        Text("Russian").tag("ru")
+                    }
+                    .accessibilityHint("Language preference for search results")
+                    
+                    Picker("Search Region", selection: $webSearchRegion) {
+                        Text("United States").tag("us")
+                        Text("Canada").tag("ca")
+                        Text("United Kingdom").tag("uk")
+                        Text("Germany").tag("de")
+                        Text("France").tag("fr")
+                        Text("Japan").tag("jp")
+                        Text("Australia").tag("au")
+                        Text("Global").tag("global")
+                    }
+                    .accessibilityHint("Regional preference for search results")
+                    
+                    Stepper("Max Results: \(webSearchMaxResults)", value: $webSearchMaxResults, in: 5...50, step: 5)
+                        .accessibilityHint("Maximum number of search results per query")
+                    
+                    Picker("Safe Search", selection: $webSearchSafeSearch) {
+                        Text("Strict").tag("strict")
+                        Text("Moderate").tag("moderate")
+                        Text("Off").tag("off")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Content filtering level for search results")
+                    
+                    Picker("Recency Filter", selection: $webSearchRecency) {
+                        Text("Auto").tag("auto")
+                        Text("24 Hours").tag("24h")
+                        Text("Week").tag("week")
+                        Text("Month").tag("month")
+                        Text("Year").tag("year")
+                    }
+                    .accessibilityHint("Time-based filtering for search results")
+                }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            }
+            
+            // Image Generation Configuration Section
+            if viewModel.activePrompt.enableImageGeneration {
+                Section(header: Text("Image Generation Configuration"), footer: Text("Configure DALL-E image generation settings including size, quality, and output format.")) {
+                    Picker("Image Size", selection: $imageGenerationSize) {
+                        Text("Auto").tag("auto")
+                        Text("1024x1024").tag("1024x1024")
+                        Text("1792x1024").tag("1792x1024")
+                        Text("1024x1792").tag("1024x1792")
+                    }
+                    .accessibilityHint("Select the dimensions for generated images")
+                    
+                    Picker("Image Quality", selection: $imageGenerationQuality) {
+                        Text("Auto").tag("auto")
+                        Text("Standard").tag("standard")
+                        Text("HD").tag("hd")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Choose image quality level, HD takes longer but produces better results")
+                    
+                    Picker("Background", selection: $imageGenerationBackground) {
+                        Text("Auto").tag("auto")
+                        Text("Transparent").tag("transparent")
+                        Text("White").tag("white")
+                        Text("Black").tag("black")
+                    }
+                    .accessibilityHint("Background style for generated images")
+                    
+                    Picker("Output Format", selection: $imageGenerationOutputFormat) {
+                        Text("PNG").tag("png")
+                        Text("JPEG").tag("jpeg")
+                        Text("WebP").tag("webp")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("File format for saved images")
+                    
+                    Picker("Content Moderation", selection: $imageGenerationModeration) {
+                        Text("Auto").tag("auto")
+                        Text("Strict").tag("strict")
+                        Text("Moderate").tag("moderate")
+                        Text("Off").tag("off")
+                    }
+                    .accessibilityHint("Content filtering level for image generation")
+                    
+                    if imageGenerationPartialImages > 0 {
+                        Stepper("Partial Images: \(imageGenerationPartialImages)", value: $imageGenerationPartialImages, in: 0...10)
+                            .accessibilityHint("Number of intermediate images to show during generation")
+                    } else {
+                        Button("Enable Partial Images") {
+                            imageGenerationPartialImages = 1
+                        }
+                        .accessibilityHint("Show intermediate steps during image generation")
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Output Compression: \(imageGenerationOutputCompression)%")
+                        Slider(value: Binding(
+                            get: { Double(imageGenerationOutputCompression) },
+                            set: { imageGenerationOutputCompression = Int($0) }
+                        ), in: 10...100, step: 5)
+                        .accessibilityLabel("Output compression")
+                        .accessibilityHint("Compression level for generated images, lower values reduce file size")
+                        .accessibilityValue("\(imageGenerationOutputCompression) percent")
+                    }
+                }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            }
 
             // MCP Tool Configuration Section
             if viewModel.activePrompt.enableMCPTool {
                 Section(header: Text("MCP Tool Configuration")) {
                     TextField("Server Label", text: Binding(get: { viewModel.activePrompt.mcpServerLabel }, set: { viewModel.activePrompt.mcpServerLabel = $0 }))
+                        .accessibilityHint("Label for the MCP server connection")
                     TextField("Server URL", text: Binding(get: { viewModel.activePrompt.mcpServerURL }, set: { viewModel.activePrompt.mcpServerURL = $0 }))
+                        .accessibilityHint("URL endpoint for the MCP server")
                     TextEditor(text: Binding(get: { viewModel.activePrompt.mcpHeaders }, set: { viewModel.activePrompt.mcpHeaders = $0 }))
                         .frame(minHeight: 60)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                        .accessibilityLabel("MCP Headers")
+                        .accessibilityHint("JSON headers for MCP server authentication")
                     Picker("Require Approval", selection: Binding(get: { viewModel.activePrompt.mcpRequireApproval }, set: { viewModel.activePrompt.mcpRequireApproval = $0 })) {
                         Text("Always").tag("always")
                         Text("Never").tag("never")
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityHint("Whether to require user approval for MCP operations")
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
@@ -286,7 +489,9 @@ struct SettingsView: View {
             if viewModel.activePrompt.enableCustomTool {
                 Section(header: Text("Custom Tool Configuration")) {
                     TextField("Tool Name", text: Binding(get: { viewModel.activePrompt.customToolName }, set: { viewModel.activePrompt.customToolName = $0 }))
+                        .accessibilityHint("Name for the custom tool function")
                     TextField("Tool Description", text: Binding(get: { viewModel.activePrompt.customToolDescription }, set: { viewModel.activePrompt.customToolDescription = $0 }))
+                        .accessibilityHint("Description of what the custom tool does")
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
@@ -294,8 +499,11 @@ struct SettingsView: View {
             // Advanced API Settings Section
             Section(header: Text("Advanced API Settings"), footer: Text("These options provide fine-grained control over the OpenAI Responses API. Defaults are recommended for most users.")) {
                 Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
+                    .accessibilityHint("Enables background processing for API requests")
                 Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)", value: $viewModel.activePrompt.maxToolCalls, in: 0...20)
+                    .accessibilityHint("Sets maximum number of tool calls per request")
                 Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
+                    .accessibilityHint("Allows tools to be called simultaneously")
                 Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
                     Text("Auto").tag("auto")
                     Text("Default").tag("default")
@@ -303,7 +511,9 @@ struct SettingsView: View {
                     Text("Priority").tag("priority")
                 }
                 .pickerStyle(.segmented)
+                .accessibilityHint("Select API service tier for request priority")
                 Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
+                    .accessibilityHint("Number of top log probabilities to return")
                 Slider(value: $viewModel.activePrompt.topP, in: 0.0...1.0, step: 0.01) {
                     Text("Top P")
                 } minimumValueLabel: {
@@ -311,22 +521,32 @@ struct SettingsView: View {
                 } maximumValueLabel: {
                     Text("1.0")
                 }
+                .accessibilityLabel("Top P sampling")
+                .accessibilityHint("Controls diversity of word selection")
+                .accessibilityValue(String(format: "%.2f", viewModel.activePrompt.topP))
                 Text("Top P: \(String(format: "%.2f", viewModel.activePrompt.topP))")
+                    .accessibilityHidden(true)
                 Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
                     Text("Disabled").tag("disabled")
                     Text("Auto").tag("auto")
                 }
                 .pickerStyle(.segmented)
+                .accessibilityHint("Controls how long contexts are truncated")
                 TextField("User Identifier", text: Binding(get: { viewModel.activePrompt.userIdentifier }, set: { viewModel.activePrompt.userIdentifier = $0 }))
+                    .accessibilityHint("Optional identifier for tracking user sessions")
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Advanced Include Section
             Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Reasoning content cannot be included when conversation persistence is enabled.")) {
                 Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                    .accessibilityHint("Includes code execution results in responses")
                 Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                    .accessibilityHint("Includes file search metadata in responses")
                 Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
+                    .accessibilityHint("Includes URLs of uploaded images in responses")
                 Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
+                    .accessibilityHint("Includes probability scores for generated tokens")
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
@@ -337,13 +557,19 @@ struct SettingsView: View {
                     Text("JSON Schema").tag("json_schema")
                 }
                 .pickerStyle(.segmented)
+                .accessibilityHint("Choose between plain text or structured JSON output")
                 if viewModel.activePrompt.textFormatType == "json_schema" {
                     TextField("Schema Name", text: Binding(get: { viewModel.activePrompt.jsonSchemaName }, set: { viewModel.activePrompt.jsonSchemaName = $0 }))
+                        .accessibilityHint("Name for the JSON schema")
                     TextField("Schema Description", text: Binding(get: { viewModel.activePrompt.jsonSchemaDescription }, set: { viewModel.activePrompt.jsonSchemaDescription = $0 }))
+                        .accessibilityHint("Description of the JSON schema purpose")
                     Toggle("Strict Schema", isOn: $viewModel.activePrompt.jsonSchemaStrict)
+                        .accessibilityHint("Enforces strict adherence to the JSON schema")
                     TextEditor(text: Binding(get: { viewModel.activePrompt.jsonSchemaContent }, set: { viewModel.activePrompt.jsonSchemaContent = $0 }))
                         .frame(minHeight: 60)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                        .accessibilityLabel("JSON schema content")
+                        .accessibilityHint("Enter the JSON schema definition")
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
@@ -351,9 +577,20 @@ struct SettingsView: View {
             // Debugging Section
             Section(header: Text("Debugging"), footer: Text("Settings for debugging and development purposes.")) {
                 Toggle("Detailed Network Logging", isOn: $detailedNetworkLogging)
+                    .accessibilityHint("Enables verbose logging of network requests for debugging")
                     .onChange(of: detailedNetworkLogging) { _, newValue in
                         print("Detailed network logging \(newValue ? "enabled" : "disabled")")
                     }
+                
+                Button("API Inspector") {
+                    showingAPIInspector = true
+                }
+                .accessibilityHint("View raw API requests and responses for debugging")
+                
+                Button("Debug Console") {
+                    showingDebugConsole = true
+                }
+                .accessibilityHint("View real-time debug logs from the app")
             }
             
             // Advanced Reasoning Section
@@ -365,6 +602,7 @@ struct SettingsView: View {
                         Text("Detailed").tag("detailed")
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityHint("Controls how detailed the reasoning summary is for O-series models")
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
@@ -375,6 +613,7 @@ struct SettingsView: View {
                 } label: {
                     Text("Clear Conversation")
                 }
+                .accessibilityHint("Removes all messages from the current conversation")
             }
         }
         .onAppear {
@@ -412,6 +651,12 @@ struct SettingsView: View {
                 // Refresh after managing presets to reflect changes in the Picker
                 promptLibrary.reload()
             }
+        }
+        .sheet(isPresented: $showingAPIInspector) {
+            APIInspectorView()
+        }
+        .sheet(isPresented: $showingDebugConsole) {
+            DebugConsoleView()
         }
     }
 

@@ -26,35 +26,44 @@ struct ChatView: View {
                         // Show streaming status when not idle
                         if viewModel.streamingStatus != .idle && viewModel.streamingStatus != .done {
                             StreamingStatusView(status: viewModel.streamingStatus)
-                                .padding(.bottom, 4)
+                                .padding(.bottom, 8)
                         }
                         
-                        // Input area at the bottom
-                        HStack(alignment: .bottom, spacing: 12) {
-                            if viewModel.isStreaming {
-                                Button(action: {
-                                    viewModel.cancelStreaming()
-                                }) {
-                                    Image(systemName: "stop.circle.fill")
-                                        .font(.title)
-                                        .foregroundColor(.red)
+                        // Input area container
+                        VStack(spacing: 0) {
+                            // Input area at the bottom
+                            HStack(alignment: .bottom, spacing: 12) {
+                                if viewModel.isStreaming {
+                                    Button(action: {
+                                        viewModel.cancelStreaming()
+                                    }) {
+                                        Image(systemName: "stop.circle.fill")
+                                            .font(.title)
+                                            .foregroundColor(.red)
+                                    }
+                                    .accessibilityConfiguration(
+                                        label: "Stop streaming",
+                                        hint: AccessibilityUtils.Hint.stopStreaming,
+                                        identifier: AccessibilityUtils.Identifier.stopStreamingButton
+                                    )
+                                    .padding(.bottom, 8)
                                 }
-                                .padding(.bottom, 8)
+                                
+                                ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
+                                    // Send action
+                                    viewModel.sendUserMessage(userInput)
+                                    userInput = ""              // Clear the input field
+                                    inputFocused = false        // Dismiss keyboard
+                                }, onAttach: {
+                                    // Attachment action
+                                    showFilePicker = true
+                                })
                             }
-                            
-                            ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
-                                // Send action
-                                viewModel.sendUserMessage(userInput)
-                                userInput = ""              // Clear the input field
-                                inputFocused = false        // Dismiss keyboard
-                            }, onAttach: {
-                                // Attachment action
-                                showFilePicker = true
-                            })
+                            .padding(.horizontal)
+                            .padding(.top, 8)
                         }
+                        .background(.ultraThinMaterial)
                     }
-                    .padding(.top, 8)
-                    .background(.ultraThinMaterial)
                 }
                 .onChange(of: viewModel.messages.count) { _, _ in
                     // Scroll to the bottom whenever a new message is added
@@ -73,6 +82,11 @@ struct ChatView: View {
                     } label: {
                         Image(systemName: "gearshape.fill")
                     }
+                    .accessibilityConfiguration(
+                        label: "Settings",
+                        hint: AccessibilityUtils.Hint.settingsButton,
+                        identifier: AccessibilityUtils.Identifier.settingsButton
+                    )
                 }
             }
             .sheet(isPresented: $showSettings) {

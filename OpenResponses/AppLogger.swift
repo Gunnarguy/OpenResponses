@@ -108,14 +108,15 @@ enum AppLogger {
         }
         
         // Send to system logger
-        os_log("%{public}@", log: logger, type: level.osLogType, logMessage)
+        os_log("%{public}s", log: logger, type: level.osLogType, "\(level.emoji) \(logMessage)")
         
-        // In debug builds, also print to console for easier debugging
-        #if DEBUG
-        if consoleLoggingEnabled {
-            print("\(level.emoji) \(logMessage)")
-        }
-        #endif
+        // Also send to the debug console
+        let consoleEntry = LogEntry(
+            level: level.osLogType,
+            category: category,
+            message: message
+        )
+        ConsoleLogger.shared.addLog(consoleEntry)
     }
     
     /// Log an error with additional context.

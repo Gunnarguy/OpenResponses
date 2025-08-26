@@ -1,0 +1,556 @@
+import SwiftUI
+
+/// A view that dynamically fetches and displays available OpenAI models for selection.
+struct DynamicModelSelector: View {
+    @Binding var selectedModel: String
+    let openAIService: OpenAIServiceProtocol
+    
+    @State private var availableModels: [OpenAIModel] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    
+    // Fallback chat models in case the API call fails
+    private let fallbackModels = [
+        // Latest chat models (2025)
+        "gpt-5",
+        "gpt-5-thinking", 
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        
+        // Latest reasoning models
+        "o3",
+        "o4-mini",
+        
+        // Proven chat models
+        "gpt-4o",
+        "gpt-4o-mini", 
+        "gpt-4-turbo",
+        "gpt-4",
+        "gpt-3.5-turbo",
+        
+        // Existing reasoning models
+        "o1-preview",
+        "o1-mini"
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with model info and refresh
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Model")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    if !availableModels.isEmpty {
+                        Text("\(availableModels.count) chat models available")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else if !isLoading {
+                        HStack(spacing: 4) {
+                            Image(systemName: "wifi.slash")
+                                .font(.caption2)
+                            Text("Using offline fallback models")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                    }
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 16, height: 16)
+                    }
+                    
+                    Button(action: fetchModels) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            
+            // Error message if any
+            if let errorMessage = errorMessage {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+            // Model picker with improved styling
+            VStack(alignment: .leading, spacing: 0) {
+                if availableModels.isEmpty && !isLoading {
+                    // Fallback models with cleaner presentation
+                    NavigationLink(destination: ModelPickerView(
+                        selectedModel: $selectedModel,
+                        models: fallbackModels.map { modelId in
+                            OpenAIModel(id: modelId, object: "model", created: 0, ownedBy: "openai")
+                        },
+                        isOffline: true
+                    )) {
+                        ModelDisplayRow(
+                            modelName: modelDisplayName(for: selectedModel),
+                            description: selectedModelDescription,
+                            isOffline: true
+                        )
+                    }
+                } else {
+                    // Dynamic models with cleaner presentation
+                    NavigationLink(destination: ModelPickerView(
+                        selectedModel: $selectedModel,
+                        models: availableModels,
+                        isOffline: false
+                    )) {
+                        ModelDisplayRow(
+                            modelName: selectedModelDisplayName,
+                            description: selectedModelDescription,
+                            isOffline: false
+                        )
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if availableModels.isEmpty {
+                fetchModels()
+            }
+        }
+    }
+    
+    // Helper computed properties for better UI
+    private var selectedModelDisplayName: String {
+        if let model = availableModels.first(where: { $0.id == selectedModel }) {
+            return model.displayName
+        }
+        return modelDisplayName(for: selectedModel)
+    }
+    
+    private var selectedModelDescription: String {
+        if let model = availableModels.first(where: { $0.id == selectedModel }) {
+            let id = model.id.lowercased()
+            
+            // Specific descriptions for each model type
+            if id.contains("gpt-5") {
+                return "🚀 Latest generation - most capable"
+            } else if id.contains("gpt-4.1") {
+                if id.contains("nano") {
+                    return "⚡ Ultra-fast, cost-efficient"
+                } else if id.contains("mini") {
+                    return "💨 Fast and affordable"
+                } else {
+                    return "🔥 Most advanced GPT model"
+                }
+            } else if id.contains("o4") {
+                return "🧠 Advanced reasoning with efficiency"
+            } else if id.contains("o3") {
+                return "🤔 Deep reasoning and problem-solving"
+            } else if id.contains("gpt-4o") {
+                if id.contains("mini") {
+                    return "⚡ Fast, cost-effective"
+                } else {
+                    return "🎯 Versatile and reliable"
+                }
+            } else if id.contains("o1") {
+                return "🧩 Step-by-step reasoning"
+            } else if id.contains("gpt-4") {
+                return "💪 Powerful general-purpose"
+            } else if id.contains("gpt-3.5") {
+                return "💰 Budget-friendly option"
+            }
+            
+            return model.isReasoningModel ? "🧠 Reasoning model" : "💬 Chat model"
+        }
+        
+        // Fallback descriptions for when model isn't loaded yet
+        let id = selectedModel.lowercased()
+        if id.contains("gpt-5") {
+            return "🚀 Latest generation - most capable"
+        } else if id.contains("gpt-4.1") {
+            return "🔥 Most advanced GPT model"
+        } else if id.contains("o4") || id.contains("o3") {
+            return "🧠 Advanced reasoning model"
+        } else if id.contains("gpt-4o") {
+            return "🎯 Versatile and reliable"
+        } else if id.contains("o1") {
+            return "🧩 Step-by-step reasoning"
+        } else {
+            return "💬 Chat model"
+        }
+    }
+    
+    private func modelDisplayName(for modelId: String) -> String {
+        // Create a temporary model to get display name
+        let tempModel = OpenAIModel(id: modelId, object: "model", created: 0, ownedBy: "openai")
+        return tempModel.displayName
+    }
+    
+    private func fetchModels() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let models = try await openAIService.listModels()
+                await MainActor.run {
+                    // Ultra-strict filtering - only allow models that work with Responses API for chat
+                    self.availableModels = models.filter { model in
+                        let id = model.id.lowercased()
+                        
+                        // Explicit allowlist of known working chat models
+                        let allowedModels: Set<String> = [
+                            // Latest models
+                            "gpt-5", "gpt-5-thinking",
+                            "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+                            "gpt-4.1-2025-04-14",
+                            
+                            // Current GPT models
+                            "gpt-4o", "gpt-4o-mini",
+                            "gpt-4o-2024-08-06", "gpt-4o-mini-2024-07-18",
+                            "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+                            
+                            // Reasoning models
+                            "o3", "o4-mini", "o3-mini",
+                            "o1-preview", "o1-mini"
+                        ]
+                        
+                        // Check if model is in allowlist
+                        if allowedModels.contains(id) {
+                            return true
+                        }
+                        
+                        // Allow o-series models that might have different naming
+                        if (id.hasPrefix("o1-") || id.hasPrefix("o3-") || id.hasPrefix("o4-")) &&
+                           !id.contains("image") && !id.contains("audio") && !id.contains("vision") {
+                            return true
+                        }
+                        
+                        // Allow gpt models that are clearly for chat
+                        if id.hasPrefix("gpt-") && 
+                           id.contains("turbo") &&
+                           !id.contains("instruct") &&
+                           !id.contains("image") &&
+                           !id.contains("vision") &&
+                           !id.contains("audio") {
+                            return true
+                        }
+                        
+                        // Exclude everything else (all the junk)
+                        return false
+                    }
+                    
+                    // Sort models intelligently by capability and recency
+                    self.availableModels.sort { first, second in
+                        let firstId = first.id.lowercased()
+                        let secondId = second.id.lowercased()
+                        
+                        // Priority order: gpt-5 > gpt-4.1 > o4 > o3 > gpt-4o > o1 > gpt-4 > gpt-3.5
+                        let modelPriority: [String: Int] = [
+                            "gpt-5": 1000,
+                            "gpt-5-thinking": 999,
+                            "gpt-4.1": 900,
+                            "gpt-4.1-mini": 890,
+                            "gpt-4.1-nano": 880,
+                            "o4-mini": 800,
+                            "o3": 700,
+                            "o3-mini": 690,
+                            "gpt-4o": 600,
+                            "gpt-4o-mini": 590,
+                            "o1-preview": 500,
+                            "o1-mini": 490,
+                            "gpt-4-turbo": 400,
+                            "gpt-4": 300,
+                            "gpt-3.5-turbo": 200
+                        ]
+                        
+                        let firstPriority = modelPriority[firstId] ?? 0
+                        let secondPriority = modelPriority[secondId] ?? 0
+                        
+                        if firstPriority != secondPriority {
+                            return firstPriority > secondPriority
+                        }
+                        
+                        // If same priority, sort alphabetically
+                        return firstId < secondId
+                    }
+                    
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Failed to fetch models: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Supporting Views
+
+struct ModelDisplayRow: View {
+    let modelName: String
+    let description: String
+    let isOffline: Bool
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(modelName)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 4) {
+                    if isOffline {
+                        Image(systemName: "wifi.slash")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                    
+                    Text(description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(UIColor.secondarySystemGroupedBackground))
+        .cornerRadius(10)
+    }
+}
+
+struct ModelPickerView: View {
+    @Binding var selectedModel: String
+    let models: [OpenAIModel]
+    let isOffline: Bool
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        List {
+            if isOffline {
+                // Fallback models organized by category
+                Section("🚀 Latest Models") {
+                    ForEach(["gpt-5", "gpt-5-thinking", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"], id: \.self) { modelId in
+                        ModelPickerRow(
+                            modelId: modelId,
+                            displayName: tempModelDisplayName(for: modelId),
+                            description: tempModelDescription(for: modelId),
+                            isSelected: selectedModel == modelId
+                        ) {
+                            selectedModel = modelId
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                    }
+                }
+                
+                Section("🧠 Reasoning Models") {
+                    ForEach(["o3", "o4-mini", "o1-preview", "o1-mini"], id: \.self) { modelId in
+                        ModelPickerRow(
+                            modelId: modelId,
+                            displayName: tempModelDisplayName(for: modelId),
+                            description: tempModelDescription(for: modelId),
+                            isSelected: selectedModel == modelId
+                        ) {
+                            selectedModel = modelId
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                    }
+                }
+                
+                Section("💬 Standard Models") {
+                    ForEach(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"], id: \.self) { modelId in
+                        ModelPickerRow(
+                            modelId: modelId,
+                            displayName: tempModelDisplayName(for: modelId),
+                            description: tempModelDescription(for: modelId),
+                            isSelected: selectedModel == modelId
+                        ) {
+                            selectedModel = modelId
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                    }
+                }
+            } else {
+                // Live models organized by capability
+                let latestModels = models.filter { 
+                    $0.id.contains("gpt-5") || $0.id.contains("gpt-4.1") || $0.id.contains("o4")
+                }
+                let reasoningModels = models.filter { 
+                    ($0.id.contains("o3") || $0.id.contains("o1")) && !$0.id.contains("o4")
+                }
+                let standardModels = models.filter { 
+                    ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4") || $0.id.contains("gpt-3.5")) &&
+                    !$0.id.contains("gpt-4.1")
+                }
+                
+                if !latestModels.isEmpty {
+                    Section("🚀 Latest & Greatest") {
+                        ForEach(latestModels) { model in
+                            ModelPickerRow(
+                                modelId: model.id,
+                                displayName: model.displayName,
+                                description: modelDescription(for: model.id),
+                                isSelected: selectedModel == model.id
+                            ) {
+                                selectedModel = model.id
+                                presentationMode.wrappedValue.dismiss()
+                            }
+                        }
+                    }
+                }
+                
+                if !reasoningModels.isEmpty {
+                    Section("🧠 Reasoning Specialists") {
+                        ForEach(reasoningModels) { model in
+                            ModelPickerRow(
+                                modelId: model.id,
+                                displayName: model.displayName,
+                                description: modelDescription(for: model.id),
+                                isSelected: selectedModel == model.id
+                            ) {
+                                selectedModel = model.id
+                                presentationMode.wrappedValue.dismiss()
+                            }
+                        }
+                    }
+                }
+                
+                if !standardModels.isEmpty {
+                    Section("💬 Proven Performers") {
+                        ForEach(standardModels) { model in
+                            ModelPickerRow(
+                                modelId: model.id,
+                                displayName: model.displayName,
+                                description: modelDescription(for: model.id),
+                                isSelected: selectedModel == model.id
+                            ) {
+                                selectedModel = model.id
+                                presentationMode.wrappedValue.dismiss()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Select Model")
+        .navigationBarTitleDisplayMode(.large)
+    }
+    
+    private func tempModelDisplayName(for modelId: String) -> String {
+        let tempModel = OpenAIModel(id: modelId, object: "model", created: 0, ownedBy: "openai")
+        return tempModel.displayName
+    }
+    
+    private func tempModelDescription(for modelId: String) -> String {
+        let id = modelId.lowercased()
+        if id.contains("gpt-5") {
+            return "🚀 Latest generation - most capable"
+        } else if id.contains("gpt-4.1") {
+            if id.contains("nano") {
+                return "⚡ Ultra-fast, cost-efficient"
+            } else if id.contains("mini") {
+                return "💨 Fast and affordable"
+            } else {
+                return "🔥 Most advanced GPT model"
+            }
+        } else if id.contains("o4") {
+            return "🧠 Advanced reasoning with efficiency"
+        } else if id.contains("o3") {
+            return "🤔 Deep reasoning and problem-solving"
+        } else if id.contains("gpt-4o") {
+            if id.contains("mini") {
+                return "⚡ Fast, cost-effective"
+            } else {
+                return "🎯 Versatile and reliable"
+            }
+        } else if id.contains("o1") {
+            return "🧩 Step-by-step reasoning"
+        } else if id.contains("gpt-4") {
+            return "💪 Powerful general-purpose"
+        } else if id.contains("gpt-3.5") {
+            return "💰 Budget-friendly option"
+        }
+        return "💬 Chat model"
+    }
+    
+    private func modelDescription(for modelId: String) -> String {
+        return tempModelDescription(for: modelId)
+    }
+}
+
+struct ModelPickerRow: View {
+    let modelId: String
+    let displayName: String
+    let description: String
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                    
+                    Text(description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.blue)
+                        .font(.title3)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+#Preview {
+    struct PreviewWrapper: View {
+        @State private var selectedModel = "gpt-4o"
+        
+        var body: some View {
+            NavigationView {
+                Form {
+                    DynamicModelSelector(
+                        selectedModel: $selectedModel,
+                        openAIService: OpenAIService()
+                    )
+                }
+                .navigationTitle("Model Selection")
+            }
+        }
+    }
+    
+    return PreviewWrapper()
+}
