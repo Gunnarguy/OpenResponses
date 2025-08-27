@@ -7,16 +7,25 @@ This directory contains assets for App Store submission.
 1. iPhone Screenshots (6.5" Display)
 
    - [ ] Chat interface with a message
-   - [ ] Settings screen
-   - [ ] File management screen
+   - [ ] Settings screen showing tools and advanced options
+   - [ ] File management screen with vector stores
+   - [ ] Prompt Library/Presets management
+   - [ ] API Inspector showing request/response data
+   - [ ] Debug Console with filtered logs
 
 2. iPhone Screenshots (5.5" Display)
 
    - [ ] Chat interface with a message
-   - [ ] Settings screen
-   - [ ] File management screen
+   - [ ] Settings screen showing tools and advanced options
+   - [ ] File management screen with vector stores
+   - [ ] Prompt Library/Presets management
 
 3. iPad Pro Screenshots (12.9" Display - Portrait)
+
+   - [ ] Chat interface with sidebar showing conversation history
+   - [ ] Split view with settings and file management
+   - [ ] API Inspector in full-screen mode
+   - [ ] Prompt Library with detailed preset configuration
 
    - [ ] Chat interface with a message
    - [ ] Settings screen

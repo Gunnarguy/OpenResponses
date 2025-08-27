@@ -80,12 +80,46 @@ This makes a highly complex workflow intuitive and manageable for the end-user.
 
 #### D. File Attachments: Immediate Context
 
-Distinct from the persistent, searchable knowledge base of Vector Stores, OpenResponses also supports direct file attachments. This feature allows a user to upload a file and have it included as context for the *very next* message.
+Distinct from the persistent, searchable knowledge base of Vector Stores, OpenResponses also supports direct file attachments. This feature allows a user to upload a file and have it included as context for the _very next_ message.
 
 - **The Use Case**: Providing one-off context, such as asking the model to summarize a document, analyze a log file, or answer questions about a specific PDF without first adding it to a permanent vector store.
 - **Implementation**: The flow is streamlined for simplicity. The `ChatViewModel` manages a temporary list of pending file IDs. When the user sends a message, these IDs are formatted into the `attachments` array of the API request and the list is cleared. This provides immediate, ephemeral context for a single turn of conversation.
 
-### 4. Conclusion: A Foundation for Exploration
+### 4. Advanced Features: Professional-Grade Tooling
+
+OpenResponses goes beyond basic chat functionality to provide enterprise-level features for serious AI work.
+
+#### A. Prompt Management and Presets
+
+The `PromptLibrary` system allows users to save and manage complex configurations:
+
+- **State Persistence**: All settings (model, tools, parameters) are captured in a `Prompt` struct that can be saved to `UserDefaults`.
+- **Quick Switching**: Users can instantly switch between different "profiles" for different use cases (e.g., code analysis, creative writing, research).
+- **Configuration Reuse**: Complex setups with specific tool combinations and API parameters can be preserved and shared.
+
+#### B. Debugging and Transparency Tools
+
+Professional users need visibility into API interactions:
+
+- **API Inspector**: The `APIInspectorView` provides real-time visibility into every request and response, with JSON pretty-printing and detailed headers.
+- **Debug Console**: A `DebugConsoleView` shows live application logs with filtering by category and severity level.
+- **Analytics Service**: Tracks performance metrics, request patterns, and provides insights into API usage.
+
+#### C. Advanced Integrations
+
+- **MCP (Model Context Protocol)**: Connects to external services and data sources through standardized protocol interfaces.
+- **Custom Tools**: Users can define their own tools with specific schemas and behaviors.
+- **Multi-Store Search**: Advanced file search across multiple vector stores simultaneously for complex knowledge bases.
+
+#### D. Accessibility as a First-Class Feature
+
+The `AccessibilityUtils` system provides:
+
+- **Centralized Configuration**: Consistent accessibility labels, hints, and identifiers across the entire app.
+- **VoiceOver Optimization**: Every feature, including debugging tools, is fully accessible.
+- **Testing Integration**: Accessibility identifiers enable comprehensive UI testing.
+
+### 5. Conclusion: A Foundation for Exploration
 
 OpenResponses successfully achieves its goal of being more than just a chat client. It is a robust, feature-complete, and highly customizable tool that demonstrates how to properly handle the complexity of a modern AI API in a native application.
 

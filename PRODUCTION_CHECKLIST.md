@@ -5,11 +5,20 @@ This checklist covers all the essential aspects that need to be verified before 
 ## App Functionality
 
 - [ ] Core chat functionality works reliably
-- [ ] All tools (Web Search, Code Interpreter, etc.) function correctly
+- [ ] All tools (Web Search, Code Interpreter, Image Generation, File Search, MCP, Custom Tools) function correctly
 - [ ] API key storage in Keychain is secure
 - [ ] File attachments and vector store management work properly
+- [ ] Multi-store file search functionality works correctly
+- [ ] Prompt presets can be saved, loaded, and managed
 - [ ] Settings are saved and loaded correctly
 - [ ] Streaming mode works properly
+- [ ] API Inspector shows accurate request/response data
+- [ ] Debug Console displays logs with proper filtering
+- [ ] Analytics tracking works without affecting performance
+- [ ] MCP Tool integration connects to external servers properly
+- [ ] Custom Tools can be configured and used correctly
+- [ ] JSON Schema mode enforces output structure correctly
+- [ ] Advanced reasoning controls work for o-series models
 - [ ] App works in both light and dark mode
 - [ ] App works in all orientations (where applicable)
 
@@ -45,11 +54,16 @@ This checklist covers all the essential aspects that need to be verified before 
 
 ## Accessibility
 
-- [ ] VoiceOver works correctly throughout the app
-- [ ] Dynamic Type (larger text sizes) is supported
-- [ ] Sufficient color contrast for all UI elements
+- [ ] VoiceOver works correctly throughout the app including new features
+- [ ] All debugging tools (API Inspector, Debug Console) are accessible
+- [ ] Prompt Library management is fully accessible
+- [ ] File management interface works with VoiceOver
+- [ ] Dynamic Type (larger text sizes) is supported across all screens
+- [ ] Sufficient color contrast for all UI elements including debug interfaces
 - [ ] No critical functionality relies solely on color
 - [ ] Proper accessibility labels and hints on all controls
+- [ ] Accessibility identifiers are set for UI testing
+- [ ] Tap target sizes meet minimum requirements (44pt)
 
 ## Localization
 
@@ -74,10 +88,22 @@ This checklist covers all the essential aspects that need to be verified before 
 - [ ] Tested with slow network conditions
 - [ ] Tested with VoiceOver enabled
 - [ ] Tested with different user settings
+- [ ] API Inspector accuracy verified with known requests
+- [ ] Debug Console performance tested with heavy logging
+- [ ] Prompt preset save/load functionality tested thoroughly
+- [ ] Multi-store file search tested with various configurations
+- [ ] MCP Tool integration tested with external servers
+- [ ] Custom Tools tested with various configurations
+- [ ] All accessibility features tested with assistive technologies
 
 ## Documentation
 
 - [ ] README.md is complete and accurate
+- [ ] FILE_MANAGEMENT.md covers all file and vector store features
+- [ ] CASE_STUDY.md reflects current architecture and features
+- [ ] All debugging and development features are documented
+- [ ] Prompt management system is properly documented
+- [ ] API integration features are clearly explained
 - [ ] Code is properly commented
 - [ ] API documentation is up-to-date
 
