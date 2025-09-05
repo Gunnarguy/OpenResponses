@@ -57,8 +57,6 @@ struct SettingsView: View {
     // Advanced API configuration settings
     @AppStorage("backgroundMode") private var backgroundMode: Bool = false
     @AppStorage("maxOutputTokens") private var maxOutputTokens: Int = 0
-    @AppStorage("presencePenalty") private var presencePenalty: Double = 0.0
-    @AppStorage("frequencyPenalty") private var frequencyPenalty: Double = 0.0
     @AppStorage("maxToolCalls") private var maxToolCalls: Int = 0
     @AppStorage("parallelToolCalls") private var parallelToolCalls: Bool = true
     @AppStorage("serviceTier") private var serviceTier: String = "auto"
@@ -88,6 +86,7 @@ struct SettingsView: View {
     
     // Advanced include settings
     @AppStorage("includeCodeInterpreterOutputs") private var includeCodeInterpreterOutputs: Bool = false
+    @AppStorage("includeComputerCallOutput") private var includeComputerCallOutput: Bool = false
     @AppStorage("includeFileSearchResults") private var includeFileSearchResults: Bool = false
     @AppStorage("includeInputImageUrls") private var includeInputImageUrls: Bool = false
     @AppStorage("includeOutputLogprobs") private var includeOutputLogprobs: Bool = false
@@ -209,19 +208,34 @@ struct SettingsView: View {
                     openAIService: AppContainer.shared.openAIService
                 )
 
-                Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
-                    Text("Low").tag("low")
-                    Text("Medium").tag("medium")
-                    Text("High").tag("high")
+                HStack {
+                    Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel))
+                    
+                    if !ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .disabled(!viewModel.activePrompt.openAIModel.starts(with: "o") && !viewModel.activePrompt.openAIModel.starts(with: "gpt-5"))
                 
                 VStack(alignment: .leading) {
-                    Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
+                    HStack {
+                        Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
+                        if !ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                                .help("Not supported by reasoning models")
+                        }
+                    }
                     Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
+                        .disabled(!ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel))
                 }
-                .disabled(viewModel.activePrompt.openAIModel.starts(with: "o") || viewModel.activePrompt.openAIModel.starts(with: "gpt-5"))
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
@@ -240,48 +254,95 @@ struct SettingsView: View {
                     .accessibilityValue("\(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
                 }
                 
-                VStack(alignment: .leading) {
-                    Text("Presence Penalty: \(String(format: "%.1f", viewModel.activePrompt.presencePenalty))")
-                    Slider(value: $viewModel.activePrompt.presencePenalty, in: -2.0...2.0, step: 0.1)
-                        .accessibilityLabel("Presence penalty")
-                        .accessibilityHint("Controls repetition in responses. Higher values reduce repetition")
-                        .accessibilityValue(String(format: "%.1f", viewModel.activePrompt.presencePenalty))
+
+                
+                Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
+                    Text("Auto").tag("auto")
+                    Text("None").tag("none")
+                    // Add specific tool choices when tools are enabled
+                    if viewModel.activePrompt.enableCalculator {
+                        Text("Calculator").tag("calculator")
+                    }
+                    if viewModel.activePrompt.enableWebSearch {
+                        Text("Web Search").tag("web_search_preview")
+                    }
+                    if viewModel.activePrompt.enableCodeInterpreter {
+                        Text("Code Interpreter").tag("code_interpreter")
+                    }
                 }
+                .accessibilityHint("Controls which tools the AI can use")
                 
                 VStack(alignment: .leading) {
-                    Text("Frequency Penalty: \(String(format: "%.1f", viewModel.activePrompt.frequencyPenalty))")
-                    Slider(value: $viewModel.activePrompt.frequencyPenalty, in: -2.0...2.0, step: 0.1)
-                        .accessibilityLabel("Frequency penalty")
-                        .accessibilityHint("Controls word frequency in responses. Higher values increase vocabulary diversity")
-                        .accessibilityValue(String(format: "%.1f", viewModel.activePrompt.frequencyPenalty))
+                    Text("Metadata (JSON)")
+                    TextField("Metadata", text: Binding(
+                        get: { viewModel.activePrompt.metadata ?? "" },
+                        set: { viewModel.activePrompt.metadata = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityHint("Optional metadata to attach to requests in JSON format")
+                    Text("Optional metadata to attach to requests (JSON format)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use. Note: Image generation is automatically disabled when streaming is enabled.")) {
-                Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
-                    .accessibilityHint("Allows the AI to search the internet for current information")
-                Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
-                    .accessibilityHint("Enables the AI to run Python code and analyze data")
-                Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
-                    .accessibilityHint("Provides mathematical calculation capabilities")
-                HStack {
-                    Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
-                        .disabled(viewModel.activePrompt.enableStreaming)
-                        .accessibilityHint("Allows the AI to create images with DALL-E")
-                    if viewModel.activePrompt.enableStreaming && viewModel.activePrompt.enableImageGeneration {
-                        Text("(Disabled in streaming mode)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .accessibilityLabel("Image generation disabled")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+                            .accessibilityHint("Allows the AI to search the internet for current information")
+                        if !ModelCompatibilityService.shared.isToolSupported("web_search_preview", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Not supported by current model")
+                        }
                     }
+                    
+                    HStack {
+                        Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                            .accessibilityHint("Enables the AI to run Python code and analyze data")
+                        if !ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Not supported by current model")
+                        }
+                    }
+                    
+                    Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
+                        .accessibilityHint("Provides mathematical calculation capabilities")
+                    
+                    HStack {
+                        Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
+                            .disabled(viewModel.activePrompt.enableStreaming)
+                            .accessibilityHint("Allows the AI to create images with DALL-E")
+                        if viewModel.activePrompt.enableStreaming && viewModel.activePrompt.enableImageGeneration {
+                            Text("(Disabled in streaming mode)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .accessibilityLabel("Image generation disabled")
+                        } else if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Not supported by current model or streaming mode")
+                        }
+                    }
+                    
+                    HStack {
+                        Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                            .accessibilityHint("Enables searching through uploaded files and documents")
+                        if !ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Not supported by current model")
+                        }
+                    }
+                    
+                    Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                        .accessibilityHint("Connects to Model Context Protocol servers")
+                    Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
+                        .accessibilityHint("Enables user-defined custom tools")
                 }
-                Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                    .accessibilityHint("Enables searching through uploaded files and documents")
-                Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
-                    .accessibilityHint("Connects to Model Context Protocol servers")
-                Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
-                    .accessibilityHint("Enables user-defined custom tools")
                 
                 if viewModel.activePrompt.enableFileSearch {
                     Button("Manage Files & Vector Stores") {
@@ -541,12 +602,16 @@ struct SettingsView: View {
             Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Reasoning content cannot be included when conversation persistence is enabled.")) {
                 Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
                     .accessibilityHint("Includes code execution results in responses")
+                Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
+                    .accessibilityHint("Includes computer interaction results and image URLs in responses")
                 Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
                     .accessibilityHint("Includes file search metadata in responses")
                 Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
                     .accessibilityHint("Includes URLs of uploaded images in responses")
                 Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
                     .accessibilityHint("Includes probability scores for generated tokens")
+                Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+                    .accessibilityHint("Includes encrypted reasoning tokens for stateless conversations")
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             

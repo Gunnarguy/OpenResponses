@@ -22,6 +22,15 @@ protocol OpenAIServiceProtocol {
     /// Retrieves a response by ID.
     func getResponse(responseId: String) async throws -> OpenAIResponse
     
+    /// Deletes a response by ID.
+    func deleteResponse(responseId: String) async throws -> DeleteResponseResult
+    
+    /// Cancels a response that is in progress.
+    func cancelResponse(responseId: String) async throws -> OpenAIResponse
+    
+    /// Returns a list of input items for a given response.
+    func listInputItems(responseId: String) async throws -> InputItemsResponse
+    
     /// Sends function output back to the API.
     func sendFunctionOutput(
         call: OutputItem,

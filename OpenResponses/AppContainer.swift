@@ -18,6 +18,7 @@ class AppContainer {
 
     /// Creates a `ChatViewModel` with its required dependencies.
     /// - Returns: A fully configured `ChatViewModel`.
+    @MainActor
     func makeChatViewModel() -> ChatViewModel {
         return ChatViewModel(api: openAIService)
     }

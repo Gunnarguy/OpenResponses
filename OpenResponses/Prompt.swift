@@ -34,6 +34,10 @@ struct Prompt: Codable, Identifiable, Hashable {
     var presencePenalty: Double
     var frequencyPenalty: Double
     
+    // Tool Configuration
+    var toolChoice: String // "auto", "none", or specific tool name
+    var metadata: String? // JSON string for metadata
+    
     // Advanced API Settings
     var backgroundMode: Bool
     var maxToolCalls: Int
@@ -66,9 +70,11 @@ struct Prompt: Codable, Identifiable, Hashable {
     
     // Include Parameters
     var includeCodeInterpreterOutputs: Bool
+    var includeComputerCallOutput: Bool
     var includeFileSearchResults: Bool
     var includeInputImageUrls: Bool
     var includeOutputLogprobs: Bool
+    var includeReasoningContent: Bool
     
     // File Search
     var selectedVectorStoreIds: String?
@@ -107,6 +113,8 @@ struct Prompt: Codable, Identifiable, Hashable {
             maxOutputTokens: 0,
             presencePenalty: 0.0,
             frequencyPenalty: 0.0,
+            toolChoice: "auto",
+            metadata: nil,
             backgroundMode: false,
             maxToolCalls: 0,
             parallelToolCalls: true,
@@ -128,9 +136,11 @@ struct Prompt: Codable, Identifiable, Hashable {
             customToolName: "",
             customToolDescription: "",
             includeCodeInterpreterOutputs: true,
+            includeComputerCallOutput: false,
             includeFileSearchResults: true,
             includeInputImageUrls: true,
             includeOutputLogprobs: false,
+            includeReasoningContent: false,
             selectedVectorStoreIds: nil,
             searchContextSize: "medium",
             userLocationCity: nil,

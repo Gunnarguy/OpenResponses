@@ -23,9 +23,13 @@ struct ChatMessage: Identifiable {
 
 /// Codable models for decoding OpenAI /v1/responses API JSON.
 struct OpenAIResponse: Decodable {
-    let id: String?               // The response ID (used for continuity in follow-ups)
-    let output: [OutputItem]      // List of output items returned by the model (messages, tool outputs, etc.)
-    // We omit other fields like 'status' for brevity, assuming each call completes with final output.
+    let id: String               // The response ID (used for continuity in follow-ups)
+    let object: String?          // Response object type
+    let created: Int?            // Unix timestamp
+    let model: String?           // Model used
+    let output: [OutputItem]     // List of output items returned by the model (messages, tool outputs, etc.)
+    let usage: UsageInfo?        // Token usage information
+    let status: String?          // Response status
 }
 
 struct OutputItem: Decodable {
@@ -50,7 +54,7 @@ struct SummaryItem: Decodable {
     let text: String
 }
 
-struct ContentItem: Decodable {
+struct ContentItem: Codable {
     let type: String              // Content type (e.g., "text", "image_file", "image_url")
     let text: String?             // Text content (present if type is text or similar)
     let imageURL: ImageURLContent?    // Image URL content (if type is "image_url")
@@ -64,13 +68,26 @@ struct ContentItem: Decodable {
 }
 
 /// Nested object for image URL content in API response.
-struct ImageURLContent: Decodable {
+struct ImageURLContent: Codable {
     let url: String
 }
 
 /// Nested object for image file content in API response.
-struct ImageFileContent: Decodable {
+struct ImageFileContent: Codable {
     let file_id: String
+}
+
+/// Token usage information from the API response
+struct UsageInfo: Decodable {
+    let promptTokens: Int?
+    let completionTokens: Int?
+    let totalTokens: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
 }
 
 // MARK: - File Management Models

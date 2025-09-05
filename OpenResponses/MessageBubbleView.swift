@@ -21,6 +21,12 @@ struct MessageBubbleView: View {
                 if let text = message.text, !text.isEmpty {
                     FormattedTextView(text: text)
                 }
+                
+                // Tool usage indicator for assistant messages
+                if message.role == .assistant {
+                    MessageToolIndicator(message: message)
+                }
+                
                 // Image content (if any images in the message)
                 if let images = message.images {
                     ForEach(images, id: \.self) { uiImage in

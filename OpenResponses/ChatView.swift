@@ -12,14 +12,43 @@ struct ChatView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(viewModel.messages) { message in
-                            MessageBubbleView(message: message)
-                                .id(message.id)  // Mark each message for scroll reference
+                    if viewModel.messages.isEmpty {
+                        // Empty state view
+                        VStack(spacing: 20) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary)
+                            
+                            VStack(spacing: 8) {
+                                Text("Welcome to OpenResponses")
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                                
+                                Text("Start a conversation with AI using the input field below. Use the attachment button to include files, or access Settings from the toolbar.")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            
+                            if !viewModel.isConnectedToNetwork {
+                                Label("No internet connection", systemImage: "wifi.slash")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.top, 8)
+                            }
                         }
+                        .padding(.horizontal, 40)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            ForEach(viewModel.messages) { message in
+                                MessageBubbleView(message: message)
+                                    .id(message.id)  // Mark each message for scroll reference
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 10)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 10)
                 }
                 .safeAreaInset(edge: .bottom) {
                     VStack(spacing: 0) {
@@ -31,6 +60,15 @@ struct ChatView: View {
                         
                         // Input area container
                         VStack(spacing: 0) {
+                            // Compact tool indicator above input
+                            CompactToolIndicator(
+                                modelId: viewModel.activePrompt.openAIModel,
+                                prompt: viewModel.activePrompt,
+                                isStreaming: viewModel.activePrompt.enableStreaming
+                            )
+                            .padding(.horizontal)
+                            .padding(.bottom, 4)
+                            
                             // Input area at the bottom
                             HStack(alignment: .bottom, spacing: 12) {
                                 if viewModel.isStreaming {

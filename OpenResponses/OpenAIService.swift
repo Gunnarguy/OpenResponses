@@ -357,180 +357,80 @@ class OpenAIService: OpenAIServiceProtocol {
     private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [:]
 
-        // If a published prompt ID is provided, use it.
-        if prompt.enablePublishedPrompt, !prompt.publishedPromptId.isEmpty {
-            requestObject = [
-                "prompt": [
-                    "id": prompt.publishedPromptId,
-                    "version": prompt.publishedPromptVersion
-                ],
-                "store": true
-            ]
-            
-            var inputMessages: [[String: Any]] = [["role": "user", "content": userMessage]]
-            
-            if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                inputMessages.insert(["role": "developer", "content": prompt.developerInstructions], at: 0)
-            }
-            requestObject["input"] = inputMessages
+        // Start with minimal working parameters
+        requestObject = [
+            "model": prompt.openAIModel,
+            "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
+        ]
 
-        } else {
-            // Build the request from individual settings in the prompt object
-            requestObject = [
-                "model": prompt.openAIModel,
-                "store": true
-            ]
-
-            var inputMessages: [[String: Any]] = []
-
-            if !prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                requestObject["instructions"] = prompt.systemInstructions
-            }
-            
-            if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                // The developer message content should be a simple string, not an array.
-                inputMessages.append(["role": "developer", "content": prompt.developerInstructions])
-            }
-            
-            // Handle user message and attachments
-            var userContent: Any = userMessage
-            if let attachments = attachments, !attachments.isEmpty {
-                // If there are attachments, the content becomes an array of dictionaries
-                var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
-                
-                let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
-                    var validContent: [String: Any] = [:]
-                    validContent["type"] = "input_file"
-                    
-                    if let fileId = attachment["file_id"] as? String {
-                        validContent["file_id"] = fileId
-                    } else {
-                        AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
-                        return nil
-                    }
-                    return validContent
-                }
-                
-                if !validatedAttachments.isEmpty {
-                    contentArray.append(contentsOf: validatedAttachments)
-                }
-                userContent = contentArray
-            }
-            inputMessages.append(["role": "user", "content": userContent])
-            
-            requestObject["input"] = inputMessages
-            
-            var tools: [[String: Any]] = []
-            if prompt.enableWebSearch {
-                tools.append(createWebSearchToolConfiguration(from: prompt))
-            }
-            if prompt.enableCodeInterpreter {
-                var container: [String: Any] = ["type": "auto"]
-                
-                // Extract file_ids from attachments for the code interpreter
-                if let attachments = attachments {
-                    let fileIds = attachments.compactMap { $0["file_id"] as? String }
-                    if !fileIds.isEmpty {
-                        container["file_ids"] = fileIds
-                    }
-                }
-                
-                tools.append(["type": "code_interpreter", "container": container])
-            }
-            if prompt.enableImageGeneration && !stream { // Image generation not supported in streaming
-                // Image generation parameters are set based on user preferences
-                tools.append([
-                    "type": "image_generation",
-                    "size": "auto",
-                    "quality": "high",
-                    "output_format": "png",
-                    "background": "auto",
-                    "moderation": "low",
-                    "partial_images": 3
-                ])
-            }
-            if prompt.enableCalculator {
-                tools.append(createCalculatorToolConfiguration())
-            }
-            if prompt.enableMCPTool {
-                tools.append(createMCPToolConfiguration(from: prompt))
-            }
-            if prompt.enableCustomTool {
-                tools.append(createCustomToolConfiguration(from: prompt))
-            }
-            if prompt.enableFileSearch {
-                let vectorStoreIds = (prompt.selectedVectorStoreIds ?? "")
-                    .split(separator: ",")
-                    .map { String($0).trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-
-                if !vectorStoreIds.isEmpty {
-                    tools.append(createFileSearchToolConfiguration(vectorStoreIds: vectorStoreIds))
-                } else {
-                    AppLogger.log(
-                        "Skipping file search tool: No vector store IDs provided in the prompt.",
-                        category: .openAI,
-                        level: .info
-                    )
-                }
-            }
-            
-            if !tools.isEmpty {
-                requestObject["tools"] = tools
-            }
-
-            // Enable reasoning for o-series models and GPT-5 variants
-            if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5") {
-                requestObject["reasoning"] = [
-                    "effort": prompt.reasoningEffort,
-                    "summary": prompt.reasoningSummary
-                ]
-            } else {
-                requestObject["temperature"] = prompt.temperature
-                requestObject["top_p"] = prompt.topP
-            }
-
-            // Advanced API parameters
-            requestObject["background"] = prompt.backgroundMode
-            if prompt.maxOutputTokens > 0 { requestObject["max_output_tokens"] = prompt.maxOutputTokens }
-            if prompt.maxToolCalls > 0 { requestObject["max_tool_calls"] = prompt.maxToolCalls }
-            requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
-            if !prompt.serviceTier.isEmpty { requestObject["service_tier"] = prompt.serviceTier }
-            if prompt.topLogprobs > 0 { requestObject["top_logprobs"] = prompt.topLogprobs }
-            if !prompt.truncationStrategy.isEmpty { requestObject["truncation"] = prompt.truncationStrategy }
-            if !prompt.userIdentifier.isEmpty { requestObject["user"] = prompt.userIdentifier }
-            
-            var include: [String] = []
-            if prompt.includeCodeInterpreterOutputs { include.append("code_interpreter_call.outputs") }
-            if prompt.includeFileSearchResults { include.append("file_search_call.results") }
-            if prompt.includeInputImageUrls { include.append("message.input_image.image_url") }
-            if prompt.includeOutputLogprobs { include.append("message.output_text.logprobs") }
-            if !include.isEmpty { requestObject["include"] = include }
-
-            if prompt.textFormatType == "json_schema", !prompt.jsonSchemaName.isEmpty, !prompt.jsonSchemaContent.isEmpty {
-                requestObject["text"] = [
-                    "format": [
-                        "type": "json_schema",
-                        "name": prompt.jsonSchemaName,
-                        "description": prompt.jsonSchemaDescription,
-                        "strict": prompt.jsonSchemaStrict,
-                        "schema": try? JSONSerialization.jsonObject(with: Data(prompt.jsonSchemaContent.utf8))
-                    ]
-                ]
-            } else {
-                var textObject: [String: Any] = ["format": ["type": "text"]]
-                if prompt.openAIModel.starts(with: "o3") {
-                    textObject["verbosity"] = "medium"
-                }
-                requestObject["text"] = textObject
-            }
+        var inputMessages: [[String: Any]] = []
+        
+        // Add developer instructions if provided
+        if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            inputMessages.append(["role": "developer", "content": prompt.developerInstructions])
         }
-
+        
+        // Handle user message and attachments
+        var userContent: Any = userMessage
+        if let attachments = attachments, !attachments.isEmpty {
+            var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
+            
+            let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
+                var validContent: [String: Any] = [:]
+                validContent["type"] = "input_file"
+                
+                if let fileId = attachment["file_id"] as? String {
+                    validContent["file_id"] = fileId
+                } else {
+                    AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
+                    return nil
+                }
+                return validContent
+            }
+            
+            if !validatedAttachments.isEmpty {
+                contentArray.append(contentsOf: validatedAttachments)
+            }
+            userContent = contentArray
+        }
+        
+        inputMessages.append(["role": "user", "content": userContent])
+        requestObject["input"] = inputMessages
+        
+        // Add streaming parameter if needed
         if stream {
             requestObject["stream"] = true
         }
         
-        // Attachments are now handled within the input construction
+        // Add only the most basic tools that are likely to work
+        var tools: [[String: Any]] = []
+        
+        if prompt.enableWebSearch {
+            tools.append(createWebSearchToolConfiguration(from: prompt))
+        }
+        
+        if prompt.enableCodeInterpreter {
+            tools.append([
+                "type": "code_interpreter",
+                "container": ["type": "auto"]
+            ])
+        }
+        
+        if prompt.enableCalculator {
+            tools.append(createCalculatorToolConfiguration())
+        }
+        
+        if !tools.isEmpty {
+            requestObject["tools"] = tools
+        }
+        
+        // Add basic parameters that are likely supported
+        if !prompt.openAIModel.starts(with: "o") && !prompt.openAIModel.starts(with: "gpt-5") {
+            requestObject["temperature"] = prompt.temperature
+            requestObject["top_p"] = prompt.topP
+        }
+        
+        requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
         
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
@@ -1492,5 +1392,242 @@ class OpenAIService: OpenAIServiceProtocol {
     /// - Returns: The created vector store
     func createVectorStore(name: String, fileIds: [String]?) async throws -> VectorStore {
         return try await createVectorStore(name: name, fileIds: fileIds, expiresAfterDays: nil)
+    }
+    
+    // MARK: - Missing Response Management Endpoints
+    
+    /// Deletes a model response with the given ID.
+    /// - Parameter responseId: The ID of the response to delete.
+    /// - Returns: DeleteResponseResult indicating success.
+    func deleteResponse(responseId: String) async throws -> DeleteResponseResult {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)")!
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        // Log the delete request
+        AnalyticsService.shared.logAPIRequest(
+            url: url,
+            method: "DELETE",
+            headers: ["Authorization": "Bearer \(apiKey)"],
+            body: nil
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "delete_response",
+                AnalyticsParameter.requestMethod: "DELETE",
+                "response_id": responseId
+            ]
+        )
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        // Log the response
+        AnalyticsService.shared.logAPIResponse(
+            url: url,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "delete_response",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAIDeleteAPI"
+                ]
+            )
+            
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "delete_response",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count
+            ]
+        )
+        
+        do {
+            return try JSONDecoder().decode(DeleteResponseResult.self, from: data)
+        } catch {
+            print("Delete response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    /// Cancels a model response that is in progress.
+    /// - Parameter responseId: The ID of the response to cancel.
+    /// - Returns: The updated OpenAIResponse with cancelled status.
+    func cancelResponse(responseId: String) async throws -> OpenAIResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)/cancel")!
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Log the cancel request
+        AnalyticsService.shared.logAPIRequest(
+            url: url,
+            method: "POST",
+            headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+            body: nil
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "cancel_response",
+                AnalyticsParameter.requestMethod: "POST",
+                "response_id": responseId
+            ]
+        )
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        // Log the response
+        AnalyticsService.shared.logAPIResponse(
+            url: url,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "cancel_response",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAICancelAPI"
+                ]
+            )
+            
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "cancel_response",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count
+            ]
+        )
+        
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            print("Cancel response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    /// Returns a list of input items for a given response.
+    /// - Parameter responseId: The ID of the response to retrieve input items for.
+    /// - Returns: InputItemsResponse containing the list of input items.
+    func listInputItems(responseId: String) async throws -> InputItemsResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)/input_items")!
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        // Log the input items request
+        AnalyticsService.shared.logAPIRequest(
+            url: url,
+            method: "GET",
+            headers: ["Authorization": "Bearer \(apiKey)"],
+            body: nil
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "input_items",
+                AnalyticsParameter.requestMethod: "GET",
+                "response_id": responseId
+            ]
+        )
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        // Log the response
+        AnalyticsService.shared.logAPIResponse(
+            url: url,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "input_items",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAIInputItemsAPI"
+                ]
+            )
+            
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "input_items",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count
+            ]
+        )
+        
+        do {
+            return try JSONDecoder().decode(InputItemsResponse.self, from: data)
+        } catch {
+            print("Input items response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
     }
 }

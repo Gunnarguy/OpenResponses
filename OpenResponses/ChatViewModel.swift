@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 
+@MainActor
 class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var messages: [ChatMessage] = []
     @Published var streamingStatus: StreamingStatus = .idle // Tracks the streaming state
@@ -8,28 +9,70 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     @Published var pendingFileAttachments: [String] = [] // To hold file IDs for the next message
     @Published var activePrompt: Prompt // Holds the current settings configuration
     @Published var errorMessage: String? // Holds the current error message for display
+    @Published var isConnectedToNetwork: Bool = true // Network connectivity status
+    @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = [] // Current model tool compatibility
 
     private let api: OpenAIServiceProtocol              // Service for API calls
     private var lastResponseId: String? = nil      // Store the last response ID for continuity
     private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>? // Task for managing the streaming process
+    private let networkMonitor = NetworkMonitor.shared // Network connectivity monitor
 
-    init(api: OpenAIServiceProtocol = OpenAIService()) {
+    init(api: OpenAIServiceProtocol? = nil) {
         // Initialize with a default prompt configuration
         self.activePrompt = Prompt.defaultPrompt()
-        self.api = api
+        self.api = api ?? OpenAIService()
         
         // Load the last used prompt from UserDefaults or create a default
         loadActivePrompt()
+        
+        // Observe network connectivity changes on the main actor
+        Task { @MainActor in
+            networkMonitor.$isConnected
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] (isConnected: Bool) in
+                    self?.isConnectedToNetwork = isConnected
+                    if !isConnected {
+                        self?.handleNetworkDisconnection()
+                    }
+                }
+                .store(in: &cancellables)
+        }
         
         // Observe changes to the active prompt and save them
         $activePrompt
             .debounce(for: .seconds(1), scheduler: RunLoop.main) // Debounce to avoid excessive saving
             .sink { [weak self] updatedPrompt in
                 self?.saveActivePrompt()
+                self?.updateModelCompatibility()
             }
             .store(in: &cancellables)
+        
+        // Initialize compatibility
+        updateModelCompatibility()
+    }
+    
+    /// Updates the current model compatibility information
+    private func updateModelCompatibility() {
+        let compatibilityService = ModelCompatibilityService.shared
+        currentModelCompatibility = compatibilityService.getCompatibleTools(
+            for: activePrompt.openAIModel,
+            prompt: activePrompt,
+            isStreaming: activePrompt.enableStreaming
+        )
+    }
+    
+    /// Handles network disconnection by informing the user
+    private func handleNetworkDisconnection() {
+        let networkMessage = ChatMessage(
+            role: .system, 
+            text: "📱 Network connection lost. Please check your internet connection.", 
+            images: nil
+        )
+        if !messages.contains(where: { $0.text?.contains("Network connection lost") == true }) {
+            messages.append(networkMessage)
+        }
     }
     
     /// Sends a user message and processes the assistant's response.
@@ -206,10 +249,8 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         
         // CRITICAL: Update the lastResponseId to maintain conversation state.
         // This ID is required for the next message to continue the conversation.
-        if let responseId = response.id {
-            self.lastResponseId = responseId
-            print("Updated lastResponseId to: \(responseId)")
-        }
+        self.lastResponseId = response.id
+        print("Updated lastResponseId to: \(response.id)")
         
         // Check for and handle function calls
         if let outputItem = response.output.first, outputItem.type == "function_call" {
@@ -525,14 +566,45 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
         // Set the error message to be displayed in an alert
         self.errorMessage = errorText
         
+        // Provide more user-friendly error messages for production
+        let userFriendlyText: String
+        switch specificError {
+        case .missingAPIKey:
+            userFriendlyText = "⚠️ Please add your OpenAI API key in Settings to start chatting."
+        case .requestFailed(let statusCode, let message):
+            if statusCode == 401 {
+                userFriendlyText = "⚠️ Invalid API key. Please check your OpenAI API key in Settings."
+            } else if statusCode == 403 {
+                userFriendlyText = "⚠️ Access denied. Your API key may not have the required permissions."
+            } else if statusCode >= 500 {
+                userFriendlyText = "⚠️ OpenAI servers are temporarily unavailable. Please try again in a moment."
+            } else {
+                userFriendlyText = "⚠️ Request failed: \(message)"
+            }
+        case .rateLimited(let retryAfter, _):
+            userFriendlyText = "⚠️ Rate limit reached. Please wait \(retryAfter) seconds before trying again."
+        case .invalidResponseData:
+            userFriendlyText = "⚠️ Received unexpected data from OpenAI. Please try again."
+        case .networkError:
+            userFriendlyText = "⚠️ No internet connection. Please check your network and try again."
+        case .decodingError:
+            userFriendlyText = "⚠️ Unable to process OpenAI's response. Please try again."
+        case .fileError(let message):
+            userFriendlyText = "⚠️ File operation failed: \(message)"
+        case .invalidRequest(let message):
+            userFriendlyText = "⚠️ Invalid request: \(message)"
+        }
+        
         // Also append a system message to the chat for context
-        let errorMsg = ChatMessage(role: .system, text: "⚠️ \(errorText)", images: nil)
+        let errorMsg = ChatMessage(role: .system, text: userFriendlyText, images: nil)
         messages.append(errorMsg)
         
-        // If rate limited, you could add logic here to disable the send button
+        // If rate limited, disable input temporarily
         if case .rateLimited(let retryAfter, _) = specificError {
-            // Example: disable UI for `retryAfter` seconds
-            print("Rate limited. Try again in \(retryAfter) seconds.")
+            isStreaming = true // Disable input
+            DispatchQueue.main.asyncAfter(deadline: .now() + TimeInterval(retryAfter)) {
+                self.isStreaming = false // Re-enable input after delay
+            }
         }
     }
     

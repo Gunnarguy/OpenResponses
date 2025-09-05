@@ -12,37 +12,21 @@
 ### Description
 
 ```
-OpenResponses is a powerful AI assistant application that provides professional-grade access to OpenAI's language models with unprecedented control and transparency.
+> **App Store Description:**
 
-With OpenResponses, you can:
+> OpenResponses is a powerful, professional-grade client for the OpenAI API, designed for developers, researchers, and AI enthusiasts. Unlock unprecedented control over models like GPT-4o and the o-series with a clean, native SwiftUI interface.
 
-• Chat with the latest AI models including GPT-5, GPT-4.1, and o-series reasoning models
-• Access cutting-edge models automatically through dynamic model selection
-• Watch real-time streaming with detailed status updates (thinking, searching, coding)
-• Create and manage prompt presets to save your favorite configurations
-• Use powerful tools: enhanced web search, code interpreter, image generation, and file search
-• Upload and search through documents using advanced vector store management
-• Connect to external services with MCP (Model Context Protocol) integration
-• Create custom tools tailored to your specific needs
-• Monitor and debug API interactions with built-in inspector and console tools
-• Fine-tune every aspect of AI behavior with granular parameter controls
-• Enjoy full accessibility support with VoiceOver and Dynamic Type
+> **IMPORTANT: This application requires your own API key from OpenAI to function. The one-time purchase price is for the app client itself. All API usage costs are billed directly to your OpenAI account.**
 
-Professional Features:
-• Dynamic model selector with real-time availability from OpenAI
-• Enhanced streaming feedback showing exactly what the AI is doing
-• API Inspector for transparent request/response monitoring
-• Debug Console with real-time logging and filtering
-• Comprehensive analytics and performance tracking
-• JSON Schema mode for structured outputs
-• Advanced reasoning controls for o-series models
-• Multi-store file search across organized document collections
+> **Professional Features:**
+> • **Full API Control:** Adjust temperature, reasoning effort, token limits, and dozens of other advanced parameters.
+> • **Complete Tool Suite:** Utilize Web Search, Code Interpreter, Image Generation, and a powerful multi-store File Search system.
+> • **Dynamic Model Selection:** Automatically access the latest chat-compatible models from OpenAI.
+> • **Prompt Preset Library:** Save and quickly load your favorite configurations for any task.
+> • **Debugging & Transparency:** Monitor every API call with a built-in API Inspector and view live logs in the Debug Console.
+> • **Privacy-Focused:** Your API key is stored securely in the iOS Keychain. No conversation data is ever sent to our servers.
 
-Whether you're a developer, researcher, writer, or AI enthusiast, OpenResponses provides a clean, native interface with enterprise-level features for serious AI work.
-
-Your privacy is protected - API keys are stored securely in Keychain, no data is stored on our servers, and debugging tools help you understand exactly what data is being processed.
-
-Requires: Your own OpenAI API key
+> Whether you're fine-tuning system instructions, building with JSON Schema mode, or managing complex vector stores for RAG, OpenResponses provides the ultimate toolkit for serious AI work on iOS.
 ```
 
 ### Keywords
