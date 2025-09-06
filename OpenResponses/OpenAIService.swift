@@ -402,35 +402,93 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["stream"] = true
         }
         
-        // Add only the most basic tools that are likely to work
+        // Add tools with intelligent compatibility filtering
         var tools: [[String: Any]] = []
+        let compatibilityService = ModelCompatibilityService.shared
         
-        if prompt.enableWebSearch {
+        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search_preview", for: prompt.openAIModel, isStreaming: stream) {
             tools.append(createWebSearchToolConfiguration(from: prompt))
         }
         
-        if prompt.enableCodeInterpreter {
+        if prompt.enableCodeInterpreter && compatibilityService.isToolSupported("code_interpreter", for: prompt.openAIModel, isStreaming: stream) {
             tools.append([
                 "type": "code_interpreter",
                 "container": ["type": "auto"]
             ])
         }
         
-        if prompt.enableCalculator {
+        if prompt.enableCalculator && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
             tools.append(createCalculatorToolConfiguration())
+        }
+        
+        if prompt.enableImageGeneration && !stream && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: stream) {
+            tools.append([
+                "type": "image_generation",
+                "size": "auto",
+                "quality": "high",
+                "output_format": "png"
+            ])
+        }
+        
+        if prompt.enableFileSearch && compatibilityService.isToolSupported("file_search", for: prompt.openAIModel, isStreaming: stream) {
+            let vectorStoreIds = (prompt.selectedVectorStoreIds ?? "")
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+
+            if !vectorStoreIds.isEmpty {
+                tools.append(createFileSearchToolConfiguration(vectorStoreIds: vectorStoreIds))
+            }
+        }
+        
+        if prompt.enableMCPTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
+            tools.append(createMCPToolConfiguration(from: prompt))
+        }
+        
+        if prompt.enableCustomTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
+            tools.append(createCustomToolConfiguration(from: prompt))
         }
         
         if !tools.isEmpty {
             requestObject["tools"] = tools
         }
         
-        // Add basic parameters that are likely supported
-        if !prompt.openAIModel.starts(with: "o") && !prompt.openAIModel.starts(with: "gpt-5") {
+        // Add parameters based on model compatibility
+        if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel) {
             requestObject["temperature"] = prompt.temperature
+        }
+        
+        if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel) {
             requestObject["top_p"] = prompt.topP
         }
         
-        requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
+        if compatibilityService.isParameterSupported("parallel_tool_calls", for: prompt.openAIModel) {
+            requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
+        }
+        
+        // Add reasoning parameters for compatible models
+        if compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel) && !prompt.reasoningEffort.isEmpty {
+            var reasoningObject: [String: Any] = [:]
+            reasoningObject["effort"] = prompt.reasoningEffort
+            
+            // Add reasoning summary for reasoning models
+            if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5") {
+                if !prompt.reasoningSummary.isEmpty {
+                    reasoningObject["summary"] = prompt.reasoningSummary
+                }
+            }
+            
+            requestObject["reasoning"] = reasoningObject
+        }
+        
+        // Add advanced parameters if supported
+        if compatibilityService.isParameterSupported("max_output_tokens", for: prompt.openAIModel) && prompt.maxOutputTokens > 0 {
+            requestObject["max_output_tokens"] = prompt.maxOutputTokens
+        }
+        
+        if compatibilityService.isParameterSupported("truncation", for: prompt.openAIModel) && !prompt.truncationStrategy.isEmpty {
+            requestObject["truncation"] = prompt.truncationStrategy
+        }
         
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId

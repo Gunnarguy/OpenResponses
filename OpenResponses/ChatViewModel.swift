@@ -49,6 +49,13 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             }
             .store(in: &cancellables)
         
+        // Listen for prompt changes to update compatibility
+        $activePrompt
+            .sink { [weak self] _ in
+                self?.updateModelCompatibility()
+            }
+            .store(in: &cancellables)
+        
         // Initialize compatibility
         updateModelCompatibility()
     }

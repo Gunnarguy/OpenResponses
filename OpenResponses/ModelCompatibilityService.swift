@@ -52,7 +52,7 @@ class ModelCompatibilityService {
         "o1-preview": ModelCapabilities(
             modelId: "o1-preview",
             supportedTools: ["code_interpreter", "file_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation"],
+            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: false,
             supportsReasoningEffort: true,
@@ -62,7 +62,7 @@ class ModelCompatibilityService {
         "o1-mini": ModelCapabilities(
             modelId: "o1-mini",
             supportedTools: ["code_interpreter", "file_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation"],
+            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 65536,
             supportsStreaming: false,
             supportsReasoningEffort: true,
@@ -72,7 +72,7 @@ class ModelCompatibilityService {
         "o3": ModelCapabilities(
             modelId: "o3",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls"],
+            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 200000,
             supportsStreaming: true,
             supportsReasoningEffort: true,
@@ -82,7 +82,7 @@ class ModelCompatibilityService {
         "o3-mini": ModelCapabilities(
             modelId: "o3-mini",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls"],
+            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 200000,
             supportsStreaming: true,
             supportsReasoningEffort: true,
@@ -94,7 +94,7 @@ class ModelCompatibilityService {
         "gpt-4o": ModelCapabilities(
             modelId: "gpt-4o",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
             supportsReasoningEffort: true,
@@ -104,7 +104,7 @@ class ModelCompatibilityService {
         "gpt-4o-mini": ModelCapabilities(
             modelId: "gpt-4o-mini",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
             supportsReasoningEffort: false,
@@ -114,7 +114,7 @@ class ModelCompatibilityService {
         "gpt-4-turbo": ModelCapabilities(
             modelId: "gpt-4-turbo",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 4096,
             supportsStreaming: true,
             supportsReasoningEffort: false,
@@ -126,7 +126,7 @@ class ModelCompatibilityService {
         "gpt-5": ModelCapabilities(
             modelId: "gpt-5",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,
             supportsReasoningEffort: true,
@@ -136,7 +136,7 @@ class ModelCompatibilityService {
         "gpt-4.1-2025-04-14": ModelCapabilities(
             modelId: "gpt-4.1-2025-04-14",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,
             supportsReasoningEffort: true,
@@ -312,6 +312,10 @@ class ModelCompatibilityService {
             return !modelId.starts(with: "o1") // o1 models don't support temperature
         case "reasoning_effort":
             return modelId.starts(with: "o") || modelId.starts(with: "gpt-5") || modelId.contains("gpt-4.1")
+        case "max_tool_calls", "service_tier", "top_logprobs":
+            return true // Generally supported by most models
+        case "background_mode":
+            return false // This is typically not supported by most models
         default:
             return true
         }
@@ -351,6 +355,36 @@ class ModelCompatibilityService {
             return modelCapabilities.compactMap { key, value in
                 value.supportedParameters.contains("max_output_tokens") ? key : nil
             }
+        case "max_tool_calls":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("max_tool_calls") ? key : nil
+            }
+        case "service_tier":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("service_tier") ? key : nil
+            }
+        case "top_logprobs":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("top_logprobs") ? key : nil
+            }
+        case "top_p":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("top_p") ? key : nil
+            }
+        case "truncation":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("truncation") ? key : nil
+            }
+        case "parallel_tool_calls":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("parallel_tool_calls") ? key : nil
+            }
+        case "response_format":
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains("response_format") ? key : nil
+            }
+        case "background_mode":
+            return [] // Not supported by any current models
         default:
             return []
         }

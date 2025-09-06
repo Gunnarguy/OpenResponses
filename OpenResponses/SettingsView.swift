@@ -240,15 +240,30 @@ struct SettingsView: View {
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
-                Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
-                    .accessibilityHint("Enables real-time response streaming from the AI")
+                HStack {
+                    Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
+                        .accessibilityHint("Enables real-time response streaming from the AI")
+                    if !(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsStreaming ?? true) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .help("Streaming not supported by current model")
+                    }
+                }
                 
                 VStack(alignment: .leading) {
-                    Text("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
+                    HStack {
+                        Text("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
+                        if !ModelCompatibilityService.shared.isParameterSupported("max_output_tokens", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                                .help("Not supported by current model")
+                        }
+                    }
                     Slider(value: Binding(
                         get: { Double(viewModel.activePrompt.maxOutputTokens) },
                         set: { viewModel.activePrompt.maxOutputTokens = Int($0) }
                     ), in: 0...4096, step: 64)
+                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("max_output_tokens", for: viewModel.activePrompt.openAIModel))
                     .accessibilityLabel("Max output tokens")
                     .accessibilityHint("Limits the maximum number of tokens in AI responses")
                     .accessibilityValue("\(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
@@ -309,8 +324,15 @@ struct SettingsView: View {
                         }
                     }
                     
-                    Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
-                        .accessibilityHint("Provides mathematical calculation capabilities")
+                    HStack {
+                        Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
+                            .accessibilityHint("Provides mathematical calculation capabilities")
+                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Function tools not supported by current model")
+                        }
+                    }
                     
                     HStack {
                         Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
@@ -338,10 +360,25 @@ struct SettingsView: View {
                         }
                     }
                     
-                    Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
-                        .accessibilityHint("Connects to Model Context Protocol servers")
-                    Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
-                        .accessibilityHint("Enables user-defined custom tools")
+                    HStack {
+                        Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                            .accessibilityHint("Connects to Model Context Protocol servers")
+                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Function tools not supported by current model")
+                        }
+                    }
+                    
+                    HStack {
+                        Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
+                            .accessibilityHint("Enables user-defined custom tools")
+                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .help("Function tools not supported by current model")
+                        }
+                    }
                 }
                 
                 if viewModel.activePrompt.enableFileSearch {
@@ -559,40 +596,106 @@ struct SettingsView: View {
             
             // Advanced API Settings Section
             Section(header: Text("Advanced API Settings"), footer: Text("These options provide fine-grained control over the OpenAI Responses API. Defaults are recommended for most users.")) {
-                Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
-                    .accessibilityHint("Enables background processing for API requests")
-                Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)", value: $viewModel.activePrompt.maxToolCalls, in: 0...20)
-                    .accessibilityHint("Sets maximum number of tool calls per request")
-                Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
-                    .accessibilityHint("Allows tools to be called simultaneously")
-                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
-                    Text("Auto").tag("auto")
-                    Text("Default").tag("default")
-                    Text("Flex").tag("flex")
-                    Text("Priority").tag("priority")
+                HStack {
+                    Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
+                        .accessibilityHint("Enables background processing for API requests")
+                    if !ModelCompatibilityService.shared.isParameterSupported("background", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .accessibilityHint("Select API service tier for request priority")
-                Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
-                    .accessibilityHint("Number of top log probabilities to return")
-                Slider(value: $viewModel.activePrompt.topP, in: 0.0...1.0, step: 0.01) {
-                    Text("Top P")
-                } minimumValueLabel: {
-                    Text("0.0")
-                } maximumValueLabel: {
-                    Text("1.0")
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("background", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)", value: $viewModel.activePrompt.maxToolCalls, in: 0...20)
+                        .accessibilityHint("Sets maximum number of tool calls per request")
+                    if !ModelCompatibilityService.shared.isParameterSupported("max_tool_calls", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
                 }
-                .accessibilityLabel("Top P sampling")
-                .accessibilityHint("Controls diversity of word selection")
-                .accessibilityValue(String(format: "%.2f", viewModel.activePrompt.topP))
-                Text("Top P: \(String(format: "%.2f", viewModel.activePrompt.topP))")
-                    .accessibilityHidden(true)
-                Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
-                    Text("Disabled").tag("disabled")
-                    Text("Auto").tag("auto")
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("max_tool_calls", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
+                        .accessibilityHint("Allows tools to be called simultaneously")
+                    if !ModelCompatibilityService.shared.isParameterSupported("parallel_tool_calls", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .accessibilityHint("Controls how long contexts are truncated")
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("parallel_tool_calls", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
+                        Text("Auto").tag("auto")
+                        Text("Default").tag("default")
+                        Text("Flex").tag("flex")
+                        Text("Priority").tag("priority")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Select API service tier for request priority")
+                    if !ModelCompatibilityService.shared.isParameterSupported("service_tier", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("service_tier", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
+                        .accessibilityHint("Number of top log probabilities to return")
+                    if !ModelCompatibilityService.shared.isParameterSupported("top_logprobs", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("top_logprobs", for: viewModel.activePrompt.openAIModel))
+                
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Top P")
+                        if !ModelCompatibilityService.shared.isParameterSupported("top_p", for: viewModel.activePrompt.openAIModel) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                                .help("Not supported by current model")
+                        }
+                    }
+                    Slider(value: $viewModel.activePrompt.topP, in: 0.0...1.0, step: 0.01) {
+                        Text("Top P")
+                    } minimumValueLabel: {
+                        Text("0.0")
+                    } maximumValueLabel: {
+                        Text("1.0")
+                    }
+                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("top_p", for: viewModel.activePrompt.openAIModel))
+                    .accessibilityLabel("Top P sampling")
+                    .accessibilityHint("Controls diversity of word selection")
+                    .accessibilityValue(String(format: "%.2f", viewModel.activePrompt.topP))
+                    Text("Top P: \(String(format: "%.2f", viewModel.activePrompt.topP))")
+                        .accessibilityHidden(true)
+                }
+                
+                HStack {
+                    Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
+                        Text("Disabled").tag("disabled")
+                        Text("Auto").tag("auto")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Controls how long contexts are truncated")
+                    if !ModelCompatibilityService.shared.isParameterSupported("truncation", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("truncation", for: viewModel.activePrompt.openAIModel))
+                
                 TextField("User Identifier", text: Binding(get: { viewModel.activePrompt.userIdentifier }, set: { viewModel.activePrompt.userIdentifier = $0 }))
                     .accessibilityHint("Optional identifier for tracking user sessions")
             }
@@ -600,29 +703,81 @@ struct SettingsView: View {
             
             // Advanced Include Section
             Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Reasoning content cannot be included when conversation persistence is enabled.")) {
-                Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
-                    .accessibilityHint("Includes code execution results in responses")
-                Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
-                    .accessibilityHint("Includes computer interaction results and image URLs in responses")
-                Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
-                    .accessibilityHint("Includes file search metadata in responses")
+                HStack {
+                    Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                        .accessibilityHint("Includes code execution results in responses")
+                    if !ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Code interpreter not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
+                        .accessibilityHint("Includes computer interaction results and image URLs in responses")
+                    if !ModelCompatibilityService.shared.isToolSupported("computer_use_preview", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Computer use not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isToolSupported("computer_use_preview", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                        .accessibilityHint("Includes file search metadata in responses")
+                    if !ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("File search not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel))
+                
                 Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
                     .accessibilityHint("Includes URLs of uploaded images in responses")
-                Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
-                    .accessibilityHint("Includes probability scores for generated tokens")
-                Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
-                    .accessibilityHint("Includes encrypted reasoning tokens for stateless conversations")
+                
+                HStack {
+                    Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
+                        .accessibilityHint("Includes probability scores for generated tokens")
+                    if !ModelCompatibilityService.shared.isParameterSupported("top_logprobs", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Logprobs not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("top_logprobs", for: viewModel.activePrompt.openAIModel))
+                
+                HStack {
+                    Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+                        .accessibilityHint("Includes encrypted reasoning tokens for stateless conversations")
+                    if !ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Reasoning content not supported by current model")
+                    }
+                }
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel))
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Text Formatting Section
             Section(header: Text("Text Output Formatting"), footer: Text("Configure the output format for text responses. Use JSON Schema for structured outputs.")) {
-                Picker("Format Type", selection: $viewModel.activePrompt.textFormatType) {
-                    Text("Text").tag("text")
-                    Text("JSON Schema").tag("json_schema")
+                HStack {
+                    Picker("Format Type", selection: $viewModel.activePrompt.textFormatType) {
+                        Text("Text").tag("text")
+                        Text("JSON Schema").tag("json_schema")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("Choose between plain text or structured JSON output")
+                    if viewModel.activePrompt.textFormatType == "json_schema" && !ModelCompatibilityService.shared.isParameterSupported("response_format", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("JSON Schema formatting may have limited support on current model")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .accessibilityHint("Choose between plain text or structured JSON output")
                 if viewModel.activePrompt.textFormatType == "json_schema" {
                     TextField("Schema Name", text: Binding(get: { viewModel.activePrompt.jsonSchemaName }, set: { viewModel.activePrompt.jsonSchemaName = $0 }))
                         .accessibilityHint("Name for the JSON schema")
