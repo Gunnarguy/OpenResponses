@@ -15,10 +15,10 @@ struct PromptLibraryView: View {
                 ForEach(library.prompts) { prompt in
                     VStack(alignment: .leading) {
                         Text(prompt.name).font(.headline)
-                        Text(prompt.description).font(.caption).foregroundColor(.gray)
+                        Text("Model: \(prompt.openAIModel)").font(.caption).foregroundColor(.gray)
                     }
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(prompt.name). \(prompt.description)")
+                    .accessibilityLabel("\(prompt.name). Model: \(prompt.openAIModel)")
                     .accessibilityHint("Tap to edit this preset")
                     .onTapGesture {
                         promptToEdit = prompt
@@ -96,14 +96,17 @@ struct AddEditPromptView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Preset Details")) {
+                Section {
                     TextField("Preset Name", text: $currentSettings.name)
-                    TextField("Description", text: $currentSettings.description)
+                } header: {
+                    Text("Preset Details")
                 }
                 
-                Section(header: Text("Preset Configuration")) {
+                Section {
                     Text("This preset will save all the current settings from the main screen.")
                         .foregroundColor(.secondary)
+                } header: {
+                    Text("Preset Configuration")
                 }
             }
             .navigationTitle(promptToEdit == nil ? "Add Preset" : "Edit Preset")

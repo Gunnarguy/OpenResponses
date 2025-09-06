@@ -354,15 +354,49 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Builds the request dictionary from a Prompt object and other parameters.
+    /// This function is the central point for constructing the JSON payload for the OpenAI API.
+    /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
     private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
-        var requestObject: [String: Any] = [:]
-
-        // Start with minimal working parameters
-        requestObject = [
+        var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
             "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
         ]
 
+        // 1. Build the 'input' messages array
+        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments)
+
+        // 2. Add streaming flag if required
+        if stream {
+            requestObject["stream"] = true
+        }
+
+        // 3. Build the 'tools' array, filtering by compatibility
+        let tools = buildTools(for: prompt, isStreaming: stream)
+        if !tools.isEmpty {
+            requestObject["tools"] = tools
+        }
+
+        // 4. Build and merge other top-level parameters
+        let parameters = buildParameters(for: prompt)
+        for (key, value) in parameters {
+            requestObject[key] = value
+        }
+
+        // 5. Build the 'reasoning' object if applicable
+        if let reasoning = buildReasoningObject(for: prompt) {
+            requestObject["reasoning"] = reasoning
+        }
+
+        // 6. Add the previous response ID for stateful conversation
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
+        
+        return requestObject
+    }
+
+    /// Constructs the `input` array for the request, including developer instructions and user content.
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -376,16 +410,11 @@ class OpenAIService: OpenAIServiceProtocol {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
             let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
-                var validContent: [String: Any] = [:]
-                validContent["type"] = "input_file"
-                
-                if let fileId = attachment["file_id"] as? String {
-                    validContent["file_id"] = fileId
-                } else {
+                guard let fileId = attachment["file_id"] as? String else {
                     AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
                     return nil
                 }
-                return validContent
+                return ["type": "input_file", "file_id": fileId]
             }
             
             if !validatedAttachments.isEmpty {
@@ -395,42 +424,31 @@ class OpenAIService: OpenAIServiceProtocol {
         }
         
         inputMessages.append(["role": "user", "content": userContent])
-        requestObject["input"] = inputMessages
-        
-        // Add streaming parameter if needed
-        if stream {
-            requestObject["stream"] = true
-        }
-        
-        // Add tools with intelligent compatibility filtering
+        return inputMessages
+    }
+
+    /// Assembles the `tools` array for the request, checking for model compatibility.
+    private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [[String: Any]] {
         var tools: [[String: Any]] = []
         let compatibilityService = ModelCompatibilityService.shared
         
-        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search_preview", for: prompt.openAIModel, isStreaming: stream) {
+        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search_preview", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createWebSearchToolConfiguration(from: prompt))
         }
         
-        if prompt.enableCodeInterpreter && compatibilityService.isToolSupported("code_interpreter", for: prompt.openAIModel, isStreaming: stream) {
-            tools.append([
-                "type": "code_interpreter",
-                "container": ["type": "auto"]
-            ])
+        if prompt.enableCodeInterpreter && compatibilityService.isToolSupported("code_interpreter", for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(["type": "code_interpreter", "container": ["type": "auto"]])
         }
         
-        if prompt.enableCalculator && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
+        if prompt.enableCalculator && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createCalculatorToolConfiguration())
         }
         
-        if prompt.enableImageGeneration && !stream && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: stream) {
-            tools.append([
-                "type": "image_generation",
-                "size": "auto",
-                "quality": "high",
-                "output_format": "png"
-            ])
+        if prompt.enableImageGeneration && !isStreaming && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(["type": "image_generation", "size": "auto", "quality": "high", "output_format": "png"])
         }
         
-        if prompt.enableFileSearch && compatibilityService.isToolSupported("file_search", for: prompt.openAIModel, isStreaming: stream) {
+        if prompt.enableFileSearch && compatibilityService.isToolSupported("file_search", for: prompt.openAIModel, isStreaming: isStreaming) {
             let vectorStoreIds = (prompt.selectedVectorStoreIds ?? "")
                 .split(separator: ",")
                 .map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -441,62 +459,62 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
         
-        if prompt.enableMCPTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
+        if prompt.enableMCPTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createMCPToolConfiguration(from: prompt))
         }
         
-        if prompt.enableCustomTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: stream) {
+        if prompt.enableCustomTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createCustomToolConfiguration(from: prompt))
         }
         
-        if !tools.isEmpty {
-            requestObject["tools"] = tools
-        }
-        
-        // Add parameters based on model compatibility
+        return tools
+    }
+
+    /// Gathers various API parameters based on model compatibility.
+    private func buildParameters(for prompt: Prompt) -> [String: Any] {
+        var parameters: [String: Any] = [:]
+        let compatibilityService = ModelCompatibilityService.shared
+
         if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel) {
-            requestObject["temperature"] = prompt.temperature
+            parameters["temperature"] = prompt.temperature
         }
         
         if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel) {
-            requestObject["top_p"] = prompt.topP
+            parameters["top_p"] = prompt.topP
         }
         
         if compatibilityService.isParameterSupported("parallel_tool_calls", for: prompt.openAIModel) {
-            requestObject["parallel_tool_calls"] = prompt.parallelToolCalls
+            parameters["parallel_tool_calls"] = prompt.parallelToolCalls
         }
         
-        // Add reasoning parameters for compatible models
-        if compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel) && !prompt.reasoningEffort.isEmpty {
-            var reasoningObject: [String: Any] = [:]
-            reasoningObject["effort"] = prompt.reasoningEffort
-            
-            // Add reasoning summary for reasoning models
-            if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5") {
-                if !prompt.reasoningSummary.isEmpty {
-                    reasoningObject["summary"] = prompt.reasoningSummary
-                }
-            }
-            
-            requestObject["reasoning"] = reasoningObject
-        }
-        
-        // Add advanced parameters if supported
         if compatibilityService.isParameterSupported("max_output_tokens", for: prompt.openAIModel) && prompt.maxOutputTokens > 0 {
-            requestObject["max_output_tokens"] = prompt.maxOutputTokens
+            parameters["max_output_tokens"] = prompt.maxOutputTokens
         }
         
         if compatibilityService.isParameterSupported("truncation", for: prompt.openAIModel) && !prompt.truncationStrategy.isEmpty {
-            requestObject["truncation"] = prompt.truncationStrategy
+            parameters["truncation"] = prompt.truncationStrategy
         }
         
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId
-        }
-        
-        return requestObject
+        return parameters
     }
-    
+
+    /// Constructs the `reasoning` object for models that support it.
+    private func buildReasoningObject(for prompt: Prompt) -> [String: Any]? {
+        let compatibilityService = ModelCompatibilityService.shared
+        guard compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel), !prompt.reasoningEffort.isEmpty else {
+            return nil
+        }
+        
+        var reasoningObject: [String: Any] = ["effort": prompt.reasoningEffort]
+        
+        // Add reasoning summary for specific reasoning models
+        if (prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5")) && !prompt.reasoningSummary.isEmpty {
+            reasoningObject["summary"] = prompt.reasoningSummary
+        }
+        
+        return reasoningObject
+    }
+
     /// Sends the output of a function call back to the API to get a final response.
     /// - Parameters:
     ///   - call: The original `OutputItem` that represented the function call.

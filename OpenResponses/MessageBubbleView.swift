@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     let message: ChatMessage
+    let onDelete: () -> Void
     
     @ScaledMetric private var bubblePadding: CGFloat = 12
     @ScaledMetric private var cornerRadius: CGFloat = 16
@@ -44,6 +45,11 @@ struct MessageBubbleView: View {
             .font(font(for: message.role))
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .leading)
+            .contextMenu {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilityLabel(for: message))
             .accessibilityHint(accessibilityHint(for: message.role))

@@ -2,44 +2,49 @@ import Foundation
 
 /// Represents a user-saved preset for all settings in the app.
 /// This struct captures the entire state of the SettingsView.
-struct Prompt: Codable, Identifiable, Hashable {
-    var id = UUID()
+struct Prompt: Codable, Identifiable, Equatable {
+    // MARK: - Properties
     var name: String
-    var description: String
     
-    // Basic Settings
+    // Model and Generation
     var openAIModel: String
     var reasoningEffort: String
+    var reasoningSummary: String // Added
     var temperature: Double
+    
+    // Instructions
     var systemInstructions: String
     var developerInstructions: String
     
-    // Published Prompt Settings
-    var enablePublishedPrompt: Bool
-    var publishedPromptId: String
-    var publishedPromptVersion: String
-    
-    // Tool Toggles
+    // Tools
     var enableWebSearch: Bool
     var enableCodeInterpreter: Bool
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
+    var selectedVectorStoreIds: String? // Added
     var enableCalculator: Bool
+    
+    // MCP Tool
     var enableMCPTool: Bool
+    var mcpServerLabel: String
+    var mcpServerURL: String
+    var mcpHeaders: String
+    var mcpRequireApproval: String
+
+    // Custom Tool
     var enableCustomTool: Bool
+    var customToolName: String
+    var customToolDescription: String
     
-    // Response Settings
-    var enableStreaming: Bool
-    var maxOutputTokens: Int
-    var presencePenalty: Double
-    var frequencyPenalty: Double
+    // Web Search Location
+    var userLocationCity: String?
+    var userLocationCountry: String?
+    var userLocationRegion: String?
+    var userLocationTimezone: String?
     
-    // Tool Configuration
-    var toolChoice: String // "auto", "none", or specific tool name
-    var metadata: String? // JSON string for metadata
-    
-    // Advanced API Settings
+    // Advanced API
     var backgroundMode: Bool
+    var maxOutputTokens: Int
     var maxToolCalls: Int
     var parallelToolCalls: Bool
     var serviceTier: String
@@ -55,20 +60,7 @@ struct Prompt: Codable, Identifiable, Hashable {
     var jsonSchemaStrict: Bool
     var jsonSchemaContent: String
     
-    // Advanced Reasoning
-    var reasoningSummary: String
-    
-    // MCP Tool
-    var mcpServerLabel: String
-    var mcpServerURL: String
-    var mcpHeaders: String
-    var mcpRequireApproval: String
-    
-    // Custom Tool
-    var customToolName: String
-    var customToolDescription: String
-    
-    // Include Parameters
+    // Advanced Includes
     var includeCodeInterpreterOutputs: Bool
     var includeComputerCallOutput: Bool
     var includeFileSearchResults: Bool
@@ -76,77 +68,97 @@ struct Prompt: Codable, Identifiable, Hashable {
     var includeOutputLogprobs: Bool
     var includeReasoningContent: Bool
     
-    // File Search
-    var selectedVectorStoreIds: String?
+    // Streaming and Published Prompts
+    var enableStreaming: Bool
+    var enablePublishedPrompt: Bool
+    var publishedPromptId: String
+    var publishedPromptVersion: String
     
-    // Web Search
+    // Misc
+    var toolChoice: String
+    var metadata: String?
     var searchContextSize: String?
-    var userLocationCity: String?
-    var userLocationCountry: String?
-    var userLocationRegion: String?
-    var userLocationTimezone: String?
-
-    // Note: Detailed tool configurations like web search are not stored here
-    // as they are less likely to change per-prompt and would bloat the model.
-    // They will continue to be read from UserDefaults directly.
     
+    /// A flag to indicate if this prompt is a saved preset.
+    /// This is a runtime-only property and is not persisted.
+    var isPreset: Bool = false
+    
+    // MARK: - Identifiable
+    var id: UUID = UUID()
+    
+    // MARK: - Codable
+    enum CodingKeys: String, CodingKey {
+        // Explicitly list all properties to be encoded/decoded
+        case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
+        case enableWebSearch, enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds, enableCalculator
+        case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval
+        case enableCustomTool, customToolName, customToolDescription
+        case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
+        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
+        case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
+        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent
+        case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
+        case toolChoice, metadata, searchContextSize
+        case id // Make sure 'id' is included
+        // 'isPreset' is intentionally omitted from Codable to prevent it from being persisted.
+    }
+    
+    // MARK: - Default Prompt
     static func defaultPrompt() -> Prompt {
         return Prompt(
             name: "Default",
-            description: "The default settings for the application.",
             openAIModel: "gpt-4o",
             reasoningEffort: "medium",
+            reasoningSummary: "", // Added
             temperature: 1.0,
             systemInstructions: "You are a helpful assistant.",
             developerInstructions: "",
-            enablePublishedPrompt: false,
-            publishedPromptId: "",
-            publishedPromptVersion: "1",
             enableWebSearch: true,
             enableCodeInterpreter: true,
             enableImageGeneration: true,
             enableFileSearch: false,
+            selectedVectorStoreIds: nil, // Added
             enableCalculator: true,
             enableMCPTool: false,
+            mcpServerLabel: "paypal",
+            mcpServerURL: "https://mcp.paypal.com/sse",
+            mcpHeaders: "{\"Authorization\": \"Bearer s\"}",
+            mcpRequireApproval: "always",
             enableCustomTool: false,
-            enableStreaming: true,
-            maxOutputTokens: 0,
-            presencePenalty: 0.0,
-            frequencyPenalty: 0.0,
-            toolChoice: "auto",
-            metadata: nil,
+            customToolName: "custom_tool_placeholder",
+            customToolDescription: "A placeholder for a custom tool.",
+            userLocationCity: nil,
+            userLocationCountry: nil,
+            userLocationRegion: nil,
+            userLocationTimezone: nil,
             backgroundMode: false,
+            maxOutputTokens: 0,
             maxToolCalls: 0,
             parallelToolCalls: true,
             serviceTier: "auto",
             topLogprobs: 0,
             topP: 1.0,
-            truncationStrategy: "auto",
+            truncationStrategy: "disabled",
             userIdentifier: "",
-            textFormatType: "auto",
+            textFormatType: "text",
             jsonSchemaName: "",
             jsonSchemaDescription: "",
             jsonSchemaStrict: false,
             jsonSchemaContent: "",
-            reasoningSummary: "",
-            mcpServerLabel: "",
-            mcpServerURL: "",
-            mcpHeaders: "",
-            mcpRequireApproval: "never",
-            customToolName: "",
-            customToolDescription: "",
-            includeCodeInterpreterOutputs: true,
+            includeCodeInterpreterOutputs: false,
             includeComputerCallOutput: false,
-            includeFileSearchResults: true,
-            includeInputImageUrls: true,
+            includeFileSearchResults: false,
+            includeInputImageUrls: false,
             includeOutputLogprobs: false,
             includeReasoningContent: false,
-            selectedVectorStoreIds: nil,
-            searchContextSize: "medium",
-            userLocationCity: nil,
-            userLocationCountry: nil,
-            userLocationRegion: nil,
-            userLocationTimezone: nil
+            enableStreaming: true,
+            enablePublishedPrompt: false,
+            publishedPromptId: "",
+            publishedPromptVersion: "1",
+            toolChoice: "auto",
+            metadata: nil,
+            searchContextSize: nil,
+            isPreset: false // Default is not a preset
         )
     }
 }

@@ -4,27 +4,42 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var viewModel: ChatViewModel
     @State private var showingSettings = false
+    @State private var showingConversationList = false
     private let keychainService = KeychainService.shared
 
     init() {
-        // Note: Per your file list, the newer ChatViewModel initializer does not require the API service to be passed.
         _viewModel = StateObject(wrappedValue: ChatViewModel())
     }
 
     var body: some View {
-        ChatView() // ChatView now uses @EnvironmentObject, so no need to pass the viewModel here.
-            .onAppear(perform: checkAPIKey)
-            .sheet(isPresented: $showingSettings) {
-                // This sheet presents our compliant SettingsView if no key is found.
-                SettingsView()
-                    .environmentObject(viewModel) // Ensure the environment object is passed to the sheet.
-            }
+        NavigationView {
+            ChatView()
+                .navigationBarTitle(viewModel.activeConversation?.title ?? "Chat", displayMode: .inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: { showingConversationList = true }) {
+                            Image(systemName: "sidebar.left")
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: { showingSettings = true }) {
+                            Image(systemName: "gear")
+                        }
+                    }
+                }
+        }
+        .onAppear(perform: checkAPIKey)
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $showingConversationList) {
+            ConversationListView(isPresented: $showingConversationList)
+        }
+        .environmentObject(viewModel)
     }
 
     private func checkAPIKey() {
         if keychainService.load(forKey: "openAIKey") == nil {
-            // If no key is found on the very first appearance,
-            // present the settings sheet to the user.
             self.showingSettings = true
         }
     }

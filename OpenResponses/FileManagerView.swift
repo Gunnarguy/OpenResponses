@@ -4,6 +4,9 @@ import Combine
 
 /// View for managing files and vector stores with OpenAI
 struct FileManagerView: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+    @Environment(\.dismiss) private var dismiss
+    
     @State private var files: [OpenAIFile] = []
     @State private var vectorStores: [VectorStore] = []
     @State private var isLoading = false
@@ -15,13 +18,10 @@ struct FileManagerView: View {
     @State private var vectorStoreToEdit: VectorStore?
     @State private var vectorStoreFiles: [VectorStoreFile] = []
     
-    @AppStorage("enableFileSearch") private var enableFileSearch: Bool = false
-    @AppStorage("selectedVectorStore") private var selectedVectorStoreId: String = ""
-    @AppStorage("selectedVectorStoreIds") private var selectedVectorStoreIds: String = "" // Comma-separated for multi-select
-    @AppStorage("multiStoreMode") private var multiStoreMode: Bool = false // Persist multi-store toggle
     @State private var multiSelectVectorStores: Set<String> = []
     @State private var showSaveMultiSelect: Bool = false // Show save button when multi-select changes
     @State private var multiStoreInit: Bool = false // Track if we've initialized multi-store toggle
+    @State private var multiStoreMode: Bool = false // Local state for multi-store mode
     
     // New state variables for delete confirmation
     @State private var fileToDelete: OpenAIFile?
@@ -36,35 +36,35 @@ struct FileManagerView: View {
             List {
                 // File Search Toggle Section
                 Section(header: Text("File Search Tool")) {
-                    Toggle("Enable File Search", isOn: $enableFileSearch)
+                    Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
                         .accessibilityHint("Enables the AI to search through uploaded files and documents")
-                        .onChange(of: enableFileSearch) { _, newValue in
+                        .onChange(of: viewModel.activePrompt.enableFileSearch) { _, newValue in
                             if !newValue {
-                                selectedVectorStoreId = ""
-                                selectedVectorStoreIds = ""
+                                viewModel.activePrompt.selectedVectorStoreIds = nil
                                 multiSelectVectorStores.removeAll()
-                                multiStoreMode = false
                             }
                         }
                     Toggle("Enable Multi-Store File Search", isOn: $multiStoreMode)
-                        .disabled(!enableFileSearch)
+                        .disabled(!viewModel.activePrompt.enableFileSearch)
                         .accessibilityHint("Allows searching across multiple vector stores simultaneously")
                         .onChange(of: multiStoreMode) { _, newValue in
                             if newValue {
                                 // Restore selection from saved IDs
-                                if !selectedVectorStoreIds.isEmpty {
-                                    let ids = Set(selectedVectorStoreIds.split(separator: ",").map { String($0) })
+                                if let savedIds = viewModel.activePrompt.selectedVectorStoreIds, !savedIds.isEmpty {
+                                    let ids = Set(savedIds.split(separator: ",").map { String($0) })
                                     multiSelectVectorStores = ids
                                 }
                             } else {
                                 multiSelectVectorStores.removeAll()
-                                selectedVectorStoreIds = ""
+                                viewModel.activePrompt.selectedVectorStoreIds = nil
+                                viewModel.saveActivePrompt()
                             }
                         }
                     // Show save button if multi-select is enabled
                     if multiStoreMode {
                         Button("Save Selected Vector Stores") {
-                            selectedVectorStoreIds = multiSelectVectorStores.joined(separator: ",")
+                            viewModel.activePrompt.selectedVectorStoreIds = multiSelectVectorStores.isEmpty ? nil : multiSelectVectorStores.joined(separator: ",")
+                            viewModel.saveActivePrompt()
                             showSaveMultiSelect = false
                         }
                         .disabled(multiSelectVectorStores.isEmpty)
@@ -81,9 +81,9 @@ struct FileManagerView: View {
                         ForEach(vectorStores) { store in
                             VectorStoreRow(
                                 store: store,
-                                isSelected: multiStoreMode ? multiSelectVectorStores.contains(store.id) : (store.id == selectedVectorStoreId),
+                                isSelected: multiStoreMode ? multiSelectVectorStores.contains(store.id) : (store.id == (viewModel.activePrompt.selectedVectorStoreIds ?? "")),
                                 onSelect: {
-                                    if enableFileSearch {
+                                    if viewModel.activePrompt.enableFileSearch {
                                         if multiStoreMode {
                                             if multiSelectVectorStores.contains(store.id) {
                                                 multiSelectVectorStores.remove(store.id)
@@ -92,13 +92,14 @@ struct FileManagerView: View {
                                             }
                                             showSaveMultiSelect = true
                                         } else {
-                                            selectedVectorStoreId = store.id
+                                            viewModel.activePrompt.selectedVectorStoreIds = store.id
+                                            viewModel.saveActivePrompt()
                                             // Also clear multi-select if switching back
                                             multiSelectVectorStores.removeAll()
-                                            selectedVectorStoreIds = ""
                                         }
                                     } else {
-                                        selectedVectorStoreId = store.id
+                                        viewModel.activePrompt.selectedVectorStoreIds = store.id
+                                        viewModel.saveActivePrompt()
                                     }
                                 },
                                 onDelete: {
@@ -169,8 +170,8 @@ struct FileManagerView: View {
                 if !multiStoreInit {
                     multiStoreInit = true
                     if multiStoreMode {
-                        if !selectedVectorStoreIds.isEmpty {
-                            let ids = Set(selectedVectorStoreIds.split(separator: ",").map { String($0) })
+                        if let savedIds = viewModel.activePrompt.selectedVectorStoreIds, !savedIds.isEmpty {
+                            let ids = Set(savedIds.split(separator: ",").map { String($0) })
                             multiSelectVectorStores = ids
                         }
                     } else {
@@ -384,8 +385,9 @@ struct FileManagerView: View {
             vectorStores.removeAll { $0.id == store.id }
             
             // Clear selection if this was the selected store
-            if selectedVectorStoreId == store.id {
-                selectedVectorStoreId = ""
+            if viewModel.activePrompt.selectedVectorStoreIds == store.id {
+                viewModel.activePrompt.selectedVectorStoreIds = nil
+                viewModel.saveActivePrompt()
             }
         } catch {
             errorMessage = "Failed to delete vector store: \(error.localizedDescription)"

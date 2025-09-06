@@ -2,62 +2,103 @@ import SwiftUI
 import Combine
 
 @MainActor
-class ChatViewModel: ObservableObject { // Conforms to ObservableObject
-    @Published var messages: [ChatMessage] = []
-    @Published var streamingStatus: StreamingStatus = .idle // Tracks the streaming state
-    @Published var isStreaming: Bool = false // To disable UI during streaming
-    @Published var pendingFileAttachments: [String] = [] // To hold file IDs for the next message
-    @Published var activePrompt: Prompt // Holds the current settings configuration
-    @Published var errorMessage: String? // Holds the current error message for display
-    @Published var isConnectedToNetwork: Bool = true // Network connectivity status
-    @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = [] // Current model tool compatibility
+class ChatViewModel: ObservableObject {
+    // MARK: - Published Properties
+    @Published var conversations: [Conversation] = []
+    @Published var activeConversation: Conversation?
+    @Published var streamingStatus: StreamingStatus = .idle
+    @Published var isStreaming: Bool = false
+    @Published var pendingFileAttachments: [String] = []
+    @Published var activePrompt: Prompt
+    @Published var errorMessage: String?
+    @Published var isConnectedToNetwork: Bool = true
+    @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = []
 
-    private let api: OpenAIServiceProtocol              // Service for API calls
-    private var lastResponseId: String? = nil      // Store the last response ID for continuity
-    private var streamingMessageId: UUID? = nil    // Tracks the message being actively streamed
+    // MARK: - Private Properties
+    private let api: OpenAIServiceProtocol
+    private let storageService: ConversationStorageService
+    private var streamingMessageId: UUID?
     private var cancellables = Set<AnyCancellable>()
-    private var streamingTask: Task<Void, Never>? // Task for managing the streaming process
-    private let networkMonitor = NetworkMonitor.shared // Network connectivity monitor
+    private var streamingTask: Task<Void, Never>?
+    private let networkMonitor = NetworkMonitor.shared
 
-    init(api: OpenAIServiceProtocol? = nil) {
-        // Initialize with a default prompt configuration
-        self.activePrompt = Prompt.defaultPrompt()
+    // MARK: - Computed Properties
+    var messages: [ChatMessage] {
+        get { activeConversation?.messages ?? [] }
+        set {
+            guard var conversation = activeConversation else { return }
+            conversation.messages = newValue
+            updateActiveConversation(conversation)
+        }
+    }
+
+    private var lastResponseId: String? {
+        get { activeConversation?.lastResponseId }
+        set {
+            guard var conversation = activeConversation else { return }
+            conversation.lastResponseId = newValue
+            updateActiveConversation(conversation)
+        }
+    }
+
+    init(api: OpenAIServiceProtocol? = nil, storageService: ConversationStorageService = .shared) {
         self.api = api ?? OpenAIService()
+        self.storageService = storageService
+        self.activePrompt = Prompt.defaultPrompt()
         
-        // Load the last used prompt from UserDefaults or create a default
         loadActivePrompt()
+        loadConversations()
         
-        // Observe network connectivity changes on the main actor
-        Task { @MainActor in
-            networkMonitor.$isConnected
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] (isConnected: Bool) in
-                    self?.isConnectedToNetwork = isConnected
-                    if !isConnected {
-                        self?.handleNetworkDisconnection()
-                    }
-                }
-                .store(in: &cancellables)
+        if conversations.isEmpty {
+            createNewConversation()
+        } else {
+            activeConversation = conversations.first
         }
         
-        // Observe changes to the active prompt and save them
-        $activePrompt
-            .debounce(for: .seconds(1), scheduler: RunLoop.main) // Debounce to avoid excessive saving
-            .sink { [weak self] updatedPrompt in
-                self?.saveActivePrompt()
-                self?.updateModelCompatibility()
-            }
-            .store(in: &cancellables)
-        
-        // Listen for prompt changes to update compatibility
-        $activePrompt
-            .sink { [weak self] _ in
-                self?.updateModelCompatibility()
-            }
-            .store(in: &cancellables)
-        
-        // Initialize compatibility
+        setupBindings()
         updateModelCompatibility()
+    }
+    
+    private func setupBindings() {
+        networkMonitor.$isConnected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                self?.isConnectedToNetwork = isConnected
+                if !isConnected {
+                    self?.handleNetworkDisconnection()
+                }
+            }
+            .store(in: &cancellables)
+
+        $activePrompt
+            .dropFirst() // Ignore the initial value on app launch
+            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                
+                // If a preset was active, any modification turns it into a custom prompt.
+                if self.activePrompt.isPreset {
+                    self.activePrompt.isPreset = false
+                }
+                
+                self.saveActivePrompt()
+                self.updateModelCompatibility()
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateActiveConversation(_ conversation: Conversation) {
+        var conv = conversation
+        conv.lastModified = Date() // Update timestamp
+        
+        if let index = conversations.firstIndex(where: { $0.id == conv.id }) {
+            conversations[index] = conv
+        } else {
+            conversations.insert(conv, at: 0)
+        }
+        
+        activeConversation = conv
+        saveConversation(conv)
     }
     
     /// Updates the current model compatibility information
@@ -381,7 +422,10 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     // MARK: - Active Prompt Management
     
     /// Saves the current `activePrompt` to UserDefaults.
-    private func saveActivePrompt() {
+    func saveActivePrompt() {
+        // Do not save if the active prompt is a temporary preset
+        if activePrompt.isPreset { return }
+        
         if let encoded = try? JSONEncoder().encode(activePrompt) {
             UserDefaults.standard.set(encoded, forKey: "activePrompt")
             print("Active prompt saved.")
@@ -399,6 +443,59 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
             self.activePrompt = Prompt.defaultPrompt()
             print("No saved prompt found, initialized with default.")
         }
+    }
+    
+    // MARK: - Conversation Management
+
+    func loadConversations() {
+        do {
+            conversations = try storageService.loadConversations()
+            if conversations.isEmpty {
+                createNewConversation()
+            } else {
+                activeConversation = conversations.first
+            }
+        } catch {
+            handleError(error)
+            if conversations.isEmpty {
+                createNewConversation()
+            }
+        }
+    }
+
+    func createNewConversation() {
+        let newConversation = Conversation.new()
+        conversations.insert(newConversation, at: 0)
+        activeConversation = newConversation
+        saveConversation(newConversation)
+    }
+
+    func saveConversation(_ conversation: Conversation) {
+        do {
+            try storageService.saveConversation(conversation)
+        } catch {
+            handleError(error)
+        }
+    }
+
+    func deleteConversation(_ conversation: Conversation) {
+        conversations.removeAll { $0.id == conversation.id }
+        do {
+            try storageService.deleteConversation(withId: conversation.id)
+        } catch {
+            handleError(error)
+        }
+
+        if activeConversation?.id == conversation.id {
+            activeConversation = conversations.first
+            if activeConversation == nil {
+                createNewConversation()
+            }
+        }
+    }
+
+    func selectConversation(_ conversation: Conversation) {
+        activeConversation = conversation
     }
     
     /// Process a single chunk from the OpenAI streaming response.
@@ -617,10 +714,22 @@ class ChatViewModel: ObservableObject { // Conforms to ObservableObject
     
     /// Resets the conversation by clearing messages and forgetting the last response ID.
     func clearConversation() {
-        messages.removeAll()
-        lastResponseId = nil
+        guard var conversation = activeConversation else { return }
+        conversation.messages.removeAll()
+        conversation.lastResponseId = nil
+        updateActiveConversation(conversation)
     }
     
+    /// Deletes a specific message from the active conversation.
+    func deleteMessage(_ message: ChatMessage) {
+        guard var conversation = activeConversation,
+              let index = conversation.messages.firstIndex(where: { $0.id == message.id })
+        else { return }
+
+        conversation.messages.remove(at: index)
+        updateActiveConversation(conversation)
+    }
+
     /// Cancels the ongoing streaming request.
     func cancelStreaming() {
         streamingTask?.cancel()

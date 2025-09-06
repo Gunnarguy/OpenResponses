@@ -2,8 +2,8 @@ import Foundation
 import SwiftUI
 
 /// Represents a single message in the chat (user, assistant, or system/error).
-struct ChatMessage: Identifiable {
-    enum Role {
+struct ChatMessage: Identifiable, Codable {
+    enum Role: String, Codable {
         case user
         case assistant
         case system  // Used for errors or system notices
@@ -13,11 +13,42 @@ struct ChatMessage: Identifiable {
     var text: String?
     var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
 
+    enum CodingKeys: String, CodingKey {
+        case id, role, text, images
+    }
+
     init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.images = images
+    }
+
+    // MARK: - Codable Conformance
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        role = try container.decode(Role.self, forKey: .role)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        
+        if let imageData = try container.decodeIfPresent([Data].self, forKey: .images) {
+            images = imageData.compactMap { UIImage(data: $0) }
+        } else {
+            images = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(role, forKey: .role)
+        try container.encodeIfPresent(text, forKey: .text)
+        
+        if let images = images {
+            let imageData = images.compactMap { $0.pngData() }
+            try container.encode(imageData, forKey: .images)
+        }
     }
 }
 
