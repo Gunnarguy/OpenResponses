@@ -5,6 +5,8 @@ struct ChatView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @State private var userInput: String = ""
     @State private var showFilePicker: Bool = false // To present the file importer
+    @State private var showImagePicker: Bool = false // To present the image picker
+    @State private var showAttachmentMenu: Bool = false // To show attachment options
     @FocusState private var inputFocused: Bool  // Focus state for the input field
     
     var body: some View {
@@ -60,6 +62,17 @@ struct ChatView: View {
                     
                     // Input area container
                     VStack(spacing: 0) {
+                        // Selected images preview
+                        if !viewModel.pendingImageAttachments.isEmpty {
+                            SelectedImagesView(
+                                images: $viewModel.pendingImageAttachments,
+                                detailLevel: $viewModel.selectedImageDetailLevel,
+                                onRemove: { index in
+                                    viewModel.removeImageAttachment(at: index)
+                                }
+                            )
+                        }
+                        
                         // Compact tool indicator above input
                         CompactToolIndicator(
                             modelId: viewModel.activePrompt.openAIModel,
@@ -93,8 +106,8 @@ struct ChatView: View {
                                 userInput = ""              // Clear the input field
                                 inputFocused = false        // Dismiss keyboard
                             }, onAttach: {
-                                // Attachment action
-                                showFilePicker = true
+                                // Show attachment options menu
+                                showAttachmentMenu = true
                             })
                         }
                         .padding(.horizontal)
@@ -117,6 +130,35 @@ struct ChatView: View {
             case .failure(let error):
                 viewModel.handleError(error)
             }
+        }
+        .sheet(isPresented: $showImagePicker) {
+            NavigationView {
+                ImagePickerView { selectedImages in
+                    if !selectedImages.isEmpty {
+                        viewModel.attachImages(selectedImages)
+                    }
+                }
+                .navigationTitle("Select Images")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showImagePicker = false
+                        }
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Add Attachment", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
+            Button("📷 Select Images") {
+                showImagePicker = true
+            }
+            Button("📁 Select File") {
+                showFilePicker = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose the type of content to attach to your message.")
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
             Button("OK") {

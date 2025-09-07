@@ -122,6 +122,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
 
                 HStack {
                     Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
@@ -130,7 +131,7 @@ struct SettingsView: View {
                         Text("High").tag("high")
                     }
                     .pickerStyle(.segmented)
-                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel))
+                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
                     
                     if !ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
                         Image(systemName: "info.circle.fill")
@@ -138,6 +139,7 @@ struct SettingsView: View {
                             .help("Not supported by current model")
                     }
                 }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
                 
                 // Reasoning Summary field for reasoning models
                 if viewModel.activePrompt.openAIModel.starts(with: "o") || viewModel.activePrompt.openAIModel.starts(with: "gpt-5") {
@@ -149,6 +151,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                    .disabled(viewModel.activePrompt.enablePublishedPrompt)
                 }
                 
                 VStack(alignment: .leading) {
@@ -161,10 +164,10 @@ struct SettingsView: View {
                         }
                     }
                     Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
-                        .disabled(!ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel))
+                        .disabled(!ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
                 }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
                 HStack {
@@ -200,7 +203,7 @@ struct SettingsView: View {
                     Text("Auto").tag("auto")
                     Text("None").tag("none")
                     if viewModel.activePrompt.enableCalculator { Text("Calculator").tag("calculator") }
-                    if viewModel.activePrompt.enableWebSearch { Text("Web Search").tag("web_search_preview") }
+                    if viewModel.activePrompt.enableWebSearch { Text("Web Search").tag("web_search") }
                     if viewModel.activePrompt.enableCodeInterpreter { Text("Code Interpreter").tag("code_interpreter") }
                 }
                 .accessibilityHint("Controls which tools the AI can use")
@@ -222,7 +225,7 @@ struct SettingsView: View {
                     HStack {
                         Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
                             .accessibilityHint("Allows the AI to search the internet for current information")
-                        if !ModelCompatibilityService.shared.isToolSupported("web_search_preview", for: viewModel.activePrompt.openAIModel) {
+                        if !ModelCompatibilityService.shared.isToolSupported("web_search", for: viewModel.activePrompt.openAIModel) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
                                 .help("Not supported by current model")
@@ -384,10 +387,12 @@ struct SettingsView: View {
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Advanced Include Section
-            Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response.")) {
+            Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Code Interpreter outputs are not currently supported by the API.")) {
                 Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                    .disabled(true) // Disabled since not supported by current API
                 Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
                 Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
                 Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
                 Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
                 Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)

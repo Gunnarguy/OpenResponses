@@ -7,12 +7,12 @@
 
 **B. Input Image**
 
-| Property    | Type     | Required | Description                                         | App Status & Implementation Details                                                                                                                                                                                                                                                           |
-| :---------- | :------- | :------- | :-------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`      | `String` | **Yes**  | Must be `"input_image"`.                            | **Not Implemented**. No `InputImage` struct exists and `buildInputMessages` does not handle image content.                                                                                                                                                                                    |
-| `detail`    | `String` | **Yes**  | Image detail level (`high`, `low`, `auto`).         | **Not Implemented**.                                                                                                                                                                                                                                                                          |
-| `image_url` | `String` | No       | A fully qualified URL or a base64 encoded data URL. | **Not Implemented**. **Gap Analysis:** `ChatInputView.swift` has an attachment button that calls `onAttach()` but there's no implementation to handle image selection. Would need to add `PHPickerViewController` integration, image-to-base64 conversion, and UI for image detail selection. |
-| `file_id`   | `String` | No       | The ID of a previously uploaded file.               | **Not Implemented**. No file upload API integration exists in the app.                                                                                                                                                                                                                        |
+| Property    | Type     | Required | Description                                         | App Status & Implementation Details                                                                                                                                                                   |
+| :---------- | :------- | :------- | :-------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`      | `String` | **Yes**  | Must be `"input_image"`.                            | **✅ Implemented**. `InputImage` struct created in `ResponseModels.swift` with proper type handling.                                                                                                  |
+| `detail`    | `String` | **Yes**  | Image detail level (`high`, `low`, `auto`).         | **✅ Implemented**. `InputImage` struct includes detail level with default "auto". UI picker in `SelectedImagesView` allows users to choose detail level.                                             |
+| `image_url` | `String` | No       | A fully qualified URL or a base64 encoded data URL. | **✅ Implemented**. `InputImage` automatically converts `UIImage` to base64 data URL with JPEG compression. `buildInputMessages` creates proper `input_image` objects with base64 encoded image data. |
+| `file_id`   | `String` | No       | The ID of a previously uploaded file.               | **✅ Implemented**. `InputImage` struct supports both `image_url` and `file_id` initialization patterns for uploaded image files.                                                                     |
 
 **C. Input File**
 
@@ -56,7 +56,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | Parameter      | Type                 | Required | API Description                                                                                                                        | App Status & Implementation Details                                                                                                                                                                                                                                                                      |
 | :------------- | :------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `model`        | `String`             | **Yes**  | The ID of the model to use for this request (e.g., `gpt-4-turbo`).                                                                     | **Implemented**. In `OpenAIService.swift`, the `buildRequestObject` function retrieves the model ID from `prompt.model.id`. The user selects this in `SettingsView.swift`, which updates the `activePrompt` in `ChatViewModel`.                                                                          |
-| `input`        | `String` or `Array`  | **Yes**  | The core content for the model. Can be a simple string for user input or a rich array of `InputItem` objects for multimodal content.   | **Partially Implemented (Text-Only)**. The `buildRequestObject` function currently only handles a single text string from the `prompt.text` property. It does not construct an array for multimodal inputs like images or audio.                                                                         |
+| `input`        | `String` or `Array`  | **Yes**  | The core content for the model. Can be a simple string for user input or a rich array of `InputItem` objects for multimodal content.   | **🟡 Partially Implemented (Text + Images)**. The `buildRequestObject` function handles both text strings and multimodal input arrays. `buildInputMessages` now supports `input_text` and `input_image` content types. Audio and advanced file uploads still pending.                                    |
 | `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Partially Implemented**. The app correctly maintains state by passing `prompt.previousResponseId` as the `previous_response_id` field. This ID is stored in `ChatViewModel.lastResponseId`. The app does not use the full conversation object or the dedicated Conversations API.                      |
 | `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Implemented**. The `streamChatRequest` function in `OpenAIService.swift` hardcodes `"stream": true` in the request body and is designed to return an `AsyncThrowingStream<StreamingEvent, Error>`.                                                                                                     |
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. The `Prompt` object has a `backgroundMode` property exposed in `SettingsView.swift` and the `buildRequestObject` function now includes this parameter in the request body when enabled.                                                                                                 |
@@ -295,38 +295,44 @@ The app provides granular streaming status feedback through `StreamingStatusView
 
 ### 4.1. API Features vs App Implementation
 
-| API Feature Category        | Implementation Level | Details                                                         |
-| :-------------------------- | :------------------- | :-------------------------------------------------------------- |
-| **Text Input/Output**       | ✅ **Complete**      | Full text conversation support                                  |
-| **Image Input**             | ❌ **Not Started**   | No UI, no processing, no request building                       |
-| **File Input**              | 🟡 **Partial**       | Supports `file_id` references, not direct uploads               |
-| **Audio Input**             | ❌ **Not Started**   | No recording, no processing, no request building                |
-| **Basic Tools**             | ✅ **Complete**      | Web search, code interpreter, file search fully integrated      |
-| **Advanced Tools**          | 🟡 **Partial**       | Custom tools, MCP, calculator implemented; computer use missing |
-| **Streaming Response**      | ✅ **Complete**      | Comprehensive event handling and status display                 |
-| **Rich Content Output**     | 🟡 **Partial**       | Text rendering complete; annotations, media incomplete          |
-| **Conversation Management** | 🟡 **Partial**       | Local storage complete; API integration missing                 |
-| **Advanced Parameters**     | 🟡 **Partial**       | UI exists for all; some not sent in requests                    |
-| **Include Parameters**      | 🟡 **Partial**       | UI toggles exist; request building incomplete                   |
+| API Feature Category        | Implementation Level | Details                                                                      |
+| :-------------------------- | :------------------- | :--------------------------------------------------------------------------- |
+| **Text Input/Output**       | ✅ **Complete**      | Full text conversation support                                               |
+| **Image Input**             | ✅ **Complete**      | Full image selection, base64 encoding, detail level control, API integration |
+| **File Input**              | 🟡 **Partial**       | Supports `file_id` references, not direct uploads                            |
+| **Audio Input**             | ❌ **Not Started**   | No recording, no processing, no request building                             |
+| **Basic Tools**             | ✅ **Complete**      | Web search, code interpreter, file search fully integrated                   |
+| **Advanced Tools**          | 🟡 **Partial**       | Custom tools, MCP, calculator implemented; computer use missing              |
+| **Streaming Response**      | ✅ **Complete**      | Comprehensive event handling and status display                              |
+| **Rich Content Output**     | 🟡 **Partial**       | Text rendering complete; annotations, media incomplete                       |
+| **Conversation Management** | 🟡 **Partial**       | Local storage complete; API integration missing                              |
+| **Advanced Parameters**     | ✅ **Complete**      | All parameters properly sent in requests                                     |
+| **Include Parameters**      | ✅ **Complete**      | All include options properly built and sent                                  |
 
 ### 4.2. Priority Implementation Roadmap
 
-**Phase 1: Complete Existing Features**
+**Phase 1: ✅ COMPLETED - Core Multimodal Support**
 
-1. Fix `include` parameter request building
-2. Add missing advanced parameters to requests
-3. Implement annotation parsing and rendering
+1. ✅ Fix `include` parameter request building (Previous session)
+2. ✅ Add missing advanced parameters to requests (Previous session)
+3. ✅ Image input UI and processing - **NEWLY COMPLETED**
+   - ✅ Created `InputImage` data model with base64 encoding
+   - ✅ Built `ImagePickerView` with `PHPickerViewController` integration
+   - ✅ Added `SelectedImagesView` for image preview and detail level selection
+   - ✅ Updated `ChatViewModel` with image attachment management
+   - ✅ Extended `OpenAIService` API to handle image attachments
+   - ✅ Updated `buildInputMessages` to create proper `input_image` objects
 
-**Phase 2: Multimodal Input**
+**Phase 2: Next Priority - Rich Output and Advanced Tools**
 
-1. Image input UI and processing
-2. Audio recording and processing
-3. Direct file upload capabilities
+1. Implement annotation parsing and rendering
+2. Audio recording and processing capabilities
+3. Direct file upload capabilities (vs file_id references)
 
 **Phase 3: Advanced Features**
 
 1. Computer use tool integration
-2. Rich tool output rendering
+2. Rich tool output rendering (code interpreter charts, file search results)
 3. Backend conversation API integration
 
 **Phase 4: Polish and Enhancement**

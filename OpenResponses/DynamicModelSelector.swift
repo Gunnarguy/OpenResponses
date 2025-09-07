@@ -4,10 +4,12 @@ import SwiftUI
 struct DynamicModelSelector: View {
     @Binding var selectedModel: String
     let openAIService: OpenAIServiceProtocol
+    var isDisabled: Bool = false
     
     @State private var availableModels: [OpenAIModel] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showModelPicker = false
     
     // Fallback chat models in case the API call fails
     private let fallbackModels = [
@@ -72,7 +74,7 @@ struct DynamicModelSelector: View {
                             .font(.caption)
                             .foregroundColor(.blue)
                     }
-                    .disabled(isLoading)
+                    .disabled(isLoading || isDisabled)
                 }
             }
             
@@ -96,40 +98,34 @@ struct DynamicModelSelector: View {
             
             // Model picker with improved styling
             VStack(alignment: .leading, spacing: 0) {
-                if availableModels.isEmpty && !isLoading {
-                    // Fallback models with cleaner presentation
-                    NavigationLink(destination: ModelPickerView(
-                        selectedModel: $selectedModel,
-                        models: fallbackModels.map { modelId in
-                            OpenAIModel(id: modelId, object: "model", created: 0, ownedBy: "openai")
-                        },
-                        isOffline: true
-                    )) {
-                        ModelDisplayRow(
-                            modelName: modelDisplayName(for: selectedModel),
-                            description: selectedModelDescription,
-                            isOffline: true
-                        )
-                    }
-                } else {
-                    // Dynamic models with cleaner presentation
-                    NavigationLink(destination: ModelPickerView(
-                        selectedModel: $selectedModel,
-                        models: availableModels,
-                        isOffline: false
-                    )) {
-                        ModelDisplayRow(
-                            modelName: selectedModelDisplayName,
-                            description: selectedModelDescription,
-                            isOffline: false
-                        )
-                    }
+                let usingFallback = availableModels.isEmpty && !isLoading
+                Button(action: { showModelPicker = true }) {
+                    ModelDisplayRow(
+                        modelName: usingFallback ? modelDisplayName(for: selectedModel) : selectedModelDisplayName,
+                        description: selectedModelDescription,
+                        isOffline: usingFallback
+                    )
                 }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isDisabled)
             }
         }
         .onAppear {
             if availableModels.isEmpty {
                 fetchModels()
+            }
+        }
+        .sheet(isPresented: $showModelPicker) {
+            let usingFallback = availableModels.isEmpty && !isLoading
+            let modelsToShow: [OpenAIModel] = usingFallback
+                ? fallbackModels.map { OpenAIModel(id: $0, object: "model", created: 0, ownedBy: "openai") }
+                : availableModels
+            NavigationView {
+                ModelPickerView(
+                    selectedModel: $selectedModel,
+                    models: modelsToShow,
+                    isOffline: usingFallback
+                )
             }
         }
     }
@@ -346,7 +342,7 @@ struct ModelPickerView: View {
     @Binding var selectedModel: String
     let models: [OpenAIModel]
     let isOffline: Bool
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         List {
@@ -361,7 +357,7 @@ struct ModelPickerView: View {
                             isSelected: selectedModel == modelId
                         ) {
                             selectedModel = modelId
-                            presentationMode.wrappedValue.dismiss()
+                            dismiss()
                         }
                     }
                 }
@@ -375,7 +371,7 @@ struct ModelPickerView: View {
                             isSelected: selectedModel == modelId
                         ) {
                             selectedModel = modelId
-                            presentationMode.wrappedValue.dismiss()
+                            dismiss()
                         }
                     }
                 }
@@ -389,7 +385,7 @@ struct ModelPickerView: View {
                             isSelected: selectedModel == modelId
                         ) {
                             selectedModel = modelId
-                            presentationMode.wrappedValue.dismiss()
+                            dismiss()
                         }
                     }
                 }
@@ -416,7 +412,7 @@ struct ModelPickerView: View {
                                 isSelected: selectedModel == model.id
                             ) {
                                 selectedModel = model.id
-                                presentationMode.wrappedValue.dismiss()
+                                dismiss()
                             }
                         }
                     }
@@ -432,7 +428,7 @@ struct ModelPickerView: View {
                                 isSelected: selectedModel == model.id
                             ) {
                                 selectedModel = model.id
-                                presentationMode.wrappedValue.dismiss()
+                                dismiss()
                             }
                         }
                     }
@@ -448,7 +444,7 @@ struct ModelPickerView: View {
                                 isSelected: selectedModel == model.id
                             ) {
                                 selectedModel = model.id
-                                presentationMode.wrappedValue.dismiss()
+                                dismiss()
                             }
                         }
                     }

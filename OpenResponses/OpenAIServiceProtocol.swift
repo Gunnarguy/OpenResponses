@@ -8,6 +8,7 @@ protocol OpenAIServiceProtocol {
         userMessage: String,
         prompt: Prompt,
         attachments: [[String: Any]]?,
+        imageAttachments: [InputImage]?,
         previousResponseId: String?
     ) async throws -> OpenAIResponse
     
@@ -16,6 +17,7 @@ protocol OpenAIServiceProtocol {
         userMessage: String,
         prompt: Prompt,
         attachments: [[String: Any]]?,
+        imageAttachments: [InputImage]?,
         previousResponseId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
     

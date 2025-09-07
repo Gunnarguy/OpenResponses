@@ -9,6 +9,8 @@ class ChatViewModel: ObservableObject {
     @Published var streamingStatus: StreamingStatus = .idle
     @Published var isStreaming: Bool = false
     @Published var pendingFileAttachments: [String] = []
+    @Published var pendingImageAttachments: [UIImage] = []
+    @Published var selectedImageDetailLevel: String = "auto"
     @Published var activePrompt: Prompt
     @Published var errorMessage: String?
     @Published var isConnectedToNetwork: Bool = true
@@ -147,13 +149,21 @@ class ChatViewModel: ObservableObject {
         isStreaming = true
         
         // Prepare attachments if any are pending
-        let attachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
+        let fileAttachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
             return ["file_id": fileId, "tools": [["type": "file_search"]]]
         }
         
+        // Prepare image attachments if any are pending
+        let imageAttachments: [InputImage]? = pendingImageAttachments.isEmpty ? nil : pendingImageAttachments.map { image in
+            return InputImage(image: image, detail: selectedImageDetailLevel)
+        }
+        
         // Clear pending attachments now that they are included in the request
-        if attachments != nil {
+        if fileAttachments != nil {
             pendingFileAttachments.removeAll()
+        }
+        if imageAttachments != nil {
+            pendingImageAttachments.removeAll()
         }
         
         // Check if streaming is enabled from the active prompt
@@ -167,7 +177,9 @@ class ChatViewModel: ObservableObject {
                 AnalyticsParameter.model: activePrompt.openAIModel,
                 AnalyticsParameter.messageLength: trimmed.count,
                 AnalyticsParameter.streamingEnabled: streamingEnabled,
-                "has_attachments": attachments != nil
+                "has_file_attachments": fileAttachments != nil,
+                "has_image_attachments": imageAttachments != nil,
+                "image_count": imageAttachments?.count ?? 0
             ]
         )
         
@@ -177,7 +189,7 @@ class ChatViewModel: ObservableObject {
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: attachments, previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
@@ -193,7 +205,7 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: attachments, previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -289,6 +301,38 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    /// Handles the selection of images for attachment to the next message
+    func attachImages(_ images: [UIImage]) {
+        // Add images to pending attachments
+        pendingImageAttachments.append(contentsOf: images)
+        
+        // Show a status message
+        let imageCount = images.count
+        let statusText = imageCount == 1 ? 
+            "✅ Image attached. It will be sent with your next message." :
+            "✅ \(imageCount) images attached. They will be sent with your next message."
+        
+        let attachingMessage = ChatMessage(role: .system, text: statusText, images: nil)
+        messages.append(attachingMessage)
+    }
+    
+    /// Removes an image from pending attachments
+    func removeImageAttachment(at index: Int) {
+        guard index < pendingImageAttachments.count else { return }
+        pendingImageAttachments.remove(at: index)
+        
+        // Update status message if no images remain
+        if pendingImageAttachments.isEmpty {
+            let statusMessage = ChatMessage(role: .system, text: "All image attachments removed.", images: nil)
+            messages.append(statusMessage)
+        }
+    }
+    
+    /// Clears all pending image attachments
+    func clearImageAttachments() {
+        pendingImageAttachments.removeAll()
     }
     
     /// Handle non-streaming response from OpenAI API
@@ -605,7 +649,7 @@ class ChatViewModel: ObservableObject {
                         // Handle specific tools
                         if let toolName = item.name {
                             switch toolName {
-                            case "web_search_preview":
+                            case "web_search", "web_search_preview":
                                 self.streamingStatus = .searchingWeb
                             case "code_interpreter":
                                 self.streamingStatus = .generatingCode
@@ -627,7 +671,7 @@ class ChatViewModel: ObservableObject {
                 // Determine the specific tool being used
                 if let toolName = item?.name {
                     switch toolName {
-                    case "web_search_preview":
+                    case "web_search", "web_search_preview":
                         self.streamingStatus = .searchingWeb
                     case "code_interpreter":
                         self.streamingStatus = .generatingCode

@@ -71,7 +71,7 @@ class ModelCompatibilityService {
         ),
         "o3": ModelCapabilities(
             modelId: "o3",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search"],
             supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 200000,
             supportsStreaming: true,
@@ -81,7 +81,7 @@ class ModelCompatibilityService {
         ),
         "o3-mini": ModelCapabilities(
             modelId: "o3-mini",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search"],
             supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 200000,
             supportsStreaming: true,
@@ -93,7 +93,7 @@ class ModelCompatibilityService {
         // GPT-4 series models
         "gpt-4o": ModelCapabilities(
             modelId: "gpt-4o",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation", "computer_use_preview"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
@@ -103,7 +103,7 @@ class ModelCompatibilityService {
         ),
         "gpt-4o-mini": ModelCapabilities(
             modelId: "gpt-4o-mini",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
@@ -113,7 +113,7 @@ class ModelCompatibilityService {
         ),
         "gpt-4-turbo": ModelCapabilities(
             modelId: "gpt-4-turbo",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 4096,
             supportsStreaming: true,
@@ -125,7 +125,7 @@ class ModelCompatibilityService {
         // GPT-5/4.1 series
         "gpt-5": ModelCapabilities(
             modelId: "gpt-5",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation", "computer_use_preview"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,

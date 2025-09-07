@@ -64,6 +64,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var includeCodeInterpreterOutputs: Bool
     var includeComputerCallOutput: Bool
     var includeFileSearchResults: Bool
+    var includeWebSearchResults: Bool
     var includeInputImageUrls: Bool
     var includeOutputLogprobs: Bool
     var includeReasoningContent: Bool
@@ -96,7 +97,7 @@ struct Prompt: Codable, Identifiable, Equatable {
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
-        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent
+        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent
         case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
         case toolChoice, metadata, searchContextSize
         case id // Make sure 'id' is included
@@ -148,6 +149,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             includeCodeInterpreterOutputs: false,
             includeComputerCallOutput: false,
             includeFileSearchResults: false,
+            includeWebSearchResults: false,
             includeInputImageUrls: false,
             includeOutputLogprobs: false,
             includeReasoningContent: false,

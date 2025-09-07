@@ -19,9 +19,10 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - userMessage: The user's input prompt.
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
+    ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -32,6 +33,7 @@ class OpenAIService: OpenAIServiceProtocol {
             for: prompt,
             userMessage: userMessage,
             attachments: attachments,
+            imageAttachments: imageAttachments,
             previousResponseId: previousResponseId,
             stream: false
         )
@@ -146,9 +148,10 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - userMessage: The user's input prompt.
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
+    ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -162,6 +165,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         for: prompt,
                         userMessage: userMessage,
                         attachments: attachments,
+                        imageAttachments: imageAttachments,
                         previousResponseId: previousResponseId,
                         stream: true
                     )
@@ -356,18 +360,21 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
             "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
         ]
 
         // 1. Build the 'input' messages array
-        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments)
+        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments)
 
         // 2. Add streaming flag if required
         if stream {
             requestObject["stream"] = true
+            requestObject["stream_options"] = [
+                "include_obfuscation": false
+            ]
         }
 
         // 3. Build the 'tools' array, filtering by compatibility
@@ -408,11 +415,21 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["tool_choice"] = prompt.toolChoice
         }
         
+        // 9. Build the 'text' format object if JSON schema is enabled
+        if let textFormat = buildTextFormat(for: prompt) {
+            requestObject["text"] = textFormat
+        }
+
+        // 10. Build the 'prompt' object if published prompt is enabled
+        if let promptObject = buildPromptObject(for: prompt) {
+            requestObject["prompt"] = promptObject
+        }
+        
         return requestObject
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -420,22 +437,56 @@ class OpenAIService: OpenAIServiceProtocol {
             inputMessages.append(["role": "developer", "content": prompt.developerInstructions])
         }
         
-        // Handle user message and attachments
+        // Handle user message with attachments and/or images
         var userContent: Any = userMessage
-        if let attachments = attachments, !attachments.isEmpty {
+        
+        // Check if we have any attachments or images to create a content array
+        let hasFileAttachments = attachments?.isEmpty == false
+        let hasImageAttachments = imageAttachments?.isEmpty == false
+        
+        if hasFileAttachments || hasImageAttachments {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
-            let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
-                guard let fileId = attachment["file_id"] as? String else {
-                    AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
-                    return nil
+            // Add file attachments
+            if let attachments = attachments, !attachments.isEmpty {
+                let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
+                    guard let fileId = attachment["file_id"] as? String else {
+                        AppLogger.log("Missing file_id in attachment: \(attachment)", category: .openAI, level: .warning)
+                        return nil
+                    }
+                    return ["type": "input_file", "file_id": fileId]
                 }
-                return ["type": "input_file", "file_id": fileId]
+                
+                if !validatedAttachments.isEmpty {
+                    contentArray.append(contentsOf: validatedAttachments)
+                }
             }
             
-            if !validatedAttachments.isEmpty {
-                contentArray.append(contentsOf: validatedAttachments)
+            // Add image attachments
+            if let imageAttachments = imageAttachments, !imageAttachments.isEmpty {
+                let imageContentArray = imageAttachments.compactMap { inputImage -> [String: Any]? in
+                    var imageContent: [String: Any] = [
+                        "type": "input_image",
+                        "detail": inputImage.detail
+                    ]
+                    
+                    if let imageUrl = inputImage.imageUrl {
+                        imageContent["image_url"] = imageUrl
+                    } else if let fileId = inputImage.fileId {
+                        imageContent["file_id"] = fileId
+                    } else {
+                        AppLogger.log("InputImage missing both image_url and file_id", category: .openAI, level: .warning)
+                        return nil
+                    }
+                    
+                    return imageContent
+                }
+                
+                if !imageContentArray.isEmpty {
+                    contentArray.append(contentsOf: imageContentArray)
+                }
             }
+            
             userContent = contentArray
         }
         
@@ -448,7 +499,7 @@ class OpenAIService: OpenAIServiceProtocol {
         var tools: [[String: Any]] = []
         let compatibilityService = ModelCompatibilityService.shared
         
-        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search_preview", for: prompt.openAIModel, isStreaming: isStreaming) {
+        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createWebSearchToolConfiguration(from: prompt))
         }
         
@@ -461,7 +512,13 @@ class OpenAIService: OpenAIServiceProtocol {
         }
         
         if prompt.enableImageGeneration && !isStreaming && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(["type": "image_generation", "size": "auto", "quality": "high", "output_format": "png"])
+            tools.append([
+                "type": "image_generation", 
+                "model": "dall-e-3",
+                "size": "auto", 
+                "quality": "high", 
+                "output_format": "png"
+            ])
         }
         
         if prompt.enableFileSearch && compatibilityService.isToolSupported("file_search", for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -524,8 +581,20 @@ class OpenAIService: OpenAIServiceProtocol {
             parameters["user"] = prompt.userIdentifier
         }
         
-        if let metadata = prompt.metadata, !metadata.isEmpty {
-            parameters["metadata"] = metadata
+        if compatibilityService.isParameterSupported("max_tool_calls", for: prompt.openAIModel) && prompt.maxToolCalls > 0 {
+            parameters["max_tool_calls"] = prompt.maxToolCalls
+        }
+        
+        // Parse metadata JSON string into a dictionary
+        if let metadataString = prompt.metadata, !metadataString.isEmpty {
+            do {
+                if let data = metadataString.data(using: .utf8),
+                   let parsedMetadata = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    parameters["metadata"] = parsedMetadata
+                }
+            } catch {
+                print("Invalid metadata JSON format, skipping: \(error)")
+            }
         }
         
         return parameters
@@ -553,11 +622,16 @@ class OpenAIService: OpenAIServiceProtocol {
         var includeArray: [String] = []
         
         if prompt.includeCodeInterpreterOutputs {
-            includeArray.append("code_interpreter.outputs")
+            // Note: code_interpreter outputs are not supported in the current API
+            // This option is kept for UI compatibility but won't be added to the request
         }
         
         if prompt.includeFileSearchResults {
-            includeArray.append("file_search.results")
+            includeArray.append("file_search_call.results")
+        }
+        
+        if prompt.includeWebSearchResults {
+            includeArray.append("web_search_call.action.sources")
         }
         
         if prompt.includeOutputLogprobs {
@@ -565,18 +639,69 @@ class OpenAIService: OpenAIServiceProtocol {
         }
         
         if prompt.includeReasoningContent {
-            includeArray.append("reasoning.content")
+            includeArray.append("reasoning.encrypted_content")
         }
         
         if prompt.includeComputerCallOutput {
-            includeArray.append("computer_call.output")
+            includeArray.append("computer_call_output.output.image_url")
         }
         
         if prompt.includeInputImageUrls {
-            includeArray.append("input_image.urls")
+            includeArray.append("message.input_image.image_url")
         }
         
         return includeArray
+    }
+    
+    /// Constructs the `text` format object for structured outputs if JSON schema is enabled.
+    private func buildTextFormat(for prompt: Prompt) -> [String: Any]? {
+        guard prompt.textFormatType == "json_schema" && !prompt.jsonSchemaName.isEmpty else {
+            return nil
+        }
+        
+        var schema: [String: Any] = [:]
+        
+        // Parse the JSON schema content if provided
+        if !prompt.jsonSchemaContent.isEmpty {
+            do {
+                if let data = prompt.jsonSchemaContent.data(using: .utf8),
+                   let parsedSchema = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    schema = parsedSchema
+                }
+            } catch {
+                print("Invalid JSON schema format, using empty schema: \(error)")
+                schema = ["type": "object", "properties": [:]]
+            }
+        } else {
+            schema = ["type": "object", "properties": [:]]
+        }
+        
+        return [
+            "format": [
+                "type": "json_schema",
+                "name": prompt.jsonSchemaName,
+                "description": prompt.jsonSchemaDescription.isEmpty ? prompt.jsonSchemaName : prompt.jsonSchemaDescription,
+                "strict": prompt.jsonSchemaStrict,
+                "schema": schema
+            ]
+        ]
+    }
+    
+    /// Constructs the `prompt` object for published prompts if enabled.
+    private func buildPromptObject(for prompt: Prompt) -> [String: Any]? {
+        guard prompt.enablePublishedPrompt && !prompt.publishedPromptId.isEmpty else {
+            return nil
+        }
+        
+        var promptObject: [String: Any] = [
+            "id": prompt.publishedPromptId
+        ]
+        
+        if !prompt.publishedPromptVersion.isEmpty {
+            promptObject["version"] = prompt.publishedPromptVersion
+        }
+        
+        return promptObject
     }
 
     /// Sends the output of a function call back to the API to get a final response.
@@ -863,7 +988,7 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Creates the configuration for the web search tool
     /// - Returns: A dictionary representing the web search tool configuration
     private func createWebSearchToolConfiguration(from prompt: Prompt) -> [String: Any] {
-        var config: [String: Any] = ["type": "web_search_preview"]
+        var config: [String: Any] = ["type": "web_search"]
         
         if let searchContextSize = prompt.searchContextSize, !searchContextSize.isEmpty {
             config["search_context_size"] = searchContextSize
