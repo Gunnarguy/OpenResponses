@@ -31,23 +31,61 @@
   - Direct access to key features (file attachment, settings)
   - Professional first impression
 
-### ✅ **OpenAI Responses API - Complete Endpoint Coverage**
+### ✅ **User Experience Enhancements**
 
-#### 1. **Missing Endpoints Implemented**
+#### 1. **First-Time User Onboarding**
+
+- **Location**: `OnboardingView.swift` (NEW)
+- **Features**: 3-page guided walkthrough
+  - Welcome page with app overview
+  - API key setup instructions
+  - Quick start guide to core features
+- **Integration**: Automatic detection in `ContentView.swift`
+- **Benefits**: Reduces confusion for new users, professional first impression
+
+#### 2. **Conversation Export & Sharing**
+
+- **Location**: `ContentView.swift` enhanced
+- **Features**:
+  - Native iOS share sheet integration
+  - Full conversation export as text
+  - Multiple sharing options (AirDrop, Messages, Mail, etc.)
+- **Implementation**: `ShareSheet` UIViewControllerRepresentable
+- **Benefits**: Users can save and share their AI conversations
+
+### ✅ **OpenAI Responses API - Complete Implementation**
+
+#### 1. **Comprehensive Request Parameters**
+
+- **Location**: `OpenAIService.swift` - Completely rewritten `buildRequestObject()`
+- **ALL PARAMETERS NOW SUPPORTED**:
+  - ✅ `include` array (conversation_history, input_items, attachments, etc.)
+  - ✅ `logprobs` and `top_logprobs` with validation
+  - ✅ `logit_bias` dictionary support
+  - ✅ `parallel_tool_calls` boolean
+  - ✅ `prediction` object with type and content
+  - ✅ `service_tier` selection
+  - ✅ `store` boolean for fine-tuning
+  - ✅ `metadata` JSON dictionary
+  - ✅ `tool_choice` with all option types
+  - ✅ Model compatibility checking
+
+#### 2. **Enhanced UI Parameter Access**
+
+- **Location**: `SettingsView.swift` expanded
+- **NEW CONTROLS**:
+  - Tool Choice picker (auto/none/required/specific tools)
+  - Metadata JSON input field
+  - Logprobs controls with top_logprobs spinner
+  - Service tier selection
+  - Parallel tool calls toggle
+- **Benefits**: Every API parameter now accessible through UI
+
+#### 3. **Missing Endpoints Implemented**
 
 - **`DELETE /v1/responses/{response_id}`** - Delete responses for privacy/cost management
 - **`POST /v1/responses/{response_id}/cancel`** - Cancel in-progress background responses
 - **`GET /v1/responses/{response_id}/input_items`** - Retrieve input items for debugging
-
-#### 2. **New Models Added**
-
-- **Location**: `ResponseModels.swift`
-- **Added**: `DeleteResponseResult`, `InputItemsResponse`, `InputItem`
-- **Benefits**: Complete type safety for all API responses
-
-#### 3. **Protocol Extensions**
-
-- **Location**: `OpenAIServiceProtocol.swift`
 - **Added**: Method signatures for all missing endpoints
 - **Benefits**: Complete API coverage with proper abstraction
 

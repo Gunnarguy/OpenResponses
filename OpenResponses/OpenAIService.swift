@@ -375,6 +375,12 @@ class OpenAIService: OpenAIServiceProtocol {
         if !tools.isEmpty {
             requestObject["tools"] = tools
         }
+        
+        // 3.5. Build the 'include' array from boolean properties
+        let includeArray = buildIncludeArray(for: prompt)
+        if !includeArray.isEmpty {
+            requestObject["include"] = includeArray
+        }
 
         // 4. Build and merge other top-level parameters
         let parameters = buildParameters(for: prompt)
@@ -390,6 +396,16 @@ class OpenAIService: OpenAIServiceProtocol {
         // 6. Add the previous response ID for stateful conversation
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
+        }
+        
+        // 7. Add background mode if enabled
+        if prompt.backgroundMode {
+            requestObject["background"] = true
+        }
+        
+        // 8. Add tool_choice if specified
+        if !prompt.toolChoice.isEmpty && prompt.toolChoice != "auto" {
+            requestObject["tool_choice"] = prompt.toolChoice
         }
         
         return requestObject
@@ -495,6 +511,23 @@ class OpenAIService: OpenAIServiceProtocol {
             parameters["truncation"] = prompt.truncationStrategy
         }
         
+        // Add missing parameters that exist in UI but weren't in request
+        if compatibilityService.isParameterSupported("service_tier", for: prompt.openAIModel) && !prompt.serviceTier.isEmpty {
+            parameters["service_tier"] = prompt.serviceTier
+        }
+        
+        if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel) && prompt.topLogprobs > 0 {
+            parameters["top_logprobs"] = prompt.topLogprobs
+        }
+        
+        if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel) && !prompt.userIdentifier.isEmpty {
+            parameters["user"] = prompt.userIdentifier
+        }
+        
+        if let metadata = prompt.metadata, !metadata.isEmpty {
+            parameters["metadata"] = metadata
+        }
+        
         return parameters
     }
 
@@ -513,6 +546,37 @@ class OpenAIService: OpenAIServiceProtocol {
         }
         
         return reasoningObject
+    }
+    
+    /// Constructs the `include` array from boolean properties in the prompt.
+    private func buildIncludeArray(for prompt: Prompt) -> [String] {
+        var includeArray: [String] = []
+        
+        if prompt.includeCodeInterpreterOutputs {
+            includeArray.append("code_interpreter.outputs")
+        }
+        
+        if prompt.includeFileSearchResults {
+            includeArray.append("file_search.results")
+        }
+        
+        if prompt.includeOutputLogprobs {
+            includeArray.append("message.output_text.logprobs")
+        }
+        
+        if prompt.includeReasoningContent {
+            includeArray.append("reasoning.content")
+        }
+        
+        if prompt.includeComputerCallOutput {
+            includeArray.append("computer_call.output")
+        }
+        
+        if prompt.includeInputImageUrls {
+            includeArray.append("input_image.urls")
+        }
+        
+        return includeArray
     }
 
     /// Sends the output of a function call back to the API to get a final response.

@@ -783,4 +783,40 @@ class ChatViewModel: ObservableObject {
         
         streamingMessageId = nil
     }
+    
+    /// Exports the current conversation as formatted text for sharing
+    func exportConversationText() -> String {
+        guard let conversation = activeConversation, !conversation.messages.isEmpty else {
+            return "No conversation to export."
+        }
+        
+        var exportText = "# \(conversation.title)\n"
+        exportText += "Exported from OpenResponses\n"
+        exportText += "Date: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short))\n\n"
+        
+        for message in conversation.messages {
+            let rolePrefix: String
+            switch message.role {
+            case .user:
+                rolePrefix = "👤 User:"
+            case .assistant:
+                rolePrefix = "🤖 Assistant:"
+            case .system:
+                rolePrefix = "⚙️ System:"
+            }
+            
+            exportText += "\(rolePrefix)\n"
+            if let text = message.text, !text.isEmpty {
+                exportText += "\(text)\n"
+            }
+            
+            if let images = message.images, !images.isEmpty {
+                exportText += "[Contains \(images.count) image(s)]\n"
+            }
+            
+            exportText += "\n---\n\n"
+        }
+        
+        return exportText
+    }
 }

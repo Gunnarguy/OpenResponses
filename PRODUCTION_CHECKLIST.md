@@ -19,6 +19,10 @@ This checklist covers all the essential aspects that need to be verified before 
 - [ ] Custom Tools can be configured and used correctly
 - [ ] JSON Schema mode enforces output structure correctly
 - [ ] Advanced reasoning controls work for o-series models
+- [x] **NEW:** First-time user onboarding flow guides users through setup
+- [x] **NEW:** Conversation export and sharing via native iOS share sheet
+- [x] **NEW:** Complete API parameter coverage (all request parameters now supported)
+- [x] **NEW:** Enhanced UI controls for tool choice, metadata, logprobs, etc.
 - [ ] App works in both light and dark mode
 - [ ] App works in all orientations (where applicable)
 

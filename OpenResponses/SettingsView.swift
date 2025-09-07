@@ -417,6 +417,11 @@ struct SettingsView: View {
                 Button("API Inspector") { showingAPIInspector = true }
                 Button("Debug Console") { showingDebugConsole = true }
                 
+                Button("Reset Onboarding") {
+                    UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                }
+                .foregroundColor(.blue)
+                
                 Button("Reset All Settings") {
                     viewModel.resetToDefaultPrompt()
                 }
