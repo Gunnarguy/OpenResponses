@@ -106,6 +106,22 @@ struct SettingsView: View {
                     selectedModel: $viewModel.activePrompt.openAIModel,
                     openAIService: AppContainer.shared.openAIService
                 )
+                
+                // Reset button for corrupted model selection
+                HStack {
+                    Button("Reset Model to Default") {
+                        viewModel.activePrompt.openAIModel = "gpt-4o"
+                        viewModel.saveActivePrompt()
+                    }
+                    .foregroundColor(.red)
+                    .font(.caption)
+                    
+                    Spacer()
+                    
+                    Text("Current: \(viewModel.activePrompt.openAIModel)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
 
                 HStack {
                     Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
@@ -400,6 +416,11 @@ struct SettingsView: View {
             Section(header: Text("Debugging")) {
                 Button("API Inspector") { showingAPIInspector = true }
                 Button("Debug Console") { showingDebugConsole = true }
+                
+                Button("Reset All Settings") {
+                    viewModel.resetToDefaultPrompt()
+                }
+                .foregroundColor(.orange)
             }
             
             Section {

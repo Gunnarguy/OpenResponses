@@ -432,17 +432,48 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    /// Force reset the active prompt to default values
+    func resetToDefaultPrompt() {
+        self.activePrompt = Prompt.defaultPrompt()
+        UserDefaults.standard.removeObject(forKey: "activePrompt")
+        saveActivePrompt()
+        print("Prompt reset to default and saved.")
+    }
+    
     /// Loads the `activePrompt` from UserDefaults.
     private func loadActivePrompt() {
         if let data = UserDefaults.standard.data(forKey: "activePrompt"),
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
             self.activePrompt = decoded
+            
+            // Validate the model name - if it's a UUID or invalid, reset to default
+            if isInvalidModelName(decoded.openAIModel) {
+                print("Invalid model name detected: \(decoded.openAIModel), resetting to default")
+                self.activePrompt.openAIModel = "gpt-4o"
+                saveActivePrompt() // Save the corrected prompt
+            }
+            
             print("Active prompt loaded.")
         } else {
             // If no saved prompt is found, use the default
             self.activePrompt = Prompt.defaultPrompt()
             print("No saved prompt found, initialized with default.")
         }
+    }
+    
+    /// Checks if a model name is invalid (e.g., a UUID instead of a proper model name)
+    private func isInvalidModelName(_ modelName: String) -> Bool {
+        // Check if it's a UUID format
+        if UUID(uuidString: modelName) != nil {
+            return true
+        }
+        
+        // Check if it's empty or contains invalid characters for a model name
+        if modelName.isEmpty || modelName.contains("Optional(") {
+            return true
+        }
+        
+        return false
     }
     
     // MARK: - Conversation Management

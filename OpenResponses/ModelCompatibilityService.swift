@@ -94,10 +94,10 @@ class ModelCompatibilityService {
         "gpt-4o": ModelCapabilities(
             modelId: "gpt-4o",
             supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
+            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
-            supportsReasoningEffort: true,
+            supportsReasoningEffort: false,
             supportsTemperature: true,
             category: .standard
         ),
