@@ -271,6 +271,12 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// Part object for content_part events
     let part: StreamingPart?
     
+    /// Partial image data for image generation events (base64 encoded)
+    let partialImageB64: String?
+    
+    /// Index of the partial image for image generation events
+    let partialImageIndex: Int?
+    
     enum CodingKeys: String, CodingKey {
         case type
         case sequenceNumber = "sequence_number"
@@ -281,6 +287,8 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case delta
         case item
         case part
+        case partialImageB64 = "partial_image_b64"
+        case partialImageIndex = "partial_image_index"
     }
     
     /// Provides a readable description of the event
@@ -377,6 +385,15 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
     /// Text content if present
     let text: String?
     
+    /// Image URL for screenshot or media content if present
+    let imageURL: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case text
+        case imageURL = "image_url"
+    }
+
     /// Provides a readable description of the content item
     var description: String {
         var desc = "StreamingContentItem(type: \"\(type)\""
@@ -384,6 +401,9 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
         if let text = text {
             let safeText = text.count > 20 ? "\(text.prefix(20))..." : text
             desc += ", text: \"\(safeText)\""
+        }
+        if let imageURL = imageURL {
+            desc += ", image_url: \"\(imageURL)\""
         }
         
         return desc + ")"

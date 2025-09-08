@@ -254,14 +254,8 @@ struct SettingsView: View {
                     
                     HStack {
                         Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
-                            .disabled(viewModel.activePrompt.enableStreaming)
-                            .accessibilityHint("Allows the AI to create images with DALL-E")
-                        if viewModel.activePrompt.enableStreaming && viewModel.activePrompt.enableImageGeneration {
-                            Text("(Disabled in streaming mode)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .accessibilityLabel("Image generation disabled")
-                        } else if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
+                            .accessibilityHint("Allows the AI to create images with GPT-Image-1")
+                        if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
                                 .help("Not supported by current model or streaming mode")
@@ -297,6 +291,10 @@ struct SettingsView: View {
                                 .help("Function tools not supported by current model")
                         }
                     }
+
+                    // Computer Use (Preview) removed
+
+                    // Removed detection helper to simplify UI
                 }
                 
                 if viewModel.activePrompt.enableFileSearch {

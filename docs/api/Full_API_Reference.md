@@ -25,11 +25,11 @@
 
 **D. Input Audio**
 
-| Property             | Type     | Required | Description                            | App Status & Implementation Details                                                                                                                                              |
-| :------------------- | :------- | :------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `type`               | `String` | **Yes**  | Must be `"input_audio"`.               | **Not Implemented**. No audio input handling exists in the app.                                                                                                                  |
-| `input_audio.data`   | `String` | **Yes**  | Base64-encoded audio data.             | **Not Implemented**. **Gap Analysis:** Would require `AVAudioRecorder` integration in `ChatInputView.swift`, audio recording UI, audio-to-base64 encoding, and format selection. |
-| `input_audio.format` | `String` | **Yes**  | The audio format (e.g., `mp3`, `wav`). | **Not Implemented**.                                                                                                                                                             | ion Guide |
+| Property             | Type     | Required | Description                            | App Status & Implementation Details                                                                                                                                            |
+| :------------------- | :------- | :------- | :------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`               | `String` | **Yes**  | Must be `"input_audio"`.               | **✅ Implemented**. `AudioRecordingService` and `ChatViewModel` create proper `input_audio` objects with correct type field.                                                   |
+| `input_audio.data`   | `String` | **Yes**  | Base64-encoded audio data.             | **✅ Implemented**. `AudioRecordingService` records AAC audio, converts to base64, and `OpenAIService.buildInputMessages()` includes encoded data in API requests.             |
+| `input_audio.format` | `String` | **Yes**  | The audio format (e.g., `mp3`, `wav`). | **✅ Implemented**. Uses AAC format with proper format specification in `input_audio` objects. `AudioRecordingService` configures `AVAudioRecorder` with appropriate settings. |
 
 **Version 1.0**
 
@@ -103,11 +103,11 @@ The app correctly wraps the user's text in an `InputMessage` structure. However,
 
 **D. Input Audio**
 
-| Property             | Type     | Required | Description                            | App Status & Implementation Details                                                                                                                                              |
-| :------------------- | :------- | :------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`               | `String` | **Yes**  | Must be `"input_audio"`.               | **Not Implemented**. No audio input handling exists in the app.                                                                                                                  |
-| `input_audio.data`   | `String` | **Yes**  | Base64-encoded audio data.             | **Not Implemented**. **Gap Analysis:** Would require `AVAudioRecorder` integration in `ChatInputView.swift`, audio recording UI, audio-to-base64 encoding, and format selection. |
-| `input_audio.format` | `String` | **Yes**  | The audio format (e.g., `mp3`, `wav`). | **Not Implemented**.                                                                                                                                                             |
+| Property             | Type     | Required | Description                            | App Status & Implementation Details                                                                                                                                                                                |
+| :------------------- | :------- | :------- | :------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`               | `String` | **Yes**  | Must be `"input_audio"`.               | **✅ Implemented**. `AudioRecordingService` and `ChatViewModel` create proper `input_audio` objects with correct type field.                                                                                       |
+| `input_audio.data`   | `String` | **Yes**  | Base64-encoded audio data.             | **✅ Implemented**. `AudioRecordingService` records AAC audio, converts to base64, and `OpenAIService.buildInputMessages()` includes encoded data in API requests.                                                 |
+| `input_audio.format` | `String` | **Yes**  | The audio format (e.g., `mp3`, `wav`). | **✅ Implemented**. Uses AAC format with proper format specification in `input_audio` objects. `AudioRecordingService` configures `AVAudioRecorder` with appropriate settings and includes format in API requests. |
 
 ---
 
@@ -229,6 +229,8 @@ The app provides granular streaming status feedback through `StreamingStatusView
 | `.streamingText`     | `response.content_part.added`, text deltas | ✅ Complete    |
 
 ### 2.3. Output Content and Annotations
+
+Computer Use Preview: Deferred. Feature removed from UI and requests until supported models are publicly available.
 
 **A. Output Text**
 

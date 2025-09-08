@@ -9,6 +9,7 @@ protocol OpenAIServiceProtocol {
         prompt: Prompt,
         attachments: [[String: Any]]?,
         imageAttachments: [InputImage]?,
+        audioAttachment: Data?,
         previousResponseId: String?
     ) async throws -> OpenAIResponse
     
@@ -18,6 +19,7 @@ protocol OpenAIServiceProtocol {
         prompt: Prompt,
         attachments: [[String: Any]]?,
         imageAttachments: [InputImage]?,
+        audioAttachment: Data?,
         previousResponseId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
     
@@ -65,6 +67,7 @@ protocol OpenAIServiceProtocol {
     
     /// Lists available models from the OpenAI API.
     func listModels() async throws -> [OpenAIModel]
+
 }
 
 /// Network client protocol for handling HTTP requests to OpenAI.

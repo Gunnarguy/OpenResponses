@@ -23,6 +23,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String? // Added
     var enableCalculator: Bool
+    // Computer Use (Preview) removed
     
     // MCP Tool
     var enableMCPTool: Bool
@@ -95,6 +96,7 @@ struct Prompt: Codable, Identifiable, Equatable {
         // Explicitly list all properties to be encoded/decoded
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
         case enableWebSearch, enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds, enableCalculator
+    // enableComputerUse removed
         case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval
         case enableCustomTool, customToolName, customToolDescription
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone

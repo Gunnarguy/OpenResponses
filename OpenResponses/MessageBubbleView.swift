@@ -31,10 +31,7 @@ struct MessageBubbleView: View {
                 // Image content (if any images in the message)
                 if let images = message.images {
                     ForEach(images, id: \.self) { uiImage in
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFit()
-                            .cornerRadius(8)
+                        EnhancedImageView(image: uiImage)
                             .padding(.vertical, 4)
                     }
                 }

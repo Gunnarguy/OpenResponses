@@ -10,11 +10,13 @@ class ChatViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var pendingFileAttachments: [String] = []
     @Published var pendingImageAttachments: [UIImage] = []
+    @Published var pendingAudioAttachment: Data? = nil
     @Published var selectedImageDetailLevel: String = "auto"
     @Published var activePrompt: Prompt
     @Published var errorMessage: String?
     @Published var isConnectedToNetwork: Bool = true
     @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = []
+    // Computer-use preview removed
 
     // MARK: - Private Properties
     private let api: OpenAIServiceProtocol
@@ -112,6 +114,25 @@ class ChatViewModel: ObservableObject {
             isStreaming: activePrompt.enableStreaming
         )
     }
+
+    // Removed detection UI and related method
+    
+    /// Detects if a user message is requesting image generation
+    private func detectsImageRequest(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        let imageKeywords = [
+            "generate an image", "create an image", "make an image", "draw an image",
+            "generate a picture", "create a picture", "make a picture", "draw a picture",
+            "show me an image", "show me a picture", "visualize", "illustration",
+            "generate art", "create art", "make art", "draw art",
+            "image of", "picture of", "photo of", "painting of",
+            "sketch", "artwork", "render", "design"
+        ]
+        
+        return imageKeywords.contains { keyword in
+            lowercased.contains(keyword)
+        }
+    }
     
     /// Handles network disconnection by informing the user
     private func handleNetworkDisconnection() {
@@ -158,12 +179,18 @@ class ChatViewModel: ObservableObject {
             return InputImage(image: image, detail: selectedImageDetailLevel)
         }
         
+        // Prepare audio attachment if any is pending
+        let audioAttachment: Data? = pendingAudioAttachment
+        
         // Clear pending attachments now that they are included in the request
         if fileAttachments != nil {
             pendingFileAttachments.removeAll()
         }
         if imageAttachments != nil {
             pendingImageAttachments.removeAll()
+        }
+        if audioAttachment != nil {
+            pendingAudioAttachment = nil
         }
         
         // Check if streaming is enabled from the active prompt
@@ -179,6 +206,7 @@ class ChatViewModel: ObservableObject {
                 AnalyticsParameter.streamingEnabled: streamingEnabled,
                 "has_file_attachments": fileAttachments != nil,
                 "has_image_attachments": imageAttachments != nil,
+                "has_audio_attachment": audioAttachment != nil,
                 "image_count": imageAttachments?.count ?? 0
             ]
         )
@@ -189,7 +217,7 @@ class ChatViewModel: ObservableObject {
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
@@ -205,7 +233,7 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -333,6 +361,22 @@ class ChatViewModel: ObservableObject {
     /// Clears all pending image attachments
     func clearImageAttachments() {
         pendingImageAttachments.removeAll()
+    }
+    
+    /// Attaches audio data for the next message
+    func attachAudio(_ audioData: Data) {
+        pendingAudioAttachment = audioData
+        
+        let statusMessage = ChatMessage(role: .system, text: "🎙️ Audio recording attached. Ready to send.", images: nil)
+        messages.append(statusMessage)
+    }
+    
+    /// Removes the pending audio attachment
+    func removeAudioAttachment() {
+        pendingAudioAttachment = nil
+        
+        let statusMessage = ChatMessage(role: .system, text: "Audio attachment removed.", images: nil)
+        messages.append(statusMessage)
     }
     
     /// Handle non-streaming response from OpenAI API
@@ -607,16 +651,28 @@ class ChatViewModel: ObservableObject {
             if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
             }
+            // Computer-use screenshot handling removed
             
         case "response.output_item.done":
             // Handle completion of output items
             if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
             }
+            // Computer-use screenshot handling removed
             
         case "response.done":
             // Handle completion of the entire response
             print("Streaming response completed for message: \(messageId)")
+            
+        case "response.image_generation_call.partial_image":
+            // Handle partial image preview from gpt-image-1
+            handlePartialImageUpdate(chunk, for: messageId)
+            
+        case "response.image_generation_call.completed":
+            // Handle completed image generation
+            if let item = chunk.item {
+                handleCompletedStreamingItem(item, for: messageId)
+            }
             
         default:
             // Other events are handled by the status updater
@@ -681,6 +737,29 @@ class ChatViewModel: ObservableObject {
                         self.streamingStatus = .runningTool(toolName)
                     }
                 }
+            case "response.output_item.tool_call.delta":
+                // Handle tool call progress updates
+                if let toolName = item?.name, toolName == "image_generation" {
+                    // For image generation, show progressive updates
+                    self.streamingStatus = .imageGenerationProgress("Processing...")
+                }
+            case "response.output_item.tool_call.done":
+                // Tool call completed
+                if let toolName = item?.name, toolName == "image_generation" {
+                    self.streamingStatus = .imageGenerationProgress("Finalizing image...")
+                }
+            case "response.image_generation_call.in_progress":
+                // gpt-image-1 specific: Image generation started
+                self.streamingStatus = .generatingImage
+            case "response.image_generation_call.generating":
+                // gpt-image-1 specific: Image generation in progress
+                self.streamingStatus = .imageGenerationProgress("Creating your image...")
+            case "response.image_generation_call.partial_image":
+                // gpt-image-1 specific: Partial image preview available
+                self.streamingStatus = .imageGenerationProgress("Preparing preview...")
+            case "response.image_generation_call.completed":
+                // gpt-image-1 specific: Image generation completed
+                self.streamingStatus = .imageGenerationCompleting
             case "response.content_part.added":
                 // We're about to start receiving content
                 self.streamingStatus = .streamingText
@@ -708,12 +787,53 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    /// Handle partial image updates from gpt-image-1 streaming
+    private func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
+        guard messages.contains(where: { $0.id == messageId }) else { return }
+        
+        // Convert base64 image data to UIImage and store it
+        if let partialImageB64 = chunk.partialImageB64 {
+            print("Received partial image data (length: \(partialImageB64.count))")
+            
+            // Use optimized image processing
+            ImageProcessingUtils.processBase64Image(partialImageB64) { [weak self] optimizedImage in
+                guard let self = self, let image = optimizedImage else { return }
+                
+                // Ensure we're still on the same message
+                guard let currentIndex = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
+                
+                // Add the optimized UIImage to the message
+                if self.messages[currentIndex].images == nil {
+                    self.messages[currentIndex].images = []
+                }
+                self.messages[currentIndex].images?.append(image)
+                
+                // Update status to show image is ready
+                self.streamingStatus = .imageReady
+                
+                // Add subtle haptic feedback for successful image generation
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                
+                print("Successfully processed and optimized partial image into message")
+            }
+        }
+    }
+    
     /// Handle completed streaming items (like images or final text)
     private func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
         guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
         
         // Skip reasoning and system outputs
         if item.type == "reasoning" || item.type == "system" {
+            return
+        }
+        
+        // Handle image generation calls
+        if item.type == "image_generation_call" {
+            print("Processing completed image generation call: \(item.id)")
+            // The actual image will be provided in a separate response item
+            // For now, we'll add a placeholder or message indicating the image was generated
             return
         }
         

@@ -257,8 +257,7 @@ struct ToolStatusCard: View {
             return "doc.text.magnifyingglass"
         case "calculator":
             return "function"
-        case "computer_use_preview":
-            return "desktopcomputer"
+    // computer_use_preview removed
         default:
             return "wrench.and.screwdriver"
         }
@@ -276,8 +275,7 @@ struct ToolStatusCard: View {
             return "File Search"
         case "calculator":
             return "Calculator"
-        case "computer_use_preview":
-            return "Computer Use"
+    // computer_use_preview removed
         default:
             return tool.name.capitalized
         }
@@ -433,7 +431,7 @@ struct CompactToolIndicator: View {
         case "image_generation": return "photo"
         case "file_search": return "doc.text.magnifyingglass"
         case "calculator": return "function"
-        case "computer_use_preview": return "desktopcomputer"
+    // computer_use_preview removed; fallback icon
         default: return "wrench.and.screwdriver"
         }
     }

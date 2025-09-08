@@ -20,9 +20,10 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
     ///   - imageAttachments: An optional array of image attachments.
+    ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -34,6 +35,7 @@ class OpenAIService: OpenAIServiceProtocol {
             userMessage: userMessage,
             attachments: attachments,
             imageAttachments: imageAttachments,
+            audioAttachment: audioAttachment,
             previousResponseId: previousResponseId,
             stream: false
         )
@@ -149,9 +151,10 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
     ///   - imageAttachments: An optional array of image attachments.
+    ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -166,6 +169,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         userMessage: userMessage,
                         attachments: attachments,
                         imageAttachments: imageAttachments,
+                        audioAttachment: audioAttachment,
                         previousResponseId: previousResponseId,
                         stream: true
                     )
@@ -360,14 +364,14 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
             "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
         ]
 
         // 1. Build the 'input' messages array
-        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments)
+        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment)
 
         // 2. Add streaming flag if required
         if stream {
@@ -429,7 +433,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -443,8 +447,9 @@ class OpenAIService: OpenAIServiceProtocol {
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
+        let hasAudioAttachment = audioAttachment != nil
         
-        if hasFileAttachments || hasImageAttachments {
+        if hasFileAttachments || hasImageAttachments || hasAudioAttachment {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
             // Add file attachments
@@ -487,6 +492,17 @@ class OpenAIService: OpenAIServiceProtocol {
                 }
             }
             
+            // Add audio attachment
+            if let audioData = audioAttachment {
+                let audioBase64 = audioData.base64EncodedString()
+                let audioContent: [String: Any] = [
+                    "type": "input_audio",
+                    "format": "aac", // AAC format from our recorder
+                    "data": audioBase64
+                ]
+                contentArray.append(audioContent)
+            }
+            
             userContent = contentArray
         }
         
@@ -511,10 +527,10 @@ class OpenAIService: OpenAIServiceProtocol {
             tools.append(createCalculatorToolConfiguration())
         }
         
-        if prompt.enableImageGeneration && !isStreaming && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
+        if prompt.enableImageGeneration && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append([
                 "type": "image_generation", 
-                "model": "dall-e-3",
+                "model": "gpt-image-1",
                 "size": "auto", 
                 "quality": "high", 
                 "output_format": "png"
@@ -539,6 +555,9 @@ class OpenAIService: OpenAIServiceProtocol {
         if prompt.enableCustomTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append(createCustomToolConfiguration(from: prompt))
         }
+
+        // Computer Use (Preview)
+    // Computer Use (Preview) removed
         
         return tools
     }
@@ -642,9 +661,7 @@ class OpenAIService: OpenAIServiceProtocol {
             includeArray.append("reasoning.encrypted_content")
         }
         
-        if prompt.includeComputerCallOutput {
-            includeArray.append("computer_call_output.output.image_url")
-        }
+    // Computer Use (Preview) removed
         
         if prompt.includeInputImageUrls {
             includeArray.append("message.input_image.image_url")
@@ -895,9 +912,10 @@ class OpenAIService: OpenAIServiceProtocol {
                 "container": [ "type": "auto" ]
             ]
         case "image_generation":
-            // Image generation parameters are set based on user preferences
+            // Image generation parameters for gpt-image-1 with enhanced capabilities
             return [
                 "type": "image_generation",
+                "model": "gpt-image-1",
                 "size": "auto",
                 "quality": "high",
                 "output_format": "png",
@@ -1601,6 +1619,7 @@ class OpenAIService: OpenAIServiceProtocol {
         let defaults = UserDefaults.standard
         var config: [String: Any] = [
             "type": "image_generation",
+            "model": "gpt-image-1",
             "size": defaults.string(forKey: "imageGenerationSize") ?? "auto",
             "quality": defaults.string(forKey: "imageGenerationQuality") ?? "auto",
             "background": defaults.string(forKey: "imageGenerationBackground") ?? "auto",
@@ -1649,6 +1668,8 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.invalidResponseData
         }
     }
+
+    // Removed: computer_use_preview probe utility
     
     /// Creates a new vector store (protocol conformance method)
     /// - Parameters:

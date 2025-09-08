@@ -7,7 +7,7 @@ struct StreamingStatusView: View {
     
     private var showAnimatedIndicator: Bool {
         switch status {
-        case .thinking, .searchingWeb, .generatingCode, .runningTool:
+        case .thinking, .searchingWeb, .generatingCode, .runningTool, .generatingImage, .imageGenerationProgress, .imageGenerationCompleting:
             return true
         default:
             return false
@@ -59,6 +59,12 @@ struct StreamingStatusView: View {
             return "gear"
         case .generatingImage:
             return "photo"
+        case .imageGenerationProgress:
+            return "paintbrush"
+        case .imageGenerationCompleting:
+            return "sparkles"
+        case .imageReady:
+            return "photo.badge.checkmark"
         case .streamingText:
             return "text.alignleft"
         case .finalizing:

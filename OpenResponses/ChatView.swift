@@ -59,7 +59,7 @@ struct ChatView: View {
                         StreamingStatusView(status: viewModel.streamingStatus)
                             .padding(.bottom, 8)
                     }
-                    
+
                     // Input area container
                     VStack(spacing: 0) {
                         // Selected images preview
@@ -73,6 +73,27 @@ struct ChatView: View {
                             )
                         }
                         
+                        // Audio attachment preview
+                        if viewModel.pendingAudioAttachment != nil {
+                            HStack {
+                                Image(systemName: "waveform")
+                                    .foregroundColor(.blue)
+                                Text("🎙️ Audio recorded")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Button("Remove", role: .destructive) {
+                                    viewModel.removeAudioAttachment()
+                                }
+                                .font(.caption)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            .padding(.horizontal)
+                        }
+
                         // Compact tool indicator above input
                         CompactToolIndicator(
                             modelId: viewModel.activePrompt.openAIModel,
@@ -81,7 +102,7 @@ struct ChatView: View {
                         )
                         .padding(.horizontal)
                         .padding(.bottom, 4)
-                        
+
                         // Input area at the bottom
                         HStack(alignment: .bottom, spacing: 12) {
                             if viewModel.isStreaming {
@@ -99,7 +120,7 @@ struct ChatView: View {
                                 )
                                 .padding(.bottom, 8)
                             }
-                            
+
                             ChatInputView(text: $userInput, isFocused: $inputFocused, onSend: {
                                 // Send action
                                 viewModel.sendUserMessage(userInput)
@@ -108,10 +129,30 @@ struct ChatView: View {
                             }, onAttach: {
                                 // Show attachment options menu
                                 showAttachmentMenu = true
+                            }, onImageGenerate: {
+                                // Quick image generation
+                                userInput = "Generate an image of "
+                                inputFocused = true
+                            }, onAudioRecord: { audioData in
+                                // Handle audio recording
+                                viewModel.attachAudio(audioData)
                             })
                         }
                         .padding(.horizontal)
                         .padding(.top, 8)
+                        
+                        // Show image suggestions when user types image-related keywords and input is focused
+                        if inputFocused && shouldShowImageSuggestions(for: userInput) {
+                            ImageSuggestionView(inputText: $userInput) { suggestion in
+                                userInput = suggestion
+                                // Auto-send the suggestion or let user edit
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    inputFocused = true
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                        }
                     }
                     .background(.ultraThinMaterial)
                 }
@@ -167,5 +208,16 @@ struct ChatView: View {
         }, message: {
             Text(viewModel.errorMessage ?? "An unknown error occurred.")
         })
+    }
+    
+    /// Determines if image suggestions should be shown based on user input
+    private func shouldShowImageSuggestions(for input: String) -> Bool {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let imageKeywords = ["image", "picture", "photo", "draw", "create", "generate", "make"]
+        
+        // Only show suggestions if input contains image-related keywords
+        return imageKeywords.contains { keyword in
+            trimmed.contains(keyword)
+        }
     }
 }

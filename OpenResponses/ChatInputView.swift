@@ -5,6 +5,8 @@ struct ChatInputView: View {
     var isFocused: FocusState<Bool>.Binding
     var onSend: () -> Void
     var onAttach: () -> Void // Callback for attachment button
+    var onImageGenerate: (() -> Void)? = nil // Optional callback for quick image generation
+    var onAudioRecord: ((Data) -> Void)? = nil // Optional callback for audio recording
     
     @ScaledMetric private var minTextHeight: CGFloat = 40
     @ScaledMetric private var maxTextHeight: CGFloat = 100
@@ -25,6 +27,24 @@ struct ChatInputView: View {
                 label: "Attach files",
                 hint: AccessibilityUtils.Hint.fileAttachButton
             )
+            
+            // Quick image generation button (if callback provided)
+            if let onImageGenerate = onImageGenerate {
+                Button(action: onImageGenerate) {
+                    Image(systemName: "photo.badge.plus")
+                        .foregroundColor(.blue)
+                        .padding(buttonPadding)
+                }
+                .accessibilityLabel("Quick image generation")
+                .accessibilityHint("Tap to start generating an image")
+            }
+            
+            // Audio recording button (if callback provided)
+            if let onAudioRecord = onAudioRecord {
+                AudioRecordingButton { audioData in
+                    onAudioRecord(audioData)
+                }
+            }
             
             ZStack(alignment: .leading) {
                 // Placeholder text

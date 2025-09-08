@@ -93,7 +93,7 @@ class ModelCompatibilityService {
         // GPT-4 series models
         "gpt-4o": ModelCapabilities(
             modelId: "gpt-4o",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation", "computer_use_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 16384,
             supportsStreaming: true,
@@ -125,7 +125,7 @@ class ModelCompatibilityService {
         // GPT-5/4.1 series
         "gpt-5": ModelCapabilities(
             modelId: "gpt-5",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation", "computer_use_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,
@@ -135,7 +135,7 @@ class ModelCompatibilityService {
         ),
         "gpt-4.1-2025-04-14": ModelCapabilities(
             modelId: "gpt-4.1-2025-04-14",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation", "computer_use_preview"],
+            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,
@@ -144,6 +144,9 @@ class ModelCompatibilityService {
             category: .latest
         )
     ]
+
+    // Dynamic overrides discovered at runtime (e.g., account-gated preview features)
+    // Computer Use overrides removed
     
     // MARK: - Public API
     
@@ -154,6 +157,8 @@ class ModelCompatibilityService {
     
     /// Check if a tool is supported by a model
     func isToolSupported(_ tool: String, for modelId: String, isStreaming: Bool = false) -> Bool {
+    // Computer Use dynamic override removed
+
         guard let capabilities = modelCapabilities[modelId] else {
             // Fallback logic for unknown models
             return fallbackToolSupport(tool, for: modelId, isStreaming: isStreaming)
@@ -161,13 +166,13 @@ class ModelCompatibilityService {
         
         let isSupported = capabilities.supportedTools.contains(tool)
         
-        // Special cases
-        if tool == "image_generation" && isStreaming {
-            return false // Image generation not supported in streaming mode
-        }
+        // Special cases - gpt-image-1 now supports streaming
+        // (No restrictions needed for image_generation anymore)
         
         return isSupported
     }
+
+    // Computer Use override API removed
     
     /// Check if a parameter is supported by a model
     func isParameterSupported(_ parameter: String, for modelId: String) -> Bool {
@@ -247,16 +252,7 @@ class ModelCompatibilityService {
             description: "Perform mathematical calculations"
         ))
         
-        // Computer Use (Preview)
-        tools.append(ToolCompatibility(
-            name: "computer_use_preview",
-            isSupported: isToolSupported("computer_use_preview", for: modelId, isStreaming: isStreaming),
-            isEnabled: false, // Not exposed in current UI, but check compatibility
-            isUsed: false,
-            supportedModels: getModelsSupporting("computer_use_preview"),
-            restrictions: ["Preview feature"],
-            description: "Control a virtual computer environment"
-        ))
+    // Computer Use (Preview) removed
         
         return tools
     }
@@ -348,10 +344,7 @@ class ModelCompatibilityService {
             return modelCapabilities.compactMap { key, value in
                 value.supportedTools.contains("file_search") ? key : nil
             }
-        case "computer_use_preview":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedTools.contains("computer_use_preview") ? key : nil
-            }
+    // computer_use_preview removed
         case "temperature":
             return modelCapabilities.compactMap { key, value in
                 value.supportsTemperature ? key : nil

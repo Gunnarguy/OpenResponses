@@ -13,7 +13,7 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
         let message: String
     }
     
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) async throws -> OpenAIResponse {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
@@ -70,7 +70,7 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
         }
     }
     
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         return AsyncThrowingStream { continuation in
             Task {
                 // For minimal testing, just throw an error since streaming is complex
@@ -123,4 +123,5 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
     func listModels() async throws -> [OpenAIModel] {
         throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
     }
+
 }
