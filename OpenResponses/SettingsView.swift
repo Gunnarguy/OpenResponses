@@ -142,7 +142,7 @@ struct SettingsView: View {
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
                 
                 // Reasoning Summary field for reasoning models
-                if viewModel.activePrompt.openAIModel.starts(with: "o") || viewModel.activePrompt.openAIModel.starts(with: "gpt-5") {
+                if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
                     VStack(alignment: .leading) {
                         Text("Reasoning Summary")
                         TextField("Summary of reasoning approach (optional)", text: $viewModel.activePrompt.reasoningSummary)

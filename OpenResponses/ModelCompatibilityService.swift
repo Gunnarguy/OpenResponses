@@ -175,7 +175,16 @@ class ModelCompatibilityService {
             return fallbackParameterSupport(parameter, for: modelId)
         }
         
-        return capabilities.supportedParameters.contains(parameter)
+        // Prioritize specific boolean flags for clarity and correctness
+        switch parameter {
+        case "temperature":
+            return capabilities.supportsTemperature
+        case "reasoning_effort":
+            return capabilities.supportsReasoningEffort
+        default:
+            // Fallback to the comprehensive list for other parameters
+            return capabilities.supportedParameters.contains(parameter)
+        }
     }
     
     /// Get filtered tools based on model compatibility and user settings

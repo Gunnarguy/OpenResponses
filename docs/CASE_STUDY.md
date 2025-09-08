@@ -2,7 +2,11 @@
 
 ## Abstract
 
-OpenResponses is a native SwiftUI application for iOS and macOS, conceived as a power-user's gateway to the full capabilities of the OpenAI API. While appearing as a simple chat interface, it is a sophisticated tool designed for developers, researchers, and enthusiasts who require granular control over model interactions. This case study explores the architectural decisions, technical challenges, and implementation details that make OpenResponses a robust and flexible platform for exploring advanced AI.
+OpenResponses is a native SwiftUI application for iOS and macOS, conceived as a power-user's gateway to the full capabilities of the OpenAI API. While appearing as a simple chat interface, it is a sophisticated tool designed for developers, researchers, and enthusiasts who require granular control over model interactions.
+
+**Vision**: OpenResponses is on a mission to achieve **100% compliance** with the latest OpenAI and Apple capabilities through a systematic 5-phase roadmap (detailed in `ROADMAP.md`). Currently at ~33% API coverage, the app is evolving from its solid foundation toward complete multimodal AI integration, on-device processing, and advanced tool capabilities.
+
+This case study explores the architectural decisions, technical challenges, and implementation details that make OpenResponses a robust and flexible platform for exploring advanced AI.
 
 ---
 
