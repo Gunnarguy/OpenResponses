@@ -32,6 +32,57 @@ class AudioRecordingService: NSObject, ObservableObject {
     func startRecording() -> Bool {
         guard !isRecording else { return false }
         
+        // Check permission using appropriate API based on iOS version
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .denied:
+                hasPermission = false
+                return false
+            case .undetermined:
+                // Permission not determined yet - request it
+                AVAudioApplication.requestRecordPermission { [weak self] granted in
+                    DispatchQueue.main.async {
+                        self?.hasPermission = granted
+                        if granted {
+                            // Try recording again after permission is granted
+                            _ = self?.startRecording()
+                        }
+                    }
+                }
+                return false
+            case .granted:
+                hasPermission = true
+                // Continue with recording below
+            @unknown default:
+                hasPermission = false
+                return false
+            }
+        } else {
+            switch audioSession.recordPermission {
+            case .denied:
+                hasPermission = false
+                return false
+            case .undetermined:
+                // Permission not determined yet - request it
+                audioSession.requestRecordPermission { [weak self] granted in
+                    DispatchQueue.main.async {
+                        self?.hasPermission = granted
+                        if granted {
+                            // Try recording again after permission is granted
+                            _ = self?.startRecording()
+                        }
+                    }
+                }
+                return false
+            case .granted:
+                hasPermission = true
+                // Continue with recording below
+            @unknown default:
+                hasPermission = false
+                return false
+            }
+        }
+        
         do {
             // Configure audio session
             try audioSession.setCategory(.playAndRecord, mode: .default)

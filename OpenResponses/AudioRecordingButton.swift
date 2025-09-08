@@ -46,7 +46,6 @@ struct AudioRecordingButton: View {
                     .animation(.spring(response: 0.3), value: audioService.isRecording)
             }
         }
-        .disabled(!audioService.hasPermission)
         .overlay(
             // Recording duration display
             VStack {
@@ -92,14 +91,12 @@ struct AudioRecordingButton: View {
     }
     
     private func startRecording() {
-        guard audioService.hasPermission else {
-            showPermissionAlert = true
-            return
-        }
-        
+        // Try to start recording - system will handle permission request
         let success = audioService.startRecording()
         if !success {
             print("Failed to start recording")
+            // Show permission alert if recording failed
+            showPermissionAlert = true
         }
     }
     
