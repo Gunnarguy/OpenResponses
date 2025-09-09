@@ -99,7 +99,7 @@ A list of one or many input items to the model, containing different content typ
 {
   "type": "message", // Optional
   "role": "user", // Required - One of: user, assistant, system, developer
-  "content": "string or array" // Required - Text, image, or audio input
+  "content": "string or array" // Required - Text or image input
 }
 ```
 
@@ -134,18 +134,6 @@ A list of one or many input items to the model, containing different content typ
   "file_id": "string", // Optional
   "file_url": "string", // Optional
   "filename": "string" // Optional
-}
-```
-
-**Input Audio**
-
-```json
-{
-  "type": "input_audio",
-  "input_audio": {
-    "data": "string", // Base64-encoded audio data
-    "format": "mp3" // One of: mp3, wav
-  }
 }
 ```
 

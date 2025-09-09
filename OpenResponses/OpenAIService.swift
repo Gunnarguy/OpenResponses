@@ -19,11 +19,12 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - userMessage: The user's input prompt.
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
+    ///   - fileData: An optional array of file data to upload directly.
+    ///   - fileNames: An optional array of filenames corresponding to the file data.
     ///   - imageAttachments: An optional array of image attachments.
-    ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -34,6 +35,8 @@ class OpenAIService: OpenAIServiceProtocol {
             for: prompt,
             userMessage: userMessage,
             attachments: attachments,
+            fileData: fileData,
+            fileNames: fileNames,
             imageAttachments: imageAttachments,
             previousResponseId: previousResponseId,
             stream: false
@@ -149,11 +152,12 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - userMessage: The user's input prompt.
     ///   - prompt: The configuration object containing all settings for the request.
     ///   - attachments: An optional array of file attachments.
+    ///   - fileData: An optional array of file data to upload directly.
+    ///   - fileNames: An optional array of filenames corresponding to the file data.
     ///   - imageAttachments: An optional array of image attachments.
-    ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -167,6 +171,8 @@ class OpenAIService: OpenAIServiceProtocol {
                         for: prompt,
                         userMessage: userMessage,
                         attachments: attachments,
+                        fileData: fileData,
+                        fileNames: fileNames,
                         imageAttachments: imageAttachments,
                         previousResponseId: previousResponseId,
                         stream: true
@@ -362,14 +368,14 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
             "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
         ]
 
         // 1. Build the 'input' messages array
-    requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments)
+    requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, fileData: fileData, fileNames: fileNames, imageAttachments: imageAttachments)
 
         // 2. Add streaming flag if required
         if stream {
@@ -431,7 +437,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -445,12 +451,11 @@ class OpenAIService: OpenAIServiceProtocol {
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
-    let hasAudioAttachment = false
-        
-        if hasFileAttachments || hasImageAttachments || hasAudioAttachment {
+        let hasDirectFileData = fileData?.isEmpty == false
+    if hasFileAttachments || hasImageAttachments || hasDirectFileData {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
-            // Add file attachments
+            // Add file attachments (file_id references)
             if let attachments = attachments, !attachments.isEmpty {
                 let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
                     guard let fileId = attachment["file_id"] as? String else {
@@ -462,6 +467,24 @@ class OpenAIService: OpenAIServiceProtocol {
                 
                 if !validatedAttachments.isEmpty {
                     contentArray.append(contentsOf: validatedAttachments)
+                }
+            }
+            
+            // Add direct file uploads (file_data)
+            if let fileData = fileData, let fileNames = fileNames, !fileData.isEmpty, !fileNames.isEmpty {
+                for (index, data) in fileData.enumerated() {
+                    guard index < fileNames.count else {
+                        AppLogger.log("File data and names count mismatch", category: .openAI, level: .warning)
+                        break
+                    }
+                    
+                    let base64String = data.base64EncodedString()
+                    let fileContent: [String: Any] = [
+                        "type": "input_file",
+                        "file_data": base64String,
+                        "filename": fileNames[index]
+                    ]
+                    contentArray.append(fileContent)
                 }
             }
             
@@ -490,21 +513,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 }
             }
             
-            // Audio is removed from the app; no audio content is appended.
-            
-            /* FUTURE IMPLEMENTATION - Uncomment when API properly supports input_audio:
-            if let audioData = audioAttachment {
-                let audioBase64 = audioData.base64EncodedString()
-                let audioContent: [String: Any] = [
-                    "type": "input_audio",
-                    "input_audio": [
-                        "data": audioBase64,
-                        "format": "wav" // Using WAV format as configured in AudioRecordingService
-                    ]
-                ]
-                contentArray.append(audioContent)
-            }
-            */
+            // Audio input removed: no audio content
             
             userContent = contentArray
         }
@@ -526,9 +535,7 @@ class OpenAIService: OpenAIServiceProtocol {
             tools.append(["type": "code_interpreter", "container": ["type": "auto"]])
         }
         
-        if prompt.enableCalculator && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(createCalculatorToolConfiguration())
-        }
+    // Calculator demo tool removed; use Custom Tool with calculator execution instead.
         
         if prompt.enableImageGeneration && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
             tools.append([
@@ -941,28 +948,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
     
     
-    /// Creates the configuration for the custom calculator tool
-    /// - Returns: A dictionary representing the calculator tool configuration
-    private func createCalculatorToolConfiguration() -> [String: Any] {
-        // Responses API expects function tools to have top-level 'name' & 'parameters'
-        return [
-            "type": "function",
-            "name": "calculator",
-            "description": "Evaluate mathematical expressions and return the result.",
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "expression": [
-                        "type": "string",
-                        "description": "A mathematical expression to evaluate, e.g., '5+3*2'"
-                    ]
-                ],
-                "required": ["expression"],
-                "additionalProperties": false
-            ],
-            "strict": true
-        ]
-    }
+    // Calculator tool configuration removed
     
     /// Creates the configuration for the MCP tool
     /// - Returns: A dictionary representing the MCP tool configuration
@@ -973,26 +959,44 @@ class OpenAIService: OpenAIServiceProtocol {
             headers = parsedHeaders
         }
 
-        return [
+        var config: [String: Any] = [
             "type": "mcp",
             "server_label": prompt.mcpServerLabel,
             "server_url": prompt.mcpServerURL,
             "headers": headers,
             "require_approval": prompt.mcpRequireApproval,
-            "allowed_tools": [] // This could be made configurable in the future
         ]
+
+        // Parse allowed tools from comma-separated string
+        let allowed = prompt.mcpAllowedTools
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !allowed.isEmpty {
+            config["allowed_tools"] = allowed
+        }
+
+        return config
     }
 
-    /// Creates the configuration for the custom tool
-    /// - Returns: A dictionary representing the custom tool configuration
+    /// Creates the configuration for the custom function tool.
+    /// Responses API expects function tools to have top-level name/parameters.
     private func createCustomToolConfiguration(from prompt: Prompt) -> [String: Any] {
+        // Try to parse user-provided JSON schema; fall back to permissive object
+        let parsedSchema: [String: Any]
+        if let data = prompt.customToolParametersJSON.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            parsedSchema = obj
+        } else {
+            parsedSchema = ["type": "object", "properties": [:], "additionalProperties": true]
+        }
+
         return [
             "type": "function",
-            "function": [
-                "name": prompt.customToolName,
-                "description": prompt.customToolDescription,
-                "parameters": ["type": "object", "properties": [:]] // Assuming no parameters for simplicity
-            ]
+            "name": prompt.customToolName,
+            "description": prompt.customToolDescription,
+            "parameters": parsedSchema,
+            "strict": false
         ]
     }
     
@@ -1921,9 +1925,4 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
     
-    /// Determines if a model supports direct audio input based on current API capabilities
-    private func supportsDirectAudioInput(model: String) -> Bool {
-        // Use the ModelCompatibilityService for centralized capability management
-        return ModelCompatibilityService.shared.supportsAudioInput(for: model)
-    }
 }

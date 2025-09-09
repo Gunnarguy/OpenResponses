@@ -233,7 +233,7 @@ struct DynamicModelSelector: View {
                         
                         // Allow o-series models that might have different naming
                         if (id.hasPrefix("o1-") || id.hasPrefix("o3-") || id.hasPrefix("o4-")) &&
-                           !id.contains("image") && !id.contains("audio") && !id.contains("vision") {
+                           !id.contains("image") && !id.contains("audio") && !id.contains("vision") { // exclude audio/vision-only variants
                             return true
                         }
                         
@@ -243,7 +243,7 @@ struct DynamicModelSelector: View {
                            !id.contains("instruct") &&
                            !id.contains("image") &&
                            !id.contains("vision") &&
-                           !id.contains("audio") {
+                           !id.contains("audio") { // exclude audio-only variants
                             return true
                         }
                         

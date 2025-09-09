@@ -9,7 +9,7 @@ The app is undergoing a phased upgrade to achieve 100% compliance with the lates
 ### Current State vs. Future State
 
 - **Current:** The app uses a partial implementation of the Responses API (`/v1/responses`) and manages conversation state locally using `previous_response_id`. Conversation history is stored on the device.
-- **Future (The Goal):** The app will fully integrate the **Conversations API** (`/v1/conversations`) for backend-managed, cross-device conversation history. It will also support all advanced input modalities (audio, direct file uploads), tools (`computer`, `gpt-image-1`), and on-device Apple Intelligence.
+- **Future (The Goal):** The app will fully integrate the **Conversations API** (`/v1/conversations`) for backend-managed, cross-device conversation history. It will also support advanced input modalities (direct file uploads), tools (`computer`, `gpt-image-1`), and on-device Apple Intelligence. Audio input is out of scope.
 
 Refer to the `ROADMAP.md` for the specific phase and priority of each feature.
 
@@ -27,7 +27,7 @@ The application is built with **SwiftUI** and follows a **Model-View-ViewModel (
 
 - **API Communication (`OpenAIService.swift`):** This is the only class that communicates with the OpenAI API.
 
-  - `buildRequestObject(...)` is a critical method that dynamically constructs the complex JSON payload for the `/v1/responses` endpoint. It must be updated to support all parameters and input types (audio, files) from the roadmap.
+  - `buildRequestObject(...)` is a critical method that dynamically constructs the complex JSON payload for the `/v1/responses` endpoint. It must be updated to support all parameters and input types (files) from the roadmap.
   - It will be expanded to include methods for the `/v1/conversations` API (`createConversation`, `listConversations`, etc.).
 
 - **Streaming Logic (`ChatViewModel.swift`):**
@@ -91,23 +91,23 @@ This project maintains a comprehensive documentation ecosystem that **MUST** be 
 
 On first launch, the app checks for an API key in the Keychain. If none is found, it presents the `SettingsView.swift`.
 
-### Example: Implementing a Feature from the Roadmap (e.g., Audio Input)
+### Example: Implementing a Feature from the Roadmap (e.g., Direct File Uploads)
 
 **Code Changes:**
 
-1. **Update the Model:** Add a new property to `Prompt.swift` to handle the new data (e.g., `audioData: Data?`)
-2. **Modify `buildRequestObject`:** In `OpenAIService.swift`, add logic to construct the `input_audio` object in the request body if the new property is present
-3. **Update the UI:** Add UI elements to `ChatInputView.swift` for recording audio (e.g., using `AVAudioRecorder`)
-4. **Update the ViewModel:** Add logic to `ChatViewModel.swift` to manage the recording state and pass the audio data to the API service
+1. **Update the Model:** Add a new property to `Prompt.swift` to handle the new data (e.g., `fileData: Data?`)
+2. **Modify `buildRequestObject`:** In `OpenAIService.swift`, add logic to construct the `input_file` object in the request body if the new property is present
+3. **Update the UI:** Add UI elements to `FileManagerView.swift` to attach files
+4. **Update the ViewModel:** Add logic to `ChatViewModel.swift` to manage file attachments and pass the file data to the API service
 5. **Handle New Streaming Events:** If the feature introduces new events, update `updateStreamingStatus` in `ChatViewModel.swift` to provide user feedback
 
 **Documentation Updates:**
 
-1. **Mark complete in `ROADMAP.md`:** Update Phase 1 status for Audio Input
-2. **Update `docs/api/Full_API_Reference.md`:** Mark audio input parameters as implemented
-3. **Update `CASE_STUDY.md`:** Add section on audio handling architecture if significant
-4. **Update `PRODUCTION_CHECKLIST.md`:** Add audio recording testing requirements
-5. **Update user documentation:** Add audio input instructions to relevant user guides
+1. **Mark complete in `ROADMAP.md`:** Update Phase 1 status for Direct File Uploads
+2. **Update `docs/api/Full_API_Reference.md`:** Mark input_file parameters as implemented
+3. **Update `CASE_STUDY.md`:** Add section on file handling architecture if significant
+4. **Update `PRODUCTION_CHECKLIST.md`:** Add file upload testing requirements
+5. **Update user documentation:** Add file input instructions to relevant user guides
 
 ## Critical Success Factors
 

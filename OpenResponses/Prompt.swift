@@ -22,7 +22,6 @@ struct Prompt: Codable, Identifiable, Equatable {
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String? // Added
-    var enableCalculator: Bool
     // Computer Use (Preview) removed
     
     // MCP Tool
@@ -31,11 +30,20 @@ struct Prompt: Codable, Identifiable, Equatable {
     var mcpServerURL: String
     var mcpHeaders: String
     var mcpRequireApproval: String
+    // Comma-separated list of MCP tools the model is allowed to call
+    var mcpAllowedTools: String
 
     // Custom Tool
     var enableCustomTool: Bool
     var customToolName: String
     var customToolDescription: String
+    // Advanced Custom Tool Configuration
+    // JSON Schema string that defines the parameters for the custom function tool
+    var customToolParametersJSON: String
+    // How the app executes the custom function tool locally: "echo", "calculator", or "webhook"
+    var customToolExecutionType: String
+    // Optional webhook URL for executionType == "webhook"
+    var customToolWebhookURL: String
     
     // Web Search Location
     var userLocationCity: String?
@@ -94,10 +102,10 @@ struct Prompt: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         // Explicitly list all properties to be encoded/decoded
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
-        case enableWebSearch, enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds, enableCalculator
+    case enableWebSearch, enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
     // enableComputerUse removed
-        case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval
-        case enableCustomTool, customToolName, customToolDescription
+    case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
+    case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
@@ -123,15 +131,18 @@ struct Prompt: Codable, Identifiable, Equatable {
             enableImageGeneration: true,
             enableFileSearch: false,
             selectedVectorStoreIds: nil, // Added
-            enableCalculator: true,
             enableMCPTool: false,
             mcpServerLabel: "paypal",
             mcpServerURL: "https://mcp.paypal.com/sse",
             mcpHeaders: "{\"Authorization\": \"Bearer s\"}",
             mcpRequireApproval: "always",
+            mcpAllowedTools: "",
             enableCustomTool: false,
             customToolName: "custom_tool_placeholder",
             customToolDescription: "A placeholder for a custom tool.",
+            customToolParametersJSON: "{\n  \"type\": \"object\",\n  \"properties\": {},\n  \"additionalProperties\": true\n}",
+            customToolExecutionType: "echo",
+            customToolWebhookURL: "",
             userLocationCity: nil,
             userLocationCountry: nil,
             userLocationRegion: nil,

@@ -9,5 +9,8 @@
 	<key>NSFilesystemUsageDescription</key>
 	<string>OpenResponses needs access to your files to allow you to upload and attach them to your AI conversations.</string>
 
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OpenResponses uses your location once to autofill city/region/country for web search relevance. This is optional.</string>
+
 </dict>
 </plist>

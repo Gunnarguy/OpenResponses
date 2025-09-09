@@ -8,7 +8,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 - [x] Text input/output works reliably
 - [x] Image input with base64 encoding and detail level selection
-- [ ] **ROADMAP:** Audio input recording and processing
+- [ ] **ROADMAP:** Audio input recording and processing (Removed from scope)
 - [ ] **ROADMAP:** Direct file uploads (currently only supports file_id references)
 
 ### Tool Integration

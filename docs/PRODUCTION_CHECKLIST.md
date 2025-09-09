@@ -6,7 +6,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 ### Core Chat Functionality
 
-- [ ] **ROADMAP:** Audio input recording and processing
+- [ ] **ROADMAP:** Audio input recording and processing (Removed from scope)
 - [ ] **ROADMAP:** Direct file uploads (currently only supports file_id references)
 
 ### Tool Integration

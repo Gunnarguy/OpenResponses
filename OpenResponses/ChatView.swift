@@ -73,6 +73,16 @@ struct ChatView: View {
                             )
                         }
                         
+                        // Selected files preview
+                        if !viewModel.pendingFileNames.isEmpty {
+                            SelectedFilesView(
+                                fileNames: viewModel.pendingFileNames,
+                                onRemove: { index in
+                                    viewModel.removeFileAttachment(at: index)
+                                }
+                            )
+                        }
+                        
                         // Audio preview removed
 
                         // Compact tool indicator above input
@@ -142,13 +152,11 @@ struct ChatView: View {
                 }
             }
         }
-        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.data]) { result in
-            switch result {
-            case .success(let url):
-                viewModel.attachFile(from: url)
-            case .failure(let error):
-                viewModel.handleError(error)
-            }
+        .sheet(isPresented: $showFilePicker) {
+            DocumentPicker(
+                selectedFileData: $viewModel.pendingFileData,
+                selectedFilenames: $viewModel.pendingFileNames
+            )
         }
         .sheet(isPresented: $showImagePicker) {
             NavigationView {

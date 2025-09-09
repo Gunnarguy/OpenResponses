@@ -175,7 +175,9 @@ class ModelCompatibilityService {
             return fallbackToolSupport(tool, for: modelId, isStreaming: isStreaming)
         }
         
-        let isSupported = capabilities.supportedTools.contains(tool)
+    // Generic function tools are supported across models in the Responses API
+    if tool == "function" { return true }
+    let isSupported = capabilities.supportedTools.contains(tool)
         
         // Special cases - gpt-image-1 now supports streaming
         // (No restrictions needed for image_generation anymore)
@@ -264,16 +266,7 @@ class ModelCompatibilityService {
             description: "Search through uploaded documents and files"
         ))
         
-        // Calculator
-        tools.append(ToolCompatibility(
-            name: "calculator",
-            isSupported: true, // Calculator is a basic function, supported by all models
-            isEnabled: prompt.enableCalculator,
-            isUsed: prompt.enableCalculator,
-            supportedModels: Array(modelCapabilities.keys),
-            restrictions: [],
-            description: "Perform mathematical calculations"
-        ))
+    // Calculator removed: use Custom Tool with calculator execution mode
         
     // Computer Use (Preview) removed
         
@@ -328,6 +321,8 @@ class ModelCompatibilityService {
         case "image_generation":
             return !isStreaming && modelId.starts(with: "gpt-4")
         case "web_search_preview", "file_search":
+            return true
+        case "function":
             return true
         default:
             return false

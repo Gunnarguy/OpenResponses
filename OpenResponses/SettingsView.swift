@@ -1,4 +1,6 @@
 import SwiftUI
+import Combine
+// CoreLocation removed – no longer using device location here
 
 /// Settings view for configuring the OpenAI API integration and tools.
 /// 
@@ -20,6 +22,12 @@ struct SettingsView: View {
     @State private var selectedPresetId: UUID?
     
     @StateObject private var promptLibrary = PromptLibrary()
+    // UI state for collapsing tool groups
+    @State private var showCoreTools: Bool = true
+    @State private var showCustomTools: Bool = false
+    // Location autofill removed (kept only timezone autofill)
+
+    // LocationHelper removed. We only support timezone autofill now.
 
     // All @AppStorage properties are removed. The view will now bind directly to viewModel.activePrompt.
     
@@ -202,9 +210,10 @@ struct SettingsView: View {
                 Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
                     Text("Auto").tag("auto")
                     Text("None").tag("none")
-                    if viewModel.activePrompt.enableCalculator { Text("Calculator").tag("calculator") }
                     if viewModel.activePrompt.enableWebSearch { Text("Web Search").tag("web_search") }
                     if viewModel.activePrompt.enableCodeInterpreter { Text("Code Interpreter").tag("code_interpreter") }
+                    if viewModel.activePrompt.enableCustomTool { Text("Custom Tool").tag(viewModel.activePrompt.customToolName) }
+                    if viewModel.activePrompt.enableMCPTool { Text("MCP Tool").tag("mcp") }
                 }
                 .accessibilityHint("Controls which tools the AI can use")
                 
@@ -220,116 +229,135 @@ struct SettingsView: View {
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
-            Section(header: Text("Tools"), footer: Text("Configure which AI tools are available for the assistant to use. Note: Image generation is automatically disabled when streaming is enabled.")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
-                            .accessibilityHint("Allows the AI to search the internet for current information")
-                        if !ModelCompatibilityService.shared.isToolSupported("web_search", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Not supported by current model")
+            Section(header: Text("Tools"), footer: Text("Enable the capabilities your assistant can use. Image generation is disabled during streaming.")) {
+                // Core tools group
+                DisclosureGroup("Core Tools", isExpanded: $showCoreTools) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+                                .accessibilityHint("Allows the AI to search the internet for current information")
+                            if !ModelCompatibilityService.shared.isToolSupported("web_search", for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
+                            }
                         }
-                    }
-                    
-                    HStack {
-                        Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
-                            .accessibilityHint("Enables the AI to run Python code and analyze data")
-                        if !ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Not supported by current model")
+                        HStack {
+                            Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                                .accessibilityHint("Enables the AI to run Python code and analyze data")
+                            if !ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
+                            }
                         }
-                    }
-                    
-                    HStack {
-                        Toggle("Calculator (Custom Tool)", isOn: $viewModel.activePrompt.enableCalculator)
-                            .accessibilityHint("Provides mathematical calculation capabilities")
-                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Function tools not supported by current model")
+                        HStack {
+                            Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
+                                .accessibilityHint("Allows the AI to create images with GPT-Image-1")
+                            if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model or streaming mode")
+                            }
                         }
-                    }
-                    
-                    HStack {
-                        Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
-                            .accessibilityHint("Allows the AI to create images with GPT-Image-1")
-                        if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Not supported by current model or streaming mode")
+                        HStack {
+                            Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                                .accessibilityHint("Enables searching through uploaded files and documents")
+                            if !ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
+                            }
                         }
-                    }
-                    
-                    HStack {
-                        Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                            .accessibilityHint("Enables searching through uploaded files and documents")
-                        if !ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Not supported by current model")
-                        }
-                    }
-                    
-                    HStack {
-                        Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
-                            .accessibilityHint("Connects to Model Context Protocol servers")
-                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Function tools not supported by current model")
-                        }
-                    }
-                    
-                    HStack {
-                        Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
-                            .accessibilityHint("Enables user-defined custom tools")
-                        if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .help("Function tools not supported by current model")
-                        }
-                    }
 
-                    // Computer Use (Preview) removed
-
-                    // Removed detection helper to simplify UI
+                        if viewModel.activePrompt.enableFileSearch {
+                            VStack(alignment: .leading) {
+                                Text("Vector Store IDs")
+                                TextField("Comma-separated vector store IDs", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
+                                    .textFieldStyle(.roundedBorder)
+                                Text("Enter vector store IDs separated by commas, e.g., vs_123,vs_456")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Button("Manage Files & Vector Stores") { showingFileManager = true }
+                                .foregroundColor(.accentColor)
+                                .accessibilityHint("Open file management interface for organizing uploaded documents")
+                        }
+                    }
                 }
-                
-                if viewModel.activePrompt.enableFileSearch {
-                    VStack(alignment: .leading) {
-                        Text("Vector Store IDs")
-                        TextField("Comma-separated vector store IDs", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Enter vector store IDs separated by commas, e.g., vs_123,vs_456")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+
+                // Custom and integrations group
+                DisclosureGroup("Custom & Integrations", isExpanded: $showCustomTools) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                                .accessibilityHint("Connects to Model Context Protocol servers")
+                            if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
+                            }
+                        }
+                        HStack {
+                            Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
+                                .accessibilityHint("Enables user-defined custom tools")
+                            if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
+                            }
+                        }
                     }
-                    
-                    Button("Manage Files & Vector Stores") {
-                        showingFileManager = true
-                    }
-                    .foregroundColor(.accentColor)
-                    .accessibilityHint("Open file management interface for organizing uploaded documents")
                 }
             }
             .disabled(viewModel.activePrompt.enablePublishedPrompt)
             
             // Web Search Configuration Section
             if viewModel.activePrompt.enableWebSearch {
-                Section(header: Text("Web Search Configuration"), footer: Text("Customize web search behavior including location, language, and result filtering.")) {
-                    Picker("Context Size", selection: $viewModel.activePrompt.searchContextSize.bound) {
-                        Text("Medium").tag("medium")
-                        Text("Low").tag("low")
-                        Text("High").tag("high")
+                Section(header: Text("Web Search Configuration"), footer: Text("Optional: Set an approximate location to improve search relevance. Only the fields you fill are sent.")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Context size with clearer order and hint
+                        VStack(alignment: .leading, spacing: 4) {
+                            Picker("Context Size", selection: $viewModel.activePrompt.searchContextSize.bound) {
+                                Text("Low").tag("low")
+                                Text("Medium").tag("medium")
+                                Text("High").tag("high")
+                            }
+                            .pickerStyle(.segmented)
+                            Text("Controls how much of the page context is analyzed.\nLow = faster, High = more comprehensive.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        // Location fields grouped for clarity
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Approximate Location (optional)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+
+                            HStack(spacing: 8) {
+                                TextField("City (e.g., San Francisco)", text: $viewModel.activePrompt.userLocationCity.bound)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField("Region/State (e.g., CA)", text: $viewModel.activePrompt.userLocationRegion.bound)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            HStack(spacing: 8) {
+                                TextField("Country (e.g., US)", text: $viewModel.activePrompt.userLocationCountry.bound)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField("Timezone (e.g., America/Los_Angeles)", text: $viewModel.activePrompt.userLocationTimezone.bound)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            HStack(spacing: 12) {
+                                Button("Autofill Timezone") {
+                                    viewModel.activePrompt.userLocationTimezone = TimeZone.current.identifier
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(.accentColor)
+
+                                Spacer()
+
+                                Button("Clear") {
+                                    viewModel.activePrompt.userLocationCity = nil
+                                    viewModel.activePrompt.userLocationRegion = nil
+                                    viewModel.activePrompt.userLocationCountry = nil
+                                    viewModel.activePrompt.userLocationTimezone = nil
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(.red)
+                            }
+                            .padding(.top, 2)
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    
-                    TextField("City", text: $viewModel.activePrompt.userLocationCity.bound)
-                    TextField("Country", text: $viewModel.activePrompt.userLocationCountry.bound)
-                    TextField("Region", text: $viewModel.activePrompt.userLocationRegion.bound)
-                    TextField("Timezone", text: $viewModel.activePrompt.userLocationTimezone.bound)
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
@@ -347,6 +375,14 @@ struct SettingsView: View {
                         Text("Never").tag("never")
                     }
                     .pickerStyle(.segmented)
+                    VStack(alignment: .leading) {
+                        Text("Allowed Tools (comma-separated)")
+                        TextField("e.g., search,calendar", text: $viewModel.activePrompt.mcpAllowedTools)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Leave blank to allow all tools exposed by the MCP server.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }
@@ -356,6 +392,28 @@ struct SettingsView: View {
                 Section(header: Text("Custom Tool Configuration")) {
                     TextField("Tool Name", text: $viewModel.activePrompt.customToolName)
                     TextField("Tool Description", text: $viewModel.activePrompt.customToolDescription)
+                    Picker("Execution", selection: $viewModel.activePrompt.customToolExecutionType) {
+                        Text("Echo").tag("echo")
+                        Text("Calculator").tag("calculator")
+                        Text("Webhook").tag("webhook")
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    if viewModel.activePrompt.customToolExecutionType == "webhook" {
+                        TextField("Webhook URL (https://...)", text: $viewModel.activePrompt.customToolWebhookURL)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Parameters JSON Schema")
+                        TextEditor(text: $viewModel.activePrompt.customToolParametersJSON)
+                            .frame(minHeight: 80)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                        Text("Define the JSON schema for tool arguments.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .disabled(viewModel.activePrompt.enablePublishedPrompt)
             }

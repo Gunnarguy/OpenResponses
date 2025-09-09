@@ -25,7 +25,7 @@ OpenResponses has achieved **Phase 1 milestone status** in the comprehensive 5-p
 
 #### **Phase 1 Remaining Work**
 
-- 🔄 **Audio Input**: Recording UI, base64 encoding, API integration
+- ❌ **Audio Input**: Removed from app scope
 - 🔄 **Computer Use Tool**: Deferred; feature disabled until supported models are publicly available
 - 🔄 **Direct File Uploads**: Support for filename and file_data (vs file_id only)
 - 🔄 **gpt-image-1**: Latest model with streaming previews
@@ -95,7 +95,7 @@ OpenResponses has achieved **Phase 1 milestone status** in the comprehensive 5-p
 | **Streaming Events**  | ✅ Complete | 95%      | Production-ready       |
 | **Tool Integration**  | 🟡 Partial  | 70%      | Computer use deferred  |
 | **Conversations API** | ❌ Missing  | 0%       | Local storage only     |
-| **Input Modalities**  | 🟡 Partial  | 60%      | Missing audio input    |
+| **Input Modalities**  | 🟡 Partial  | 60%      | Audio input removed    |
 
 ### **Code Quality & Maintainability**
 

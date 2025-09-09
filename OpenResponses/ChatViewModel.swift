@@ -10,6 +10,9 @@ class ChatViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var pendingFileAttachments: [String] = []
     @Published var pendingImageAttachments: [UIImage] = []
+    @Published var pendingFileData: [Data] = []
+    @Published var pendingFileNames: [String] = []
+    @Published var isShowingDocumentPicker = false
     // Audio feature removed
     @Published var selectedImageDetailLevel: String = "auto"
     @Published var activePrompt: Prompt
@@ -170,7 +173,7 @@ class ChatViewModel: ObservableObject {
         isStreaming = true
         
         // Prepare attachments if any are pending
-        let fileAttachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
+        let attachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
             return ["file_id": fileId, "tools": [["type": "file_search"]]]
         }
         
@@ -182,11 +185,15 @@ class ChatViewModel: ObservableObject {
     // Audio removed: no audioAttachment
         
         // Clear pending attachments now that they are included in the request
-        if fileAttachments != nil {
+        if attachments != nil {
             pendingFileAttachments.removeAll()
         }
         if imageAttachments != nil {
             pendingImageAttachments.removeAll()
+        }
+        if !pendingFileData.isEmpty {
+            pendingFileData.removeAll()
+            pendingFileNames.removeAll()
         }
     // no-op: audio removed
         
@@ -201,7 +208,7 @@ class ChatViewModel: ObservableObject {
                 AnalyticsParameter.model: activePrompt.openAIModel,
                 AnalyticsParameter.messageLength: trimmed.count,
                 AnalyticsParameter.streamingEnabled: streamingEnabled,
-                "has_file_attachments": fileAttachments != nil,
+                "has_file_attachments": attachments != nil,
                 "has_image_attachments": imageAttachments != nil,
                 "has_audio_attachment": false,
                 "image_count": imageAttachments?.count ?? 0
@@ -218,7 +225,7 @@ class ChatViewModel: ObservableObject {
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
@@ -234,7 +241,7 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -288,13 +295,13 @@ class ChatViewModel: ObservableObject {
         await MainActor.run { self.streamingStatus = .connecting }
         do {
             if streamingEnabled {
-                let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
+                let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
                 for try await chunk in stream {
                     if Task.isCancelled { await MainActor.run { self.handleError(CancellationError()) }; break }
                     await MainActor.run { self.handleStreamChunk(chunk, for: assistantMsgId) }
                 }
             } else {
-                let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
+                let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
                 await MainActor.run { self.handleNonStreamingResponse(response, for: assistantMsgId) }
             }
         } catch {
@@ -401,6 +408,19 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    /// Removes a file from pending attachments
+    func removeFileAttachment(at index: Int) {
+        guard index < pendingFileData.count && index < pendingFileNames.count else { return }
+        pendingFileData.remove(at: index)
+        pendingFileNames.remove(at: index)
+        
+        // Update status message if no files remain
+        if pendingFileData.isEmpty {
+            let statusMessage = ChatMessage(role: .system, text: "All file attachments removed.", images: nil)
+            messages.append(statusMessage)
+        }
+    }
+    
     /// Clears all pending image attachments
     func clearImageAttachments() {
         pendingImageAttachments.removeAll()
@@ -482,45 +502,26 @@ class ChatViewModel: ObservableObject {
             handleError(OpenAIServiceError.invalidResponseData)
             return
         }
-        
-        // For now, we only handle the calculator
-        guard functionName == "calculator" else {
+
+        // Dispatch by function name. Only user-defined custom tools are supported now.
+        let output: String
+        if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
+            output = await executeCustomTool(argumentsJSON: call.arguments)
+        } else {
             let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
             await MainActor.run { messages.append(errorMsg) }
             return
         }
-        
-        // Execute the calculator function
-        var functionResult: String
-        do {
-            // Safely decode the expression from the arguments JSON
-            struct CalcArgs: Decodable { let expression: String }
-            guard let argsData = call.arguments?.data(using: .utf8) else {
-                throw NSError(domain: "CalcError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid arguments format"])
-            }
-            let decodedArgs = try JSONDecoder().decode(CalcArgs.self, from: argsData)
-            
-            // Evaluate the expression
-            let expression = NSExpression(format: decodedArgs.expression)
-            if let result = expression.expressionValue(with: nil, context: nil) as? NSNumber {
-                functionResult = result.stringValue
-            } else {
-                throw NSError(domain: "CalcError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid math expression"])
-            }
-        } catch {
-            functionResult = "Error: \(error.localizedDescription)"
-        }
-        
+
         // Send the result back to the API
         do {
             let finalResponse = try await api.sendFunctionOutput(
                 call: call,
-                output: functionResult,
+                output: output,
                 model: activePrompt.openAIModel,
                 previousResponseId: lastResponseId
             )
-            
-            // Handle the final response from the model
+
             await MainActor.run {
                 self.handleNonStreamingResponse(finalResponse, for: messageId)
             }
@@ -528,6 +529,61 @@ class ChatViewModel: ObservableObject {
             await MainActor.run {
                 self.handleError(error)
             }
+        }
+    }
+
+    /// Execute built-in calculator function. Returns a string result or error.
+    private func evaluateCalculator(argumentsJSON: String?) -> String {
+        do {
+            struct CalcArgs: Decodable { let expression: String }
+            guard let argsData = argumentsJSON?.data(using: .utf8) else {
+                throw NSError(domain: "CalcError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid arguments format"])
+            }
+            let decodedArgs = try JSONDecoder().decode(CalcArgs.self, from: argsData)
+            let expression = NSExpression(format: decodedArgs.expression)
+            if let result = expression.expressionValue(with: nil, context: nil) as? NSNumber {
+                return result.stringValue
+            }
+            throw NSError(domain: "CalcError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid math expression"])
+        } catch {
+            return "Error: \(error.localizedDescription)"
+        }
+    }
+
+    /// Execute a user-defined custom tool based on the selected execution type.
+    /// - Modes:
+    ///   - echo: returns the arguments JSON verbatim
+    ///   - calculator: expects { expression: string } and evaluates like built-in
+    ///   - webhook: POSTs JSON to a user-provided URL and returns text body
+    private func executeCustomTool(argumentsJSON: String?) async -> String {
+        switch activePrompt.customToolExecutionType {
+        case "echo":
+            return argumentsJSON ?? "{}"
+        case "calculator":
+            return evaluateCalculator(argumentsJSON: argumentsJSON)
+        case "webhook":
+            let urlString = activePrompt.customToolWebhookURL
+            guard !urlString.isEmpty, let url = URL(string: urlString) else {
+                return "Error: Missing or invalid webhook URL"
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.timeoutInterval = 30
+            request.httpBody = argumentsJSON?.data(using: .utf8) ?? Data("{}".utf8)
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    return "Error: Webhook status \(status)"
+                }
+                // Try to decode as UTF-8 text; otherwise return base64
+                return String(data: data, encoding: .utf8) ?? data.base64EncodedString()
+            } catch {
+                return "Error: \(error.localizedDescription)"
+            }
+        default:
+            return argumentsJSON ?? "{}"
         }
     }
     
@@ -740,6 +796,8 @@ class ChatViewModel: ObservableObject {
                                 self.streamingStatus = .generatingCode
                             case "image_generation":
                                 self.streamingStatus = .generatingImage
+                            case "mcp":
+                                self.streamingStatus = .runningTool("MCP")
                             default:
                                 self.streamingStatus = .runningTool(toolName)
                             }
@@ -762,6 +820,8 @@ class ChatViewModel: ObservableObject {
                         self.streamingStatus = .generatingCode
                     case "image_generation":
                         self.streamingStatus = .generatingImage
+                    case "mcp":
+                        self.streamingStatus = .runningTool("MCP")
                     default:
                         self.streamingStatus = .runningTool(toolName)
                     }
