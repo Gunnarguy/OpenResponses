@@ -8,7 +8,6 @@
 	<string>OpenResponses needs access to your documents folder to allow you to attach files to your AI conversations.</string>
 	<key>NSFilesystemUsageDescription</key>
 	<string>OpenResponses needs access to your files to allow you to upload and attach them to your AI conversations.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenResponses needs access to your microphone to record audio messages for your AI conversations.</string>
+
 </dict>
 </plist>

@@ -73,26 +73,7 @@ struct ChatView: View {
                             )
                         }
                         
-                        // Audio attachment preview
-                        if viewModel.pendingAudioAttachment != nil {
-                            HStack {
-                                Image(systemName: "waveform")
-                                    .foregroundColor(.blue)
-                                Text("🎙️ Audio recorded")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Button("Remove", role: .destructive) {
-                                    viewModel.removeAudioAttachment()
-                                }
-                                .font(.caption)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                            .padding(.horizontal)
-                        }
+                        // Audio preview removed
 
                         // Compact tool indicator above input
                         CompactToolIndicator(
@@ -133,10 +114,7 @@ struct ChatView: View {
                                 // Quick image generation
                                 userInput = "Generate an image of "
                                 inputFocused = true
-                            }, onAudioRecord: { audioData in
-                                // Handle audio recording
-                                viewModel.attachAudio(audioData)
-                            })
+                            }, currentModel: viewModel.currentModel())
                         }
                         .padding(.horizontal)
                         .padding(.top, 8)

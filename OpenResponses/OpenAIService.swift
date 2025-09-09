@@ -23,7 +23,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -35,7 +35,6 @@ class OpenAIService: OpenAIServiceProtocol {
             userMessage: userMessage,
             attachments: attachments,
             imageAttachments: imageAttachments,
-            audioAttachment: audioAttachment,
             previousResponseId: previousResponseId,
             stream: false
         )
@@ -154,7 +153,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - audioAttachment: An optional audio data attachment.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -169,7 +168,6 @@ class OpenAIService: OpenAIServiceProtocol {
                         userMessage: userMessage,
                         attachments: attachments,
                         imageAttachments: imageAttachments,
-                        audioAttachment: audioAttachment,
                         previousResponseId: previousResponseId,
                         stream: true
                     )
@@ -364,14 +362,14 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
             "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
         ]
 
         // 1. Build the 'input' messages array
-        requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment)
+    requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, imageAttachments: imageAttachments)
 
         // 2. Add streaming flag if required
         if stream {
@@ -433,7 +431,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?, audioAttachment: Data?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -447,7 +445,7 @@ class OpenAIService: OpenAIServiceProtocol {
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
-        let hasAudioAttachment = audioAttachment != nil
+    let hasAudioAttachment = false
         
         if hasFileAttachments || hasImageAttachments || hasAudioAttachment {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
@@ -492,16 +490,21 @@ class OpenAIService: OpenAIServiceProtocol {
                 }
             }
             
-            // Add audio attachment
+            // Audio is removed from the app; no audio content is appended.
+            
+            /* FUTURE IMPLEMENTATION - Uncomment when API properly supports input_audio:
             if let audioData = audioAttachment {
                 let audioBase64 = audioData.base64EncodedString()
                 let audioContent: [String: Any] = [
                     "type": "input_audio",
-                    "format": "aac", // AAC format from our recorder
-                    "data": audioBase64
+                    "input_audio": [
+                        "data": audioBase64,
+                        "format": "wav" // Using WAV format as configured in AudioRecordingService
+                    ]
                 ]
                 contentArray.append(audioContent)
             }
+            */
             
             userContent = contentArray
         }
@@ -1679,6 +1682,7 @@ class OpenAIService: OpenAIServiceProtocol {
     func createVectorStore(name: String, fileIds: [String]?) async throws -> VectorStore {
         return try await createVectorStore(name: name, fileIds: fileIds, expiresAfterDays: nil)
     }
+
     
     // MARK: - Missing Response Management Endpoints
     
@@ -1915,5 +1919,11 @@ class OpenAIService: OpenAIServiceProtocol {
             print("Input items response decoding error: \(error)")
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+    
+    /// Determines if a model supports direct audio input based on current API capabilities
+    private func supportsDirectAudioInput(model: String) -> Bool {
+        // Use the ModelCompatibilityService for centralized capability management
+        return ModelCompatibilityService.shared.supportsAudioInput(for: model)
     }
 }

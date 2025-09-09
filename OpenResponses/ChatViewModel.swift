@@ -10,7 +10,7 @@ class ChatViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var pendingFileAttachments: [String] = []
     @Published var pendingImageAttachments: [UIImage] = []
-    @Published var pendingAudioAttachment: Data? = nil
+    // Audio feature removed
     @Published var selectedImageDetailLevel: String = "auto"
     @Published var activePrompt: Prompt
     @Published var errorMessage: String?
@@ -179,8 +179,7 @@ class ChatViewModel: ObservableObject {
             return InputImage(image: image, detail: selectedImageDetailLevel)
         }
         
-        // Prepare audio attachment if any is pending
-        let audioAttachment: Data? = pendingAudioAttachment
+    // Audio removed: no audioAttachment
         
         // Clear pending attachments now that they are included in the request
         if fileAttachments != nil {
@@ -189,9 +188,7 @@ class ChatViewModel: ObservableObject {
         if imageAttachments != nil {
             pendingImageAttachments.removeAll()
         }
-        if audioAttachment != nil {
-            pendingAudioAttachment = nil
-        }
+    // no-op: audio removed
         
         // Check if streaming is enabled from the active prompt
         let streamingEnabled = activePrompt.enableStreaming
@@ -206,18 +203,22 @@ class ChatViewModel: ObservableObject {
                 AnalyticsParameter.streamingEnabled: streamingEnabled,
                 "has_file_attachments": fileAttachments != nil,
                 "has_image_attachments": imageAttachments != nil,
-                "has_audio_attachment": audioAttachment != nil,
+                "has_audio_attachment": false,
                 "image_count": imageAttachments?.count ?? 0
             ]
         )
         
+    // Compose final user text (no audio flow)
+    let finalUserText = trimmed
+
+        // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
         streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
                 if streamingEnabled {
                     // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment, previousResponseId: lastResponseId)
+                    let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
@@ -233,7 +234,7 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: trimmed, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, audioAttachment: audioAttachment, previousResponseId: lastResponseId)
+                    let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -278,6 +279,48 @@ class ChatViewModel: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// Internal helper to perform the send after optional transcription is done
+    private func performSend(finalUserText: String, fileAttachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, assistantMsgId: UUID) async {
+        let streamingEnabled = activePrompt.enableStreaming
+        await MainActor.run { self.streamingStatus = .connecting }
+        do {
+            if streamingEnabled {
+                let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
+                for try await chunk in stream {
+                    if Task.isCancelled { await MainActor.run { self.handleError(CancellationError()) }; break }
+                    await MainActor.run { self.handleStreamChunk(chunk, for: assistantMsgId) }
+                }
+            } else {
+                let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
+                await MainActor.run { self.handleNonStreamingResponse(response, for: assistantMsgId) }
+            }
+        } catch {
+            if !(error is CancellationError) {
+                await MainActor.run {
+                    self.handleError(error)
+                    self.messages.removeAll { $0.id == assistantMsgId }
+                    self.streamingStatus = .idle
+                }
+            }
+        }
+        await MainActor.run {
+            if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
+                AnalyticsService.shared.trackEvent(
+                    name: AnalyticsEvent.messageReceived,
+                    parameters: [
+                        AnalyticsParameter.model: self.activePrompt.openAIModel,
+                        AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                        AnalyticsParameter.streamingEnabled: true,
+                        "has_images": finalMessage.images?.isEmpty == false
+                    ]
+                )
+            }
+            self.streamingMessageId = nil
+            self.isStreaming = false
+            if self.streamingStatus != .idle { self.streamingStatus = .done; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.streamingStatus = .idle } }
         }
     }
     
@@ -363,21 +406,7 @@ class ChatViewModel: ObservableObject {
         pendingImageAttachments.removeAll()
     }
     
-    /// Attaches audio data for the next message
-    func attachAudio(_ audioData: Data) {
-        pendingAudioAttachment = audioData
-        
-        let statusMessage = ChatMessage(role: .system, text: "🎙️ Audio recording attached. Ready to send.", images: nil)
-        messages.append(statusMessage)
-    }
-    
-    /// Removes the pending audio attachment
-    func removeAudioAttachment() {
-        pendingAudioAttachment = nil
-        
-        let statusMessage = ChatMessage(role: .system, text: "Audio attachment removed.", images: nil)
-        messages.append(statusMessage)
-    }
+    // Audio attach/remove removed
     
     /// Handle non-streaming response from OpenAI API
     private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
@@ -503,7 +532,7 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Determines the current model to use from UserDefaults (or default).
-    private func currentModel() -> String {
+    func currentModel() -> String {
         return activePrompt.openAIModel
     }
     

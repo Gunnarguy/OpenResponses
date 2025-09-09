@@ -32,6 +32,7 @@ class ModelCompatibilityService {
         let supportsStreaming: Bool
         let supportsReasoningEffort: Bool
         let supportsTemperature: Bool
+        let supportsAudioInput: Bool
         let category: ModelCategory
     }
     
@@ -57,6 +58,7 @@ class ModelCompatibilityService {
             supportsStreaming: false,
             supportsReasoningEffort: true,
             supportsTemperature: false,
+            supportsAudioInput: false,
             category: .reasoning
         ),
         "o1-mini": ModelCapabilities(
@@ -67,6 +69,7 @@ class ModelCompatibilityService {
             supportsStreaming: false,
             supportsReasoningEffort: true,
             supportsTemperature: false,
+            supportsAudioInput: false,
             category: .reasoning
         ),
         "o3": ModelCapabilities(
@@ -77,6 +80,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: true,
             supportsTemperature: false,
+            supportsAudioInput: false,
             category: .reasoning
         ),
         "o3-mini": ModelCapabilities(
@@ -87,6 +91,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: true,
             supportsTemperature: false,
+            supportsAudioInput: false,
             category: .reasoning
         ),
         
@@ -99,6 +104,8 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: false,
             supportsTemperature: true,
+            // Audio input not supported in app; feature removed
+            supportsAudioInput: false,
             category: .standard
         ),
         "gpt-4o-mini": ModelCapabilities(
@@ -109,6 +116,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: false,
             supportsTemperature: true,
+            supportsAudioInput: false,
             category: .standard
         ),
         "gpt-4-turbo": ModelCapabilities(
@@ -119,6 +127,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: false,
             supportsTemperature: true,
+            supportsAudioInput: false,
             category: .standard
         ),
         
@@ -131,6 +140,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: true,
             supportsTemperature: true,
+            supportsAudioInput: false, // gpt-5 does not currently support audio input
             category: .latest
         ),
         "gpt-4.1-2025-04-14": ModelCapabilities(
@@ -141,6 +151,7 @@ class ModelCompatibilityService {
             supportsStreaming: true,
             supportsReasoningEffort: true,
             supportsTemperature: true,
+            supportsAudioInput: false,
             category: .latest
         )
     ]
@@ -177,19 +188,31 @@ class ModelCompatibilityService {
     /// Check if a parameter is supported by a model
     func isParameterSupported(_ parameter: String, for modelId: String) -> Bool {
         guard let capabilities = modelCapabilities[modelId] else {
+            // Fallback logic for unknown models
             return fallbackParameterSupport(parameter, for: modelId)
         }
         
-        // Prioritize specific boolean flags for clarity and correctness
-        switch parameter {
-        case "temperature":
-            return capabilities.supportsTemperature
-        case "reasoning_effort":
+        // Special handling for reasoning models
+        if parameter == "reasoning_effort" {
             return capabilities.supportsReasoningEffort
-        default:
-            // Fallback to the comprehensive list for other parameters
-            return capabilities.supportedParameters.contains(parameter)
         }
+        
+        if parameter == "temperature" {
+            return capabilities.supportsTemperature
+        }
+        
+        // Fallback to the comprehensive list for other parameters
+        return capabilities.supportedParameters.contains(parameter)
+    }
+    
+    /// Check if a model supports audio input
+    func supportsAudioInput(for modelId: String) -> Bool {
+        guard let capabilities = modelCapabilities[modelId] else {
+            // Fallback logic for unknown models - only gpt-4o variants may support it
+            return modelId.lowercased().hasPrefix("gpt-4o")
+        }
+        
+        return capabilities.supportsAudioInput
     }
     
     /// Get filtered tools based on model compatibility and user settings

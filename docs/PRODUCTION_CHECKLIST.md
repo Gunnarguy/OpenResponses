@@ -6,19 +6,17 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 ### Core Chat Functionality
 
-- [x] Text input/output works reliably
-- [x] Image input with base64 encoding and detail level selection
 - [ ] **ROADMAP:** Audio input recording and processing
 - [ ] **ROADMAP:** Direct file uploads (currently only supports file_id references)
 
 ### Tool Integration
 
-- [x] Web Search with full configuration options
-- [x] Code Interpreter with auto containers
-- [x] File Search with vector store management
-- [x] Image Generation (DALL-E)
-- [x] MCP Tool integration
-- [x] Custom Tools and Calculator
+- [ ] **ROADMAP:** Web Search with full configuration options
+- [ ] **ROADMAP:** Code Interpreter with auto containers
+- [ ] **ROADMAP:** File Search with vector store management
+- [ ] **ROADMAP:** Image Generation (DALL-E)
+- [ ] **ROADMAP:** MCP Tool integration
+- [ ] **ROADMAP:** Custom Tools and Calculator
 - [ ] **ROADMAP:** Computer Use Tool (Deferred; feature disabled until supported models are available)
 - [ ] **ROADMAP:** gpt-image-1 with streaming previews
 - [ ] **ROADMAP:** Enhanced Code Interpreter with container selection
@@ -26,17 +24,17 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 ### API Compliance
 
-- [x] All advanced parameters (temperature, top_p, reasoning_effort, etc.)
-- [x] Include parameters for additional data
-- [x] Tool choice and parallel tool calls
-- [x] Background mode support
-- [x] Complete streaming event handling
+- [ ] **ROADMAP:** All advanced parameters (temperature, top_p, reasoning_effort, etc.)
+- [ ] **ROADMAP:** Include parameters for additional data
+- [ ] **ROADMAP:** Tool choice and parallel tool calls
+- [ ] **ROADMAP:** Background mode support
+- [ ] **ROADMAP:** Complete streaming event handling
 
 ## Phase 2: Conversation & Backend Sync 🟡 (Next Priority)
 
 ### Conversation Management
 
-- [x] Local conversation storage and management
+- [ ] **ROADMAP:** Local conversation storage and management
 - [ ] **ROADMAP:** Backend Conversations API integration (/v1/conversations)
 - [ ] **ROADMAP:** Conversation metadata and tagging
 - [ ] **ROADMAP:** Cross-device conversation sync

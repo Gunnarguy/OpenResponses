@@ -81,8 +81,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var metadata: String?
     var searchContextSize: String?
     
-    // Input Modalities
-    var audioData: Data?
+    // Input Modalities (audio removed)
     
     /// A flag to indicate if this prompt is a saved preset.
     /// This is a runtime-only property and is not persisted.

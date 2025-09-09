@@ -6,7 +6,7 @@ struct ChatInputView: View {
     var onSend: () -> Void
     var onAttach: () -> Void // Callback for attachment button
     var onImageGenerate: (() -> Void)? = nil // Optional callback for quick image generation
-    var onAudioRecord: ((Data) -> Void)? = nil // Optional callback for audio recording
+    var currentModel: String = "gpt-4o"
     
     @ScaledMetric private var minTextHeight: CGFloat = 40
     @ScaledMetric private var maxTextHeight: CGFloat = 100
@@ -39,12 +39,7 @@ struct ChatInputView: View {
                 .accessibilityHint("Tap to start generating an image")
             }
             
-            // Audio recording button (if callback provided)
-            if let onAudioRecord = onAudioRecord {
-                AudioRecordingButton { audioData in
-                    onAudioRecord(audioData)
-                }
-            }
+            // Audio recording removed
             
             ZStack(alignment: .leading) {
                 // Placeholder text
