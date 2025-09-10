@@ -39,6 +39,17 @@ For an application with dozens of configurable settings, a simple and persistent
 
 This choice dramatically simplified the settings implementation. The `OpenAIService` can read directly from `UserDefaults` when constructing API calls, ensuring that every request is perfectly tailored to the user's latest configuration without passing settings objects all over the application.
 
+#### Type-Safe API Architecture with `APICapabilities.swift`
+
+A significant architectural decision was the introduction of `APICapabilities.swift` as a centralized, type-safe blueprint for all OpenAI API features. This single source of truth approach provides several benefits:
+
+- **Compile-Time Validation**: Swift enums with associated values ensure that tool configurations match the exact API schema, preventing runtime errors from malformed requests.
+- **Documentation as Code**: Rather than maintaining separate documentation that can become outdated, the API capabilities are defined directly in Swift with comprehensive DocC comments.
+- **Consistency Enforcement**: All components (networking layer, compatibility service, UI) use the same typed definitions, eliminating discrepancies between different parts of the codebase.
+- **Maintainability**: When the OpenAI API evolves, changes need only be made in one place, and the type system ensures all dependent code is updated accordingly.
+
+The `Tool` enum structure directly mirrors the API's expected JSON format, making the translation from Swift types to network requests seamless and reliable.
+
 ### 3. Deep Dive: Tackling Complexity
 
 The true robustness of OpenResponses is evident in how it handles the API's most advanced features.

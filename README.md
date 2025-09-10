@@ -145,6 +145,7 @@ OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) 
 ### Service Layer
 
 - **`OpenAIService.swift`**: The networking layer responsible for all communication with the OpenAI API.
+- **`APICapabilities.swift`**: Type-safe blueprint defining all supported OpenAI API features and tools with compile-time validation.
 - **`KeychainService.swift`**: Securely manages the OpenAI API key and sensitive data.
 - **`AnalyticsService.swift`**: Tracks API requests, performance metrics, and provides debugging insights.
 - **`AppLogger.swift`**: Centralized logging system with categorization and structured output.
@@ -161,6 +162,7 @@ OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) 
 - **`APIInspectorView.swift`**: Real-time API request/response inspection for debugging.
 - **`DebugConsoleView.swift`**: Live debug log viewer with filtering capabilities.
 - **Models**: `Codable` structs that match the OpenAI API's JSON structure with full type safety.
+- **`APICapabilities.swift`**: Centralized type-safe definitions ensuring consistency between documentation and implementation.
 
 ## 🤝 Contributing
 

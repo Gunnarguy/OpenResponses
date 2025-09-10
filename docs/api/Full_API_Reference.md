@@ -105,13 +105,13 @@ Audio input is not supported. This feature was removed from the app.
 
 ### 1.3. The `tools` Parameter: Comprehensive Analysis
 
-The app has extensive tool integration through the `buildTools` function in `OpenAIService.swift`. Here's the complete status:
+The app has extensive tool integration through the `buildTools` function in `OpenAIService.swift`, which uses type-safe `APICapabilities.Tool` enums. Here's the complete status:
 
 **A. Web Search**
 
 - **Type:** `web_search`
 - **App Status:** **Fully Implemented**.
-- **Implementation Details:** Enabled via `Prompt.enableWebSearch`. `OpenAIService.createWebSearchToolConfiguration` builds config (with optional `user_location`). Streaming status shows a web search in progress during tool calls.
+- **Implementation Details:** Enabled via `Prompt.enableWebSearch`. Uses `APICapabilities.Tool.webSearch` for type-safe tool configuration. Streaming status shows a web search in progress during tool calls.
 
 **B. Code Interpreter**
 
@@ -129,7 +129,7 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 
 - **Type:** `function`
 - **App Status:** **Fully Implemented**.
-- **Implementation Details:** User-defined tools are configurable (`customToolName`, `customToolDescription`, `customToolParametersJSON`). Execution modes: `echo`, `calculator` (local), or `webhook` (POST JSON to URL). Schema built in `OpenAIService.createCustomToolConfiguration`; execution handled in `ChatViewModel.executeCustomTool`.
+- **Implementation Details:** User-defined tools are configurable (`customToolName`, `customToolDescription`, `customToolParametersJSON`). Execution modes: `echo`, `calculator` (local), or `webhook` (POST JSON to URL). Uses `APICapabilities.Tool.function` with `APICapabilities.Function` struct; execution handled in `ChatViewModel.executeCustomTool`.
 
 **E. Image Generation**
 
