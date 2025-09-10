@@ -159,8 +159,8 @@ class ChatViewModel: ObservableObject {
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
         
-        // Append the user's message to the chat
-        let userMsg = ChatMessage(role: .user, text: trimmed, images: nil)
+        // Append the user's message to the chat with URL detection
+        let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
         messages.append(userMsg)
         
         // Prepare a placeholder for the assistant's streaming response
@@ -724,14 +724,18 @@ class ChatViewModel: ObservableObject {
         
         // Handle different types of streaming events
         switch chunk.type {
-        case "response.output_item.content.delta":
+        case "response.output_text.delta":
             // Handle text delta updates
             if let delta = chunk.delta {
-                let currentText = messages[msgIndex].text ?? ""
-                messages[msgIndex].text = currentText + delta
+                print("🔥 [UI Update] Processing text delta: '\(delta)' for message index \(msgIndex)")
+                var updatedMessages = messages
+                let currentText = updatedMessages[msgIndex].text ?? ""
+                updatedMessages[msgIndex].text = currentText + delta
+                messages = updatedMessages // This triggers the computed property setter and UI update
+                print("🔥 [UI Update] Updated message text to: '\(updatedMessages[msgIndex].text ?? "")'")
             }
             
-        case "response.output_item.content.done":
+        case "response.content_part.done":
             // Handle completion of content items (like images)
             if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
@@ -745,9 +749,24 @@ class ChatViewModel: ObservableObject {
             }
             // Computer-use screenshot handling removed
             
-        case "response.done":
+        case "response.done", "response.completed":
             // Handle completion of the entire response
             print("Streaming response completed for message: \(messageId)")
+            
+            // After streaming is complete, detect and add URLs to the message
+            if let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
+               let text = messages[msgIndex].text, !text.isEmpty {
+                let detectedURLs = URLDetector.extractRenderableURLs(from: text)
+                if !detectedURLs.isEmpty {
+                    var updatedMessages = messages
+                    updatedMessages[msgIndex].webURLs = detectedURLs
+                    messages = updatedMessages
+                    print("🌐 [Web Content] Detected \(detectedURLs.count) renderable URLs in assistant response")
+                    for url in detectedURLs {
+                        print("🌐 [Web Content] Will render: \(url)")
+                    }
+                }
+            }
             
         case "response.image_generation_call.partial_image":
             // Handle partial image preview from gpt-image-1
@@ -820,6 +839,8 @@ class ChatViewModel: ObservableObject {
                         self.streamingStatus = .generatingCode
                     case APICapabilities.ToolType.imageGeneration.rawValue:
                         self.streamingStatus = .generatingImage
+                    case APICapabilities.ToolType.computer.rawValue:
+                        self.streamingStatus = .usingComputer
                     case "mcp":
                         self.streamingStatus = .runningTool("MCP")
                     default:
@@ -928,10 +949,14 @@ class ChatViewModel: ObservableObject {
         
         // Process content items
         if let contentItems = item.content {
+            var updatedMessages = messages
+            var hasUpdates = false
+            
             for contentItem in contentItems {
                 if let text = contentItem.text, !text.isEmpty {
                     // Update text content (this might be redundant with delta updates)
-                    messages[msgIndex].text = text
+                    updatedMessages[msgIndex].text = text
+                    hasUpdates = true
                 }
                 
                 // Handle image content (note: streaming typically doesn't include images)
@@ -939,6 +964,10 @@ class ChatViewModel: ObservableObject {
                     // For now, we'll just log this as images are typically not streamed
                     print("Image content detected in streaming response: \(contentItem.type)")
                 }
+            }
+            
+            if hasUpdates {
+                messages = updatedMessages // Trigger UI update
             }
         }
     }
@@ -1025,13 +1054,15 @@ class ChatViewModel: ObservableObject {
         
         // If there was a message being streamed, update its text to show it was cancelled
         if let streamingId = streamingMessageId, let msgIndex = messages.firstIndex(where: { $0.id == streamingId }) {
-            if messages[msgIndex].text?.isEmpty ?? true {
+            var updatedMessages = messages
+            if updatedMessages[msgIndex].text?.isEmpty ?? true {
                 // If no content was received, remove the placeholder message
-                messages.remove(at: msgIndex)
+                updatedMessages.remove(at: msgIndex)
             } else {
                 // If some content was received, mark it as cancelled
-                messages[msgIndex].text = (messages[msgIndex].text ?? "") + "\n\n[Streaming cancelled by user]"
+                updatedMessages[msgIndex].text = (updatedMessages[msgIndex].text ?? "") + "\n\n[Streaming cancelled by user]"
             }
+            messages = updatedMessages // Trigger UI update
         }
         
         streamingMessageId = nil

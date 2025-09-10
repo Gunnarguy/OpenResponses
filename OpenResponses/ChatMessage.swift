@@ -12,16 +12,18 @@ struct ChatMessage: Identifiable, Codable {
     let role: Role
     var text: String?
     var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
+    var webURLs: [URL]?     // URLs to render as embedded web content
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images
+        case id, role, text, images, webURLs
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil) {
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.images = images
+        self.webURLs = webURLs
     }
 
     // MARK: - Codable Conformance
@@ -37,6 +39,12 @@ struct ChatMessage: Identifiable, Codable {
         } else {
             images = nil
         }
+        
+        if let urlStrings = try container.decodeIfPresent([String].self, forKey: .webURLs) {
+            webURLs = urlStrings.compactMap { URL(string: $0) }
+        } else {
+            webURLs = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -48,6 +56,11 @@ struct ChatMessage: Identifiable, Codable {
         if let images = images {
             let imageData = images.compactMap { $0.pngData() }
             try container.encode(imageData, forKey: .images)
+        }
+        
+        if let webURLs = webURLs {
+            let urlStrings = webURLs.map { $0.absoluteString }
+            try container.encode(urlStrings, forKey: .webURLs)
         }
     }
 }

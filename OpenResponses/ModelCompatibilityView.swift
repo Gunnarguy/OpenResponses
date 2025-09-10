@@ -428,8 +428,7 @@ struct CompactToolIndicator: View {
         case "code_interpreter": return "terminal"
         case "image_generation": return "photo"
         case "file_search": return "doc.text.magnifyingglass"
-    // calculator removed
-    // computer_use_preview removed; fallback icon
+        case "computer": return "display"
         default: return "wrench.and.screwdriver"
         }
     }
@@ -511,6 +510,11 @@ struct MessageToolIndicator: View {
             toolsUsed.append("image_generation")
         }
         
+        // Check for computer use patterns
+        if text.contains("computer") || text.contains("screen") || text.contains("clicked") || text.contains("typed") {
+            toolsUsed.append("computer")
+        }
+        
         return toolsUsed
     }
     
@@ -520,6 +524,7 @@ struct MessageToolIndicator: View {
         case "code_interpreter": return "terminal"
         case "file_search": return "doc.text.magnifyingglass"
         case "image_generation": return "photo"
+        case "computer": return "display"
         default: return "wrench.and.screwdriver"
         }
     }
@@ -530,7 +535,8 @@ struct MessageToolIndicator: View {
         case "code_interpreter": return "Code"
         case "file_search": return "Files"
         case "image_generation": return "Image"
-        default: return tool
+        case "computer": return "Computer"
+        default: return "Tool"
         }
     }
 }

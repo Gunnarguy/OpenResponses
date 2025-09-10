@@ -25,20 +25,19 @@ struct Prompt: Codable, Identifiable, Equatable {
     var enableCodeInterpreter: Bool
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
-    var selectedVectorStoreIds: String? // Added
-    // Computer Use (Preview) removed
-    
-    // MCP Tool
+    var selectedVectorStoreIds: String?
     var enableMCPTool: Bool
+    var enableCustomTool: Bool
+    var enableComputerUse: Bool
+
+    // MARK: - MCP Tool Parameters
     var mcpServerLabel: String
     var mcpServerURL: String
     var mcpHeaders: String
     var mcpRequireApproval: String
-    // Comma-separated list of MCP tools the model is allowed to call
     var mcpAllowedTools: String
 
-    // Custom Tool
-    var enableCustomTool: Bool
+    // MARK: - Custom Tool Parameters
     var customToolName: String
     var customToolDescription: String
     // Advanced Custom Tool Configuration
@@ -81,6 +80,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var includeInputImageUrls: Bool
     var includeOutputLogprobs: Bool
     var includeReasoningContent: Bool
+    var includeComputerUseOutput: Bool = false
     
     // Streaming and Published Prompts
     var enableStreaming: Bool
@@ -108,13 +108,13 @@ struct Prompt: Codable, Identifiable, Equatable {
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
     case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth
     case enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
-    // enableComputerUse removed
+    case enableComputerUse
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
-        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent
+        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
         case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
         case toolChoice, metadata, searchContextSize
         case id // Make sure 'id' is included
@@ -139,14 +139,15 @@ struct Prompt: Codable, Identifiable, Equatable {
             enableCodeInterpreter: true,
             enableImageGeneration: true,
             enableFileSearch: false,
-            selectedVectorStoreIds: nil, // Added
+            selectedVectorStoreIds: "",
             enableMCPTool: false,
+            enableCustomTool: false,
+            enableComputerUse: false,
             mcpServerLabel: "paypal",
             mcpServerURL: "https://mcp.paypal.com/sse",
             mcpHeaders: "{\"Authorization\": \"Bearer s\"}",
             mcpRequireApproval: "always",
             mcpAllowedTools: "",
-            enableCustomTool: false,
             customToolName: "custom_tool_placeholder",
             customToolDescription: "A placeholder for a custom tool.",
             customToolParametersJSON: "{\n  \"type\": \"object\",\n  \"properties\": {},\n  \"additionalProperties\": true\n}",
@@ -177,6 +178,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             includeInputImageUrls: false,
             includeOutputLogprobs: false,
             includeReasoningContent: false,
+            includeComputerUseOutput: false,
             enableStreaming: true,
             enablePublishedPrompt: false,
             publishedPromptId: "",

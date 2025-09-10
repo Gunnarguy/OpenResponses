@@ -8,6 +8,7 @@ enum StreamingStatus: Equatable {
     case thinking
     case searchingWeb
     case generatingCode
+    case usingComputer
     case runningTool(String) // Associated value for the tool name
     case generatingImage
     case imageGenerationProgress(String) // For streaming image generation updates
@@ -32,6 +33,8 @@ enum StreamingStatus: Equatable {
             return "Searching the web..."
         case .generatingCode:
             return "Generating code..."
+        case .usingComputer:
+            return "🖥️ Using computer..."
         case .runningTool(let name):
             return "Running tool: \(name)..."
         case .generatingImage:

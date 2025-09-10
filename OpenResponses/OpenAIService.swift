@@ -557,6 +557,15 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
+        if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
+            // Computer Use tool with proper API parameters
+            tools.append(.computer(
+                environment: "macos", // Or detect the actual environment
+                displayWidth: 1920,   // Could be made configurable
+                displayHeight: 1080   // Could be made configurable
+            ))
+        }
+
         if prompt.enableCustomTool, compatibilityService.isToolSupported(APICapabilities.ToolType.function, for: prompt.openAIModel, isStreaming: isStreaming) {
             let schema: APICapabilities.JSONSchema
             if let data = prompt.customToolParametersJSON.data(using: .utf8),
@@ -677,7 +686,9 @@ class OpenAIService: OpenAIServiceProtocol {
             includeArray.append("reasoning.encrypted_content")
         }
         
-    // Computer Use (Preview) removed
+        if prompt.includeComputerUseOutput {
+            includeArray.append("computer_use_call.output")
+        }
         
         if prompt.includeInputImageUrls {
             includeArray.append("message.input_image.image_url")

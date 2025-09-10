@@ -35,6 +35,14 @@ struct MessageBubbleView: View {
                             .padding(.vertical, 4)
                     }
                 }
+                
+                // Web content (if any URLs in the message)
+                if let webURLs = message.webURLs {
+                    ForEach(webURLs, id: \.self) { url in
+                        WebContentView(url: url)
+                            .padding(.vertical, 4)
+                    }
+                }
             }
             .padding(bubblePadding)
             .background(backgroundColor(for: message.role))

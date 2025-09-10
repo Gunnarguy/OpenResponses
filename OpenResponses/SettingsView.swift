@@ -261,6 +261,13 @@ struct SettingsView: View {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
                             }
                         }
+                        HStack {
+                            Toggle("Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
+                                .accessibilityHint("Allows the AI to use the computer")
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.computer, for: viewModel.activePrompt.openAIModel) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
+                            }
+                        }
 
                         if viewModel.activePrompt.enableFileSearch {
                             VStack(alignment: .leading) {
@@ -446,7 +453,7 @@ struct SettingsView: View {
             Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Code Interpreter outputs are not currently supported by the API.")) {
                 Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
                     .disabled(true) // Disabled since not supported by current API
-                Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
+                Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)
                 Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
                 Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
                 Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)

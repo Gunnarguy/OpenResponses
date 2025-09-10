@@ -9,12 +9,13 @@ import Foundation
 /// capability is documented with details on its purpose, usage, and parameters.
 public enum APICapabilities {
 
-    public enum ToolType: String, Codable {
+    public enum ToolType: String, Codable, CaseIterable {
         case webSearch = "web_search"
-        case fileSearch = "file_search"
         case codeInterpreter = "code_interpreter"
         case imageGeneration = "image_generation"
-        case function
+        case fileSearch = "file_search"
+        case function = "function"
+        case computer = "computer"
     }
 
     // MARK: - Tools
@@ -40,6 +41,9 @@ public enum APICapabilities {
         /// Allows the model to call custom functions defined by the application.
         case function(function: Function)
 
+        /// Allows the model to interact with the user's computer.
+        case computer(environment: String?, displayWidth: Int?, displayHeight: Int?)
+
         // MARK: - Codable Implementation
         
         private enum CodingKeys: String, CodingKey {
@@ -51,6 +55,9 @@ public enum APICapabilities {
             case quality
             case outputFormat = "output_format"
             case vectorStoreIds = "vector_store_ids"
+            case environment
+            case displayWidth = "display_width"
+            case displayHeight = "display_height"
         }
 
         public init(from decoder: Decoder) throws {
@@ -76,6 +83,11 @@ public enum APICapabilities {
             case "function":
                 let function = try container.decode(Function.self, forKey: .function)
                 self = .function(function: function)
+            case "computer_use_preview", "computer":
+                let environment = try container.decodeIfPresent(String.self, forKey: .environment)
+                let displayWidth = try container.decodeIfPresent(Int.self, forKey: .displayWidth)
+                let displayHeight = try container.decodeIfPresent(Int.self, forKey: .displayHeight)
+                self = .computer(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
             default:
                 throw DecodingError.dataCorrupted(
                     DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown tool type: \(typeString)")
@@ -105,6 +117,17 @@ public enum APICapabilities {
             case .function(let function):
                 try container.encode("function", forKey: .type)
                 try container.encode(function, forKey: .function)
+            case .computer(let environment, let displayWidth, let displayHeight):
+                try container.encode("computer_use_preview", forKey: .type)
+                if let environment = environment {
+                    try container.encode(environment, forKey: .environment)
+                }
+                if let displayWidth = displayWidth {
+                    try container.encode(displayWidth, forKey: .displayWidth)
+                }
+                if let displayHeight = displayHeight {
+                    try container.encode(displayHeight, forKey: .displayHeight)
+                }
             }
         }
     }

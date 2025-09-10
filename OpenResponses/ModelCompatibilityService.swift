@@ -2,360 +2,426 @@ import Foundation
 
 /// Service for managing model compatibility with tools and parameters
 class ModelCompatibilityService {
+    static let shared = ModelCompatibilityService()
+    private init() {}
+    
+    // MARK: - Compatibility Types
     
     /// Represents a tool's compatibility and usage status
-    struct ToolCompatibility {
-        let name: String
-        let isSupported: Bool
-        let isEnabled: Bool
-        let isUsed: Bool
-        let supportedModels: [String]
-        let restrictions: [String]
-        let description: String
+    public struct ToolCompatibility {
+        public let name: String
+        public let isSupported: Bool
+        public let isEnabled: Bool
+        public let isUsed: Bool
+        public let supportedModels: [String]
+        public let restrictions: [String]
+        public let description: String
+        
+        public init(name: String, isSupported: Bool, isEnabled: Bool, isUsed: Bool, supportedModels: [String], restrictions: [String], description: String) {
+            self.name = name
+            self.isSupported = isSupported
+            self.isEnabled = isEnabled
+            self.isUsed = isUsed
+            self.supportedModels = supportedModels
+            self.restrictions = restrictions
+            self.description = description
+        }
     }
     
     /// Represents parameter compatibility for a model
-    struct ParameterCompatibility {
-        let name: String
-        let isSupported: Bool
-        let supportedModels: [String]
-        let defaultValue: Any?
-        let restrictions: [String]
+    public struct ParameterCompatibility {
+        public let name: String
+        public let isSupported: Bool
+        public let supportedModels: [String]
+        public let defaultValue: Any?
+        public let restrictions: [String]
+        
+        public init(name: String, isSupported: Bool, supportedModels: [String], defaultValue: Any?, restrictions: [String]) {
+            self.name = name
+            self.isSupported = isSupported
+            self.supportedModels = supportedModels
+            self.defaultValue = defaultValue
+            self.restrictions = restrictions
+        }
+    }
+    
+    // MARK: - Tool Overrides
+    
+    /// Overrides for specific tools, allowing fine-grained control over their availability.
+    public struct ToolOverrides: Codable {
+        public var webSearch: ToolOverride?
+        public var codeInterpreter: ToolOverride?
+        public var imageGeneration: ToolOverride?
+        public var fileSearch: ToolOverride?
+        public var computer: ToolOverride?
+    }
+    
+    /// Defines the override setting for a tool (either `enabled` or `disabled`).
+    public enum ToolOverride: String, Codable {
+        case enabled
+        case disabled
+    }
+    
+    /// Defines the coding keys for tool overrides, mapping to the API's expected keys.
+    private enum ToolCodingKeys: String, CodingKey {
+        case webSearch = "web_search"
+        case codeInterpreter = "code_interpreter"
+        case imageGeneration = "image_generation"
+        case fileSearch = "file_search"
+        case computer = "computer"
     }
     
     /// Model capability information
-    struct ModelCapabilities {
-        let modelId: String
-        let supportedTools: [String]
-        let supportedParameters: [String]
-        let maxTokens: Int?
-        let supportsStreaming: Bool
-        let supportsReasoningEffort: Bool
-        let supportsTemperature: Bool
-        let supportsAudioInput: Bool
-        let category: ModelCategory
+    public struct ModelCapabilities: Codable {
+        public let streaming: Bool
+        public let tools: [APICapabilities.ToolType]
+        public let parameters: [String]
+        public let toolOverrides: ToolOverrides?
+        public let category: ModelCategory
+        public let supportsReasoningEffort: Bool
+        public let supportsTemperature: Bool
+        
+        public init(streaming: Bool, tools: [APICapabilities.ToolType], parameters: [String], toolOverrides: ToolOverrides? = nil, category: ModelCategory = .standard, supportsReasoningEffort: Bool = false, supportsTemperature: Bool = true) {
+            self.streaming = streaming
+            self.tools = tools
+            self.parameters = parameters
+            self.toolOverrides = toolOverrides
+            self.category = category
+            self.supportsReasoningEffort = supportsReasoningEffort
+            self.supportsTemperature = supportsTemperature
+        }
+        
+        /// For backward compatibility
+        public var supportsStreaming: Bool { streaming }
     }
     
-    enum ModelCategory {
+    /// Model category enumeration
+    public enum ModelCategory: String, Codable {
         case reasoning // o-series models
         case standard // gpt-4, gpt-3.5
         case latest // gpt-5, gpt-4.1
         case preview // experimental models
     }
     
-    static let shared = ModelCompatibilityService()
-    private init() {}
-    
-    // MARK: - Model Capabilities Database
-    
-    private let modelCapabilities: [String: ModelCapabilities] = [
-        // O-series (Reasoning) models
-        "o1-preview": ModelCapabilities(
-            modelId: "o1-preview",
-            supportedTools: ["code_interpreter", "file_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 32768,
-            supportsStreaming: false,
-            supportsReasoningEffort: true,
-            supportsTemperature: false,
-            supportsAudioInput: false,
-            category: .reasoning
-        ),
-        "o1-mini": ModelCapabilities(
-            modelId: "o1-mini",
-            supportedTools: ["code_interpreter", "file_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 65536,
-            supportsStreaming: false,
-            supportsReasoningEffort: true,
-            supportsTemperature: false,
-            supportsAudioInput: false,
-            category: .reasoning
-        ),
-        "o3": ModelCapabilities(
-            modelId: "o3",
-            supportedTools: ["code_interpreter", "file_search", "web_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 200000,
-            supportsStreaming: true,
-            supportsReasoningEffort: true,
-            supportsTemperature: false,
-            supportsAudioInput: false,
-            category: .reasoning
-        ),
-        "o3-mini": ModelCapabilities(
-            modelId: "o3-mini",
-            supportedTools: ["code_interpreter", "file_search", "web_search"],
-            supportedParameters: ["reasoning_effort", "max_output_tokens", "truncation", "parallel_tool_calls", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 200000,
-            supportsStreaming: true,
-            supportsReasoningEffort: true,
-            supportsTemperature: false,
-            supportsAudioInput: false,
-            category: .reasoning
-        ),
-        
-        // GPT-4 series models
+    /// A dictionary mapping model identifiers to their specific API capabilities.
+    private var modelCapabilities: [String: ModelCapabilities] = [
         "gpt-4o": ModelCapabilities(
-            modelId: "gpt-4o",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 16384,
-            supportsStreaming: true,
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
             supportsReasoningEffort: false,
-            supportsTemperature: true,
-            // Audio input not supported in app; feature removed
-            supportsAudioInput: false,
-            category: .standard
-        ),
-        "gpt-4o-mini": ModelCapabilities(
-            modelId: "gpt-4o-mini",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 16384,
-            supportsStreaming: true,
-            supportsReasoningEffort: false,
-            supportsTemperature: true,
-            supportsAudioInput: false,
-            category: .standard
+            supportsTemperature: true
         ),
         "gpt-4-turbo": ModelCapabilities(
-            modelId: "gpt-4-turbo",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 4096,
-            supportsStreaming: true,
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .standard,
             supportsReasoningEffort: false,
-            supportsTemperature: true,
-            supportsAudioInput: false,
-            category: .standard
+            supportsTemperature: true
         ),
-        
-        // GPT-5/4.1 series
-        "gpt-5": ModelCapabilities(
-            modelId: "gpt-5",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 32768,
-            supportsStreaming: true,
-            supportsReasoningEffort: true,
-            supportsTemperature: true,
-            supportsAudioInput: false, // gpt-5 does not currently support audio input
-            category: .latest
+        "gpt-4-vision": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .standard,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
         ),
-        "gpt-4.1-2025-04-14": ModelCapabilities(
-            modelId: "gpt-4.1-2025-04-14",
-            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
-            supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
-            maxTokens: 32768,
-            supportsStreaming: true,
+        "gpt-4": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .standard,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "gpt-3.5-turbo": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .fileSearch, .function],
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            category: .standard,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "o1-preview": ModelCapabilities(
+            streaming: false,
+            tools: [.codeInterpreter, .fileSearch],
+            parameters: ["reasoning_effort", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            category: .reasoning,
             supportsReasoningEffort: true,
-            supportsTemperature: true,
-            supportsAudioInput: false,
-            category: .latest
+            supportsTemperature: false
+        ),
+        "o1-mini": ModelCapabilities(
+            streaming: false,
+            tools: [.codeInterpreter, .fileSearch],
+            parameters: ["reasoning_effort", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            category: .reasoning,
+            supportsReasoningEffort: true,
+            supportsTemperature: false
+        ),
+        "o3": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .fileSearch, .function, .computer],
+            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .disabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .reasoning,
+            supportsReasoningEffort: true,
+            supportsTemperature: false
+        ),
+        "o3-mini": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .fileSearch, .function],
+            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            category: .reasoning,
+            supportsReasoningEffort: true,
+            supportsTemperature: false
+        ),
+        "gpt-5-turbo": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            parameters: ["temperature", "top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
         )
     ]
-
-    // Dynamic overrides discovered at runtime (e.g., account-gated preview features)
-    // Computer Use overrides removed
     
     // MARK: - Public API
     
-    /// Get capabilities for a specific model
-    func getCapabilities(for modelId: String) -> ModelCapabilities? {
+    /// Returns the capabilities for a given model.
+    /// - Parameter modelId: The model identifier.
+    /// - Returns: The model capabilities, or nil if the model is not supported.
+    public func getCapabilities(for modelId: String) -> ModelCapabilities? {
         return modelCapabilities[modelId]
     }
     
-    /// Check if a tool is supported by a model
-    func isToolSupported(_ tool: APICapabilities.ToolType, for modelId: String, isStreaming: Bool = false) -> Bool {
+    /// Checks if a tool is supported by a given model.
+    /// - Parameters:
+    ///   - toolType: The tool type to check.
+    ///   - modelId: The model identifier.
+    ///   - isStreaming: Whether streaming is enabled (affects some tools).
+    /// - Returns: True if the tool is supported, false otherwise.
+    public func isToolSupported(_ toolType: APICapabilities.ToolType, for modelId: String, isStreaming: Bool = false) -> Bool {
         guard let capabilities = modelCapabilities[modelId] else {
-            // Fallback logic for unknown models
-            return fallbackToolSupport(tool.rawValue, for: modelId, isStreaming: isStreaming)
-        }
-        
-        // Generic function tools are supported across models in the Responses API
-        if tool == .function { return true }
-        
-        let isSupported = capabilities.supportedTools.contains(tool.rawValue)
-        
-        return isSupported
-    }
-
-    // Computer Use override API removed
-    
-    /// Check if a parameter is supported by a model
-    func isParameterSupported(_ parameter: String, for modelId: String) -> Bool {
-        guard let capabilities = modelCapabilities[modelId] else {
-            // Fallback logic for unknown models
-            return fallbackParameterSupport(parameter, for: modelId)
-        }
-        
-        // Special handling for reasoning models
-        if parameter == "reasoning_effort" {
-            return capabilities.supportsReasoningEffort
-        }
-        
-        if parameter == "temperature" {
-            return capabilities.supportsTemperature
-        }
-        
-        // Fallback to the comprehensive list for other parameters
-        return capabilities.supportedParameters.contains(parameter)
-    }
-    
-    /// Check if a model supports audio input
-    func supportsAudioInput(for modelId: String) -> Bool {
-        guard let capabilities = modelCapabilities[modelId] else {
-            // Fallback logic for unknown models - only gpt-4o variants may support it
-            return modelId.lowercased().hasPrefix("gpt-4o")
-        }
-        
-        return capabilities.supportsAudioInput
-    }
-    
-    /// Get filtered tools based on model compatibility and user settings
-    func getCompatibleTools(for modelId: String, prompt: Prompt, isStreaming: Bool = false) -> [ToolCompatibility] {
-        var tools: [ToolCompatibility] = []
-        
-        // Web Search
-        tools.append(ToolCompatibility(
-            name: "web_search",
-            isSupported: isToolSupported(APICapabilities.ToolType.webSearch, for: modelId, isStreaming: isStreaming),
-            isEnabled: prompt.enableWebSearch,
-            isUsed: prompt.enableWebSearch && isToolSupported(APICapabilities.ToolType.webSearch, for: modelId, isStreaming: isStreaming),
-            supportedModels: getModelsSupporting("web_search"),
-            restrictions: [],
-            description: "Search the web for current information"
-        ))
-        
-        // Code Interpreter
-        tools.append(ToolCompatibility(
-            name: "code_interpreter",
-            isSupported: isToolSupported(APICapabilities.ToolType.codeInterpreter, for: modelId, isStreaming: isStreaming),
-            isEnabled: prompt.enableCodeInterpreter,
-            isUsed: prompt.enableCodeInterpreter && isToolSupported(APICapabilities.ToolType.codeInterpreter, for: modelId, isStreaming: isStreaming),
-            supportedModels: getModelsSupporting("code_interpreter"),
-            restrictions: [],
-            description: "Execute Python code in a secure environment"
-        ))
-        
-        // Image Generation
-        tools.append(ToolCompatibility(
-            name: "image_generation",
-            isSupported: isToolSupported(APICapabilities.ToolType.imageGeneration, for: modelId, isStreaming: isStreaming),
-            isEnabled: prompt.enableImageGeneration,
-            isUsed: prompt.enableImageGeneration && isToolSupported(APICapabilities.ToolType.imageGeneration, for: modelId, isStreaming: isStreaming),
-            supportedModels: getModelsSupporting("image_generation"),
-            restrictions: [],
-            description: "Generate images from text descriptions"
-        ))
-        
-        // File Search
-        tools.append(ToolCompatibility(
-            name: "file_search",
-            isSupported: isToolSupported(APICapabilities.ToolType.fileSearch, for: modelId, isStreaming: isStreaming),
-            isEnabled: prompt.enableFileSearch,
-            isUsed: prompt.enableFileSearch && isToolSupported(APICapabilities.ToolType.fileSearch, for: modelId, isStreaming: isStreaming),
-            supportedModels: getModelsSupporting("file_search"),
-            restrictions: [],
-            description: "Search through uploaded documents and files"
-        ))
-        
-        return tools
-    }
-    
-    /// Get parameter compatibility information
-    func getParameterCompatibility(for modelId: String) -> [ParameterCompatibility] {
-        guard let capabilities = modelCapabilities[modelId] else {
-            return []
-        }
-        
-        var parameters: [ParameterCompatibility] = []
-        
-        // Temperature
-        parameters.append(ParameterCompatibility(
-            name: "temperature",
-            isSupported: capabilities.supportsTemperature,
-            supportedModels: getModelsSupporting("temperature"),
-            defaultValue: 1.0,
-            restrictions: capabilities.supportsTemperature ? [] : ["Not supported by reasoning models"]
-        ))
-        
-        // Reasoning Effort
-        parameters.append(ParameterCompatibility(
-            name: "reasoning_effort",
-            isSupported: capabilities.supportsReasoningEffort,
-            supportedModels: getModelsSupporting("reasoning_effort"),
-            defaultValue: "medium",
-            restrictions: []
-        ))
-        
-        // Max Output Tokens
-        parameters.append(ParameterCompatibility(
-            name: "max_output_tokens",
-            isSupported: capabilities.supportedParameters.contains("max_output_tokens"),
-            supportedModels: getModelsSupporting("max_output_tokens"),
-            defaultValue: capabilities.maxTokens,
-            restrictions: capabilities.maxTokens != nil ? ["Max: \(capabilities.maxTokens!)"] : []
-        ))
-        
-        return parameters
-    }
-    
-    // MARK: - Private Helpers
-    
-    private func fallbackToolSupport(_ tool: String, for modelId: String, isStreaming: Bool) -> Bool {
-        // Fallback logic for models not in our database
-        switch tool {
-        case "code_interpreter":
-            return modelId.starts(with: "gpt-4") || modelId.starts(with: "o") || modelId.starts(with: "gpt-5")
-        case "image_generation":
-            return !isStreaming && modelId.starts(with: "gpt-4")
-        case "web_search_preview", "file_search":
-            return true
-        case "function":
-            return true
-        default:
             return false
         }
+        
+        // Check if the tool is in the supported tools list
+        guard capabilities.tools.contains(toolType) else {
+            return false
+        }
+        
+        // Special case: Image generation is not supported during streaming
+        if toolType == .imageGeneration && isStreaming {
+            return false
+        }
+        
+        // Check for specific tool overrides for the given model
+        if let toolOverrides = capabilities.toolOverrides {
+            switch toolType {
+            case .webSearch:
+                if toolOverrides.webSearch == .disabled { return false }
+            case .codeInterpreter:
+                if toolOverrides.codeInterpreter == .disabled { return false }
+            case .imageGeneration:
+                if toolOverrides.imageGeneration == .disabled { return false }
+            case .fileSearch:
+                if toolOverrides.fileSearch == .disabled { return false }
+            case .computer:
+                if toolOverrides.computer == .disabled { return false }
+            case .function:
+                break // No override for function tool
+            }
+        }
+        
+        // Default to supported if no specific override is found
+        return true
     }
     
-    private func fallbackParameterSupport(_ parameter: String, for modelId: String) -> Bool {
-        switch parameter {
-        case "temperature", "top_p":
-            return !modelId.starts(with: "o1") // o1 models don't support temperature
-        case "reasoning_effort":
-            return modelId.starts(with: "o") || modelId.starts(with: "gpt-5") || modelId.contains("gpt-4.1")
-        case "max_tool_calls", "service_tier", "top_logprobs":
-            return true // Generally supported by most models
-        case "background_mode":
-            return false // This is typically not supported by most models
-        default:
-            return true
+    /// Checks if a parameter is supported by a given model.
+    /// - Parameters:
+    ///   - parameter: The parameter name.
+    ///   - modelId: The model identifier.
+    /// - Returns: True if the parameter is supported, false otherwise.
+    public func isParameterSupported(_ parameter: String, for modelId: String) -> Bool {
+        guard let capabilities = modelCapabilities[modelId] else {
+            return false
+        }
+        return capabilities.parameters.contains(parameter)
+    }
+    
+    /// Updates the model capabilities with the provided dictionary, merging with existing capabilities.
+    /// - Parameter capabilities: A dictionary of model capabilities to update.
+    public func updateCapabilities(_ capabilities: [String: ModelCapabilities]) {
+        for (modelId, newCapabilities) in capabilities {
+            if let existingCapabilities = modelCapabilities[modelId] {
+                // Merge with existing capabilities
+                var updatedTools = existingCapabilities.tools
+                updatedTools.append(contentsOf: newCapabilities.tools)
+                var updatedParameters = existingCapabilities.parameters
+                updatedParameters.append(contentsOf: newCapabilities.parameters)
+                
+                let mergedOverrides = mergeToolOverrides(existingCapabilities.toolOverrides, newCapabilities.toolOverrides)
+
+                let updatedCapabilities = ModelCapabilities(
+                    streaming: existingCapabilities.streaming || newCapabilities.streaming,
+                    tools: updatedTools,
+                    parameters: updatedParameters,
+                    toolOverrides: mergedOverrides
+                )
+                
+                modelCapabilities[modelId] = updatedCapabilities
+            } else {
+                // Add new capabilities
+                modelCapabilities[modelId] = newCapabilities
+            }
         }
     }
     
-    private func getModelsSupporting(_ feature: String) -> [String] {
-        let toolType = APICapabilities.ToolType(rawValue: feature)
+    /// Merges two sets of tool overrides, giving precedence to the first set.
+    /// - Parameters:
+    ///   - existing: The existing tool overrides.
+    ///   - new: The new tool overrides to merge.
+    /// - Returns: The merged tool overrides.
+    private func mergeToolOverrides(_ existing: ToolOverrides?, _ new: ToolOverrides?) -> ToolOverrides? {
+        guard let existing = existing else { return new }
+        guard let new = new else { return existing }
         
-        switch feature {
-        case "temperature":
-            return modelCapabilities.compactMap { key, value in
-                value.supportsTemperature ? key : nil
+        return ToolOverrides(
+            webSearch: existing.webSearch ?? new.webSearch,
+            codeInterpreter: existing.codeInterpreter ?? new.codeInterpreter,
+            imageGeneration: existing.imageGeneration ?? new.imageGeneration,
+            fileSearch: existing.fileSearch ?? new.fileSearch,
+            computer: existing.computer ?? new.computer
+        )
+    }
+    
+    // MARK: - Additional Compatibility Methods
+    
+    /// Gets tool compatibility information for a specific model and prompt configuration
+    /// - Parameters:
+    ///   - modelId: The model identifier
+    ///   - prompt: The current prompt configuration
+    ///   - isStreaming: Whether streaming is enabled
+    /// - Returns: Array of tool compatibility information
+    public func getCompatibleTools(for modelId: String, prompt: Prompt, isStreaming: Bool) -> [ToolCompatibility] {
+        guard modelCapabilities[modelId] != nil else { return [] }
+        
+        let allTools: [(APICapabilities.ToolType, String, String, Bool)] = [
+            (.webSearch, "Web Search", "Search the internet for current information", prompt.enableWebSearch),
+            (.codeInterpreter, "Code Interpreter", "Run Python code and analyze data", prompt.enableCodeInterpreter),
+            (.imageGeneration, "Image Generation", "Generate images using AI", prompt.enableImageGeneration),
+            (.fileSearch, "File Search", "Search through uploaded documents", prompt.enableFileSearch),
+            (.computer, "Computer Use", "Interact with the computer", prompt.enableComputerUse),
+            (.function, "Custom Functions", "Call custom functions", prompt.enableCustomTool)
+        ]
+        
+        return allTools.map { toolType, name, description, isEnabled in
+            let isSupported = isToolSupported(toolType, for: modelId, isStreaming: isStreaming)
+            let supportedModels = modelCapabilities.compactMap { key, value in
+                value.tools.contains(toolType) ? key : nil
             }
-        case "reasoning_effort":
-            return modelCapabilities.compactMap { key, value in
-                value.supportsReasoningEffort ? key : nil
+            
+            var restrictions: [String] = []
+            if toolType == .imageGeneration && isStreaming {
+                restrictions.append("Not available during streaming")
             }
-        default:
-            if let toolType = toolType {
-                return modelCapabilities.compactMap { key, value in
-                    value.supportedTools.contains(toolType.rawValue) ? key : nil
-                }
+            
+            return ToolCompatibility(
+                name: name,
+                isSupported: isSupported,
+                isEnabled: isEnabled,
+                isUsed: isSupported && isEnabled,
+                supportedModels: supportedModels,
+                restrictions: restrictions,
+                description: description
+            )
+        }
+    }
+    
+    /// Gets parameter compatibility information for a specific model
+    /// - Parameter modelId: The model identifier
+    /// - Returns: Array of parameter compatibility information
+    public func getParameterCompatibility(for modelId: String) -> [ParameterCompatibility] {
+        guard let capabilities = modelCapabilities[modelId] else { return [] }
+        
+        let allParameters: [(String, Any?, String)] = [
+            ("temperature", 1.0, "Controls randomness in responses"),
+            ("top_p", 1.0, "Controls diversity via nucleus sampling"),
+            ("reasoning_effort", "medium", "Controls reasoning depth for O-series models"),
+            ("max_output_tokens", 4096, "Maximum number of tokens in response"),
+            ("parallel_tool_calls", true, "Allow multiple tool calls simultaneously"),
+            ("service_tier", "auto", "API service tier selection"),
+            ("top_logprobs", 0, "Number of top token probabilities to return"),
+            ("truncation", "auto", "Strategy for handling context length limits"),
+            ("tool_choice", "auto", "Controls which tools the model can use"),
+            ("metadata", nil, "Custom metadata for requests")
+        ]
+        
+        return allParameters.map { name, defaultValue, description in
+            let isSupported = isParameterSupported(name, for: modelId)
+            let supportedModels = modelCapabilities.compactMap { key, value in
+                value.parameters.contains(name) ? key : nil
             }
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains(feature) ? key : nil
+            
+            var restrictions: [String] = []
+            if name == "temperature" && capabilities.category == .reasoning {
+                restrictions.append("Not available for reasoning models")
             }
+            if name == "reasoning_effort" && capabilities.category != .reasoning {
+                restrictions.append("Only available for reasoning models")
+            }
+            
+            return ParameterCompatibility(
+                name: name,
+                isSupported: isSupported,
+                supportedModels: supportedModels,
+                defaultValue: defaultValue,
+                restrictions: restrictions
+            )
         }
     }
 }
