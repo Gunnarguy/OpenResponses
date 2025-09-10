@@ -123,7 +123,11 @@ This playbook details every feature and improvement required to reach 100% API a
 
 For more specific details, refer to the following documents in the repository:
 
-- **`API/Full_API_Reference.md`**: A detailed, field-level analysis of the app's current API implementation.
-- **`PRODUCTION_CHECKLIST.md`**: A comprehensive guide for pre-release validation.
-- **`PRIVACY_POLICY.md`**: The official privacy policy for the application.
+- **`/docs/api/Full_API_Reference.md`**: A detailed, field-level analysis of the app's current API implementation.
+- **`/docs/Tools.md`**: A guide to using tools like Web Search, File Search, and Function Calling.
+- **`/docs/Images.md`**: A guide to image generation and vision capabilities.
+- **`/docs/Advanced.md`**: A guide to advanced features like streaming and structured outputs.
+- **`/docs/PromptingGuide.md`**: Best practices for writing effective prompts.
+- **`/docs/PRODUCTION_CHECKLIST.md`**: A comprehensive guide for pre-release validation.
+- **`/docs/PRIVACY_POLICY.md`**: The official privacy policy for the application.
 - **`.github/copilot-instructions.md`**: AI coding conventions for contributing to the codebase.

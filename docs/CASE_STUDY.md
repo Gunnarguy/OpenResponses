@@ -6,7 +6,7 @@ OpenResponses is a native SwiftUI application for iOS and macOS, conceived as a 
 
 **Vision**: OpenResponses is on a mission to achieve **100% compliance** with the latest OpenAI and Apple capabilities through a systematic 5-phase roadmap (detailed in `ROADMAP.md`). Currently at ~33% API coverage, the app is evolving from its solid foundation toward complete multimodal AI integration, on-device processing, and advanced tool capabilities.
 
-This case study explores the architectural decisions, technical challenges, and implementation details that make OpenResponses a robust and flexible platform for exploring advanced AI.
+This case study explores the architectural decisions, technical challenges, and implementation details that make OpenResponses a robust and flexible platform for exploring advanced AI. For a complete list of project documentation, please see the main [README](/README.md#additional-documentation).
 
 ---
 

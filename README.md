@@ -86,49 +86,27 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 
 ## 📚 Key Features Guide
 
-### Key Features Guide
+For detailed guides on all features, please refer to our new documentation:
+
+- **`/docs/PromptingGuide.md`**: Best practices for writing effective prompts.
+- **`/docs/Tools.md`**: A guide to using tools like Web Search, File Search, and Function Calling.
+- **`/docs/Images.md`**: A guide to image generation and vision capabilities.
+- **`/docs/Advanced.md`**: A guide to advanced features like streaming, structured outputs, and prompt caching.
+- **`/docs/FILE_MANAGEMENT.md`**: A user guide for file and vector store features.
 
 ### Dynamic Model Selection
 
-Access the latest AI models automatically:
-
-1. The app fetches available models directly from OpenAI's API.
-2. Models are intelligently categorized: "Latest & Greatest", "Reasoning Specialists", "Proven Performers".
-3. Includes fallback models for offline use.
-4. Smart filtering shows only chat-compatible models.
-5. Real-time model descriptions help you choose the right model for your task.
+The app automatically fetches and categorizes the latest models from OpenAI. This includes intelligent filtering for chat-compatible models and provides real-time descriptions to help you choose the best model for your task.
 
 ### Prompt Presets
 
-Create and manage reusable prompt configurations:
+Save and manage reusable prompt configurations in the **Prompt Library**. Configure your settings once, save it as a preset, and quickly switch between different setups for different tasks.
 
-1. Configure your settings (model, tools, parameters) in the main Settings screen.
-2. Tap "Manage Presets" to open the Prompt Library.
-3. Tap "+" to save your current configuration as a new preset.
-4. Switch between presets using the dropdown in Settings.
+### File Management & Search
 
-### File Management
-
-Upload and search through documents:
-
-1. Navigate to Settings → "Manage Files & Vector Stores".
-2. Upload files using the "Upload File" button.
-3. Create vector stores to organize related documents.
-4. Enable "File Search" in Settings and select your vector store.
-5. Ask questions about your documents in the chat interface.
-
-### Web Search Configuration
-
-Customize web search behavior:
-
-1. Enable "Web Search" in Settings → Tools.
-2. Configure location settings, language preferences, and search quality.
-3. Set recency filters and safe search options as needed.
-4. The AI will automatically search the web when needed during conversations.
+Upload, organize, and search through your documents using Vector Stores. For more information, see the [File Management Guide](/docs/FILE_MANAGEMENT.md).
 
 ### Debugging Tools
-
-Monitor and debug API interactions:
 
 - **API Inspector**: View detailed request/response data for transparency.
 - **Debug Console**: Real-time logs with filtering by category and severity.
@@ -200,8 +178,14 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## 📖 Additional Documentation
 
-- **`FILE_MANAGEMENT.md`**: Comprehensive guide to file uploads, vector stores, and search functionality.
-- **`PRODUCTION_CHECKLIST.md`**: Pre-release validation checklist for app store deployment.
-- **`PRIVACY_POLICY.md`**: Privacy policy and data handling information.
-- **`APP_STORE_GUIDE.md`**: Guidelines for App Store submission and compliance.
-- **`CASE_STUDY.md`**: Technical deep-dive and development insights.
+- **`/docs/ROADMAP.md`**: The strategic master plan for all features and implementation priorities.
+- **`/docs/Tools.md`**: A guide to using tools like Web Search, File Search, and Function Calling.
+- **`/docs/Images.md`**: A guide to image generation and vision capabilities.
+- **`/docs/Advanced.md`**: A guide to advanced features like streaming, structured outputs, and prompt caching.
+- **`/docs/PromptingGuide.md`**: Best practices for writing effective prompts.
+- **`/docs/CASE_STUDY.md`**: A technical deep-dive into the app's architecture and design decisions.
+- **`/docs/api/Full_API_Reference.md`**: Field-level API implementation status.
+- **`/docs/PRODUCTION_CHECKLIST.md`**: A comprehensive pre-release validation checklist.
+- **`/docs/FILE_MANAGEMENT.md`**: A user guide for file and vector store features.
+- **`/docs/APP_STORE_GUIDE.md`**: App Store submission guidance.
+- **`/docs/PRIVACY_POLICY.md`**: The app's privacy policy.
