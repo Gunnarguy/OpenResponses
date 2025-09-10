@@ -236,28 +236,28 @@ struct SettingsView: View {
                         HStack {
                             Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
                                 .accessibilityHint("Allows the AI to search the internet for current information")
-                            if !ModelCompatibilityService.shared.isToolSupported("web_search", for: viewModel.activePrompt.openAIModel) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.webSearch, for: viewModel.activePrompt.openAIModel) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
                             }
                         }
                         HStack {
                             Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
                                 .accessibilityHint("Enables the AI to run Python code and analyze data")
-                            if !ModelCompatibilityService.shared.isToolSupported("code_interpreter", for: viewModel.activePrompt.openAIModel) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.codeInterpreter, for: viewModel.activePrompt.openAIModel) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
                             }
                         }
                         HStack {
                             Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
                                 .accessibilityHint("Allows the AI to create images with GPT-Image-1")
-                            if !ModelCompatibilityService.shared.isToolSupported("image_generation", for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.imageGeneration, for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model or streaming mode")
                             }
                         }
                         HStack {
                             Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
                                 .accessibilityHint("Enables searching through uploaded files and documents")
-                            if !ModelCompatibilityService.shared.isToolSupported("file_search", for: viewModel.activePrompt.openAIModel) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.fileSearch, for: viewModel.activePrompt.openAIModel) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
                             }
                         }
@@ -284,14 +284,14 @@ struct SettingsView: View {
                         HStack {
                             Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
                                 .accessibilityHint("Connects to Model Context Protocol servers")
-                            if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.function, for: viewModel.activePrompt.openAIModel) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
                             }
                         }
                         HStack {
                             Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
                                 .accessibilityHint("Enables user-defined custom tools")
-                            if !ModelCompatibilityService.shared.isToolSupported("function", for: viewModel.activePrompt.openAIModel) {
+                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.function, for: viewModel.activePrompt.openAIModel) {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
                             }
                         }

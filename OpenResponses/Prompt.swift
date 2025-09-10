@@ -18,6 +18,10 @@ struct Prompt: Codable, Identifiable, Equatable {
     
     // Tools
     var enableWebSearch: Bool
+    var webSearchMode: String
+    var webSearchInstructions: String
+    var webSearchMaxPages: Int
+    var webSearchCrawlDepth: Int
     var enableCodeInterpreter: Bool
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
@@ -102,7 +106,8 @@ struct Prompt: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         // Explicitly list all properties to be encoded/decoded
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
-    case enableWebSearch, enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
+    case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth
+    case enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
     // enableComputerUse removed
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
@@ -127,6 +132,10 @@ struct Prompt: Codable, Identifiable, Equatable {
             systemInstructions: "You are a helpful assistant.",
             developerInstructions: "",
             enableWebSearch: true,
+            webSearchMode: "default",
+            webSearchInstructions: "",
+            webSearchMaxPages: 0,
+            webSearchCrawlDepth: 0,
             enableCodeInterpreter: true,
             enableImageGeneration: true,
             enableFileSearch: false,

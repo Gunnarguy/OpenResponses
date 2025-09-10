@@ -385,10 +385,19 @@ class OpenAIService: OpenAIServiceProtocol {
             ]
         }
 
-        // 3. Build the 'tools' array, filtering by compatibility
+        // 3. Build the 'tools' array using the new Codable models
         let tools = buildTools(for: prompt, isStreaming: stream)
         if !tools.isEmpty {
-            requestObject["tools"] = tools
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted // Optional: for debugging
+                let toolsData = try encoder.encode(tools)
+                if let toolsJSON = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
+                    requestObject["tools"] = toolsJSON
+                }
+            } catch {
+                AppLogger.log("Failed to encode tools: \(error)", category: .openAI, level: .error)
+            }
         }
         
         // 3.5. Build the 'include' array from boolean properties
@@ -452,7 +461,7 @@ class OpenAIService: OpenAIServiceProtocol {
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
         let hasDirectFileData = fileData?.isEmpty == false
-    if hasFileAttachments || hasImageAttachments || hasDirectFileData {
+        if hasFileAttachments || hasImageAttachments || hasDirectFileData {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
             // Add file attachments (file_id references)
@@ -513,8 +522,6 @@ class OpenAIService: OpenAIServiceProtocol {
                 }
             }
             
-            // Audio input removed: no audio content
-            
             userContent = contentArray
         }
         
@@ -523,52 +530,51 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Assembles the `tools` array for the request, checking for model compatibility.
-    private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [[String: Any]] {
-        var tools: [[String: Any]] = []
+    private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [APICapabilities.Tool] {
+        var tools: [APICapabilities.Tool] = []
         let compatibilityService = ModelCompatibilityService.shared
-        
-        if prompt.enableWebSearch && compatibilityService.isToolSupported("web_search", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(createWebSearchToolConfiguration(from: prompt))
+
+        if prompt.enableWebSearch, compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(.webSearch)
         }
-        
-        if prompt.enableCodeInterpreter && compatibilityService.isToolSupported("code_interpreter", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(["type": "code_interpreter", "container": ["type": "auto"]])
+
+        if prompt.enableCodeInterpreter, compatibilityService.isToolSupported(APICapabilities.ToolType.codeInterpreter, for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(.codeInterpreter(containerType: "auto"))
         }
-        
-    // Calculator demo tool removed; use Custom Tool with calculator execution instead.
-        
-        if prompt.enableImageGeneration && compatibilityService.isToolSupported("image_generation", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append([
-                "type": "image_generation", 
-                "model": "gpt-image-1",
-                "size": "auto", 
-                "quality": "high", 
-                "output_format": "png"
-            ])
+
+        if prompt.enableImageGeneration, compatibilityService.isToolSupported(APICapabilities.ToolType.imageGeneration, for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(.imageGeneration(model: "gpt-image-1", size: "auto", quality: "high", outputFormat: "png"))
         }
-        
-        if prompt.enableFileSearch && compatibilityService.isToolSupported("file_search", for: prompt.openAIModel, isStreaming: isStreaming) {
+
+        if prompt.enableFileSearch, compatibilityService.isToolSupported(APICapabilities.ToolType.fileSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
             let vectorStoreIds = (prompt.selectedVectorStoreIds ?? "")
                 .split(separator: ",")
-                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
 
             if !vectorStoreIds.isEmpty {
-                tools.append(createFileSearchToolConfiguration(vectorStoreIds: vectorStoreIds))
+                tools.append(.fileSearch(vectorStoreIds: vectorStoreIds))
             }
         }
-        
-        if prompt.enableMCPTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(createMCPToolConfiguration(from: prompt))
-        }
-        
-        if prompt.enableCustomTool && compatibilityService.isToolSupported("function", for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(createCustomToolConfiguration(from: prompt))
+
+        if prompt.enableCustomTool, compatibilityService.isToolSupported(APICapabilities.ToolType.function, for: prompt.openAIModel, isStreaming: isStreaming) {
+            let schema: APICapabilities.JSONSchema
+            if let data = prompt.customToolParametersJSON.data(using: .utf8),
+               let parsedDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                schema = APICapabilities.JSONSchema(parsedDict)
+            } else {
+                schema = APICapabilities.JSONSchema(["type": "object", "properties": [:], "additionalProperties": true])
+            }
+            
+            let function = APICapabilities.Function(
+                name: prompt.customToolName,
+                description: prompt.customToolDescription,
+                parameters: schema,
+                strict: false
+            )
+            tools.append(.function(function: function))
         }
 
-        // Computer Use (Preview)
-    // Computer Use (Preview) removed
-        
         return tools
     }
 

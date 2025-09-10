@@ -790,11 +790,11 @@ class ChatViewModel: ObservableObject {
                         // Handle specific tools
                         if let toolName = item.name {
                             switch toolName {
-                            case "web_search", "web_search_preview":
+                            case APICapabilities.ToolType.webSearch.rawValue:
                                 self.streamingStatus = .searchingWeb
-                            case "code_interpreter":
+                            case APICapabilities.ToolType.codeInterpreter.rawValue:
                                 self.streamingStatus = .generatingCode
-                            case "image_generation":
+                            case APICapabilities.ToolType.imageGeneration.rawValue:
                                 self.streamingStatus = .generatingImage
                             case "mcp":
                                 self.streamingStatus = .runningTool("MCP")
@@ -814,11 +814,11 @@ class ChatViewModel: ObservableObject {
                 // Determine the specific tool being used
                 if let toolName = item?.name {
                     switch toolName {
-                    case "web_search", "web_search_preview":
+                    case APICapabilities.ToolType.webSearch.rawValue:
                         self.streamingStatus = .searchingWeb
-                    case "code_interpreter":
+                    case APICapabilities.ToolType.codeInterpreter.rawValue:
                         self.streamingStatus = .generatingCode
-                    case "image_generation":
+                    case APICapabilities.ToolType.imageGeneration.rawValue:
                         self.streamingStatus = .generatingImage
                     case "mcp":
                         self.streamingStatus = .runningTool("MCP")

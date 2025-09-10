@@ -145,7 +145,7 @@ class ModelCompatibilityService {
         ),
         "gpt-4.1-2025-04-14": ModelCapabilities(
             modelId: "gpt-4.1-2025-04-14",
-            supportedTools: ["code_interpreter", "file_search", "web_search_preview", "image_generation"],
+            supportedTools: ["code_interpreter", "file_search", "web_search", "image_generation"],
             supportedParameters: ["temperature", "top_p", "max_output_tokens", "parallel_tool_calls", "truncation", "reasoning_effort", "max_tool_calls", "service_tier", "top_logprobs", "response_format"],
             maxTokens: 32768,
             supportsStreaming: true,
@@ -167,20 +167,16 @@ class ModelCompatibilityService {
     }
     
     /// Check if a tool is supported by a model
-    func isToolSupported(_ tool: String, for modelId: String, isStreaming: Bool = false) -> Bool {
-    // Computer Use dynamic override removed
-
+    func isToolSupported(_ tool: APICapabilities.ToolType, for modelId: String, isStreaming: Bool = false) -> Bool {
         guard let capabilities = modelCapabilities[modelId] else {
             // Fallback logic for unknown models
-            return fallbackToolSupport(tool, for: modelId, isStreaming: isStreaming)
+            return fallbackToolSupport(tool.rawValue, for: modelId, isStreaming: isStreaming)
         }
         
-    // Generic function tools are supported across models in the Responses API
-    if tool == "function" { return true }
-    let isSupported = capabilities.supportedTools.contains(tool)
+        // Generic function tools are supported across models in the Responses API
+        if tool == .function { return true }
         
-        // Special cases - gpt-image-1 now supports streaming
-        // (No restrictions needed for image_generation anymore)
+        let isSupported = capabilities.supportedTools.contains(tool.rawValue)
         
         return isSupported
     }
@@ -223,11 +219,11 @@ class ModelCompatibilityService {
         
         // Web Search
         tools.append(ToolCompatibility(
-            name: "web_search_preview",
-            isSupported: isToolSupported("web_search_preview", for: modelId, isStreaming: isStreaming),
+            name: "web_search",
+            isSupported: isToolSupported(APICapabilities.ToolType.webSearch, for: modelId, isStreaming: isStreaming),
             isEnabled: prompt.enableWebSearch,
-            isUsed: prompt.enableWebSearch && isToolSupported("web_search_preview", for: modelId, isStreaming: isStreaming),
-            supportedModels: getModelsSupporting("web_search_preview"),
+            isUsed: prompt.enableWebSearch && isToolSupported(APICapabilities.ToolType.webSearch, for: modelId, isStreaming: isStreaming),
+            supportedModels: getModelsSupporting("web_search"),
             restrictions: [],
             description: "Search the web for current information"
         ))
@@ -235,40 +231,35 @@ class ModelCompatibilityService {
         // Code Interpreter
         tools.append(ToolCompatibility(
             name: "code_interpreter",
-            isSupported: isToolSupported("code_interpreter", for: modelId, isStreaming: isStreaming),
+            isSupported: isToolSupported(APICapabilities.ToolType.codeInterpreter, for: modelId, isStreaming: isStreaming),
             isEnabled: prompt.enableCodeInterpreter,
-            isUsed: prompt.enableCodeInterpreter && isToolSupported("code_interpreter", for: modelId, isStreaming: isStreaming),
+            isUsed: prompt.enableCodeInterpreter && isToolSupported(APICapabilities.ToolType.codeInterpreter, for: modelId, isStreaming: isStreaming),
             supportedModels: getModelsSupporting("code_interpreter"),
             restrictions: [],
             description: "Execute Python code in a secure environment"
         ))
         
         // Image Generation
-        let imageGenRestrictions = isStreaming ? ["Disabled in streaming mode"] : []
         tools.append(ToolCompatibility(
             name: "image_generation",
-            isSupported: isToolSupported("image_generation", for: modelId, isStreaming: isStreaming),
+            isSupported: isToolSupported(APICapabilities.ToolType.imageGeneration, for: modelId, isStreaming: isStreaming),
             isEnabled: prompt.enableImageGeneration,
-            isUsed: prompt.enableImageGeneration && isToolSupported("image_generation", for: modelId, isStreaming: isStreaming),
+            isUsed: prompt.enableImageGeneration && isToolSupported(APICapabilities.ToolType.imageGeneration, for: modelId, isStreaming: isStreaming),
             supportedModels: getModelsSupporting("image_generation"),
-            restrictions: imageGenRestrictions,
+            restrictions: [],
             description: "Generate images from text descriptions"
         ))
         
         // File Search
         tools.append(ToolCompatibility(
             name: "file_search",
-            isSupported: isToolSupported("file_search", for: modelId, isStreaming: isStreaming),
+            isSupported: isToolSupported(APICapabilities.ToolType.fileSearch, for: modelId, isStreaming: isStreaming),
             isEnabled: prompt.enableFileSearch,
-            isUsed: prompt.enableFileSearch && isToolSupported("file_search", for: modelId, isStreaming: isStreaming),
+            isUsed: prompt.enableFileSearch && isToolSupported(APICapabilities.ToolType.fileSearch, for: modelId, isStreaming: isStreaming),
             supportedModels: getModelsSupporting("file_search"),
             restrictions: [],
             description: "Search through uploaded documents and files"
         ))
-        
-    // Calculator removed: use Custom Tool with calculator execution mode
-        
-    // Computer Use (Preview) removed
         
         return tools
     }
@@ -345,24 +336,9 @@ class ModelCompatibilityService {
     }
     
     private func getModelsSupporting(_ feature: String) -> [String] {
+        let toolType = APICapabilities.ToolType(rawValue: feature)
+        
         switch feature {
-        case "web_search_preview":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedTools.contains("web_search_preview") ? key : nil
-            }
-        case "code_interpreter":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedTools.contains("code_interpreter") ? key : nil
-            }
-        case "image_generation":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedTools.contains("image_generation") ? key : nil
-            }
-        case "file_search":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedTools.contains("file_search") ? key : nil
-            }
-    // computer_use_preview removed
         case "temperature":
             return modelCapabilities.compactMap { key, value in
                 value.supportsTemperature ? key : nil
@@ -371,42 +347,15 @@ class ModelCompatibilityService {
             return modelCapabilities.compactMap { key, value in
                 value.supportsReasoningEffort ? key : nil
             }
-        case "max_output_tokens":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("max_output_tokens") ? key : nil
-            }
-        case "max_tool_calls":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("max_tool_calls") ? key : nil
-            }
-        case "service_tier":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("service_tier") ? key : nil
-            }
-        case "top_logprobs":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("top_logprobs") ? key : nil
-            }
-        case "top_p":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("top_p") ? key : nil
-            }
-        case "truncation":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("truncation") ? key : nil
-            }
-        case "parallel_tool_calls":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("parallel_tool_calls") ? key : nil
-            }
-        case "response_format":
-            return modelCapabilities.compactMap { key, value in
-                value.supportedParameters.contains("response_format") ? key : nil
-            }
-        case "background_mode":
-            return [] // Not supported by any current models
         default:
-            return []
+            if let toolType = toolType {
+                return modelCapabilities.compactMap { key, value in
+                    value.supportedTools.contains(toolType.rawValue) ? key : nil
+                }
+            }
+            return modelCapabilities.compactMap { key, value in
+                value.supportedParameters.contains(feature) ? key : nil
+            }
         }
     }
 }

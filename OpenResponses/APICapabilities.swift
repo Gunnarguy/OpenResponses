@@ -9,6 +9,14 @@ import Foundation
 /// capability is documented with details on its purpose, usage, and parameters.
 public enum APICapabilities {
 
+    public enum ToolType: String, Codable {
+        case webSearch = "web_search"
+        case fileSearch = "file_search"
+        case codeInterpreter = "code_interpreter"
+        case imageGeneration = "image_generation"
+        case function
+    }
+
     // MARK: - Tools
 
     /// Represents the collection of tools the model can use to extend its capabilities.
@@ -18,67 +26,60 @@ public enum APICapabilities {
     public enum Tool: Codable, Hashable {
         
         /// Allows the model to access up-to-date information from the internet.
-        case webSearch(allowedDomains: [String]? = nil)
+        case webSearch
         
         /// Allows the model to search the contents of uploaded files within specified vector stores.
-        case fileSearch(vectorStoreIDs: [String])
+        case fileSearch(vectorStoreIds: [String])
         
         /// Allows the model to write and run Python code in a sandboxed environment.
-        case codeInterpreter
+        case codeInterpreter(containerType: String)
         
         /// Allows the model to generate images using a text prompt.
-        case imageGeneration
+        case imageGeneration(model: String, size: String, quality: String, outputFormat: String)
         
         /// Allows the model to call custom functions defined by the application.
-        case function(name: String, description: String, parameters: JSONSchema)
-        
-        /// Allows the model to connect to external services via the Model Context Protocol (MCP).
-        case mcp(serverURL: URL, description: String, requiresApproval: Bool)
+        case function(function: Function)
 
         // MARK: - Codable Implementation
         
         private enum CodingKeys: String, CodingKey {
             case type
             case function
-            case webSearch = "web_search"
-            case fileSearch = "file_search"
-            case mcp
-        }
-        
-        private enum ToolType: String, Codable {
-            case webSearch = "web_search"
-            case fileSearch = "file_search"
-            case codeInterpreter = "code_interpreter"
-            case imageGeneration = "image_generation"
-            case function
-            case mcp
+            case container
+            case model
+            case size
+            case quality
+            case outputFormat = "output_format"
+            case vectorStoreIds = "vector_store_ids"
         }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            let type = try container.decode(ToolType.self, forKey: .type)
+            let typeString = try container.decode(String.self, forKey: .type)
             
-            switch type {
-            case .webSearch:
-                // Web search might have an associated object for filters
-                self = .webSearch() // Simplified for now
-            case .fileSearch:
-                let fileSearchContainer = try container.nestedContainer(keyedBy: FileSearchKeys.self, forKey: .fileSearch)
-                let vectorStoreIDs = try fileSearchContainer.decode([String].self, forKey: .vectorStoreIDs)
-                self = .fileSearch(vectorStoreIDs: vectorStoreIDs)
-            case .codeInterpreter:
-                self = .codeInterpreter
-            case .imageGeneration:
-                self = .imageGeneration
-            case .function:
-                let funcContainer = try container.nestedContainer(keyedBy: FunctionKeys.self, forKey: .function)
-                let name = try funcContainer.decode(String.self, forKey: .name)
-                let description = try funcContainer.decode(String.self, forKey: .description)
-                let parameters = try funcContainer.decode(JSONSchema.self, forKey: .parameters)
-                self = .function(name: name, description: description, parameters: parameters)
-            case .mcp:
-                // MCP would have its own container and keys
-                self = .mcp(serverURL: URL(string:"https://example.com")!, description: "", requiresApproval: false) // Simplified
+            switch typeString {
+            case "web_search":
+                self = .webSearch
+            case "file_search":
+                let vectorStoreIds = try container.decodeIfPresent([String].self, forKey: .vectorStoreIds) ?? []
+                self = .fileSearch(vectorStoreIds: vectorStoreIds)
+            case "code_interpreter":
+                let containerInfo = try container.decodeIfPresent([String: String].self, forKey: .container)
+                let containerType = containerInfo?["type"] ?? "auto"
+                self = .codeInterpreter(containerType: containerType)
+            case "image_generation":
+                let model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-image-1"
+                let size = try container.decodeIfPresent(String.self, forKey: .size) ?? "auto"
+                let quality = try container.decodeIfPresent(String.self, forKey: .quality) ?? "high"
+                let outputFormat = try container.decodeIfPresent(String.self, forKey: .outputFormat) ?? "png"
+                self = .imageGeneration(model: model, size: size, quality: quality, outputFormat: outputFormat)
+            case "function":
+                let function = try container.decode(Function.self, forKey: .function)
+                self = .function(function: function)
+            default:
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown tool type: \(typeString)")
+                )
             }
         }
 
@@ -86,33 +87,35 @@ public enum APICapabilities {
             var container = encoder.container(keyedBy: CodingKeys.self)
             switch self {
             case .webSearch:
-                try container.encode(ToolType.webSearch, forKey: .type)
-            case .fileSearch(let vectorStoreIDs):
-                try container.encode(ToolType.fileSearch, forKey: .type)
-                var fileSearchContainer = container.nestedContainer(keyedBy: FileSearchKeys.self, forKey: .fileSearch)
-                try fileSearchContainer.encode(vectorStoreIDs, forKey: .vectorStoreIDs)
-            case .codeInterpreter:
-                try container.encode(ToolType.codeInterpreter, forKey: .type)
-            case .imageGeneration:
-                try container.encode(ToolType.imageGeneration, forKey: .type)
-            case .function(let name, let description, let parameters):
-                try container.encode(ToolType.function, forKey: .type)
-                var funcContainer = container.nestedContainer(keyedBy: FunctionKeys.self, forKey: .function)
-                try funcContainer.encode(name, forKey: .name)
-                try funcContainer.encode(description, forKey: .description)
-                try funcContainer.encode(parameters, forKey: .parameters)
-            case .mcp:
-                try container.encode(ToolType.mcp, forKey: .type)
+                try container.encode("web_search", forKey: .type)
+            case .fileSearch(let vectorStoreIds):
+                try container.encode("file_search", forKey: .type)
+                if !vectorStoreIds.isEmpty {
+                    try container.encode(vectorStoreIds, forKey: .vectorStoreIds)
+                }
+            case .codeInterpreter(let containerType):
+                try container.encode("code_interpreter", forKey: .type)
+                try container.encode(["type": containerType], forKey: .container)
+            case .imageGeneration(let model, let size, let quality, let outputFormat):
+                try container.encode("image_generation", forKey: .type)
+                try container.encode(model, forKey: .model)
+                try container.encode(size, forKey: .size)
+                try container.encode(quality, forKey: .quality)
+                try container.encode(outputFormat, forKey: .outputFormat)
+            case .function(let function):
+                try container.encode("function", forKey: .type)
+                try container.encode(function, forKey: .function)
             }
         }
-        
-        private enum FunctionKeys: String, CodingKey {
-            case name, description, parameters
-        }
-        
-        private enum FileSearchKeys: String, CodingKey {
-            case vectorStoreIDs = "vector_store_ids"
-        }
+    }
+
+    // MARK: - Tool Configurations
+
+    public struct Function: Codable, Hashable {
+        public let name: String
+        public let description: String
+        public let parameters: JSONSchema
+        public let strict: Bool?
     }
 
     // MARK: - Image & Vision
