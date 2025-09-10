@@ -32,18 +32,6 @@ struct URLDetector {
         let host = url.host?.lowercased() ?? ""
         let path = url.path.lowercased()
         
-        // Skip screenshot services and redirecting services
-        let skipServices = [
-            "s.wordpress.com",  // WordPress mShots screenshot service
-            "mshots",           // Any mShots-related service
-        ]
-        
-        for service in skipServices {
-            if host.contains(service) || path.contains(service) {
-                return false
-            }
-        }
-        
         // Skip common API endpoints and file types
         let skipPatterns = [
             "api.",

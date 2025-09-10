@@ -778,6 +778,27 @@ class ChatViewModel: ObservableObject {
                 handleCompletedStreamingItem(item, for: messageId)
             }
             
+        // Computer Use streaming events
+        case "response.computer_call.in_progress":
+            // Computer is starting an action
+            updateStreamingStatus(for: "computer.in_progress")
+            
+        case "response.computer_call.screenshot_taken":
+            // Computer took a screenshot - display it to user
+            updateStreamingStatus(for: "computer.screenshot")
+            handleComputerScreenshot(chunk, for: messageId)
+            
+        case "response.computer_call.action_performed":
+            // Computer performed an action (click, type, etc.)
+            updateStreamingStatus(for: "computer.action")
+            
+        case "response.computer_call.completed":
+            // Computer use action completed
+            if let item = chunk.item {
+                handleCompletedStreamingItem(item, for: messageId)
+            }
+            updateStreamingStatus(for: "computer.completed")
+            
         default:
             // Other events are handled by the status updater
             break
@@ -870,6 +891,17 @@ class ChatViewModel: ObservableObject {
             case "response.image_generation_call.completed":
                 // gpt-image-1 specific: Image generation completed
                 self.streamingStatus = .imageGenerationCompleting
+            
+            // Computer Use specific events
+            case "computer.in_progress":
+                self.streamingStatus = .usingComputer
+            case "computer.screenshot":
+                self.streamingStatus = .usingComputer // Could add specific screenshot status later
+            case "computer.action":
+                self.streamingStatus = .usingComputer
+            case "computer.completed":
+                self.streamingStatus = .streamingText // Move to next phase
+                
             case "response.content_part.added":
                 // We're about to start receiving content
                 self.streamingStatus = .streamingText
@@ -926,6 +958,35 @@ class ChatViewModel: ObservableObject {
                 impactFeedback.impactOccurred()
                 
                 print("Successfully processed and optimized partial image into message")
+            }
+        }
+    }
+    
+    /// Handle computer use screenshots from streaming events
+    private func handleComputerScreenshot(_ chunk: StreamingEvent, for messageId: UUID) {
+        guard messages.contains(where: { $0.id == messageId }) else { return }
+        
+        // Check if there's screenshot data in the chunk
+        if let screenshotB64 = chunk.screenshotB64 {
+            print("Received computer use screenshot (length: \(screenshotB64.count))")
+            
+            // Convert base64 screenshot to UIImage
+            ImageProcessingUtils.processBase64Image(screenshotB64) { [weak self] optimizedImage in
+                guard let self = self, let image = optimizedImage else { return }
+                
+                // Ensure we're still on the same message
+                guard let currentIndex = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
+                
+                // Add the screenshot to the message
+                if self.messages[currentIndex].images == nil {
+                    self.messages[currentIndex].images = []
+                }
+                self.messages[currentIndex].images?.append(image)
+                
+                // Update status
+                self.streamingStatus = .usingComputer
+                
+                print("🖥️ Successfully added computer screenshot to message")
             }
         }
     }

@@ -1,6 +1,11 @@
 import Foundation
 // Import the StreamingEvent model
 import SwiftUI  // This should already be there for access to UI types
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService: OpenAIServiceProtocol {
@@ -559,10 +564,23 @@ class OpenAIService: OpenAIServiceProtocol {
 
         if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
             // Computer Use tool with proper API parameters
+            // Detect environment based on platform
+            let environment: String
+            #if os(iOS)
+            environment = "browser"  // Use browser environment for iOS
+            #elseif os(macOS)
+            environment = "mac"      // Use mac environment for macOS
+            #else
+            environment = "browser"  // Default to browser for other platforms
+            #endif
+            
+            // Get screen dimensions
+            let screenSize = getScreenSize()
+            
             tools.append(.computer(
-                environment: "macos", // Or detect the actual environment
-                displayWidth: 1920,   // Could be made configurable
-                displayHeight: 1080   // Could be made configurable
+                environment: environment,
+                displayWidth: Int(screenSize.width),
+                displayHeight: Int(screenSize.height)
             ))
         }
 
@@ -585,6 +603,27 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         return tools
+    }
+    
+    /// Get the current screen size for the computer use tool
+    private func getScreenSize() -> CGSize {
+        #if os(iOS)
+        // For iOS, get the main screen bounds
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            return CGSize(width: 375, height: 667) // Default iPhone size
+        }
+        return window.screen.bounds.size
+        #elseif os(macOS)
+        // For macOS, get the main screen frame
+        guard let mainScreen = NSScreen.main else {
+            return CGSize(width: 1920, height: 1080) // Default size
+        }
+        return mainScreen.frame.size
+        #else
+        // Default fallback
+        return CGSize(width: 1920, height: 1080)
+        #endif
     }
 
     /// Gathers various API parameters based on model compatibility.

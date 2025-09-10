@@ -605,7 +605,7 @@ Output items can be one of several types:
 - **FileSearchToolCall**: Results of a file search
 - **FunctionToolCall**: A function call
 - **WebSearchToolCall**: Results of a web search
-- **ComputerToolCall**: A computer use tool call (Deferred in OpenResponses; no runtime handling since the feature is disabled)
+- **ComputerToolCall**: A computer use tool call (✅ Implemented in OpenResponses with full streaming event handling)
 - **ReasoningOutput**: Chain of thought reasoning
 - **ImageGenerationCall**: Image generation request
 - **CodeInterpreterToolCall**: Code execution

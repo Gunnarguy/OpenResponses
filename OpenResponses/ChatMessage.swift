@@ -290,6 +290,12 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// Index of the partial image for image generation events
     let partialImageIndex: Int?
     
+    /// Screenshot data for computer use events (base64 encoded)
+    let screenshotB64: String?
+    
+    /// Computer action data for computer use events
+    let computerAction: String?
+    
     enum CodingKeys: String, CodingKey {
         case type
         case sequenceNumber = "sequence_number"
@@ -302,6 +308,8 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case part
         case partialImageB64 = "partial_image_b64"
         case partialImageIndex = "partial_image_index"
+        case screenshotB64 = "screenshot_b64"
+        case computerAction = "computer_action"
     }
     
     /// Provides a readable description of the event

@@ -75,18 +75,31 @@ struct WebView: UIViewRepresentable {
     @Binding var error: String?
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let config = WKWebViewConfiguration()
+        
+        // Configure for better experience and ad blocking
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        config.suppressesIncrementalRendering = false
+        
+        // Create the web view with enhanced configuration
+        let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
         
-        // Configure for better mobile experience
-        let config = webView.configuration
-        config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = []
+        // Set a proper desktop user agent to avoid mobile redirects/ads
+        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
-        // Load the initial URL
-        let request = URLRequest(url: url)
+        // Configure web view settings
+        webView.allowsBackForwardNavigationGestures = false
+        // JavaScript is enabled by default in WKWebView
+        webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        
+        // Load the initial URL with cache policy to get fresh content
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         webView.load(request)
         
         return webView
@@ -95,7 +108,9 @@ struct WebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         // Only reload if the URL has actually changed
         if webView.url != url {
-            let request = URLRequest(url: url)
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
             webView.load(request)
         }
     }
@@ -132,13 +147,27 @@ struct WebView: UIViewRepresentable {
         
         // Handle link navigation within the web view
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // Allow navigation within the same domain, open external links in Safari
-            if let url = navigationAction.request.url,
-               let host = url.host,
-               let originalHost = parent.url.host,
-               host != originalHost {
-                UIApplication.shared.open(url)
+            guard let url = navigationAction.request.url else {
                 decisionHandler(.cancel)
+                return
+            }
+            
+            // Block common ad domains and suspicious redirects
+            let adDomains = ["googleads.com", "doubleclick.net", "googlesyndication.com", "adsystem.com", "amazon-adsystem.com", "facebook.com/tr", "google-analytics.com"]
+            if let host = url.host, adDomains.contains(where: { host.contains($0) }) {
+                decisionHandler(.cancel)
+                return
+            }
+            
+            // Allow navigation to the original domain and its subdomains
+            if let originalHost = parent.url.host, let currentHost = url.host {
+                if currentHost == originalHost || currentHost.hasSuffix(".\(originalHost)") {
+                    decisionHandler(.allow)
+                } else {
+                    // External domain - open in Safari instead
+                    UIApplication.shared.open(url)
+                    decisionHandler(.cancel)
+                }
             } else {
                 decisionHandler(.allow)
             }
