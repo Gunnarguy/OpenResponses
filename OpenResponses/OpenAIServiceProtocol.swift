@@ -44,6 +44,20 @@ protocol OpenAIServiceProtocol {
         model: String,
         previousResponseId: String?
     ) async throws -> OpenAIResponse
+
+    /// Sends computer-use call output back to the API.
+    /// Use this to continue a computer-use turn by providing observations, screenshots, or status.
+    /// - Parameters:
+    ///   - call: The streaming item representing the computer tool call.
+    ///   - output: A JSON dictionary with the results (e.g., observations, optional screenshot URLs or base64).
+    ///   - model: The model name (should be "computer-use-preview").
+    ///   - previousResponseId: The ID of the response that contained the computer call.
+    func sendComputerCallOutput(
+        call: StreamingItem,
+        output: [String: Any],
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse
     
     /// Fetches image data from the API.
     func fetchImageData(for imageContent: ContentItem) async throws -> Data

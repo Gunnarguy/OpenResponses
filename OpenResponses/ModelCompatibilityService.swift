@@ -99,13 +99,13 @@ class ModelCompatibilityService {
     public enum ModelCategory: String, Codable {
         case reasoning // o-series models
         case standard // gpt-4, gpt-3.5
-        case latest // gpt-5, gpt-4.1
+    case latest // gpt-5, gpt-4.1 (note: computer use not yet supported by these models)
         case preview // experimental models
     }
     
     /// A dictionary mapping model identifiers to their specific API capabilities.
     private var modelCapabilities: [String: ModelCapabilities] = [
-        "gpt-4o": ModelCapabilities(
+    "gpt-4o": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
             parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
@@ -114,13 +114,13 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .enabled
+        computer: .disabled // Hosted computer use is only supported via computer-use-preview model
             ),
             category: .latest,
             supportsReasoningEffort: false,
             supportsTemperature: true
         ),
-        "gpt-4-turbo": ModelCapabilities(
+    "gpt-4-turbo": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
             parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
@@ -129,13 +129,13 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .enabled
+        computer: .disabled // Not supported for gpt-4-turbo
             ),
             category: .standard,
             supportsReasoningEffort: false,
             supportsTemperature: true
         ),
-        "gpt-4-vision": ModelCapabilities(
+    "gpt-4-vision": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
             parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
@@ -144,13 +144,13 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .enabled
+        computer: .disabled // Not supported for gpt-4-vision
             ),
             category: .standard,
             supportsReasoningEffort: false,
             supportsTemperature: true
         ),
-        "gpt-4": ModelCapabilities(
+    "gpt-4": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
             parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
@@ -159,7 +159,7 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .enabled
+        computer: .disabled // Not supported by OpenAI API
             ),
             category: .standard,
             supportsReasoningEffort: false,
@@ -172,6 +172,28 @@ class ModelCompatibilityService {
             category: .standard,
             supportsReasoningEffort: false,
             supportsTemperature: true
+        ),
+        // Dedicated Computer-Use model (preview)
+        // Note: Hosted tool 'computer_use_preview' is only supported with this model per OpenAI API.
+        "computer-use-preview": ModelCapabilities(
+            streaming: true,
+            tools: [.computer],
+            parameters: [
+                // Required/Recommended params for CUA
+                "truncation", "parallel_tool_calls", "max_output_tokens", "service_tier",
+                // Optional metadata/user controls
+                "user_identifier", "max_tool_calls", "metadata", "tool_choice"
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .disabled,
+                codeInterpreter: .disabled,
+                imageGeneration: .disabled,
+                fileSearch: .disabled,
+                computer: .enabled
+            ),
+            category: .preview,
+            supportsReasoningEffort: false,
+            supportsTemperature: false
         ),
         "o1-preview": ModelCapabilities(
             streaming: false,
@@ -189,7 +211,7 @@ class ModelCompatibilityService {
             supportsReasoningEffort: true,
             supportsTemperature: false
         ),
-        "o3": ModelCapabilities(
+    "o3": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .fileSearch, .function, .computer],
             parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
@@ -198,7 +220,7 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .disabled,
                 fileSearch: .enabled,
-                computer: .enabled
+        computer: .disabled // Not supported for o3
             ),
             category: .reasoning,
             supportsReasoningEffort: true,
@@ -214,18 +236,94 @@ class ModelCompatibilityService {
         ),
         "gpt-5-turbo": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
             parameters: ["temperature", "top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .enabled
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-5-turbo
             ),
             category: .latest,
             supportsReasoningEffort: true,
             supportsTemperature: true
+        ),
+        "gpt-4.1": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1
+            ),
+            category: .latest,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "gpt-4.1-mini": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1-mini
+            ),
+            category: .latest,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "gpt-4.1-nano": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1-nano
+            ),
+            category: .latest,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "gpt-4.1-2025-04-14": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1-2025-04-14
+            ),
+            category: .latest,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
+        ),
+        "gpt-5": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            // Note: temperature is not supported for gpt-5 per API; use reasoning_effort instead
+            parameters: ["top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled // Disabled until OpenAI supports computer use with gpt-5
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: false
         )
     ]
     

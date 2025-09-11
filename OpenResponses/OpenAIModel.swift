@@ -44,6 +44,8 @@ struct OpenAIModel: Codable, Identifiable {
             return "gpt-4"
         case "gpt-3.5-turbo":
             return "gpt-3.5-turbo"
+        case "computer-use-preview":
+            return "computer-use-preview"
         
         // Reasoning models (o-series) - keep original formatting
         case "o3":

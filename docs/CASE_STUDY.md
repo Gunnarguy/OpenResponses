@@ -78,6 +78,23 @@ This dynamic construction ensures that the app is always in sync with the user's
 
 #### C. Full-Cycle File and Vector Store Management
 
+The OpenResponses app provides complete lifecycle management for files and vector stores, allowing users to upload documents directly or reference existing file IDs.
+
+#### D. Advanced Computer Use Integration with Error Prevention
+
+A notable architectural achievement is the comprehensive computer use integration that goes beyond basic API support. The app implements a sophisticated **preflight resolution system** that automatically prevents common API errors when using the computer-use-preview model.
+
+**The Problem**: When using computer use tools, incomplete computer calls can leave the conversation in a state where subsequent messages fail with "400 No tool output found for computer call" errors, blocking the user entirely.
+
+**The Solution**: The `ChatViewModel.resolvePendingComputerCallsIfNeeded()` method implements a preflight check that:
+
+1. **Detects Pending Calls**: Analyzes the previous response for incomplete computer tool calls
+2. **Automatic Resolution**: When pending calls are found, breaks the conversation chain by clearing `lastResponseId`
+3. **Transparent Operation**: Runs automatically before every message send, requiring no user intervention
+4. **Comprehensive Logging**: Provides detailed debugging information for monitoring and troubleshooting
+
+This system ensures a smooth user experience with computer use tools while maintaining the full functionality of the computer-use-preview model. The implementation demonstrates how architectural foresight can prevent API limitations from becoming user-facing problems.
+
 File Search is not just a toggle; it's a complete management system.
 
 - **The Challenge**: The API requires multiple steps to use File Search: upload a file, create a vector store, and then associate the file with the store.
@@ -125,6 +142,7 @@ Professional users need visibility into API interactions:
 - **MCP (Model Context Protocol)**: Connects to external services and data sources through standardized protocol interfaces.
 - **Custom Tools**: Users can define their own tools with specific schemas and behaviors.
 - **Multi-Store Search**: Advanced file search across multiple vector stores simultaneously for complex knowledge bases.
+- **Computer Use Preview**: Full integration with OpenAI's computer use tool for automated browser interactions, with intelligent model compatibility checking that disables the feature for models that don't support it (e.g., gpt-5 series).
 
 #### D. Accessibility as a First-Class Feature
 

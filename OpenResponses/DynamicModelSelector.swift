@@ -19,6 +19,8 @@ struct DynamicModelSelector: View {
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
+    // Dedicated computer-use model
+    "computer-use-preview",
         
         // Latest reasoning models
         "o3",
@@ -165,6 +167,8 @@ struct DynamicModelSelector: View {
                 }
             } else if id.contains("o1") {
                 return "🧩 Step-by-step reasoning"
+            } else if id.contains("computer-use-preview") {
+                return "🖥️ Computer Use (Preview)"
             } else if id.contains("gpt-4") {
                 return "💪 Powerful general-purpose"
             } else if id.contains("gpt-3.5") {
@@ -215,6 +219,8 @@ struct DynamicModelSelector: View {
                             "gpt-5", "gpt-5-thinking",
                             "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
                             "gpt-4.1-2025-04-14",
+                            // Dedicated CUA model
+                            "computer-use-preview",
                             
                             // Current GPT models
                             "gpt-4o", "gpt-4o-mini",
@@ -256,7 +262,7 @@ struct DynamicModelSelector: View {
                         let firstId = first.id.lowercased()
                         let secondId = second.id.lowercased()
                         
-                        // Priority order: gpt-5 > gpt-4.1 > o4 > o3 > gpt-4o > o1 > gpt-4 > gpt-3.5
+                        // Priority order: gpt-5 > gpt-4.1 > o4 > o3 > gpt-4o > CUA > o1 > gpt-4 > gpt-3.5
                         let modelPriority: [String: Int] = [
                             "gpt-5": 1000,
                             "gpt-5-thinking": 999,
@@ -268,6 +274,7 @@ struct DynamicModelSelector: View {
                             "o3-mini": 690,
                             "gpt-4o": 600,
                             "gpt-4o-mini": 590,
+                            "computer-use-preview": 550,
                             "o1-preview": 500,
                             "o1-mini": 490,
                             "gpt-4-turbo": 400,
@@ -361,6 +368,21 @@ struct ModelPickerView: View {
                         }
                     }
                 }
+
+                // Dedicated Computer Use model
+                Section("🖥️ Computer Use (Preview)") {
+                    ForEach(["computer-use-preview"], id: \.self) { modelId in
+                        ModelPickerRow(
+                            modelId: modelId,
+                            displayName: tempModelDisplayName(for: modelId),
+                            description: "Dedicated model required for hosted Computer Use",
+                            isSelected: selectedModel == modelId
+                        ) {
+                            selectedModel = modelId
+                            dismiss()
+                        }
+                    }
+                }
                 
                 Section("🧠 Reasoning Models") {
                     ForEach(["o3", "o4-mini", "o1-preview", "o1-mini"], id: \.self) { modelId in
@@ -401,6 +423,7 @@ struct ModelPickerView: View {
                     ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4") || $0.id.contains("gpt-3.5")) &&
                     !$0.id.contains("gpt-4.1")
                 }
+                let computerUseModels = models.filter { $0.id == "computer-use-preview" }
                 
                 if !latestModels.isEmpty {
                     Section("🚀 Latest & Greatest") {
@@ -441,6 +464,22 @@ struct ModelPickerView: View {
                                 modelId: model.id,
                                 displayName: model.displayName,
                                 description: modelDescription(for: model.id),
+                                isSelected: selectedModel == model.id
+                            ) {
+                                selectedModel = model.id
+                                dismiss()
+                            }
+                        }
+                    }
+                }
+
+                if !computerUseModels.isEmpty {
+                    Section("🖥️ Computer Use (Preview)") {
+                        ForEach(computerUseModels) { model in
+                            ModelPickerRow(
+                                modelId: model.id,
+                                displayName: model.displayName,
+                                description: "Dedicated model required for hosted Computer Use",
                                 isSelected: selectedModel == model.id
                             ) {
                                 selectedModel = model.id

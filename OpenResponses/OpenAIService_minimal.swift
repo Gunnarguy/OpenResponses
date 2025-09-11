@@ -83,6 +83,10 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
         throw OpenAIServiceError.requestFailed(501, "Function output not implemented in minimal version")
     }
     
+    func sendComputerCallOutput(call: StreamingItem, output: [String : Any], model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+        throw OpenAIServiceError.requestFailed(501, "Computer call output not implemented in minimal version")
+    }
+    
     // Protocol stub implementations
     func getResponse(responseId: String) async throws -> OpenAIResponse {
         throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")

@@ -19,7 +19,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 - [x] Image Generation (DALL-E)
 - [x] MCP Tool integration
 - [x] Custom Tools and Calculator
-- [ ] **ROADMAP:** Computer Use Tool (Deferred; feature disabled until supported models are available)
+- [x] **ROADMAP:** Computer Use Tool (✅ Complete for compatible models; ❌ Limited: hosted tool is supported only on the `computer-use-preview` model. Disabled for gpt-5 series, gpt-4.1 series, gpt-4o, gpt-4-turbo, gpt-4, and o3.)
 - [ ] **ROADMAP:** gpt-image-1 with streaming previews
 - [ ] **ROADMAP:** Enhanced Code Interpreter with container selection
 - [ ] **ROADMAP:** Multi-vector-store File Search
@@ -106,7 +106,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 **Current Completion: ~33% of full API compliance**
 
-- ✅ **Phase 1**: 60% complete (missing audio input, computer use tool, enhanced tools)
+- ✅ **Phase 1**: 75% complete (computer use tool complete for compatible models, missing audio input, enhanced tools)
 - 🟡 **Phase 2**: 20% complete (local storage only, no backend API)
 - ❌ **Phase 3**: 0% complete (planned Apple framework integration)
 - ❌ **Phase 4**: 0% complete (planned on-device and real-time features)

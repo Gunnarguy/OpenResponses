@@ -28,6 +28,16 @@ struct MessageBubbleView: View {
                     MessageToolIndicator(message: message)
                 }
                 
+                // Show placeholder text for assistant messages with tools but no text
+                if message.role == .assistant, 
+                   (message.text?.isEmpty ?? true),
+                   !(message.toolsUsed?.isEmpty ?? true) {
+                    Text("Using tools...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+                
                 // Image content (if any images in the message)
                 if let images = message.images {
                     ForEach(images, id: \.self) { uiImage in

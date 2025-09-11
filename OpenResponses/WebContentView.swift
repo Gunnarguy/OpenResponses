@@ -6,6 +6,7 @@ struct WebContentView: View {
     let url: URL
     @State private var isLoading = true
     @State private var error: String?
+    @State private var loadingTimer: Timer?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -36,6 +37,14 @@ struct WebContentView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
+                    
+                    Button("Retry") {
+                        isLoading = true
+                        self.error = nil
+                        startLoadingTimer()
+                    }
+                    .font(.caption)
+                    .foregroundColor(.blue)
                 }
                 .frame(height: 200)
                 .frame(maxWidth: .infinity)
@@ -63,8 +72,24 @@ struct WebContentView: View {
             }
             .padding(.horizontal, 4)
         }
+        .onAppear {
+            startLoadingTimer()
+        }
+        .onDisappear {
+            loadingTimer?.invalidate()
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Web content from \(url.host ?? "unknown site")")
+    }
+    
+    private func startLoadingTimer() {
+        loadingTimer?.invalidate()
+        loadingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { _ in
+            if isLoading {
+                isLoading = false
+                self.error = "Loading timeout - try again or open in Safari"
+            }
+        }
     }
 }
 
@@ -91,14 +116,14 @@ struct WebView: UIViewRepresentable {
         // Set a proper desktop user agent to avoid mobile redirects/ads
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
-        // Configure web view settings
+        // Configure web view settings for better compatibility
         webView.allowsBackForwardNavigationGestures = false
-        // JavaScript is enabled by default in WKWebView
         webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         
         // Load the initial URL with cache policy to get fresh content
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        request.timeoutInterval = 15.0 // 15 second timeout
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         webView.load(request)
         
@@ -110,6 +135,7 @@ struct WebView: UIViewRepresentable {
         if webView.url != url {
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            request.timeoutInterval = 15.0 // 15 second timeout
             request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
             webView.load(request)
         }
@@ -137,12 +163,44 @@ struct WebView: UIViewRepresentable {
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
-            parent.error = error.localizedDescription
+            let nsError = error as NSError
+            
+            // Handle specific error cases
+            if nsError.code == NSURLErrorCancelled {
+                // Don't show error for cancelled loads (usually redirects or ad blocks)
+                return
+            } else if nsError.code == NSURLErrorTimedOut {
+                parent.error = "Loading timeout - try again or open in Safari"
+            } else if error.localizedDescription.contains("WEBP") {
+                parent.error = "Image format not supported"
+            } else if nsError.domain == NSURLErrorDomain {
+                parent.error = "Network connection issue"
+            } else if error.localizedDescription.contains("sandbox") {
+                parent.error = "Security restriction"
+            } else {
+                parent.error = error.localizedDescription
+            }
         }
         
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
-            parent.error = error.localizedDescription
+            let nsError = error as NSError
+            
+            // Handle specific error cases
+            if nsError.code == NSURLErrorCancelled {
+                // Don't show error for cancelled loads (usually redirects or ad blocks)
+                return
+            } else if nsError.code == NSURLErrorTimedOut {
+                parent.error = "Loading timeout - try again or open in Safari"
+            } else if error.localizedDescription.contains("WEBP") {
+                parent.error = "Image format not supported"
+            } else if nsError.domain == NSURLErrorDomain {
+                parent.error = "Network connection issue"
+            } else if error.localizedDescription.contains("sandbox") {
+                parent.error = "Security restriction"
+            } else {
+                parent.error = error.localizedDescription
+            }
         }
         
         // Handle link navigation within the web view
@@ -152,25 +210,35 @@ struct WebView: UIViewRepresentable {
                 return
             }
             
-            // Block common ad domains and suspicious redirects
-            let adDomains = ["googleads.com", "doubleclick.net", "googlesyndication.com", "adsystem.com", "amazon-adsystem.com", "facebook.com/tr", "google-analytics.com"]
-            if let host = url.host, adDomains.contains(where: { host.contains($0) }) {
+            // Block common ad and tracking domains
+            let blockedDomains = [
+                "googleads.com", "doubleclick.net", "googlesyndication.com", 
+                "adsystem.com", "amazon-adsystem.com", "facebook.com/tr", 
+                "google-analytics.com", "taboola.com", "outbrain.com",
+                "recaptcha", "captcha"
+            ]
+            
+            if let host = url.host?.lowercased() {
+                if blockedDomains.contains(where: { host.contains($0) }) {
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
+            
+            // Only block user-initiated clicks to completely external domains
+            // Allow all redirects, iframes, and same-domain navigation
+            if navigationAction.navigationType == .linkActivated,
+               let originalHost = parent.url.host?.lowercased(),
+               let currentHost = url.host?.lowercased(),
+               currentHost != originalHost && !currentHost.hasSuffix(".\(originalHost)") && !originalHost.hasSuffix(".\(currentHost)") {
+                // This is a user click to a completely external domain - open in Safari
+                UIApplication.shared.open(url)
                 decisionHandler(.cancel)
                 return
             }
             
-            // Allow navigation to the original domain and its subdomains
-            if let originalHost = parent.url.host, let currentHost = url.host {
-                if currentHost == originalHost || currentHost.hasSuffix(".\(originalHost)") {
-                    decisionHandler(.allow)
-                } else {
-                    // External domain - open in Safari instead
-                    UIApplication.shared.open(url)
-                    decisionHandler(.cancel)
-                }
-            } else {
-                decisionHandler(.allow)
-            }
+            // Allow all other navigation (same domain, redirects, iframes, forms, etc.)
+            decisionHandler(.allow)
         }
     }
 }

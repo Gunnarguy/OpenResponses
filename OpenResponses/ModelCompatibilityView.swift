@@ -255,8 +255,9 @@ struct ToolStatusCard: View {
             return "photo"
         case "file_search":
             return "doc.text.magnifyingglass"
+        case "computer_use_preview":
+            return "display"
     // calculator removed
-    // computer_use_preview removed
         default:
             return "wrench.and.screwdriver"
         }
@@ -272,8 +273,9 @@ struct ToolStatusCard: View {
             return "Image Generation"
         case "file_search":
             return "File Search"
+        case "computer_use_preview":
+            return "Computer Use"
     // calculator removed
-    // computer_use_preview removed
         default:
             return tool.name.capitalized
         }
@@ -464,7 +466,8 @@ struct MessageToolIndicator: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     
     var body: some View {
-        let toolsUsed = detectToolsUsed(in: message.text ?? "")
+        // Use actual tools tracked in the message, fallback to text-based detection
+        let toolsUsed = message.toolsUsed ?? detectToolsUsed(in: message.text ?? "")
         
         if !toolsUsed.isEmpty {
             HStack(spacing: 6) {

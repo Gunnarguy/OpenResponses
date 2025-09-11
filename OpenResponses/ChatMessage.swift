@@ -13,17 +13,21 @@ struct ChatMessage: Identifiable, Codable {
     var text: String?
     var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
     var webURLs: [URL]?     // URLs to render as embedded web content
+    var webContentURL: [URL]? // Detected URLs in the message content
+    var toolsUsed: [String]? // Track which tools were actually used in this message
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs
+        case id, role, text, images, webURLs, webContentURL, toolsUsed
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil) {
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.images = images
         self.webURLs = webURLs
+        self.webContentURL = webContentURL
+        self.toolsUsed = toolsUsed
     }
 
     // MARK: - Codable Conformance
@@ -45,6 +49,14 @@ struct ChatMessage: Identifiable, Codable {
         } else {
             webURLs = nil
         }
+        
+        if let webContentURLStrings = try container.decodeIfPresent([String].self, forKey: .webContentURL) {
+            webContentURL = webContentURLStrings.compactMap { URL(string: $0) }
+        } else {
+            webContentURL = nil
+        }
+        
+        toolsUsed = try container.decodeIfPresent([String].self, forKey: .toolsUsed)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -62,6 +74,13 @@ struct ChatMessage: Identifiable, Codable {
             let urlStrings = webURLs.map { $0.absoluteString }
             try container.encode(urlStrings, forKey: .webURLs)
         }
+        
+        if let webContentURL = webContentURL {
+            let webContentURLStrings = webContentURL.map { $0.absoluteString }
+            try container.encode(webContentURLStrings, forKey: .webContentURL)
+        }
+        
+        try container.encodeIfPresent(toolsUsed, forKey: .toolsUsed)
     }
 }
 

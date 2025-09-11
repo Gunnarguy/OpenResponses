@@ -56,7 +56,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Not Implemented**. The app manages state locally by passing `previous_response_id`. It does not use the Conversations API.                                                                                                                 |
 | `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Partially Implemented**. Streaming is enabled when requested; text deltas, tool calls, and image generation events are handled, but not every possible event type.                                                                         |
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. Controlled by `Prompt.backgroundMode`; included by `OpenAIService.buildRequestObject` when enabled.                                                                                                                         |
-| `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **Partially Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, MCP, and Custom Function tools. `computer` tool is not implemented.                                                                   |
+| `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, MCP, and Custom Function tools. All major tools are implemented.                                                                 |
 | `tool_choice`  | `String` or `Object` | No       | Forces the model to use a specific tool.                                                                                               | **Implemented**. `Prompt.toolChoice`; added to the request when not `auto`.                                                                                                                                                                  |
 | `include`      | `Array<String>`      | No       | Specifies additional data to include in the output (e.g., `message.output_text.logprobs`).                                             | **Partially Implemented**. Built by `buildIncludeArray`: supports `file_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`, `reasoning.encrypted_content`, and `message.input_image.image_url`.          |
 
@@ -151,15 +151,19 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 
 **H. Computer Use**
 
-- **Type:** `computer`
-- **App Status:** **95% Implemented**. Full API integration and UI controls complete, only missing streaming event handling.
+- **Type:** `computer_use_preview`
+- **App Status:** **✅ Complete**. Full API integration, UI controls, and streaming event handling implemented.
+- **Model Compatibility:** **❌ Limited**. Hosted computer use is only supported via the dedicated `computer-use-preview` model. Disabled for gpt-5, gpt-4.1 series, gpt-4o, gpt-4-turbo, gpt-4, o3, and others.
 - **Implementation Status:**
-  - ✅ Tool configuration in `APICapabilities.swift`
+  - ✅ Tool configuration in `APICapabilities.swift` using `computer_use_preview` type
   - ✅ Tool building in `OpenAIService.buildTools()` with environment/display parameters
   - ✅ UI toggle in `SettingsView` ("Computer Use")
   - ✅ Model compatibility checking in `ModelCompatibilityService`
   - ✅ API include parameter (`computer_use_call.output`)
-  - ❌ Missing: Streaming event handling for computer screenshots and action confirmations
+  - ✅ Streaming event handling for computer screenshots and action confirmations
+  - ✅ Fixed main thread issues in screen size detection
+  - ✅ **NEW**: Automatic pending call resolution system in `ChatViewModel.resolvePendingComputerCallsIfNeeded()` that prevents 400 "No tool output found for computer call" errors
+  - ⚠️ **Limitation:** Disabled for gpt-5 models due to API restrictions
 - **Available Actions in API:**
   - `Click(x, y, button)`: Mouse clicks with button specification
   - `DoubleClick(x, y)`: Double-click actions
@@ -228,7 +232,9 @@ The app provides granular streaming status feedback through `StreamingStatusView
 
 ### 2.3. Output Content and Annotations
 
-Computer Use Preview: ✅ 95% Complete. Full API integration and UI implemented, streaming events added. Ready for testing when supported models are available.
+Computer Use: ✅ Complete. Full API integration and UI implemented, streaming events handled. Tool properly encoded as "computer_use_preview". **Available only with the `computer-use-preview` model** per current API; disabled on other chat models.
+
+**✅ Enhanced (NEW)**: Automatic pending computer call resolution system implemented in `ChatViewModel.resolvePendingComputerCallsIfNeeded()`. Prevents 400 "No tool output found for computer call" errors by detecting incomplete computer calls in previous responses and breaking the conversation chain when necessary. This ensures smooth user experience when using computer-use-preview model.
 
 **A. Output Text**
 
@@ -295,19 +301,19 @@ Computer Use Preview: ✅ 95% Complete. Full API integration and UI implemented,
 
 ### 4.1. API Features vs App Implementation
 
-| API Feature Category        | Implementation Level   | Details                                                                      |
-| :-------------------------- | :--------------------- | :--------------------------------------------------------------------------- |
-| **Text Input/Output**       | ✅ **Complete**        | Full text conversation support                                               |
-| **Image Input**             | ✅ **Complete**        | Full image selection, base64 encoding, detail level control, API integration |
-| **File Input**              | 🟡 **Partial**         | Supports `file_id` references, not direct uploads                            |
-| **Audio Input**             | ❌ **Removed**         | Audio capture and API integration removed from the app                       |
-| **Basic Tools**             | ✅ **Complete**        | Web search, code interpreter, file search fully integrated                   |
-| **Advanced Tools**          | 🟡 **Mostly Complete** | Custom Function tools complete; MCP partial; Computer Use 95% complete       |
-| **Streaming Response**      | ✅ **Complete**        | Comprehensive event handling and status display                              |
-| **Rich Content Output**     | 🟡 **Partial**         | Text rendering complete; annotations, media incomplete                       |
-| **Conversation Management** | 🟡 **Partial**         | Local storage complete; API integration missing                              |
-| **Advanced Parameters**     | ✅ **Complete**        | All parameters properly sent in requests                                     |
-| **Include Parameters**      | 🟡 **Partial**         | Several include options supported (web/file/logprobs/reasoning/image URLs)   |
+| API Feature Category        | Implementation Level   | Details                                                                                                |
+| :-------------------------- | :--------------------- | :----------------------------------------------------------------------------------------------------- |
+| **Text Input/Output**       | ✅ **Complete**        | Full text conversation support                                                                         |
+| **Image Input**             | ✅ **Complete**        | Full image selection, base64 encoding, detail level control, API integration                           |
+| **File Input**              | ✅ **Complete**        | Full support for both `file_id` references and direct file uploads with `file_data`                    |
+| **Audio Input**             | ❌ **Removed**         | Audio capture and API integration removed from the app                                                 |
+| **Basic Tools**             | ✅ **Complete**        | Web search, code interpreter, file search fully integrated                                             |
+| **Advanced Tools**          | 🟡 **Mostly Complete** | Computer Use tool complete (limited to compatible models); Custom Function tools complete; MCP partial |
+| **Streaming Response**      | ✅ **Complete**        | Comprehensive event handling and status display                                                        |
+| **Rich Content Output**     | 🟡 **Partial**         | Text rendering complete; annotations, media incomplete                                                 |
+| **Conversation Management** | 🟡 **Partial**         | Local storage complete; API integration missing                                                        |
+| **Advanced Parameters**     | ✅ **Complete**        | All parameters properly sent in requests                                                               |
+| **Include Parameters**      | 🟡 **Partial**         | Several include options supported (web/file/logprobs/reasoning/image URLs)                             |
 
 ### 4.2. Priority Implementation Roadmap
 
@@ -328,7 +334,6 @@ Computer Use Preview: ✅ 95% Complete. Full API integration and UI implemented,
 1. Implement annotation parsing and rendering
 2. Direct file upload capabilities in `input` (in addition to `file_id` references)
 3. MCP approval flow and server tool discovery
-4. Complete Computer Use tool by adding streaming event handling
 
 **Phase 3: Advanced Features**
 

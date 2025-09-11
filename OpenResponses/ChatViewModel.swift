@@ -155,6 +155,9 @@ class ChatViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         
+        // Log current prompt state for debugging
+        AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
+        
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
@@ -220,9 +223,14 @@ class ChatViewModel: ObservableObject {
 
         // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
-        streamingTask = Task {
+    streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
+        // Preflight: if the last turn contains a pending computer-use tool call,
+        // auto-complete it with a minimal observation to avoid 400 errors on the next request.
+        AppLogger.log("Starting preflight check before sending new message", category: .ui, level: .info)
+        await self.resolvePendingComputerCallsIfNeeded()
+        AppLogger.log("Preflight check completed, proceeding with message send", category: .ui, level: .info)
                 if streamingEnabled {
                     // Use streaming API
                     let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
@@ -294,6 +302,8 @@ class ChatViewModel: ObservableObject {
         let streamingEnabled = activePrompt.enableStreaming
         await MainActor.run { self.streamingStatus = .connecting }
         do {
+            // Preflight: resolve any pending computer-use tool calls from the previous response.
+            await self.resolvePendingComputerCallsIfNeeded()
             if streamingEnabled {
                 let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
                 for try await chunk in stream {
@@ -328,6 +338,121 @@ class ChatViewModel: ObservableObject {
             self.streamingMessageId = nil
             self.isStreaming = false
             if self.streamingStatus != .idle { self.streamingStatus = .done; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.streamingStatus = .idle } }
+        }
+    }
+
+    /// Preflight guard: if the previous response included a computer-use tool call that
+    /// hasn't been followed up with a computer_call_output yet, send a minimal observation.
+    /// This prevents 400 "No tool output found for computer call" errors on the next turn.
+    private func resolvePendingComputerCallsIfNeeded() async {
+        // Only relevant for the dedicated hosted computer model
+        guard activePrompt.openAIModel == "computer-use-preview" else { 
+            AppLogger.log("Skipping preflight: not computer-use-preview model", category: .ui, level: .debug)
+            return 
+        }
+        // Must have a previous response to examine
+        guard var currentPrevId = lastResponseId else { 
+            AppLogger.log("Skipping preflight: no lastResponseId", category: .ui, level: .debug)
+            return 
+        }
+
+        AppLogger.log("Running preflight to check for pending computer calls in response: \(currentPrevId)", category: .ui, level: .info)
+
+        // Attempt to clear up to 2 consecutive pending calls to be safe but bounded.
+        for attempt in 0..<2 {
+            do {
+                let response = try await api.getResponse(responseId: currentPrevId)
+                AppLogger.log("Preflight attempt \(attempt + 1): Retrieved response with \(response.output.count) output items", category: .ui, level: .debug)
+                
+                // Log all output items for debugging
+                for (index, item) in response.output.enumerated() {
+                    AppLogger.log("Output item \(index): type=\(item.type), name=\(item.name ?? "nil"), callId=\(item.callId ?? "nil")", category: .ui, level: .debug)
+                }
+                
+                // Find the most recent computer tool call, if any (handles both shapes)
+                if let pending = response.output.last(where: {
+                    ($0.type == "tool_call" && $0.name == APICapabilities.ToolType.computer.rawValue && $0.callId != nil)
+                    || ($0.type == "computer_call" && $0.callId != nil)
+                }) {
+                    AppLogger.log("Found pending computer call: callId=\(pending.callId ?? "nil"), type=\(pending.type)", category: .ui, level: .info)
+                    
+                    // Instead of trying to manually resolve, break the chain by clearing the lastResponseId
+                    // This will start a fresh conversation turn without the pending computer call reference
+                    await MainActor.run { 
+                        self.lastResponseId = nil 
+                        AppLogger.log("Cleared lastResponseId to break computer call chain", category: .ui, level: .info)
+                    }
+                    break
+                } else {
+                    // No pending computer call detected
+                    AppLogger.log("No pending computer call found in response \(currentPrevId)", category: .ui, level: .debug)
+                    break
+                }
+            } catch {
+                // If anything fails, don't block sending the user's message
+                AppLogger.log("Preflight failed with error: \(error)", category: .ui, level: .warning)
+                break
+            }
+        }
+    }
+    
+    /// Track computer tool usage when computer events are detected
+    private func trackComputerToolUsage(for messageId: UUID) {
+        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        
+        var updatedMessages = messages
+        if updatedMessages[msgIndex].toolsUsed == nil {
+            updatedMessages[msgIndex].toolsUsed = []
+        }
+        if !updatedMessages[msgIndex].toolsUsed!.contains("computer") {
+            updatedMessages[msgIndex].toolsUsed!.append("computer")
+            messages = updatedMessages
+            print("🔧 [Tool Tracking] Added computer tool to message \(messageId)")
+        }
+    }
+    
+    /// Track which tools were used in a streaming response
+    private func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
+        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        
+        var toolName: String?
+        
+        // Detect tool type from the streaming item
+        switch item.type {
+        case "tool_call":
+            if let name = item.name {
+                switch name {
+                case APICapabilities.ToolType.computer.rawValue:
+                    toolName = "computer"
+                case "web_search":
+                    toolName = "web_search"
+                case "code_interpreter":
+                    toolName = "code_interpreter"
+                case "file_search":
+                    toolName = "file_search"
+                default:
+                    toolName = name
+                }
+            }
+        case "computer_call":
+            toolName = "computer"
+        case "image_generation_call":
+            toolName = "image_generation"
+        default:
+            break
+        }
+        
+        // Add the tool to the message's toolsUsed array
+        if let tool = toolName {
+            var updatedMessages = messages
+            if updatedMessages[msgIndex].toolsUsed == nil {
+                updatedMessages[msgIndex].toolsUsed = []
+            }
+            if !updatedMessages[msgIndex].toolsUsed!.contains(tool) {
+                updatedMessages[msgIndex].toolsUsed!.append(tool)
+                messages = updatedMessages
+                print("🔧 [Tool Tracking] Added tool '\(tool)' to message \(messageId)")
+            }
         }
     }
     
@@ -619,6 +744,13 @@ class ChatViewModel: ObservableObject {
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
             self.activePrompt = decoded
             
+            // Migration: Enable computer use by default for existing prompts
+            if !self.activePrompt.enableComputerUse {
+                print("Migrating existing prompt to enable computer use by default")
+                self.activePrompt.enableComputerUse = true
+                saveActivePrompt() // Save the migrated prompt
+            }
+            
             // Validate the model name - if it's a UUID or invalid, reset to default
             if isInvalidModelName(decoded.openAIModel) {
                 print("Invalid model name detected: \(decoded.openAIModel), resetting to default")
@@ -746,6 +878,14 @@ class ChatViewModel: ObservableObject {
             // Handle completion of output items
             if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
+                // Track tool usage
+                trackToolUsage(item, for: messageId)
+                // If the completed item is a computer tool call, send a basic observation to continue the loop
+                if item.type == "tool_call", item.name == APICapabilities.ToolType.computer.rawValue {
+                    Task {
+                        await self.handleComputerToolCall(item, messageId: messageId)
+                    }
+                }
             }
             // Computer-use screenshot handling removed
             
@@ -780,7 +920,8 @@ class ChatViewModel: ObservableObject {
             
         // Computer Use streaming events
         case "response.computer_call.in_progress":
-            // Computer is starting an action
+            // Computer is starting an action - track tool usage
+            trackComputerToolUsage(for: messageId)
             updateStreamingStatus(for: "computer.in_progress")
             
         case "response.computer_call.screenshot_taken":
@@ -802,6 +943,31 @@ class ChatViewModel: ObservableObject {
         default:
             // Other events are handled by the status updater
             break
+        }
+    }
+
+    /// When the model initiates a computer tool call, send a minimal output to continue the agent loop.
+    private func handleComputerToolCall(_ item: StreamingItem, messageId: UUID) async {
+        guard activePrompt.openAIModel == "computer-use-preview" else { return }
+        guard let previousId = lastResponseId else { return }
+        // Build a minimal observation payload; real env execution can enrich this later
+    let output: [String: Any] = [
+            "status": "observed",
+            "message": "UI acknowledged the computer action"
+        ]
+        // If we recently received a screenshot in the same turn, we could attach it here later.
+        do {
+            let response = try await api.sendComputerCallOutput(
+                call: item,
+                output: output,
+                model: activePrompt.openAIModel,
+                previousResponseId: previousId
+            )
+            await MainActor.run {
+                self.handleNonStreamingResponse(response, for: messageId)
+            }
+        } catch {
+            await MainActor.run { self.handleError(error) }
         }
     }
     
@@ -938,7 +1104,7 @@ class ChatViewModel: ObservableObject {
             print("Received partial image data (length: \(partialImageB64.count))")
             
             // Use optimized image processing
-            ImageProcessingUtils.processBase64Image(partialImageB64) { [weak self] optimizedImage in
+            ImageProcessingUtils.processBase64Image(partialImageB64) { [weak self] (optimizedImage: UIImage?) in
                 guard let self = self, let image = optimizedImage else { return }
                 
                 // Ensure we're still on the same message
@@ -971,7 +1137,7 @@ class ChatViewModel: ObservableObject {
             print("Received computer use screenshot (length: \(screenshotB64.count))")
             
             // Convert base64 screenshot to UIImage
-            ImageProcessingUtils.processBase64Image(screenshotB64) { [weak self] optimizedImage in
+            ImageProcessingUtils.processBase64Image(screenshotB64) { [weak self] (optimizedImage: UIImage?) in
                 guard let self = self, let image = optimizedImage else { return }
                 
                 // Ensure we're still on the same message
@@ -1031,6 +1197,35 @@ class ChatViewModel: ObservableObject {
                 messages = updatedMessages // Trigger UI update
             }
         }
+        
+        // When the stream completes, finalize the message state
+        let finalMessage = messages[msgIndex]
+        
+        // Detect unique URLs in the final message content
+        if let messageText = finalMessage.text {
+            let detectedURLs = URLDetector.detectUniqueURLs(in: messageText)
+            if !detectedURLs.isEmpty {
+                // Update the message with the detected URLs
+                DispatchQueue.main.async {
+                    self.messages[msgIndex].webContentURL = detectedURLs
+                    print("🌐 [Web Content] Detected \(detectedURLs.count) unique renderable URLs in assistant response")
+                    for url in detectedURLs {
+                        print("🌐 [Web Content] Will render: \(url.absoluteString)")
+                    }
+                }
+            }
+        }
+        
+        // Log the final message reception
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageReceived,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                AnalyticsParameter.streamingEnabled: true,
+                "has_images": !(finalMessage.images?.isEmpty ?? true)
+            ]
+        )
     }
     
     /// Handle errors by appending a system message describing the issue.

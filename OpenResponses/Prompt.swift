@@ -142,7 +142,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             selectedVectorStoreIds: "",
             enableMCPTool: false,
             enableCustomTool: false,
-            enableComputerUse: false,
+            enableComputerUse: true,
             mcpServerLabel: "paypal",
             mcpServerURL: "https://mcp.paypal.com/sse",
             mcpHeaders: "{\"Authorization\": \"Bearer s\"}",

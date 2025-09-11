@@ -391,7 +391,40 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         // 3. Build the 'tools' array using the new Codable models
-        let tools = buildTools(for: prompt, isStreaming: stream)
+        var tools = buildTools(for: prompt, isStreaming: stream)
+        // Ensure the computer tool is present for the dedicated CUA model
+        if prompt.openAIModel == "computer-use-preview" && !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
+            // Add default computer tool config similar to buildTools
+            let environment: String
+            #if os(iOS)
+            environment = "browser"
+            #elseif os(macOS)
+            environment = "mac"
+            #else
+            environment = "browser"
+            #endif
+            let screenSize: CGSize
+            #if os(iOS)
+            screenSize = CGSize(width: 440, height: 956)
+            #elseif os(macOS)
+            screenSize = CGSize(width: 1920, height: 1080)
+            #else
+            screenSize = CGSize(width: 1920, height: 1080)
+            #endif
+            tools.append(.computer(
+                environment: environment,
+                displayWidth: Int(screenSize.width),
+                displayHeight: Int(screenSize.height)
+            ))
+        }
+        // If the selected model is the dedicated computer-use model, restrict tools to only the computer tool
+        if prompt.openAIModel == "computer-use-preview" {
+            tools = tools.filter { tool in
+                if case .computer = tool { return true }
+                return false
+            }
+        }
+        AppLogger.log("Built tools array: \(tools.count) tools - \(tools)", category: .openAI, level: .info)
         if !tools.isEmpty {
             do {
                 let encoder = JSONEncoder()
@@ -399,10 +432,13 @@ class OpenAIService: OpenAIServiceProtocol {
                 let toolsData = try encoder.encode(tools)
                 if let toolsJSON = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
                     requestObject["tools"] = toolsJSON
+                    AppLogger.log("Successfully added tools to request", category: .openAI, level: .info)
                 }
             } catch {
                 AppLogger.log("Failed to encode tools: \(error)", category: .openAI, level: .error)
             }
+        } else {
+            AppLogger.log("No tools to include in request", category: .openAI, level: .info)
         }
         
         // 3.5. Build the 'include' array from boolean properties
@@ -412,13 +448,17 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         // 4. Build and merge other top-level parameters
-        let parameters = buildParameters(for: prompt)
+        var parameters = buildParameters(for: prompt)
+        // CUA requirement: truncation must be "auto"
+        if prompt.openAIModel == "computer-use-preview" {
+            parameters["truncation"] = "auto"
+        }
         for (key, value) in parameters {
             requestObject[key] = value
         }
 
         // 5. Build the 'reasoning' object if applicable
-        if let reasoning = buildReasoningObject(for: prompt) {
+    if let reasoning = buildReasoningObject(for: prompt) {
             requestObject["reasoning"] = reasoning
         }
 
@@ -537,6 +577,8 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Assembles the `tools` array for the request, checking for model compatibility.
     private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [APICapabilities.Tool] {
         var tools: [APICapabilities.Tool] = []
+        
+        AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
         let compatibilityService = ModelCompatibilityService.shared
 
         if prompt.enableWebSearch, compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -563,6 +605,7 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
+            AppLogger.log("Computer tool is enabled and supported", category: .openAI, level: .info)
             // Computer Use tool with proper API parameters
             // Detect environment based on platform
             let environment: String
@@ -574,14 +617,24 @@ class OpenAIService: OpenAIServiceProtocol {
             environment = "browser"  // Default to browser for other platforms
             #endif
             
-            // Get screen dimensions
-            let screenSize = getScreenSize()
+            // Get screen dimensions (use reasonable defaults to avoid main thread issues)
+            let screenSize: CGSize
+            #if os(iOS)
+            screenSize = CGSize(width: 440, height: 956) // Default iPhone size
+            #elseif os(macOS)
+            screenSize = CGSize(width: 1920, height: 1080) // Default Mac size
+            #else
+            screenSize = CGSize(width: 1920, height: 1080) // Default size
+            #endif
             
             tools.append(.computer(
                 environment: environment,
                 displayWidth: Int(screenSize.width),
                 displayHeight: Int(screenSize.height)
             ))
+            AppLogger.log("Added computer tool with environment=\(environment), width=\(Int(screenSize.width)), height=\(Int(screenSize.height))", category: .openAI, level: .info)
+        } else {
+            AppLogger.log("Computer tool not added: enabled=\(prompt.enableComputerUse), supported=\(compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming))", category: .openAI, level: .info)
         }
 
         if prompt.enableCustomTool, compatibilityService.isToolSupported(APICapabilities.ToolType.function, for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -603,27 +656,6 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         return tools
-    }
-    
-    /// Get the current screen size for the computer use tool
-    private func getScreenSize() -> CGSize {
-        #if os(iOS)
-        // For iOS, get the main screen bounds
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
-            return CGSize(width: 375, height: 667) // Default iPhone size
-        }
-        return window.screen.bounds.size
-        #elseif os(macOS)
-        // For macOS, get the main screen frame
-        guard let mainScreen = NSScreen.main else {
-            return CGSize(width: 1920, height: 1080) // Default size
-        }
-        return mainScreen.frame.size
-        #else
-        // Default fallback
-        return CGSize(width: 1920, height: 1080)
-        #endif
     }
 
     /// Gathers various API parameters based on model compatibility.
@@ -686,17 +718,26 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Constructs the `reasoning` object for models that support it.
     private func buildReasoningObject(for prompt: Prompt) -> [String: Any]? {
         let compatibilityService = ModelCompatibilityService.shared
+        // Special-case: computer-use-preview supports reasoning.summary without effort
+        if prompt.openAIModel == "computer-use-preview" {
+            if !prompt.reasoningSummary.isEmpty {
+                return ["summary": prompt.reasoningSummary]
+            } else {
+                return nil
+            }
+        }
+
         guard compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel), !prompt.reasoningEffort.isEmpty else {
             return nil
         }
-        
+
         var reasoningObject: [String: Any] = ["effort": prompt.reasoningEffort]
-        
+
         // Add reasoning summary for specific reasoning models
         if (prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5")) && !prompt.reasoningSummary.isEmpty {
             reasoningObject["summary"] = prompt.reasoningSummary
         }
-        
+
         return reasoningObject
     }
     
@@ -902,6 +943,94 @@ class OpenAIService: OpenAIServiceProtocol {
             return try JSONDecoder().decode(OpenAIResponse.self, from: data)
         } catch {
             print("Function output response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+
+    /// Sends a computer-use call output back to the API to continue an agentic turn.
+    /// The input mirrors the function-call follow-up pattern but uses computer_call types.
+    func sendComputerCallOutput(
+        call: StreamingItem,
+        output: [String: Any],
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        // Compose the original computer call echo and our output
+        // Parse arguments to extract the action if available
+        var action: [String: Any] = ["type": "screenshot"]  // Default action
+        if let argumentsString = call.arguments, !argumentsString.isEmpty, argumentsString != "{}" {
+            if let argumentsData = argumentsString.data(using: .utf8),
+               let parsedArgs = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] {
+                action = parsedArgs
+            }
+        }
+        
+        let computerCallMessage: [String: Any] = [
+            "type": "computer_call",
+            "call_id": call.callId ?? "",
+            "action": action
+        ]
+
+        let computerOutputMessage: [String: Any] = [
+            "type": "computer_call_output",
+            "call_id": call.callId ?? "",
+            "output": "Auto-resolved pending computer call before new user message."
+        ]
+
+        var requestObject: [String: Any] = [
+            "model": model,
+            "store": true,
+            "input": [computerCallMessage, computerOutputMessage]
+        ]
+
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
+
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            AppLogger.log("OpenAI Computer Output Request JSON: \(jsonString)", category: .openAI, level: .debug)
+        }
+
+        var request = URLRequest(url: apiURL)
+        request.timeoutInterval = 120
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        AnalyticsService.shared.logAPIRequest(
+            url: apiURL,
+            method: "POST",
+            headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+            body: jsonData
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+
+        AnalyticsService.shared.logAPIResponse(
+            url: apiURL,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+
+        if httpResponse.statusCode != 200 {
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, message)
+        }
+
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
             throw OpenAIServiceError.invalidResponseData
         }
     }

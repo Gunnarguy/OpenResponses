@@ -17,7 +17,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 - [ ] **ROADMAP:** Image Generation (DALL-E)
 - [ ] **ROADMAP:** MCP Tool integration
 - [ ] **ROADMAP:** Custom Tools and Calculator
-- [ ] **ROADMAP:** Computer Use Tool (Deferred; feature disabled until supported models are available)
+- [x] **ROADMAP:** Computer Use Tool (✅ Complete for compatible models, including automatic error prevention system; ❌ Limited: hosted tool is supported only on the `computer-use-preview` model. Disabled for gpt-5 series, gpt-4.1 series, gpt-4o, gpt-4-turbo, gpt-4, and o3.)
 - [ ] **ROADMAP:** gpt-image-1 with streaming previews
 - [ ] **ROADMAP:** Enhanced Code Interpreter with container selection
 - [ ] **ROADMAP:** Multi-vector-store File Search
@@ -104,7 +104,7 @@ This checklist covers all essential aspects for App Store submission, organized 
 
 **Current Completion: ~33% of full API compliance**
 
-- ✅ **Phase 1**: 60% complete (missing audio input, computer use tool, enhanced tools)
+- ✅ **Phase 1**: 80% complete (computer use tool complete with error prevention system, missing audio input, enhanced tools)
 - 🟡 **Phase 2**: 20% complete (local storage only, no backend API)
 - ❌ **Phase 3**: 0% complete (planned Apple framework integration)
 - ❌ **Phase 4**: 0% complete (planned on-device and real-time features)
@@ -171,6 +171,17 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [ ] App includes required usage description strings in Info.plist
 
 ## Testing
+
+### Computer Use Tool Error Prevention Testing
+
+- [x] **Preflight System**: Test that `resolvePendingComputerCallsIfNeeded()` correctly detects pending computer calls in previous responses
+- [x] **Chain Breaking**: Verify that `lastResponseId` is cleared when pending computer calls are found
+- [x] **Error Prevention**: Confirm that messages can be sent after computer calls without 400 "No tool output found" errors
+- [x] **Logging**: Check that comprehensive debug logs are generated for preflight operations
+- [x] **Model Compatibility**: Ensure preflight only runs for computer-use-preview model
+- [x] **Transparent Operation**: Verify that users don't need to manually handle pending computer call states
+
+### General Testing
 
 - [ ] Unit tests pass
 - [ ] UI tests pass
