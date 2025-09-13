@@ -127,6 +127,10 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [ ] Memory usage is reasonable
 - [ ] Battery usage is optimized
 
+### Streaming & Resilience
+
+- [ ] Transient streaming errors: Simulate a model_error/response.failed during streaming and verify the app auto-retries once (with short backoff), preserves the assistant placeholder, avoids duplicate error spam, and uses the original previous_response_id for the retry. Confirm proper cleanup if the retry also fails.
+
 ## Error Handling
 
 - [ ] Error messages are user-friendly

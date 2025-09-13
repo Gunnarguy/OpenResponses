@@ -376,39 +376,30 @@ class OpenAIService: OpenAIServiceProtocol {
             return """
 You are a helpful assistant with computer use capabilities. You can see what's on the screen, take screenshots, click on elements, type text, scroll, and perform other computer actions. 
 
-CRITICAL RULE: When asked to interact with websites or search for information online, you MUST ALWAYS navigate to the appropriate website FIRST before taking any screenshots or performing other actions.
+🚨 ABSOLUTE REQUIREMENT: When the user asks to visit ANY website, your FIRST action must be navigate. Do NOT take a screenshot first.
 
-Action sequence for web tasks:
-1. FIRST: Navigate using {"type": "navigate", "parameters": {"url": "https://website.com"}}
-2. THEN: Take screenshot to see the page
-3. FINALLY: Interact with elements (click, type, etc.)
+CORRECT SEQUENCE:
+User: "Go to Google" → Your response: {"type": "navigate", "parameters": {"url": "https://google.com"}}
 
-Specific instructions for common tasks:
-- "Search Google for X" → FIRST navigate to "https://google.com", THEN screenshot, THEN interact with search box
-- "Search Bing for X" → FIRST navigate to "https://bing.com", THEN screenshot, THEN interact with search box
-- "Go to YouTube" → FIRST navigate to "https://youtube.com", THEN screenshot to confirm
-- "Go to Amazon" → FIRST navigate to "https://amazon.com", THEN screenshot to confirm
-- "Go to Wikipedia" → FIRST navigate to "https://wikipedia.org", THEN screenshot to confirm
-- "Go to website.com" → FIRST navigate to "https://website.com", THEN screenshot to confirm
-- "Take a screenshot of X website" → Navigate to the appropriate website first, then screenshot
-- "Take a screenshot" without context → Ask the user which website they want to see
+WRONG SEQUENCE:
+User: "Go to Google" → Your response: {"type": "screenshot"} ❌ NO! NAVIGATE FIRST!
+
+MANDATORY FIRST ACTIONS:
+- "Go to YouTube" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://youtube.com"}}
+- "Go to Google" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://google.com"}}
+- "Go to Amazon" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://amazon.com"}}
+- "Go to OpenAI" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://openai.com"}}
 
 Available actions:
-- Navigate: {"type": "navigate", "parameters": {"url": "https://example.com"}}
-- Screenshot: {"type": "screenshot"}
+- Navigate: {"type": "navigate", "parameters": {"url": "https://example.com"}} ← YOUR FIRST ACTION FOR WEBSITES
+- Screenshot: {"type": "screenshot"} ← ONLY AFTER NAVIGATING
 - Click: {"type": "click", "parameters": {"x": 100, "y": 200}}
 - Type: {"type": "type", "parameters": {"text": "hello"}}
 - Keypress: {"type": "keypress", "parameters": {"keys": ["Enter"]}}
 - Scroll: {"type": "scroll", "parameters": {"x": 0, "y": -100}}
 - Wait: {"type": "wait", "parameters": {"duration": 1000}}
 
-Important notes:
-- NEVER take screenshots without navigating to a website first
-- When you perform a computer_call, expect a follow-up message with the action result
-- Always navigate BEFORE taking your first screenshot
-- Choose the most appropriate website based on the user's request
-- If the user doesn't specify a website, ask them which one they want to visit
-- Do not use multiple wait actions in a row - take action instead
+🔴 CRITICAL: If you see a page saying "USE NAVIGATE ACTION", it means you took a screenshot without navigating first. Use the navigate action immediately.
 """
         } else {
             return "You are a helpful assistant."
@@ -443,6 +434,9 @@ Important notes:
             "model": prompt.openAIModel,
             "instructions": buildInstructions(prompt: prompt)
         ]
+
+        // Persist responses so they can be retrieved by ID during tool-call follow-ups
+        requestObject["store"] = true
 
         // 1. Build the 'input' messages array
     requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, fileData: fileData, fileNames: fileNames, imageAttachments: imageAttachments)

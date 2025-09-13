@@ -23,6 +23,17 @@ class ComputerService: NSObject, WKNavigationDelegate {
         super.init()
         setupWebView()
     }
+
+    /// Returns the current URL loaded in the WebView, if any.
+    func currentURL() -> String? {
+        return webView?.url?.absoluteString
+    }
+
+    /// True when no meaningful page is loaded yet (nil or about:blank)
+    func isOnBlankPage() -> Bool {
+        guard let url = webView?.url?.absoluteString else { return true }
+        return url.isEmpty || url == "about:blank"
+    }
     
     /// Configures and sets up the off-screen `WKWebView`.
     private func setupWebView() {
@@ -163,7 +174,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         case "screenshot":
             // If no page is loaded yet, attempt to navigate to a sensible URL if provided in parameters.
             // This helps when the model issues a bare "screenshot" as the first action.
-            if webView.url == nil {
+            if webView.url == nil || webView.url?.absoluteString == "about:blank" {
                 if let urlString = action.parameters["url"] as? String, let url = URL(string: urlString) {
                     try await navigate(to: url)
                 } else {
@@ -174,14 +185,15 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     <html><head><title>Where would you like to go?</title>
                     <style>body{font-family:system-ui;padding:40px;text-align:center;background:#f5f5f5;}
                     h1{color:#333;}.suggestion{margin:10px;padding:15px;background:white;border-radius:8px;display:inline-block;}
+                    .warning{color:#d73502;font-weight:bold;margin:20px;}
                     </style></head>
                     <body>
-                    <h1>🌐 Where would you like to go?</h1>
-                    <p>Please specify which website you'd like to visit!</p>
-                    <div class="suggestion">Try: "Go to YouTube"</div>
-                    <div class="suggestion">Try: "Search Google for cats"</div>
-                    <div class="suggestion">Try: "Go to Wikipedia"</div>
-                    <div class="suggestion">Try: "Go to Amazon"</div>
+                    <h1>🚫 USE NAVIGATE ACTION</h1>
+                    <div class="warning">DO NOT CLICK - Use navigate action instead:</div>
+                    <p>{"type": "navigate", "parameters": {"url": "https://google.com"}}</p>
+                    <div class="suggestion">Navigate to Google</div>
+                    <div class="suggestion">Navigate to YouTube</div>
+                    <div class="suggestion">Navigate to Amazon</div>
                     </body></html>
                     """
                     webView.loadHTMLString(helpHTML, baseURL: nil)

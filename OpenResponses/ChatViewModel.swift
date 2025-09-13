@@ -36,6 +36,41 @@ class ChatViewModel: ObservableObject {
     private var streamingTask: Task<Void, Never>?
     private lazy var networkMonitor = NetworkMonitor.shared
     
+    /// Tracks retry context for a streaming request keyed by assistant message ID.
+    /// Used to transparently retry once when the streaming API emits a transient model_error.
+    private struct StreamRetryContext {
+        var remainingAttempts: Int
+        var basePreviousResponseId: String?
+        var userText: String
+        var attachments: [[String: Any]]?
+        var imageAttachments: [InputImage]?
+        var retryScheduled: Bool = false
+    }
+    private var retryContextByMessageId: [UUID: StreamRetryContext] = [:]
+    
+    /// Fallback mapping from common site keywords to canonical URLs used when the model
+    /// requests a first-step screenshot without having navigated yet (e.g., user says "Google").
+    /// This keeps the flow moving without blank/"about:blank" screenshots.
+    private static let keywordURLMap: [String: String] = [
+        // Core examples emphasized in system instructions
+        "google": "https://google.com",
+        "youtube": "https://youtube.com",
+        "amazon": "https://amazon.com",
+        "openai": "https://openai.com",
+        // Helpful additions
+        "bing": "https://bing.com",
+        "github": "https://github.com",
+        "x": "https://x.com",
+        "twitter": "https://twitter.com",
+        "reddit": "https://reddit.com",
+        "wikipedia": "https://wikipedia.org",
+        "apple": "https://apple.com",
+        "facebook": "https://facebook.com",
+        "instagram": "https://instagram.com",
+        "linkedin": "https://linkedin.com",
+        "nytimes": "https://nytimes.com"
+    ]
+    
     // MARK: - Computer Use Circuit Breaker
     private var consecutiveWaitCount: Int = 0
     private let maxConsecutiveWaits: Int = 3
@@ -189,7 +224,7 @@ class ChatViewModel: ObservableObject {
         let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
         messages.append(userMsg)
         
-        // Prepare a placeholder for the assistant's streaming response
+    // Prepare a placeholder for the assistant's streaming response
         let assistantMsgId = UUID()
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
@@ -244,6 +279,20 @@ class ChatViewModel: ObservableObject {
     // Compose final user text (no audio flow)
     let finalUserText = trimmed
 
+        // Capture the base previous_response_id for resilience. During streaming, lastResponseId will
+        // change to the new streaming response ID; we keep this original value to enable safe retries.
+        let basePreviousIdForThisSend = lastResponseId
+        // Initialize a single retry attempt for transient model errors (only when streaming is enabled)
+        if activePrompt.enableStreaming {
+            retryContextByMessageId[assistantMsgId] = StreamRetryContext(
+                remainingAttempts: 1,
+                basePreviousResponseId: basePreviousIdForThisSend,
+                userText: finalUserText,
+                attachments: attachments,
+                imageAttachments: imageAttachments
+            )
+        }
+
         // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
     streamingTask = Task {
@@ -296,6 +345,14 @@ class ChatViewModel: ObservableObject {
             }
             // Ensure we clear the streaming ID when the task is done, after do-catch
             await MainActor.run {
+                // If a retry is in progress for this message, skip cleanup/logging here to avoid
+                // stomping the retry's state (flicker) and duplicate analytics.
+                let retryActive = self.retryContextByMessageId[assistantMsgId]?.retryScheduled == true
+                guard !retryActive else {
+                    print("Streaming aborted; retry in progress for message: \(assistantMsgId)")
+                    return
+                }
+
                 // Log the final streamed message
                 if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
                     print("Finished streaming response: \(finalMessage.text ?? "No text content")")
@@ -341,10 +398,10 @@ class ChatViewModel: ObservableObject {
         
         var resolvedAny = false
         var safetyCounter = 0
-        while safetyCounter < 8 { // prevent infinite loops
+        while safetyCounter < 5 { // Reduced from 8 to 5 to prevent infinite loops
             safetyCounter += 1
             guard let prevId = lastResponseId else { break }
-            AppLogger.log("[CUA] resolveAllPending: Getting response for prevId=\(prevId)", category: .openAI, level: .info)
+            AppLogger.log("[CUA] resolveAllPending: Getting response for prevId=\(prevId) (attempt \(safetyCounter)/5)", category: .openAI, level: .info)
             let full: OpenAIResponse
             do { full = try await api.getResponse(responseId: prevId) } catch {
                 AppLogger.log("[CUA] getResponse failed while resolving pending calls: \(error)", category: .openAI, level: .warning)
@@ -361,15 +418,47 @@ class ChatViewModel: ObservableObject {
             
             guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
             
-            // HEURISTIC: If we get another tool call but the message already has an image,
-            // assume the primary request is fulfilled and halt further actions to prevent loops.
+            // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
+            // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
             if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
-                AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains an image. Halting further tool calls to prevent loops.", category: .openAI, level: .info)
-                await MainActor.run { 
-                    self.streamingStatus = .idle // Final state reset
-                    self.lastResponseId = nil // Clear to prevent future loops
+                // Check if this is a screenshot action - if so, halt to prevent loops
+                if let action = computerCallItem.action,
+                   let actionType = action["type"]?.value as? String,
+                   actionType == "screenshot" {
+                    AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains screenshot and another screenshot was requested. Halting to prevent screenshot loops.", category: .openAI, level: .info)
+                    await MainActor.run { 
+                        self.streamingStatus = .idle // Final state reset
+                        self.lastResponseId = nil // Clear to prevent future loops
+                    }
+                    break // Skip this tool call and exit the loop
                 }
-                break // Skip this tool call and exit the loop
+                
+                // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
+                if safetyCounter >= 3, let action = computerCallItem.action,
+                   let actionType = action["type"]?.value as? String,
+                   (actionType == "click" || actionType == "type") {
+                    AppLogger.log("[CUA] resolveAllPending: Loop prevention: Too many actions (\(safetyCounter)) without progress. Halting.", category: .openAI, level: .warning)
+                    await MainActor.run { 
+                        self.streamingStatus = .idle
+                        self.lastResponseId = nil
+                    }
+                    break
+                }
+                
+                // URGENT INTERVENTION: If still on about:blank after first action, stop immediately
+                if safetyCounter >= 2, let action = computerCallItem.action,
+                   let actionType = action["type"]?.value as? String,
+                   actionType == "click" {
+                    AppLogger.log("[CUA] resolveAllPending: URGENT: Still clicking on about:blank after attempt \(safetyCounter). AI is not using navigate action properly. Stopping.", category: .openAI, level: .error)
+                    await MainActor.run { 
+                        self.streamingStatus = .idle
+                        self.lastResponseId = nil
+                    }
+                    break
+                }
+                
+                // Allow navigation, clicks, typing, etc. even if there's already an image
+                AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot action: \(String(describing: computerCallItem.action))", category: .openAI, level: .info)
             }
             
             AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
@@ -1054,38 +1143,28 @@ class ChatViewModel: ObservableObject {
         // Handle different types of streaming events
         switch chunk.type {
         case "error":
-            // Handle API errors during streaming
+            // Handle API errors during streaming; attempt an automatic retry if eligible.
             let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
-            
             AppLogger.log("🚨 [Streaming Error] \(errorMessage)", category: .openAI, level: .error)
-            
-            // Add an error message to the UI
-            let systemMessage = ChatMessage(
-                role: .system,
-                text: "⚠️ Error: \(errorMessage)"
-            )
-            messages.append(systemMessage)
-            
-            // CRITICAL: Complete streaming state reset on error
+            if attemptStreamingRetry(for: messageId, reason: errorMessage) {
+                // A retry has been scheduled; avoid surfacing a hard error to the user here.
+                return
+            }
+            // If not retrying, surface the error and reset state.
+            messages.append(ChatMessage(role: .system, text: "⚠️ Error: \(errorMessage)"))
             isStreaming = false
             streamingStatus = .idle
             streamingMessageId = nil
             isAwaitingComputerOutput = false
             
         case "response.failed":
-            // Handle failed responses
+            // Handle failed responses; attempt an automatic retry if eligible.
             let errorMessage = chunk.response?.error?.message ?? "The request failed"
-            
             AppLogger.log("🚨 [Response Failed] \(errorMessage)", category: .openAI, level: .error)
-            
-            // Add an error message to the UI  
-            let systemMessage = ChatMessage(
-                role: .system,
-                text: "⚠️ Request failed: \(errorMessage)"
-            )
-            messages.append(systemMessage)
-            
-            // CRITICAL: Complete streaming state reset on failure
+            if attemptStreamingRetry(for: messageId, reason: errorMessage) {
+                return
+            }
+            messages.append(ChatMessage(role: .system, text: "⚠️ Request failed: \(errorMessage)"))
             isStreaming = false
             streamingStatus = .idle
             streamingMessageId = nil
@@ -1196,6 +1275,97 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Attempts to transparently retry a failed streaming request once for transient errors.
+    /// Returns true if a retry was scheduled; false if not eligible (no retry context or already retried).
+    private func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
+        guard var ctx = retryContextByMessageId[messageId], ctx.remainingAttempts > 0 else { return false }
+
+        // Only retry if no text has been streamed yet (avoid duplicating partial outputs)
+        if let idx = messages.firstIndex(where: { $0.id == messageId }), let text = messages[idx].text, !text.isEmpty {
+            return false
+        }
+
+        // Decrement attempts and persist; mark retry as scheduled to prevent duplicate notes
+        ctx.remainingAttempts -= 1
+        if !ctx.retryScheduled {
+            let retryNote = ChatMessage(role: .system, text: "⚠️ Temporary issue from the model (\(reason)). Retrying…")
+            messages.append(retryNote)
+        }
+        ctx.retryScheduled = true
+        retryContextByMessageId[messageId] = ctx
+
+        // Cancel the current stream and start a fresh one with the original previous_response_id
+        streamingTask?.cancel()
+        streamingMessageId = messageId
+        isStreaming = true
+        streamingStatus = .connecting
+
+        // Backoff briefly to avoid immediate repeat failures
+        streamingTask = Task { [ctx, weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000) // 800ms backoff
+            guard let self = self else { return }
+            do {
+                let stream = self.api.streamChatRequest(
+                    userMessage: ctx.userText,
+                    prompt: self.activePrompt,
+                    attachments: ctx.attachments,
+                    fileData: nil,
+                    fileNames: nil,
+                    imageAttachments: ctx.imageAttachments,
+                    previousResponseId: ctx.basePreviousResponseId
+                )
+                for try await chunk in stream {
+                    if Task.isCancelled { await MainActor.run { self.handleError(CancellationError()) }; break }
+                    await MainActor.run { self.handleStreamChunk(chunk, for: messageId) }
+                }
+            } catch {
+                // If retry itself throws (network, etc.), surface the error and reset state
+                await MainActor.run {
+                    self.handleError(error)
+                    self.isStreaming = false
+                    self.streamingStatus = .idle
+                    self.streamingMessageId = nil
+                    self.retryContextByMessageId.removeValue(forKey: messageId)
+                }
+            }
+            await MainActor.run {
+                // On completion of retry streaming attempt, perform standard cleanup if not awaiting tools
+                if let finalMessage = self.messages.first(where: { $0.id == messageId }) {
+                    print("Finished streaming response (retry): \(finalMessage.text ?? "No text content")")
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.messageReceived,
+                        parameters: [
+                            AnalyticsParameter.model: self.activePrompt.openAIModel,
+                            AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                            AnalyticsParameter.streamingEnabled: true,
+                            "has_images": finalMessage.images?.isEmpty == false
+                        ]
+                    )
+                }
+                self.streamingMessageId = nil
+                self.isStreaming = false
+                if self.isAwaitingComputerOutput {
+                    self.streamingStatus = .usingComputer
+                } else if self.streamingStatus != .idle {
+                    self.streamingStatus = .done
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.streamingStatus = .idle }
+                }
+                // Retry path complete—clear context
+                self.retryContextByMessageId.removeValue(forKey: messageId)
+            }
+        }
+
+        // Analytics: mark retry attempted
+        AnalyticsService.shared.trackEvent(
+            name: "streaming_retry_attempted",
+            parameters: [
+                "reason": reason,
+                AnalyticsParameter.model: activePrompt.openAIModel
+            ]
+        )
+        return true
+    }
+
     /// Handles computer tool calls by fetching the full response to get complete action details
     private func handleComputerToolCallWithFullResponse(_ item: StreamingItem, messageId: UUID) async {
         guard activePrompt.enableComputerUse else { return }
@@ -1204,43 +1374,60 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("[CUA] Handling computer_call item.id=\(item.id), previousResponseId=\(previousId)", category: .openAI)
         await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
         do {
-            // Fetch the full response to get the complete computer_call action (includes call_id)
-            let fullResponse = try await api.getResponse(responseId: previousId)
-            AppLogger.log("[CUA] Fetched full response for prevId=\(previousId) with \(fullResponse.output.count) items", category: .openAI)
+            // Prefer using the streaming item details directly to avoid 404s from GET /responses/{id}
+            var callId: String? = item.callId
+            var pendingSafety: [SafetyCheck]? = item.pendingSafetyChecks
+            var actionData: ComputerAction? = extractComputerAction(from: item)
 
-            guard let computerCallItem = fullResponse.output.first(where: { $0.type == "computer_call" && $0.id == item.id }) else {
-                AppLogger.log("[CUA] No matching computer_call item found in full response for streaming item.id=\(item.id)", category: .openAI, level: .warning)
+            if callId == nil || actionData == nil {
+                // Fallback: fetch the full response only if required data is missing
+                do {
+                    let fullResponse = try await api.getResponse(responseId: previousId)
+                    AppLogger.log("[CUA] Fetched full response for prevId=\(previousId) with \(fullResponse.output.count) items (fallback)", category: .openAI)
+                    if let match = fullResponse.output.first(where: { $0.type == "computer_call" && $0.id == item.id }) {
+                        if callId == nil { callId = match.callId }
+                        if pendingSafety == nil { pendingSafety = match.pendingSafetyChecks }
+                        if actionData == nil { actionData = extractComputerActionFromOutputItem(match) }
+                    }
+                } catch {
+                    // If fetching fails (e.g., 404), proceed with what we have if possible
+                    AppLogger.log("[CUA] Fallback getResponse failed: \(error). Proceeding with streaming item when possible.", category: .openAI, level: .warning)
+                }
+            }
+
+            guard let finalCallId = callId, !finalCallId.isEmpty else {
+                AppLogger.log("[CUA] Missing call_id for computer_call id=\(item.id). Cannot send output.", category: .openAI, level: .error)
                 await MainActor.run { self.lastResponseId = nil }
                 await MainActor.run { self.isAwaitingComputerOutput = false }
                 return
             }
 
-            let callId = computerCallItem.callId ?? item.callId ?? ""
-            if callId.isEmpty {
-                AppLogger.log("[CUA] Missing call_id for computer_call id=\(computerCallItem.id). Cannot send output.", category: .openAI, level: .error)
+            guard let actionData = actionData else {
+                AppLogger.log("[CUA] Failed to extract action for computer_call id=\(item.id)", category: .openAI, level: .error)
                 await MainActor.run { self.lastResponseId = nil }
                 await MainActor.run { self.isAwaitingComputerOutput = false }
                 return
             }
 
-            guard var actionData = extractComputerActionFromOutputItem(computerCallItem) else {
-                AppLogger.log("[CUA] Failed to extract action for computer_call id=\(computerCallItem.id)", category: .openAI, level: .error)
-                await MainActor.run { self.lastResponseId = nil }
-                await MainActor.run { self.isAwaitingComputerOutput = false }
-                return
-            }
-
-            // Heuristic for first-step screenshot: derive URL from user's prompt
-            if actionData.type == "screenshot", actionData.parameters["url"] == nil,
-               let derived = deriveURLForScreenshot(from: messageId) {
-                AppLogger.log("[CUA] Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
-                actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+            // Heuristic for first-step actions when we might be on about:blank or help page.
+            // If the first action is a screenshot without URL, or a click while on a blank page,
+            // derive a URL from the user's last message and navigate locally before executing.
+            if (actionData.type == "screenshot" && actionData.parameters["url"] == nil) ||
+               (actionData.type == "click" && computerService.isOnBlankPage()) {
+                if let derived = deriveURLForScreenshot(from: messageId) {
+                    AppLogger.log("[CUA] First-step override: navigating to derived URL before action \(actionData.type): \(derived.absoluteString)", category: .openAI, level: .info)
+                    let navigateAction = ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString])
+                    _ = try await computerService.executeAction(navigateAction)
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                } else {
+                    AppLogger.log("[CUA] No URL could be derived for first \(actionData.type); proceeding as-is", category: .openAI, level: .warning)
+                }
             }
 
             AppLogger.log("[CUA] Executing action type=\(actionData.type) params=\(actionData.parameters)", category: .openAI)
             
             // Check for pending safety checks
-            if let safetyChecks = computerCallItem.pendingSafetyChecks, !safetyChecks.isEmpty {
+            if let safetyChecks = pendingSafety, !safetyChecks.isEmpty {
                 AppLogger.log("[CUA] SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
                 for check in safetyChecks {
                     AppLogger.log("[CUA] Safety Check - \(check.code): \(check.message)", category: .openAI, level: .warning)
@@ -1347,16 +1534,16 @@ class ChatViewModel: ObservableObject {
                     "image_url": "data:image/png;base64,\(screenshot)"
                 ]
                 // Include acknowledged safety checks if they were present
-                let acknowledgedSafetyChecks = computerCallItem.pendingSafetyChecks
+                let acknowledgedSafetyChecks = pendingSafety
                 
-                AppLogger.log("[CUA] Sending computer_call_output for call_id=\(callId)", category: .openAI)
+                AppLogger.log("[CUA] Sending computer_call_output for call_id=\(finalCallId)", category: .openAI)
                 if let safetyChecks = acknowledgedSafetyChecks {
                     AppLogger.log("[CUA] Including \(safetyChecks.count) acknowledged safety checks", category: .openAI)
                 }
                 
                 do {
                     let response = try await api.sendComputerCallOutput(
-                        callId: callId,
+                        callId: finalCallId,
                         output: output,
                         model: activePrompt.openAIModel,
                         previousResponseId: previousId,
@@ -1451,6 +1638,12 @@ class ChatViewModel: ObservableObject {
                 if let domain = tokens.first(where: { $0.contains(".") && !$0.contains(" ") && !$0.contains("http") }) {
                     let host = domain.lowercased()
                     return URL(string: "https://\(host)")
+                }
+                // Brand/keyword hint like "Google" or "OpenAI" (no dot). Map with a curated list.
+                let lower = text.lowercased()
+                if let match = Self.keywordURLMap.first(where: { lower.contains($0.key) })?.value,
+                   let url = URL(string: match) {
+                    return url
                 }
                 break
             }
