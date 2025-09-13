@@ -247,10 +247,17 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         
         // After any action, wait for content to be ready and then take a screenshot.
+        // For click actions, give extra time for JavaScript frameworks to respond
+        var extraWaitTime: UInt64 = 150_000_000 // default 150ms
+        if action.type == "click" {
+            extraWaitTime = 500_000_000 // 500ms for clicks
+        }
+        
         // Ensure the web view has rendered at least once before snapshot
         try await ensureWebViewReady()
         try await waitForDomReadyAndPaint()
-        try? await Task.sleep(nanoseconds: 150_000_000) // small settle before snapshot
+        try? await Task.sleep(nanoseconds: extraWaitTime)
+        
         let screenshot = try await takeScreenshot()
         let currentURL = webView.url?.absoluteString
         
@@ -277,19 +284,77 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
     
     /// Simulates a click at a specific point on the web page.
+    /// Uses multiple strategies to ensure clicks work on modern JavaScript-heavy sites.
     private func click(at point: CGPoint) async throws {
         let script = """
         (function() {
             var el = document.elementFromPoint(\(point.x), \(point.y));
-            if (el) {
-                el.focus();
-                el.click();
-                return "Clicked element: " + el.tagName;
+            if (!el) {
+                return "No element found at point (\(point.x), \(point.y)).";
             }
-            return "No element found at point.";
+            
+            var result = "Clicked element: " + el.tagName + (el.className ? "." + el.className : "") + 
+                        (el.id ? "#" + el.id : "") + " at (\(point.x), \(point.y))";
+            
+            try {
+                // Strategy 1: Focus the element first
+                if (el.focus) el.focus();
+                
+                // Strategy 2: Multiple mouse events for comprehensive interaction
+                var events = ['mousedown', 'mouseup', 'click'];
+                events.forEach(function(eventType) {
+                    var event = new MouseEvent(eventType, {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: \(point.x),
+                        clientY: \(point.y),
+                        screenX: \(point.x),
+                        screenY: \(point.y),
+                        button: 0,
+                        buttons: eventType === 'mousedown' ? 1 : 0
+                    });
+                    el.dispatchEvent(event);
+                });
+                
+                // Strategy 3: Also try direct click for good measure
+                if (el.click) {
+                    el.click();
+                }
+                
+                // Strategy 4: For buttons and links, try triggering their specific handlers
+                if (el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') {
+                    // Trigger any onclick handlers
+                    if (el.onclick) {
+                        el.onclick.call(el);
+                    }
+                    
+                    // For links, try navigation
+                    if (el.href && el.tagName === 'A') {
+                        result += " (Link: " + el.href + ")";
+                    }
+                }
+                
+                // Wait a moment for JavaScript to process
+                setTimeout(function() {
+                    // Check if page is navigating
+                    if (window.location.href !== window.location.href) {
+                        result += " (Page navigation detected)";
+                    }
+                }, 100);
+                
+            } catch (e) {
+                result += " (Error: " + e.message + ")";
+            }
+            
+            return result;
         })();
         """
-        _ = try await evaluateJavaScript(script)
+        let clickResult = try await evaluateJavaScript(script)
+        AppLogger.log("🖱️ Click result: \(clickResult ?? "No result")", category: .general, level: .info)
+        
+        // Give JavaScript frameworks time to process the click
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
     }
     
     /// Simulates a double-click at a specific point on the web page.

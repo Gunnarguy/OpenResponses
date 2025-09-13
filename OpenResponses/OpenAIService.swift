@@ -399,6 +399,12 @@ Available actions:
 - Scroll: {"type": "scroll", "parameters": {"x": 0, "y": -100}}
 - Wait: {"type": "wait", "parameters": {"duration": 1000}}
 
+Confirmation policy:
+- Do not ask for permission for routine browsing actions explicitly requested by the user. If the user says to navigate to a URL or to click a benign link or button, just do it.
+- Safe by default (no extra confirmation needed): navigating to a requested URL; clicking benign links/buttons such as "Learn more", "Get started", "Next", pagination; opening the "Sign in" page (never enter credentials); scrolling; opening menus; taking a screenshot.
+- Ask for confirmation only before sensitive or irreversible actions: purchases/checkout, subscriptions, posting or deleting content, changing account settings, submitting forms with personal data, downloading/executing files, entering credentials, or leaving the current site for an unrelated destination. If unsure, ask briefly.
+- If the user explicitly says "click X" on the current page, click it without an extra "May I proceed?" prompt and then report what happened.
+
 🔴 CRITICAL: If you see a page saying "USE NAVIGATE ACTION", it means you took a screenshot without navigating first. Use the navigate action immediately.
 """
         } else {

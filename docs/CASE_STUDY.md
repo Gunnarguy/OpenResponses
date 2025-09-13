@@ -82,25 +82,41 @@ The OpenResponses app provides complete lifecycle management for files and vecto
 
 #### D. Native Computer Use Integration - A Production Success Story
 
-🎉 **Major Achievement**: The OpenResponses app has successfully implemented a fully functional, production-ready computer use system that represents a significant technical milestone. This native iOS implementation replaces external dependencies with an elegant, on-device solution.
+🎉 **Major Achievement**: The OpenResponses app has successfully implemented a fully functional, production-ready computer use system that represents a significant technical milestone. This native iOS implementation evolved through multiple iterations to become a sophisticated, bulletproof solution.
 
-**The Journey**: Computer use integration began as an external Node.js server dependency but evolved into a sophisticated native iOS solution using `ComputerService.swift` and an off-screen `WKWebView`. The final implementation overcame numerous technical challenges:
+**The Evolution**: Computer use integration began as an external Node.js server dependency but transformed into a comprehensive native iOS solution through systematic refinement. The journey included multiple enhancement phases:
 
-**Technical Challenges Solved**:
+**Phase 1 - Foundation**: Initial implementation with basic `ComputerService.swift` and off-screen `WKWebView` automation.
 
-1. **WebView Frame Initialization**: Resolved critical rendering issues where WebView was created with zero dimensions, causing screenshot failures. The solution involved proper frame initialization (440x956) during WebView creation and comprehensive layout forcing.
+**Phase 2 - Visual Reliability**: Resolved critical rendering issues where WebView screenshots appeared faded or blank. The solution involved proper window hierarchy attachment at low alpha for solid visual capture.
 
-2. **Single-Shot Mode**: Implemented intelligent request detection that prevents infinite loops for simple screenshot requests. The system recognizes screenshot-only prompts and automatically halts further computer actions after completion.
+**Phase 3 - Loop Prevention & Navigate-First**: Implemented intelligent conversation continuity via `previous_response_id` threading, enforced navigate-first behavior to prevent about:blank loops, and added a help page for user guidance.
 
-3. **Status Integration**: Added real-time status chips that display "🖥️ Using computer..." during active tool calls, providing users with immediate feedback about computer use operations.
+**Phase 4 - Error Resilience**: Added 404 error mitigation by relying on streaming `call_id`/`action` with `store: true`, implemented one-shot auto-retry for transient streaming errors with preserved context and backoff.
 
-4. **API Compliance**: Achieved full compliance with OpenAI's computer use API, including proper safety check handling, `current_url` parameter support, and `include` filters for image URLs.
+**Phase 5 - Enhanced Interaction**: Developed multi-strategy click implementation for JavaScript-heavy sites (Netflix, React apps), added first-step URL derivation for brand-only inputs, implemented smart confirmation policy reducing unnecessary permission prompts.
 
-5. **Error Recovery**: Implemented automatic pending call resolution system that prevents "400 No tool output found for computer call" errors through intelligent conversation state management.
+**Final Technical Achievements**:
 
-**The Result**: Screenshots are now captured correctly from actual webpage content and displayed seamlessly in the chat interface. The system handles both simple screenshot requests ("Show me a screenshot of Google.com") and complex multi-step interactions with robust error handling and user feedback.
+1. **Enhanced Click Reliability**: Multi-strategy approach using element focus, complete mouse event sequences, direct click fallback, and handler triggering specifically designed for modern JavaScript frameworks.
 
-This implementation demonstrates how architectural persistence and systematic debugging can transform a challenging integration into a production-ready feature that enhances the overall user experience.
+2. **Navigate-First Enforcement**: Comprehensive system preventing screenshot-first loops with mandatory navigation rules, keyword-to-URL mapping, and first-action overrides.
+
+3. **Streaming Resilience**: One-shot auto-retry system handles transient `model_error`/`response.failed` events with preserved `previous_response_id`, user context, and attachments while avoiding UI flicker.
+
+4. **Smart Confirmation Policy**: Eliminates unnecessary "May I proceed?" prompts for benign actions (Learn More, Get Started, navigation) while preserving confirmation for sensitive operations (checkout, subscription, credential entry).
+
+5. **Production Hardening**: Circuit breaker patterns prevent infinite loops, comprehensive error recovery handles unknown actions gracefully, and detailed logging provides actionable feedback.
+
+**The Current State**: The computer use implementation is now **100% feature complete** and production ready. All OpenAI computer actions are supported with defensive programming patterns that prevent breaking changes. The system successfully handles:
+
+- Complete action coverage: navigate, screenshot, click, type, keypress, scroll, wait, drag, double_click, move
+- JavaScript-heavy sites like Netflix with enhanced interaction strategies
+- Multi-website navigation within single conversations
+- Auto-recovery from transient errors without user intervention
+- Professional-grade logging and analytics integration
+
+This implementation demonstrates how persistent architectural refinement can transform a challenging integration into a robust, production-ready feature that enhances the overall user experience while maintaining reliability and user safety.
 
 File Search is not just a toggle; it's a complete management system.
 

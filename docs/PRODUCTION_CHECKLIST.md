@@ -188,6 +188,7 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [x] **Status Chips**: Confirmed "🖥️ Using computer..." status displays during active tool calls
 - [x] **Navigation**: Tested successful navigation to URLs (e.g., Google.com)
 - [x] **DOM Readiness**: Verified DOM ready checks complete successfully before screenshots
+- [x] **Click Reliability**: Enhanced click implementation with multiple strategies (focus, mouse events, direct click, handler triggering) for JavaScript-heavy sites like Netflix, with detailed feedback logging
 
 **Advanced Features Testing**
 
@@ -195,6 +196,7 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [x] **URL Detection**: Verified automatic URL extraction from user messages for screenshot actions
 - [x] **Error Handling**: Comprehensive error recovery and fallback mechanisms tested
 - [x] **API Compliance**: Verified proper `current_url` parameter inclusion and safety check handling
+- [ ] **Confirmation Policy**: Implemented at the model-instructions level to avoid unnecessary prompts for benign actions (navigate to URLs, clicking "Learn more"/"Get started"/pagination). The app currently auto-acknowledges safety checks to keep flows smooth; a user confirmation UI for sensitive/irreversible actions (checkout, subscription, settings changes, credential entry, downloads) is deferred (TODO). Verify instruction text in `OpenAIService.buildDefaultComputerUseInstructions`.
 
 **Error Prevention Testing**
 

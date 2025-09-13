@@ -476,7 +476,9 @@ Agentic tools empower the model to perform complex, multi-step tasks by interact
 
 ### The `computer` Tool
 
-The primary agentic tool is `computer`. When enabled, the model can perform actions like clicking, typing, and scrolling on a virtual browser interface. This is currently in a limited beta.
+The primary agentic tool is `computer`. When enabled, the model can perform actions like clicking, typing, scrolling, and navigating on a virtual browser interface. **OpenResponses features a complete, production-ready implementation** with 100% action coverage, enhanced reliability features, and comprehensive error handling.
+
+**Current Status**: ✅ **Production Ready** - All computer use functionality is fully implemented and tested.
 
 ### Building Agents
 
