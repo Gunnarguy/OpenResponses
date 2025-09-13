@@ -40,9 +40,7 @@ class ChatViewModel: ObservableObject {
     private var consecutiveWaitCount: Int = 0
     private let maxConsecutiveWaits: Int = 3
 
-    // MARK: - Single-shot Screenshot Mode
-    /// Messages that should stop the computer-use loop after the first screenshot
-    private var singleShotMessageIds = Set<UUID>()
+    // Single-shot Screenshot Mode removed
 
     // MARK: - Computed Properties
     var messages: [ChatMessage] {
@@ -154,15 +152,7 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Detects if a user message is a one-off screenshot request, enabling single-shot mode
-    private func detectsScreenshotRequest(_ text: String) -> Bool {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let keywords = [
-            "screenshot", "take a screenshot", "take screenshot", "capture screenshot",
-            "show me a screenshot", "grab a screenshot", "screen shot", "snap a screenshot"
-        ]
-        return keywords.contains { t.contains($0) }
-    }
+    // detectsScreenshotRequest removed
     
     /// Handles network disconnection by informing the user
     private func handleNetworkDisconnection() {
@@ -205,11 +195,7 @@ class ChatViewModel: ObservableObject {
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
 
-        // If the user explicitly asked for a screenshot, enable single-shot mode for this turn
-        if detectsScreenshotRequest(trimmed) {
-            singleShotMessageIds.insert(assistantMsgId)
-            AppLogger.log("[CUA] Single-shot screenshot mode enabled for messageId=\(assistantMsgId)", category: .openAI, level: .info)
-        }
+        // Single-shot screenshot mode disabled: always process full response stream
         
         // Disable input while processing
         isStreaming = true
@@ -716,22 +702,7 @@ class ChatViewModel: ObservableObject {
         self.lastResponseId = response.id
         print("Updated lastResponseId to: \(response.id)")
         
-        // CUA Single-shot mode: If we've already taken a screenshot for this user message,
-        // and the model asks for another one, halt further actions. This prevents loops.
-        if let lastUserMessage = messages.last(where: { $0.role == .user }),
-           let images = lastUserMessage.images, !images.isEmpty,
-           response.output.contains(where: { item in
-               item.type == "computer_call" && 
-               item.action?["type"]?.value as? String == "screenshot"
-           }) {
-            
-            AppLogger.log("[CUA] Single-shot mode: Halting further computer-use actions for messageId=\(messageId) because a screenshot was already taken.", category: .openAI)
-            // Break the chain to avoid pending tool output errors and loops
-            self.lastResponseId = nil
-            self.isAwaitingComputerOutput = false
-            if self.streamingStatus != .idle { self.streamingStatus = .done }
-            return
-        }
+        // Single-shot mode disabled: do not halt on repeated screenshot requests; let stream complete
         
         // Check for and handle function calls
         if let outputItem = response.output.first, outputItem.type == "function_call" {
@@ -797,21 +768,11 @@ class ChatViewModel: ObservableObject {
         if activePrompt.enableComputerUse,
            response.output.contains(where: { $0.type == "computer_call" }),
            !isResolvingComputerCalls {
-            // If this turn is single-shot, stop after first screenshot/output
-            if singleShotMessageIds.contains(messageId) {
-                AppLogger.log("[CUA] Single-shot mode: halting further computer-use actions for messageId=\(messageId)", category: .openAI, level: .info)
-                singleShotMessageIds.remove(messageId)
-                // Break the chain to avoid pending tool output errors and loops
-                self.lastResponseId = nil
-                self.isAwaitingComputerOutput = false
-                if self.streamingStatus != .idle { self.streamingStatus = .done }
-            } else {
-                Task { [weak self] in
-                    guard let self = self else { return }
-                    await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
-                    _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
-                    await MainActor.run { self.isAwaitingComputerOutput = false }
-                }
+            Task { [weak self] in
+                guard let self = self else { return }
+                await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
+                _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
+                await MainActor.run { self.isAwaitingComputerOutput = false }
             }
         }
     }
@@ -1128,7 +1089,13 @@ class ChatViewModel: ObservableObject {
         case "response.done", "response.completed":
             // Handle completion of the entire response
             print("Streaming response completed for message: \(messageId)")
-            
+
+            // CRITICAL: Reset all streaming flags so UI status chips do not linger
+            isStreaming = false
+            streamingStatus = .idle
+            streamingMessageId = nil
+            isAwaitingComputerOutput = false
+
             // After streaming is complete, detect and add URLs to the message
             if let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
                let text = messages[msgIndex].text, !text.isEmpty {
@@ -1657,7 +1624,8 @@ class ChatViewModel: ObservableObject {
                 streamingStatus = .runningTool("unknown")
             }
         case "response.done", "response.completed":
-            streamingStatus = isAwaitingComputerOutput ? .usingComputer : .done
+            // Prefer idle when we've explicitly finished the stream in handleStreamChunk
+            streamingStatus = .idle
         default:
             // Keep current status for unknown events
             break
