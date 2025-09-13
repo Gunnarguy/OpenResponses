@@ -828,27 +828,28 @@ class ChatViewModel: ObservableObject {
         
         // Update the message with the complete response
         var updatedMessage = messages[messageIndex]
-        
-        // Extract text content from the response
-        if let outputItem = response.output.first,
-           let textContent = outputItem.content?.first(where: { $0.type == "output_text" }) {
+
+        // Extract the first text content from any output item (the first may be reasoning)
+        let nestedContents: [[ContentItem]] = response.output.compactMap { $0.content }
+        let allContents: [ContentItem] = nestedContents.flatMap { $0 }
+
+        if let textContent = allContents.first(where: { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) }) {
             updatedMessage.text = textContent.text ?? ""
+        } else if let anyText = allContents.first(where: { $0.text?.isEmpty == false })?.text {
+            // Fallback: if type labels vary, still capture non-empty text
+            updatedMessage.text = anyText
         }
-        
-        // Extract images if any
-        if let outputItem = response.output.first {
-            // Safely unwrap the optional content array before iterating
+
+        // Extract images from all output items (not only the first)
+        for outputItem in response.output {
             for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
                 Task {
                     do {
                         let data = try await api.fetchImageData(for: content)
                         if let image = UIImage(data: data) {
                             await MainActor.run {
-                                // Find the message again to avoid race conditions
                                 if let msgIndex = self.messages.firstIndex(where: { $0.id == messageId }) {
-                                    if self.messages[msgIndex].images == nil {
-                                        self.messages[msgIndex].images = []
-                                    }
+                                    if self.messages[msgIndex].images == nil { self.messages[msgIndex].images = [] }
                                     self.messages[msgIndex].images?.append(image)
                                 }
                             }
