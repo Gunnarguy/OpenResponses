@@ -167,9 +167,26 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 if let urlString = action.parameters["url"] as? String, let url = URL(string: urlString) {
                     try await navigate(to: url)
                 } else {
-                    // Fallback: If AI asks for screenshot without navigation, navigate to Google first
-                    print("🌐 [Navigation Fallback] AI requested screenshot without navigation. Navigating to Google.com first.")
-                    try await navigate(to: URL(string: "https://google.com")!)
+                    // Create a simple HTML page asking which website to visit
+                    print("🌐 [Navigation Fallback] AI requested screenshot without navigation. Showing help page.")
+                    let helpHTML = """
+                    <!DOCTYPE html>
+                    <html><head><title>Where would you like to go?</title>
+                    <style>body{font-family:system-ui;padding:40px;text-align:center;background:#f5f5f5;}
+                    h1{color:#333;}.suggestion{margin:10px;padding:15px;background:white;border-radius:8px;display:inline-block;}
+                    </style></head>
+                    <body>
+                    <h1>🌐 Where would you like to go?</h1>
+                    <p>Please specify which website you'd like to visit!</p>
+                    <div class="suggestion">Try: "Go to YouTube"</div>
+                    <div class="suggestion">Try: "Search Google for cats"</div>
+                    <div class="suggestion">Try: "Go to Wikipedia"</div>
+                    <div class="suggestion">Try: "Go to Amazon"</div>
+                    </body></html>
+                    """
+                    webView.loadHTMLString(helpHTML, baseURL: nil)
+                    // Wait a moment for the HTML to load
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
                 }
             }
             // Otherwise, a screenshot simply captures the current state.

@@ -385,8 +385,13 @@ Action sequence for web tasks:
 
 Specific instructions for common tasks:
 - "Search Google for X" → FIRST navigate to "https://google.com", THEN screenshot, THEN interact with search box
+- "Search Bing for X" → FIRST navigate to "https://bing.com", THEN screenshot, THEN interact with search box
+- "Go to YouTube" → FIRST navigate to "https://youtube.com", THEN screenshot to confirm
+- "Go to Amazon" → FIRST navigate to "https://amazon.com", THEN screenshot to confirm
+- "Go to Wikipedia" → FIRST navigate to "https://wikipedia.org", THEN screenshot to confirm
 - "Go to website.com" → FIRST navigate to "https://website.com", THEN screenshot to confirm
-- "Take a screenshot" without context → Navigate to "https://google.com" first, then screenshot
+- "Take a screenshot of X website" → Navigate to the appropriate website first, then screenshot
+- "Take a screenshot" without context → Ask the user which website they want to see
 
 Available actions:
 - Navigate: {"type": "navigate", "parameters": {"url": "https://example.com"}}
@@ -401,6 +406,8 @@ Important notes:
 - NEVER take screenshots without navigating to a website first
 - When you perform a computer_call, expect a follow-up message with the action result
 - Always navigate BEFORE taking your first screenshot
+- Choose the most appropriate website based on the user's request
+- If the user doesn't specify a website, ask them which one they want to visit
 - Do not use multiple wait actions in a row - take action instead
 """
         } else {
