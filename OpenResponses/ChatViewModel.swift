@@ -194,8 +194,6 @@ class ChatViewModel: ObservableObject {
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
-
-        // Single-shot screenshot mode disabled: always process full response stream
         
         // Disable input while processing
         isStreaming = true
@@ -286,7 +284,13 @@ class ChatViewModel: ObservableObject {
                         self.handleError(error)
                         // Remove the placeholder message on error
                         self.messages.removeAll { $0.id == assistantMsgId }
-                        self.streamingStatus = .idle // Reset on error
+                        // CRITICAL: Complete streaming state reset on error
+                        self.streamingMessageId = nil
+                        self.isStreaming = false
+                        Task { @MainActor in
+                            try await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                            self.streamingStatus = .idle
+                        }
                     }
                 }
             }
@@ -356,6 +360,18 @@ class ChatViewModel: ObservableObject {
             }
             
             guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
+            
+            // HEURISTIC: If we get another tool call but the message already has an image,
+            // assume the primary request is fulfilled and halt further actions to prevent loops.
+            if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
+                AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains an image. Halting further tool calls to prevent loops.", category: .openAI, level: .info)
+                await MainActor.run { 
+                    self.streamingStatus = .idle // Final state reset
+                    self.lastResponseId = nil // Clear to prevent future loops
+                }
+                break // Skip this tool call and exit the loop
+            }
+            
             AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
             resolvedAny = true
             await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
@@ -372,7 +388,16 @@ class ChatViewModel: ObservableObject {
         }
         
         // Reset wait counter when computer use chain completes (successful or not)
-        await MainActor.run { self.consecutiveWaitCount = 0 }
+        await MainActor.run { 
+            self.consecutiveWaitCount = 0
+            // Only clean up stream state if we're not currently in an active streaming session
+            // The condition "lastResponseId == nil" was incorrectly triggering at the start of new streams
+            // Instead, check if streaming is actually done (not just nil lastResponseId)
+            if self.streamingMessageId != nil && !self.isStreaming {
+                self.streamingMessageId = nil
+                self.streamingStatus = .idle
+            }
+        }
         
         return resolvedAny
     }
@@ -772,7 +797,24 @@ class ChatViewModel: ObservableObject {
                 guard let self = self else { return }
                 await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
                 _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
-                await MainActor.run { self.isAwaitingComputerOutput = false }
+                await MainActor.run { 
+                    self.isAwaitingComputerOutput = false
+                    // If no more computer calls are pending and we were streaming, clean up the stream
+                    if self.streamingMessageId != nil && self.lastResponseId == nil {
+                        self.streamingMessageId = nil
+                        self.isStreaming = false
+                        self.streamingStatus = .idle
+                        print("Computer use completed - cleaning up stream state")
+                    }
+                }
+            }
+        } else if !activePrompt.enableComputerUse || !response.output.contains(where: { $0.type == "computer_call" }) {
+            // No computer calls in response, safe to clean up streaming state if we were streaming
+            if streamingMessageId != nil {
+                streamingMessageId = nil
+                isStreaming = false
+                streamingStatus = .idle
+                print("Non-streaming response completed - cleaning up stream state")
             }
         }
     }
@@ -994,7 +1036,6 @@ class ChatViewModel: ObservableObject {
     private func handleStreamChunk(_ chunk: StreamingEvent, for messageId: UUID) {
         // Ensure we are still streaming this message to prevent race conditions
         guard streamingMessageId == messageId else {
-            print("Ignoring chunk for a completed or old stream.")
             return
         }
 
@@ -1025,7 +1066,7 @@ class ChatViewModel: ObservableObject {
             )
             messages.append(systemMessage)
             
-            // Reset streaming state
+            // CRITICAL: Complete streaming state reset on error
             isStreaming = false
             streamingStatus = .idle
             streamingMessageId = nil
@@ -1044,7 +1085,7 @@ class ChatViewModel: ObservableObject {
             )
             messages.append(systemMessage)
             
-            // Reset streaming state
+            // CRITICAL: Complete streaming state reset on failure
             isStreaming = false
             streamingStatus = .idle
             streamingMessageId = nil
@@ -1090,11 +1131,17 @@ class ChatViewModel: ObservableObject {
             // Handle completion of the entire response
             print("Streaming response completed for message: \(messageId)")
 
-            // CRITICAL: Reset all streaming flags so UI status chips do not linger
-            isStreaming = false
-            streamingStatus = .idle
-            streamingMessageId = nil
-            isAwaitingComputerOutput = false
+            // CRITICAL: Only reset streaming flags if we're not awaiting computer output
+            // If we're awaiting computer output, keep the stream alive for computer use continuation
+            if !isAwaitingComputerOutput {
+                isStreaming = false
+                streamingStatus = .idle
+                streamingMessageId = nil
+            } else {
+                // Keep streaming alive but update status to show computer use is continuing
+                streamingStatus = .usingComputer
+                print("Stream completed but computer use is continuing - keeping stream alive")
+            }
 
             // After streaming is complete, detect and add URLs to the message
             if let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
@@ -1328,9 +1375,11 @@ class ChatViewModel: ObservableObject {
                     await MainActor.run {
                         self.handleError(error)
                         self.lastResponseId = nil
-                        // CRITICAL FIX: Reset streaming status on computer_call_output network failure
+                        // CRITICAL FIX: Complete streaming state reset on computer_call_output network failure
                         self.streamingStatus = .idle
+                        self.streamingMessageId = nil
                         self.isStreaming = false
+                        self.isAwaitingComputerOutput = false
                         // Provide a lightweight, user-visible hint in the chat
                         let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
                         self.messages.append(sys)
@@ -1343,7 +1392,19 @@ class ChatViewModel: ObservableObject {
             }
         } catch {
             AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
-            await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
+            await MainActor.run { 
+                self.lastResponseId = nil
+                self.isAwaitingComputerOutput = false
+                self.handleError(error)
+                // CRITICAL FIX: Complete streaming state reset on computer tool error
+                self.streamingStatus = .idle
+                self.streamingMessageId = nil
+                self.isStreaming = false
+                Task { @MainActor in
+                    try await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                    self.streamingStatus = .idle
+                }
+            }
         }
     }
     

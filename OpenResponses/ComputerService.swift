@@ -570,6 +570,10 @@ class ComputerService: NSObject, WKNavigationDelegate {
         print("📸 [Screenshot Debug] WebView state: frame=\(webView.frame), url=\(webView.url?.absoluteString ?? "nil"), isLoading=\(webView.isLoading)")
         print("📸 [Screenshot Debug] WebView estimated progress: \(webView.estimatedProgress)")
         
+        // Critical: Temporarily restore alpha to 1.0 for screenshot capture
+        let originalAlpha = webView.alpha
+        webView.alpha = 1.0
+        
         // Critical: Verify WebView has proper dimensions before screenshot
         if webView.frame.width <= 0 || webView.frame.height <= 0 {
             print("📸 [Screenshot Debug] WebView has invalid frame dimensions: \(webView.frame)")
@@ -595,7 +599,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         // Retry snapshot a few times if the WebKit content process is still getting ready
         for attempt in 1...5 {
             do {
-                return try await withCheckedThrowingContinuation { continuation in
+                let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
                     webView.takeSnapshot(with: config) { image, error in
                         if let error = error {
                             print("📸 [Screenshot Debug] Attempt \(attempt) failed: \(error)")
@@ -617,12 +621,19 @@ class ComputerService: NSObject, WKNavigationDelegate {
                         }
                     }
                 }
+                
+                // Restore alpha and return successful result
+                webView.alpha = originalAlpha
+                return result
             } catch {
                 print("📸 [Screenshot Debug] Attempt \(attempt) exception: \(error)")
                 // Small backoff before next attempt
                 try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
                 if attempt == 5 {
                     print("📸 [Screenshot Debug] All attempts failed, generating fallback")
+                    // Restore original alpha before returning fallback
+                    webView.alpha = originalAlpha
+                    
                     // Provide a larger, more visible fallback image with diagnostic info
                     let renderer = UIGraphicsImageRenderer(size: CGSize(width: 440, height: 100))
                     let img = renderer.image { ctx in
@@ -640,6 +651,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 }
             }
         }
+        
+        // Restore original alpha before returning
+        webView.alpha = originalAlpha
         return nil
     }
     
