@@ -83,8 +83,36 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
         throw OpenAIServiceError.requestFailed(501, "Function output not implemented in minimal version")
     }
     
-    func sendComputerCallOutput(call: StreamingItem, output: [String : Any], model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendComputerCallOutput(call: StreamingItem, output: Any, model: String, previousResponseId: String?, acknowledgedSafetyChecks: [SafetyCheck]? = nil, currentUrl: String? = nil) async throws -> OpenAIResponse {
         throw OpenAIServiceError.requestFailed(501, "Computer call output not implemented in minimal version")
+    }
+    
+    func sendComputerCallOutput(callId: String, output: Any, model: String, previousResponseId: String?, acknowledgedSafetyChecks: [SafetyCheck]? = nil, currentUrl: String? = nil) async throws -> OpenAIResponse {
+        throw OpenAIServiceError.requestFailed(501, "Computer call output not implemented in minimal version")
+    }
+    
+    // MARK: - Backward compatibility methods for computer use
+    
+    func sendComputerCallOutput(call: StreamingItem, output: Any, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+        return try await sendComputerCallOutput(
+            call: call,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: nil,
+            currentUrl: nil
+        )
+    }
+    
+    func sendComputerCallOutput(callId: String, output: Any, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+        return try await sendComputerCallOutput(
+            callId: callId,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: nil,
+            currentUrl: nil
+        )
     }
     
     // Protocol stub implementations

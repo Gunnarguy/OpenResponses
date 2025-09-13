@@ -59,7 +59,7 @@ struct ChatView: View {
                         StreamingStatusView(status: viewModel.streamingStatus)
                             .padding(.bottom, 8)
                     }
-
+                    
                     // Input area container
                     VStack(spacing: 0) {
                         // Selected images preview
@@ -125,6 +125,7 @@ struct ChatView: View {
                                 userInput = "Generate an image of "
                                 inputFocused = true
                             }, currentModel: viewModel.currentModel())
+                            .disabled(viewModel.isAwaitingComputerOutput)
                         }
                         .padding(.horizontal)
                         .padding(.top, 8)
@@ -147,6 +148,12 @@ struct ChatView: View {
             }
             .onChange(of: viewModel.messages.count) { _, _ in
                 // Scroll to the bottom whenever a new message is added
+                if let lastMessage = viewModel.messages.last {
+                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                }
+            }
+            // Also scroll when the last message’s images change, since we add screenshots without changing count
+            .onChange(of: viewModel.messages.last?.images?.count ?? 0) { _, _ in
                 if let lastMessage = viewModel.messages.last {
                     proxy.scrollTo(lastMessage.id, anchor: .bottom)
                 }

@@ -33,477 +33,19 @@ struct SettingsView: View {
     
     var body: some View {
         Form {
-            Section(header: Text("Preset Library")) {
-                Picker("Load Preset", selection: $selectedPresetId) {
-                    Text("None (Current Settings)").tag(nil as UUID?)
-                    ForEach(promptLibrary.prompts) { prompt in
-                        Text(prompt.name).tag(prompt.id as UUID?)
-                    }
-                }
-                .onChange(of: selectedPresetId) { _, newValue in
-                    if let preset = promptLibrary.prompts.first(where: { $0.id == newValue }) {
-                        applyPreset(preset)
-                    }
-                }
-                
-                Button("Manage Presets") {
-                    showingPromptLibrary = true
-                }
-                .foregroundColor(.accentColor)
-            }
-
-            Section(header: Text("OpenAI API")) {
-                SecureField("API Key (sk-...)", text: $apiKey)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .accessibilityConfiguration(
-                        label: "API Key",
-                        hint: AccessibilityUtils.Hint.apiKeyField,
-                        identifier: AccessibilityUtils.Identifier.apiKeyField
-                    )
-            }
-            
-            Section(header: Text("Published Prompt"), footer: Text("Use a prompt published from the OpenAI Playground. When enabled, this will override most other settings.")) {
-                Toggle("Use Published Prompt", isOn: $viewModel.activePrompt.enablePublishedPrompt)
-                if viewModel.activePrompt.enablePublishedPrompt {
-                    TextField("Prompt ID (pmpt_...)", text: $viewModel.activePrompt.publishedPromptId)
-                    TextField("Prompt Version", text: $viewModel.activePrompt.publishedPromptVersion)
-                }
-            }
-            
-            // System instructions section
-            Section(header: Text("System Instructions"), footer: Text("Set a persistent system prompt to guide the assistant's behavior. This will be sent as the 'instructions' field in every request.")) {
-                TextEditor(text: $viewModel.activePrompt.systemInstructions)
-                    .frame(minHeight: 80)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2))
-                    )
-                    .padding(.vertical, 2)
-                    .accessibilityConfiguration(
-                        label: "System instructions",
-                        hint: AccessibilityUtils.Hint.systemInstructions,
-                        identifier: AccessibilityUtils.Identifier.systemInstructionsField
-                    )
-                if viewModel.activePrompt.systemInstructions.isEmpty {
-                    Text("e.g. 'You are a helpful assistant.'")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                }
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            Section(header: Text("Developer Instructions"), footer: Text("Set hidden developer instructions to fine-tune the assistant's behavior with higher priority.")) {
-                TextEditor(text: $viewModel.activePrompt.developerInstructions)
-                    .frame(minHeight: 60)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2))
-                    )
-                    .padding(.vertical, 2)
-                if viewModel.activePrompt.developerInstructions.isEmpty {
-                    Text("e.g. 'Always respond in Markdown.'")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                }
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-
-            Section(header: Text("Model"), footer: Text("Reasoning effort is available for 'o' models and GPT-5. Temperature is available for other models.")) {
-                DynamicModelSelector(
-                    selectedModel: $viewModel.activePrompt.openAIModel,
-                    openAIService: AppContainer.shared.openAIService
-                )
-                
-                // Reset button for corrupted model selection
-                HStack {
-                    Button("Reset Model to Default") {
-                        viewModel.activePrompt.openAIModel = "gpt-4o"
-                        viewModel.saveActivePrompt()
-                    }
-                    .foregroundColor(.red)
-                    .font(.caption)
-                    
-                    Spacer()
-                    
-                    Text("Current: \(viewModel.activePrompt.openAIModel)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-
-                HStack {
-                    Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
-                    
-                    if !ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
-                            .help("Not supported by current model")
-                    }
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                
-                // Reasoning Summary field for reasoning models
-                if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
-                    VStack(alignment: .leading) {
-                        Text("Reasoning Summary")
-                        TextField("Summary of reasoning approach (optional)", text: $viewModel.activePrompt.reasoningSummary)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Optional summary to guide the model's reasoning approach")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                }
-                
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
-                        if !ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .help("Not supported by reasoning models")
-                        }
-                    }
-                    Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
-                        .disabled(!ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            }
-            
-            Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
-                HStack {
-                    Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
-                        .accessibilityHint("Enables real-time response streaming from the AI")
-                    if !(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsStreaming ?? true) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                            .help("Streaming not supported by current model")
-                    }
-                }
-                
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
-                        if !ModelCompatibilityService.shared.isParameterSupported("max_output_tokens", for: viewModel.activePrompt.openAIModel) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .help("Not supported by current model")
-                        }
-                    }
-                    Slider(value: Binding(
-                        get: { Double(viewModel.activePrompt.maxOutputTokens) },
-                        set: { viewModel.activePrompt.maxOutputTokens = Int($0) }
-                    ), in: 0...4096, step: 64)
-                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("max_output_tokens", for: viewModel.activePrompt.openAIModel))
-                    .accessibilityLabel("Max output tokens")
-                    .accessibilityHint("Limits the maximum number of tokens in AI responses")
-                    .accessibilityValue("\(viewModel.activePrompt.maxOutputTokens == 0 ? "Default" : String(viewModel.activePrompt.maxOutputTokens))")
-                }
-                
-                Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
-                    Text("Auto").tag("auto")
-                    Text("None").tag("none")
-                    if viewModel.activePrompt.enableWebSearch { Text("Web Search").tag("web_search") }
-                    if viewModel.activePrompt.enableCodeInterpreter { Text("Code Interpreter").tag("code_interpreter") }
-                    if viewModel.activePrompt.enableCustomTool { Text("Custom Tool").tag(viewModel.activePrompt.customToolName) }
-                    if viewModel.activePrompt.enableMCPTool { Text("MCP Tool").tag("mcp") }
-                }
-                .accessibilityHint("Controls which tools the AI can use")
-                
-                VStack(alignment: .leading) {
-                    Text("Metadata (JSON)")
-                    TextField("Metadata", text: $viewModel.activePrompt.metadata.bound)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityHint("Optional metadata to attach to requests in JSON format")
-                    Text("Optional metadata to attach to requests (JSON format)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            Section(header: Text("Tools"), footer: Text("Enable the capabilities your assistant can use. Image generation is disabled during streaming.")) {
-                // Core tools group
-                DisclosureGroup("Core Tools", isExpanded: $showCoreTools) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
-                                .accessibilityHint("Allows the AI to search the internet for current information")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.webSearch, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
-                            }
-                        }
-                        HStack {
-                            Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
-                                .accessibilityHint("Enables the AI to run Python code and analyze data")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.codeInterpreter, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
-                            }
-                        }
-                        HStack {
-                            Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
-                                .accessibilityHint("Allows the AI to create images with GPT-Image-1")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.imageGeneration, for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model or streaming mode")
-                            }
-                        }
-                        HStack {
-                            Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                                .accessibilityHint("Enables searching through uploaded files and documents")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.fileSearch, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
-                            }
-                        }
-                        HStack {
-                            Toggle("Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
-                                .accessibilityHint("Allows the AI to use the computer")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.computer, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Not supported by current model")
-                            }
-                        }
-
-                        if viewModel.activePrompt.enableFileSearch {
-                            VStack(alignment: .leading) {
-                                Text("Vector Store IDs")
-                                TextField("Comma-separated vector store IDs", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
-                                    .textFieldStyle(.roundedBorder)
-                                Text("Enter vector store IDs separated by commas, e.g., vs_123,vs_456")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Button("Manage Files & Vector Stores") { showingFileManager = true }
-                                .foregroundColor(.accentColor)
-                                .accessibilityHint("Open file management interface for organizing uploaded documents")
-                        }
-                    }
-                }
-
-                // Custom and integrations group
-                DisclosureGroup("Custom & Integrations", isExpanded: $showCustomTools) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
-                                .accessibilityHint("Connects to Model Context Protocol servers")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.function, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
-                            }
-                        }
-                        HStack {
-                            Toggle("Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
-                                .accessibilityHint("Enables user-defined custom tools")
-                            if !ModelCompatibilityService.shared.isToolSupported(APICapabilities.ToolType.function, for: viewModel.activePrompt.openAIModel) {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).help("Function tools not supported by current model")
-                            }
-                        }
-                    }
-                }
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            // Web Search Configuration Section
-            if viewModel.activePrompt.enableWebSearch {
-                Section(header: Text("Web Search Configuration"), footer: Text("Optional: Set an approximate location to improve search relevance. Only the fields you fill are sent.")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        // Context size with clearer order and hint
-                        VStack(alignment: .leading, spacing: 4) {
-                            Picker("Context Size", selection: $viewModel.activePrompt.searchContextSize.bound) {
-                                Text("Low").tag("low")
-                                Text("Medium").tag("medium")
-                                Text("High").tag("high")
-                            }
-                            .pickerStyle(.segmented)
-                            Text("Controls how much of the page context is analyzed.\nLow = faster, High = more comprehensive.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-
-                        // Location fields grouped for clarity
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Approximate Location (optional)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            HStack(spacing: 8) {
-                                TextField("City (e.g., San Francisco)", text: $viewModel.activePrompt.userLocationCity.bound)
-                                    .textFieldStyle(.roundedBorder)
-                                TextField("Region/State (e.g., CA)", text: $viewModel.activePrompt.userLocationRegion.bound)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-
-                            HStack(spacing: 8) {
-                                TextField("Country (e.g., US)", text: $viewModel.activePrompt.userLocationCountry.bound)
-                                    .textFieldStyle(.roundedBorder)
-                                TextField("Timezone (e.g., America/Los_Angeles)", text: $viewModel.activePrompt.userLocationTimezone.bound)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-
-                            HStack(spacing: 12) {
-                                Button("Autofill Timezone") {
-                                    viewModel.activePrompt.userLocationTimezone = TimeZone.current.identifier
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundColor(.accentColor)
-
-                                Spacer()
-
-                                Button("Clear") {
-                                    viewModel.activePrompt.userLocationCity = nil
-                                    viewModel.activePrompt.userLocationRegion = nil
-                                    viewModel.activePrompt.userLocationCountry = nil
-                                    viewModel.activePrompt.userLocationTimezone = nil
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundColor(.red)
-                            }
-                            .padding(.top, 2)
-                        }
-                    }
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            }
-            
-            // MCP Tool Configuration Section
-            if viewModel.activePrompt.enableMCPTool {
-                Section(header: Text("MCP Tool Configuration")) {
-                    TextField("Server Label", text: $viewModel.activePrompt.mcpServerLabel)
-                    TextField("Server URL", text: $viewModel.activePrompt.mcpServerURL)
-                    TextEditor(text: $viewModel.activePrompt.mcpHeaders)
-                        .frame(minHeight: 60)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                    Picker("Require Approval", selection: $viewModel.activePrompt.mcpRequireApproval) {
-                        Text("Always").tag("always")
-                        Text("Never").tag("never")
-                    }
-                    .pickerStyle(.segmented)
-                    VStack(alignment: .leading) {
-                        Text("Allowed Tools (comma-separated)")
-                        TextField("e.g., search,calendar", text: $viewModel.activePrompt.mcpAllowedTools)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Leave blank to allow all tools exposed by the MCP server.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            }
-
-            // Custom Tool Configuration Section
-            if viewModel.activePrompt.enableCustomTool {
-                Section(header: Text("Custom Tool Configuration")) {
-                    TextField("Tool Name", text: $viewModel.activePrompt.customToolName)
-                    TextField("Tool Description", text: $viewModel.activePrompt.customToolDescription)
-                    Picker("Execution", selection: $viewModel.activePrompt.customToolExecutionType) {
-                        Text("Echo").tag("echo")
-                        Text("Calculator").tag("calculator")
-                        Text("Webhook").tag("webhook")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if viewModel.activePrompt.customToolExecutionType == "webhook" {
-                        TextField("Webhook URL (https://...)", text: $viewModel.activePrompt.customToolWebhookURL)
-                            .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
-                    }
-                    
-                    VStack(alignment: .leading) {
-                        Text("Parameters JSON Schema")
-                        TextEditor(text: $viewModel.activePrompt.customToolParametersJSON)
-                            .frame(minHeight: 80)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                        Text("Define the JSON schema for tool arguments.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            }
-            
-            // Advanced API Settings Section
-            Section(header: Text("Advanced API Settings"), footer: Text("These options provide fine-grained control over the OpenAI Responses API. Defaults are recommended for most users.")) {
-                Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
-                Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)", value: $viewModel.activePrompt.maxToolCalls, in: 0...20)
-                Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
-                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
-                    Text("Auto").tag("auto")
-                    Text("Default").tag("default")
-                }
-                .pickerStyle(.segmented)
-                Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
-                VStack(alignment: .leading) {
-                    Text("Top P: \(String(format: "%.2f", viewModel.activePrompt.topP))")
-                    Slider(value: $viewModel.activePrompt.topP, in: 0.0...1.0, step: 0.01)
-                }
-                Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
-                    Text("Auto").tag("auto")
-                    Text("Disabled").tag("disabled")
-                }
-                .pickerStyle(.segmented)
-                TextField("User Identifier", text: $viewModel.activePrompt.userIdentifier)
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            // Advanced Include Section
-            Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response. Note: Code Interpreter outputs are not currently supported by the API.")) {
-                Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
-                    .disabled(true) // Disabled since not supported by current API
-                Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)
-                Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
-                Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
-                Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
-                Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
-                Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            // Text Formatting Section
-            Section(header: Text("Text Output Formatting"), footer: Text("Configure the output format for text responses.")) {
-                Picker("Format Type", selection: $viewModel.activePrompt.textFormatType) {
-                    Text("Text").tag("text")
-                    Text("JSON Schema").tag("json_schema")
-                }
-                .pickerStyle(.segmented)
-                if viewModel.activePrompt.textFormatType == "json_schema" {
-                    TextField("Schema Name", text: $viewModel.activePrompt.jsonSchemaName)
-                    TextField("Schema Description", text: $viewModel.activePrompt.jsonSchemaDescription)
-                    Toggle("Strict Schema", isOn: $viewModel.activePrompt.jsonSchemaStrict)
-                    TextEditor(text: $viewModel.activePrompt.jsonSchemaContent)
-                        .frame(minHeight: 60)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                }
-            }
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            // Debugging Section
-            Section(header: Text("Debugging")) {
-                Button("API Inspector") { showingAPIInspector = true }
-                Button("Debug Console") { showingDebugConsole = true }
-                
-                Button("Reset Onboarding") {
-                    UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-                }
-                .foregroundColor(.blue)
-                
-                Button("Reset All Settings") {
-                    viewModel.resetToDefaultPrompt()
-                }
-                .foregroundColor(.orange)
-            }
-            
-            Section {
-                Button(role: .destructive) {
-                    viewModel.clearConversation()
-                } label: {
-                    Text("Clear Conversation")
-                }
-            }
+            presetSection
+            apiSection
+            publishedPromptSection
+            systemInstructionsSection
+            developerInstructionsSection
+            modelSection
+            responseSettingsSection
+            toolsSection
+            advancedSettingsSection
+            debugSection
         }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             promptLibrary.reload()
             selectedPresetId = viewModel.activePrompt.id
@@ -531,6 +73,233 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingAPIInspector) { APIInspectorView() }
         .sheet(isPresented: $showingDebugConsole) { DebugConsoleView() }
+    }
+    
+    // MARK: - Form Sections
+    
+    @ViewBuilder
+    private var presetSection: some View {
+        Section(header: Text("Preset Library")) {
+            Picker("Load Preset", selection: $selectedPresetId) {
+                Text("None (Current Settings)").tag(nil as UUID?)
+                ForEach(promptLibrary.prompts) { prompt in
+                    Text(prompt.name).tag(prompt.id as UUID?)
+                }
+            }
+            .onChange(of: selectedPresetId) { _, newValue in
+                if let preset = promptLibrary.prompts.first(where: { $0.id == newValue }) {
+                    applyPreset(preset)
+                }
+            }
+            
+            Button("Manage Presets") {
+                showingPromptLibrary = true
+            }
+            .foregroundColor(.accentColor)
+        }
+    }
+    
+    @ViewBuilder
+    private var apiSection: some View {
+        Section(header: Text("OpenAI API")) {
+            SecureField("API Key (sk-...)", text: $apiKey)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .accessibilityConfiguration(
+                    label: "API Key",
+                    hint: AccessibilityUtils.Hint.apiKeyField,
+                    identifier: AccessibilityUtils.Identifier.apiKeyField
+                )
+        }
+    }
+    
+    @ViewBuilder
+    private var publishedPromptSection: some View {
+        Section(header: Text("Published Prompt"), footer: Text("Use a prompt published from the OpenAI Playground. When enabled, this will override most other settings.")) {
+            Toggle("Use Published Prompt", isOn: $viewModel.activePrompt.enablePublishedPrompt)
+            TextField("Published Prompt ID", text: $viewModel.activePrompt.publishedPromptId)
+                .disabled(!viewModel.activePrompt.enablePublishedPrompt)
+        }
+    }
+    
+    @ViewBuilder
+    private var systemInstructionsSection: some View {
+        Section(header: Text("System Instructions"), footer: Text("Set a persistent system prompt to guide the assistant's behavior. This will be sent as the 'instructions' field in every request.")) {
+            TextEditor(text: $viewModel.activePrompt.systemInstructions)
+                .frame(minHeight: 80)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                .padding(.vertical, 2)
+                .accessibilityConfiguration(
+                    label: "System instructions",
+                    hint: AccessibilityUtils.Hint.systemInstructions,
+                    identifier: AccessibilityUtils.Identifier.systemInstructionsField
+                )
+            if viewModel.activePrompt.systemInstructions.isEmpty {
+                Text("e.g. 'You are a helpful assistant.'")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+        }
+        .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+    
+    @ViewBuilder
+    private var modelSection: some View {
+        Section(header: Text("Model"), footer: Text("Reasoning effort is available for 'o' models and GPT-5. Temperature is available for other models.")) {
+            DynamicModelSelector(
+                selectedModel: $viewModel.activePrompt.openAIModel,
+                openAIService: AppContainer.shared.openAIService
+            )
+            
+            // Reset button for corrupted model selection
+            HStack {
+                Button("Reset Model to Default") {
+                    viewModel.activePrompt.openAIModel = "gpt-4o"
+                    viewModel.saveActivePrompt()
+                }
+                .foregroundColor(.red)
+                .font(.caption)
+                
+                Spacer()
+                
+                Text("Current: \(viewModel.activePrompt.openAIModel)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+
+            HStack {
+                Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
+                    Text("Low").tag("low")
+                    Text("Medium").tag("medium")
+                    Text("High").tag("high")
+                }
+                .pickerStyle(.segmented)
+                .disabled(!ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
+                
+                if !ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.blue)
+                        .help("Not supported by current model")
+                }
+            }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            
+            // Reasoning Summary field for reasoning models
+            if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
+                VStack(alignment: .leading) {
+                    Text("Reasoning Summary")
+                    TextField("Summary of reasoning approach (optional)", text: $viewModel.activePrompt.reasoningSummary)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Optional summary to guide the model's reasoning approach")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            }
+            
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("Temperature: \(String(format: "%.1f", viewModel.activePrompt.temperature))")
+                    if !ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .help("Not supported by reasoning models")
+                    }
+                }
+                Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.1)
+                    .disabled(!ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) || viewModel.activePrompt.enablePublishedPrompt)
+            }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+        }
+        .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+
+    // MARK: - Section Views
+    
+    @ViewBuilder
+    private var developerInstructionsSection: some View {
+        Section(header: Text("Developer Instructions"), footer: Text("Set hidden developer instructions to fine-tune the assistant's behavior with higher priority.")) {
+            TextEditor(text: $viewModel.activePrompt.developerInstructions)
+                .frame(minHeight: 60)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                .padding(.vertical, 2)
+        }
+        .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+    
+    @ViewBuilder
+    private var responseSettingsSection: some View {
+        Section(header: Text("Response Settings"), footer: Text("Adjust response generation parameters. Streaming provides real-time output.")) {
+            Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
+            Stepper("Max Output Tokens: \(viewModel.activePrompt.maxOutputTokens)", value: $viewModel.activePrompt.maxOutputTokens, in: 0...32768, step: 64)
+        }
+        .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+    
+    @ViewBuilder
+    private var toolsSection: some View {
+        Section(header: Text("Tools"), footer: Text("Enable the capabilities your assistant can use. Image generation is disabled during streaming.")) {
+            ModelCompatibilityView(
+                modelId: viewModel.activePrompt.openAIModel,
+                prompt: viewModel.activePrompt,
+                isStreaming: viewModel.activePrompt.enableStreaming
+            )
+        }
+        .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+    
+    @ViewBuilder
+    private var advancedSettingsSection: some View {
+        Group {
+            Section(header: Text("Advanced API Settings"), footer: Text("These options provide fine-grained control over the OpenAI Responses API. Defaults are recommended for most users.")) {
+                Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
+                // Modality picker removed (audio out of scope and no 'modality' field in Prompt)
+            }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+            
+            Section(header: Text("API Response Includes"), footer: Text("Select which extra data to include in the API response.")) {
+                Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)
+                Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
+                Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
+                Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
+                Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+            }
+            .disabled(viewModel.activePrompt.enablePublishedPrompt)
+        }
+    }
+    
+    @ViewBuilder
+    private var debugSection: some View {
+        Group {
+            Section(header: Text("Debugging")) {
+                Button("API Inspector") { showingAPIInspector = true }
+                Button("Debug Console") { showingDebugConsole = true }
+                
+                Button("Reset Onboarding") {
+                    UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                }
+                .foregroundColor(.blue)
+                
+                Button("Reset All Settings") {
+                    viewModel.resetToDefaultPrompt()
+                }
+                .foregroundColor(.orange)
+            }
+            
+            Section {
+                Button(role: .destructive) {
+                    viewModel.clearConversation()
+                } label: {
+                    Text("Clear Conversation")
+                }
+            }
+        }
+    }
+    
+    private func loadAPIKey() {
+        apiKey = KeychainService.shared.load(forKey: "openAIKey") ?? ""
     }
 
     private func applyPreset(_ preset: Prompt) {

@@ -369,6 +369,64 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.invalidResponseData
         }
     }
+    
+    /// Builds default system instructions that are aware of computer use capabilities
+    private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
+        if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
+            return """
+You are a helpful assistant with computer use capabilities. You can see what's on the screen, take screenshots, click on elements, type text, scroll, and perform other computer actions. 
+
+CRITICAL RULE: When asked to interact with websites or search for information online, you MUST ALWAYS navigate to the appropriate website FIRST before taking any screenshots or performing other actions.
+
+Action sequence for web tasks:
+1. FIRST: Navigate using {"type": "navigate", "parameters": {"url": "https://website.com"}}
+2. THEN: Take screenshot to see the page
+3. FINALLY: Interact with elements (click, type, etc.)
+
+Specific instructions for common tasks:
+- "Search Google for X" → FIRST navigate to "https://google.com", THEN screenshot, THEN interact with search box
+- "Go to website.com" → FIRST navigate to "https://website.com", THEN screenshot to confirm
+- "Take a screenshot" without context → Navigate to "https://google.com" first, then screenshot
+
+Available actions:
+- Navigate: {"type": "navigate", "parameters": {"url": "https://example.com"}}
+- Screenshot: {"type": "screenshot"}
+- Click: {"type": "click", "parameters": {"x": 100, "y": 200}}
+- Type: {"type": "type", "parameters": {"text": "hello"}}
+- Keypress: {"type": "keypress", "parameters": {"keys": ["Enter"]}}
+- Scroll: {"type": "scroll", "parameters": {"x": 0, "y": -100}}
+- Wait: {"type": "wait", "parameters": {"duration": 1000}}
+
+Important notes:
+- NEVER take screenshots without navigating to a website first
+- When you perform a computer_call, expect a follow-up message with the action result
+- Always navigate BEFORE taking your first screenshot
+- Do not use multiple wait actions in a row - take action instead
+"""
+        } else {
+            return "You are a helpful assistant."
+        }
+    }
+    
+    /// Builds system instructions, preferring computer-use-aware instructions for computer models
+    private func buildInstructions(prompt: Prompt) -> String {
+        // If user has no custom instructions, use our computer-use-aware defaults
+        if prompt.systemInstructions.isEmpty {
+            return buildDefaultComputerUseInstructions(prompt: prompt)
+        }
+        
+        // If using computer-use model but user has basic "helpful assistant" instruction,
+        // enhance it with computer capabilities
+        let basicInstructions = ["You are a helpful assistant.", "You are a helpful assistant"]
+        if prompt.enableComputerUse && 
+           prompt.openAIModel == "computer-use-preview" && 
+           basicInstructions.contains(prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return buildDefaultComputerUseInstructions(prompt: prompt)
+        }
+        
+        // Otherwise use the user's custom instructions
+        return prompt.systemInstructions
+    }
 
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
@@ -376,7 +434,7 @@ class OpenAIService: OpenAIServiceProtocol {
     private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
             "model": prompt.openAIModel,
-            "instructions": prompt.systemInstructions.isEmpty ? "You are a helpful assistant." : prompt.systemInstructions
+            "instructions": buildInstructions(prompt: prompt)
         ]
 
         // 1. Build the 'input' messages array
@@ -755,7 +813,7 @@ class OpenAIService: OpenAIServiceProtocol {
         }
         
         if prompt.includeWebSearchResults {
-            includeArray.append("web_search_call.action.sources")
+            includeArray.append("web_search_call.results")
         }
         
         if prompt.includeOutputLogprobs {
@@ -766,8 +824,10 @@ class OpenAIService: OpenAIServiceProtocol {
             includeArray.append("reasoning.encrypted_content")
         }
         
-        if prompt.includeComputerUseOutput {
-            includeArray.append("computer_use_call.output")
+        // Ensure computer tool outputs are included whenever computer use is enabled,
+        // so the model can incorporate screenshots and action results into its reply.
+        if prompt.enableComputerUse || prompt.includeComputerUseOutput {
+            includeArray.append("computer_call_output.output.image_url")
         }
         
         if prompt.includeInputImageUrls {
@@ -948,44 +1008,109 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Sends a computer-use call output back to the API to continue an agentic turn.
-    /// The input mirrors the function-call follow-up pattern but uses computer_call types.
+    /// Per OpenAI's CUA docs, the follow-up should include a single `computer_call_output`
+    /// item with a screenshot payload and must keep the computer tool configured.
     func sendComputerCallOutput(
         call: StreamingItem,
-        output: [String: Any],
+        output: Any,
         model: String,
-        previousResponseId: String?
+        previousResponseId: String?,
+        acknowledgedSafetyChecks: [SafetyCheck]? = nil,
+        currentUrl: String? = nil
+    ) async throws -> OpenAIResponse {
+        return try await sendComputerCallOutput(
+            callId: call.callId ?? "",
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+            currentUrl: currentUrl
+        )
+    }
+
+    /// Sends a computer-use call output back to the API using an explicit call ID.
+    func sendComputerCallOutput(
+        callId: String,
+        output: Any,
+        model: String,
+        previousResponseId: String?,
+        acknowledgedSafetyChecks: [SafetyCheck]? = nil,
+        currentUrl: String? = nil
     ) async throws -> OpenAIResponse {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
 
-        // Compose the original computer call echo and our output
-        // Parse arguments to extract the action if available
-        var action: [String: Any] = ["type": "screenshot"]  // Default action
-        if let argumentsString = call.arguments, !argumentsString.isEmpty, argumentsString != "{}" {
-            if let argumentsData = argumentsString.data(using: .utf8),
-               let parsedArgs = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] {
-                action = parsedArgs
+        // Build the required `computer_call_output` item.
+        // NOTE: The API expects `output` to be a structured content object representing the screenshot
+        // (e.g., { "type": "computer_screenshot", "image_url": "data:image/png;base64,..." }).
+        var computerOutputMessage: [String: Any] = [
+            "type": "computer_call_output",
+            "call_id": callId,
+            "output": output
+        ]
+        
+        // Add acknowledged safety checks if provided
+        if let safetyChecks = acknowledgedSafetyChecks, !safetyChecks.isEmpty {
+            computerOutputMessage["acknowledged_safety_checks"] = safetyChecks.map { safetyCheck in
+                [
+                    "id": safetyCheck.id,
+                    "code": safetyCheck.code,
+                    "message": safetyCheck.message
+                ]
             }
         }
         
-        let computerCallMessage: [String: Any] = [
-            "type": "computer_call",
-            "call_id": call.callId ?? "",
-            "action": action
-        ]
+        // Add current URL if provided (helps with safety checks)
+        if let url = currentUrl {
+            computerOutputMessage["current_url"] = url
+        }
 
-        let computerOutputMessage: [String: Any] = [
-            "type": "computer_call_output",
-            "call_id": call.callId ?? "",
-            "output": "Auto-resolved pending computer call before new user message."
-        ]
+        // Always include the computer tool configuration on follow-ups to keep the CUA context.
+        // Use sensible defaults for environment and display if we can't derive real values here.
+        let environment: String
+        #if os(iOS)
+        environment = "browser"
+        #elseif os(macOS)
+        environment = "mac"
+        #else
+        environment = "browser"
+        #endif
+        let screenSize: CGSize
+        #if os(iOS)
+        screenSize = CGSize(width: 440, height: 956)
+        #elseif os(macOS)
+        screenSize = CGSize(width: 1920, height: 1080)
+        #else
+        screenSize = CGSize(width: 1920, height: 1080)
+        #endif
+
+        // Encode tool config using our codable Tool enum for correctness.
+        var toolsJSON: [Any] = []
+        do {
+            let tools: [APICapabilities.Tool] = [
+                .computer(environment: environment, displayWidth: Int(screenSize.width), displayHeight: Int(screenSize.height))
+            ]
+            let encoder = JSONEncoder()
+            let toolsData = try encoder.encode(tools)
+            if let parsed = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
+                toolsJSON = parsed
+            }
+        } catch {
+            // If tool encoding fails, we still try to proceed without explicit tools (API may still accept).
+            AppLogger.log("Failed to encode computer tool for follow-up: \(error)", category: .openAI, level: .warning)
+        }
 
         var requestObject: [String: Any] = [
             "model": model,
             "store": true,
-            "input": [computerCallMessage, computerOutputMessage]
+            "input": [computerOutputMessage],
+            "truncation": "auto"
         ]
+
+        if !toolsJSON.isEmpty {
+            requestObject["tools"] = toolsJSON
+        }
 
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
@@ -996,7 +1121,6 @@ class OpenAIService: OpenAIServiceProtocol {
         if let jsonString = String(data: jsonData, encoding: .utf8) {
             AppLogger.log("OpenAI Computer Output Request JSON: \(jsonString)", category: .openAI, level: .debug)
         }
-
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120
         request.httpMethod = "POST"
@@ -1033,6 +1157,42 @@ class OpenAIService: OpenAIServiceProtocol {
         } catch {
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+    
+    // MARK: - Backward compatibility methods for computer use
+    
+    /// Convenience method for backward compatibility - delegates to main method with default parameters
+    func sendComputerCallOutput(
+        call: StreamingItem,
+        output: Any,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse {
+        return try await sendComputerCallOutput(
+            call: call,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: nil,
+            currentUrl: nil
+        )
+    }
+    
+    /// Convenience method for backward compatibility - delegates to main method with default parameters
+    func sendComputerCallOutput(
+        callId: String,
+        output: Any,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse {
+        return try await sendComputerCallOutput(
+            callId: callId,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: nil,
+            currentUrl: nil
+        )
     }
     
     /// Fetches image data either from an OpenAI file ID or a direct URL.

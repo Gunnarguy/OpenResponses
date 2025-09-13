@@ -106,9 +106,16 @@ struct OutputItem: Decodable {
     let arguments: String? // JSON string
     let callId: String?
     
+    // Field for computer_call items - direct action object
+    let action: [String: AnyCodable]?
+    
+    /// Safety checks that need to be acknowledged before proceeding
+    let pendingSafetyChecks: [SafetyCheck]?
+    
     enum CodingKeys: String, CodingKey {
-        case id, type, summary, content, name, arguments
+        case id, type, summary, content, name, arguments, action
         case callId = "call_id"
+        case pendingSafetyChecks = "pending_safety_checks"
     }
 }
 
@@ -365,7 +372,7 @@ struct StreamingResponse: Decodable, CustomStringConvertible {
     /// Unique identifier for this response
     let id: String
     
-    /// Status of the response: "queued", "in_progress", "completed", "error"
+    /// Status of the response: "queued", "in_progress", "completed", "failed"
     let status: String?
     
     /// Array of output items (messages, reasoning, etc.)
@@ -373,6 +380,9 @@ struct StreamingResponse: Decodable, CustomStringConvertible {
     
     /// Token usage statistics (only in final response.completed event)
     let usage: StreamingUsage?
+    
+    /// Error information when status is "failed"
+    let error: StreamingError?
     
     /// Provides a readable description of the response
     var description: String {
@@ -392,6 +402,15 @@ struct StreamingResponse: Decodable, CustomStringConvertible {
         
         return desc + ")"
     }
+}
+
+/// Error information in streaming responses
+struct StreamingError: Decodable {
+    /// Error code
+    let code: String?
+    
+    /// Error message
+    let message: String
 }
 
 /// Streaming output item (message, reasoning, etc.)
@@ -477,9 +496,17 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     /// ID of the call (for tool_call items)
     let callId: String?
     
+    // Fields for computer_call items
+    /// Action object for computer use calls (contains type, x, y, etc.)
+    let action: [String: AnyCodable]?
+    
+    /// Safety checks that need to be acknowledged before proceeding
+    let pendingSafetyChecks: [SafetyCheck]?
+    
     enum CodingKeys: String, CodingKey {
-        case id, type, status, content, role, name, arguments
+        case id, type, status, content, role, name, arguments, action
         case callId = "call_id"
+        case pendingSafetyChecks = "pending_safety_checks"
     }
     
     /// Provides a readable description of the item
@@ -529,5 +556,22 @@ struct StreamingUsage: Decodable, CustomStringConvertible {
     /// Provides a readable description of the usage
     var description: String {
         "StreamingUsage(in: \(inputTokens), out: \(outputTokens), total: \(totalTokens))"
+    }
+}
+
+/// Represents a safety check that needs to be acknowledged
+struct SafetyCheck: Decodable, CustomStringConvertible {
+    /// Unique identifier for this safety check
+    let id: String
+    
+    /// Type of safety check: "malicious_instructions", "irrelevant_domain", "sensitive_domain"
+    let code: String
+    
+    /// Human-readable message describing the safety concern
+    let message: String
+    
+    /// Provides a readable description of the safety check
+    var description: String {
+        "SafetyCheck(id: \"\(id)\", code: \"\(code)\", message: \"\(message)\")"
     }
 }

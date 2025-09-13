@@ -49,12 +49,53 @@ protocol OpenAIServiceProtocol {
     /// Use this to continue a computer-use turn by providing observations, screenshots, or status.
     /// - Parameters:
     ///   - call: The streaming item representing the computer tool call.
-    ///   - output: A JSON dictionary with the results (e.g., observations, optional screenshot URLs or base64).
+    ///   - output: The output result - can be a string (for errors) or a dictionary (for successful results).
     ///   - model: The model name (should be "computer-use-preview").
     ///   - previousResponseId: The ID of the response that contained the computer call.
+    ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
+    ///   - currentUrl: Current URL for safety checks, if available.
     func sendComputerCallOutput(
         call: StreamingItem,
-        output: [String: Any],
+        output: Any,
+        model: String,
+        previousResponseId: String?,
+        acknowledgedSafetyChecks: [SafetyCheck]?,
+        currentUrl: String?
+    ) async throws -> OpenAIResponse
+    
+    /// Sends a computer-use call output back to the API using an explicit call ID.
+    /// Some streaming events do not include the call_id; in those cases, fetch the full
+    /// response, extract the call_id, and call this variant to ensure correctness.
+    /// - Parameters:
+    ///   - callId: The call_id for the computer tool call.
+    ///   - output: The output result – typically a screenshot content object.
+    ///   - model: The model name (e.g., "computer-use-preview").
+    ///   - previousResponseId: The ID of the response that contained the computer call.
+    ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
+    ///   - currentUrl: Current URL for safety checks, if available.
+    func sendComputerCallOutput(
+        callId: String,
+        output: Any,
+        model: String,
+        previousResponseId: String?,
+        acknowledgedSafetyChecks: [SafetyCheck]?,
+        currentUrl: String?
+    ) async throws -> OpenAIResponse
+    
+    // MARK: - Convenience methods with default parameters for backward compatibility
+    
+    /// Convenience method with default safety check parameters
+    func sendComputerCallOutput(
+        call: StreamingItem,
+        output: Any,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse
+    
+    /// Convenience method with default safety check parameters  
+    func sendComputerCallOutput(
+        callId: String,
+        output: Any,
         model: String,
         previousResponseId: String?
     ) async throws -> OpenAIResponse

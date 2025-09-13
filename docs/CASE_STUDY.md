@@ -80,20 +80,27 @@ This dynamic construction ensures that the app is always in sync with the user's
 
 The OpenResponses app provides complete lifecycle management for files and vector stores, allowing users to upload documents directly or reference existing file IDs.
 
-#### D. Advanced Computer Use Integration with Error Prevention
+#### D. Native Computer Use Integration - A Production Success Story
 
-A notable architectural achievement is the comprehensive computer use integration that goes beyond basic API support. The app implements a sophisticated **preflight resolution system** that automatically prevents common API errors when using the computer-use-preview model.
+🎉 **Major Achievement**: The OpenResponses app has successfully implemented a fully functional, production-ready computer use system that represents a significant technical milestone. This native iOS implementation replaces external dependencies with an elegant, on-device solution.
 
-**The Problem**: When using computer use tools, incomplete computer calls can leave the conversation in a state where subsequent messages fail with "400 No tool output found for computer call" errors, blocking the user entirely.
+**The Journey**: Computer use integration began as an external Node.js server dependency but evolved into a sophisticated native iOS solution using `ComputerService.swift` and an off-screen `WKWebView`. The final implementation overcame numerous technical challenges:
 
-**The Solution**: The `ChatViewModel.resolvePendingComputerCallsIfNeeded()` method implements a preflight check that:
+**Technical Challenges Solved**:
 
-1. **Detects Pending Calls**: Analyzes the previous response for incomplete computer tool calls
-2. **Automatic Resolution**: When pending calls are found, breaks the conversation chain by clearing `lastResponseId`
-3. **Transparent Operation**: Runs automatically before every message send, requiring no user intervention
-4. **Comprehensive Logging**: Provides detailed debugging information for monitoring and troubleshooting
+1. **WebView Frame Initialization**: Resolved critical rendering issues where WebView was created with zero dimensions, causing screenshot failures. The solution involved proper frame initialization (440x956) during WebView creation and comprehensive layout forcing.
 
-This system ensures a smooth user experience with computer use tools while maintaining the full functionality of the computer-use-preview model. The implementation demonstrates how architectural foresight can prevent API limitations from becoming user-facing problems.
+2. **Single-Shot Mode**: Implemented intelligent request detection that prevents infinite loops for simple screenshot requests. The system recognizes screenshot-only prompts and automatically halts further computer actions after completion.
+
+3. **Status Integration**: Added real-time status chips that display "🖥️ Using computer..." during active tool calls, providing users with immediate feedback about computer use operations.
+
+4. **API Compliance**: Achieved full compliance with OpenAI's computer use API, including proper safety check handling, `current_url` parameter support, and `include` filters for image URLs.
+
+5. **Error Recovery**: Implemented automatic pending call resolution system that prevents "400 No tool output found for computer call" errors through intelligent conversation state management.
+
+**The Result**: Screenshots are now captured correctly from actual webpage content and displayed seamlessly in the chat interface. The system handles both simple screenshot requests ("Show me a screenshot of Google.com") and complex multi-step interactions with robust error handling and user feedback.
+
+This implementation demonstrates how architectural persistence and systematic debugging can transform a challenging integration into a production-ready feature that enhances the overall user experience.
 
 File Search is not just a toggle; it's a complete management system.
 
@@ -142,7 +149,7 @@ Professional users need visibility into API interactions:
 - **MCP (Model Context Protocol)**: Connects to external services and data sources through standardized protocol interfaces.
 - **Custom Tools**: Users can define their own tools with specific schemas and behaviors.
 - **Multi-Store Search**: Advanced file search across multiple vector stores simultaneously for complex knowledge bases.
-- **Computer Use Preview**: Full integration with OpenAI's computer use tool for automated browser interactions, with intelligent model compatibility checking that disables the feature for models that don't support it (e.g., gpt-5 series).
+- **Computer Use Preview**: 🎉 **Production-Ready Native Implementation**. Complete integration with OpenAI's computer use tool for automated browser interactions, featuring a native iOS `ComputerService` with off-screen `WKWebView` automation. Successfully captures and displays screenshots from actual webpage content. Includes intelligent single-shot mode, real-time status chips, comprehensive error handling, and proper API compliance. Model compatibility checking automatically disables the feature for unsupported models (e.g., gpt-5 series).
 
 #### D. Accessibility as a First-Class Feature
 

@@ -39,11 +39,17 @@ struct MessageBubbleView: View {
                 }
                 
                 // Image content (if any images in the message)
-                if let images = message.images {
-                    ForEach(images, id: \.self) { uiImage in
-                        EnhancedImageView(image: uiImage)
+                if let images = message.images, !images.isEmpty {
+                    // Debug: Log that we're about to display images
+                    let _ = print("🖼️ [MessageBubbleView] Displaying \(images.count) images for message \(message.id)")
+                    // Iterate by index to avoid relying on UIImage being Hashable/Identifiable
+                    ForEach(images.indices, id: \.self) { idx in
+                        EnhancedImageView(image: images[idx])
                             .padding(.vertical, 4)
                     }
+                } else {
+                    // Debug: Log when no images are present
+                    let _ = print("🖼️ [MessageBubbleView] No images for message \(message.id) - images: \(message.images?.count ?? 0)")
                 }
                 
                 // Web content (if any URLs in the message)

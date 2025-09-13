@@ -7,7 +7,7 @@ struct StreamingStatusView: View {
     
     private var showAnimatedIndicator: Bool {
         switch status {
-        case .thinking, .searchingWeb, .generatingCode, .runningTool, .generatingImage, .imageGenerationProgress, .imageGenerationCompleting:
+        case .thinking, .searchingWeb, .generatingCode, .usingComputer, .runningTool, .generatingImage, .imageGenerationProgress, .imageGenerationCompleting:
             return true
         default:
             return false
@@ -55,6 +55,8 @@ struct StreamingStatusView: View {
             return "magnifyingglass"
         case .generatingCode:
             return "chevron.left.forward.slash.chevron.right"
+        case .usingComputer:
+            return "desktopcomputer"
         case .runningTool:
             return "gear"
         case .generatingImage:

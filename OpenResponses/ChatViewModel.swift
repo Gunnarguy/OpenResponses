@@ -19,15 +19,30 @@ class ChatViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isConnectedToNetwork: Bool = true
     @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = []
+    /// True while we are processing a computer-use tool call and must send computer_call_output
+    /// before any new message can be sent. Prevents API 400s due to pending tool output.
+    @Published var isAwaitingComputerOutput: Bool = false
     // Computer-use preview removed
+    
+    /// Prevents multiple concurrent computer_call resolution tasks
+    private var isResolvingComputerCalls: Bool = false
 
     // MARK: - Private Properties
     private let api: OpenAIServiceProtocol
+    private let computerService: ComputerService
     private let storageService: ConversationStorageService
     private var streamingMessageId: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
-    private let networkMonitor = NetworkMonitor.shared
+    private lazy var networkMonitor = NetworkMonitor.shared
+    
+    // MARK: - Computer Use Circuit Breaker
+    private var consecutiveWaitCount: Int = 0
+    private let maxConsecutiveWaits: Int = 3
+
+    // MARK: - Single-shot Screenshot Mode
+    /// Messages that should stop the computer-use loop after the first screenshot
+    private var singleShotMessageIds = Set<UUID>()
 
     // MARK: - Computed Properties
     var messages: [ChatMessage] {
@@ -48,9 +63,10 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    init(api: OpenAIServiceProtocol? = nil, storageService: ConversationStorageService = .shared) {
+    init(api: OpenAIServiceProtocol? = nil, computerService: ComputerService? = nil, storageService: ConversationStorageService? = nil) {
         self.api = api ?? OpenAIService()
-        self.storageService = storageService
+        self.computerService = computerService ?? ComputerService()
+        self.storageService = storageService ?? ConversationStorageService.shared
         self.activePrompt = Prompt.defaultPrompt()
         
         loadActivePrompt()
@@ -77,6 +93,7 @@ class ChatViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        
         $activePrompt
             .dropFirst() // Ignore the initial value on app launch
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
@@ -136,6 +153,16 @@ class ChatViewModel: ObservableObject {
             lowercased.contains(keyword)
         }
     }
+
+    /// Detects if a user message is a one-off screenshot request, enabling single-shot mode
+    private func detectsScreenshotRequest(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let keywords = [
+            "screenshot", "take a screenshot", "take screenshot", "capture screenshot",
+            "show me a screenshot", "grab a screenshot", "screen shot", "snap a screenshot"
+        ]
+        return keywords.contains { t.contains($0) }
+    }
     
     /// Handles network disconnection by informing the user
     private func handleNetworkDisconnection() {
@@ -154,6 +181,12 @@ class ChatViewModel: ObservableObject {
     func sendUserMessage(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Do not allow sending a new message while a computer-use step is pending.
+        if isAwaitingComputerOutput {
+            let warn = ChatMessage(role: .system, text: "Please wait—assistant is completing a computer step.", images: nil)
+            messages.append(warn)
+            return
+        }
         
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
@@ -171,6 +204,12 @@ class ChatViewModel: ObservableObject {
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
+
+        // If the user explicitly asked for a screenshot, enable single-shot mode for this turn
+        if detectsScreenshotRequest(trimmed) {
+            singleShotMessageIds.insert(assistantMsgId)
+            AppLogger.log("[CUA] Single-shot screenshot mode enabled for messageId=\(assistantMsgId)", category: .openAI, level: .info)
+        }
         
         // Disable input while processing
         isStreaming = true
@@ -226,11 +265,10 @@ class ChatViewModel: ObservableObject {
     streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
-        // Preflight: if the last turn contains a pending computer-use tool call,
-        // auto-complete it with a minimal observation to avoid 400 errors on the next request.
-        AppLogger.log("Starting preflight check before sending new message", category: .ui, level: .info)
-        await self.resolvePendingComputerCallsIfNeeded()
-        AppLogger.log("Preflight check completed, proceeding with message send", category: .ui, level: .info)
+                // If previous responses are awaiting computer_call_output, resolve them all first.
+                if self.activePrompt.enableComputerUse {
+                    _ = try? await self.resolveAllPendingComputerCallsIfAny(for: assistantMsgId)
+                }
                 if streamingEnabled {
                     // Use streaming API
                     let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
@@ -286,8 +324,10 @@ class ChatViewModel: ObservableObject {
                 
                 self.streamingMessageId = nil
                 self.isStreaming = false // Re-enable input
-                // Mark as done and reset after a delay
-                if self.streamingStatus != .idle {
+                // Mark as done and reset after a delay, unless we're awaiting computer output
+                if self.isAwaitingComputerOutput {
+                    self.streamingStatus = .usingComputer
+                } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         self.streamingStatus = .idle
@@ -297,13 +337,184 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Resolve all pending computer_call items before proceeding (handles chained calls like wait → screenshot).
+    private func resolveAllPendingComputerCallsIfAny(for messageId: UUID) async throws -> Bool {
+        guard activePrompt.enableComputerUse else { return false }
+        
+        // Prevent concurrent execution - only one resolution process at a time
+        guard !isResolvingComputerCalls else { 
+            AppLogger.log("[CUA] resolveAllPending: Already resolving, skipping", category: .openAI, level: .info)
+            return false 
+        }
+        isResolvingComputerCalls = true
+        defer { isResolvingComputerCalls = false }
+        
+        var resolvedAny = false
+        var safetyCounter = 0
+        while safetyCounter < 8 { // prevent infinite loops
+            safetyCounter += 1
+            guard let prevId = lastResponseId else { break }
+            AppLogger.log("[CUA] resolveAllPending: Getting response for prevId=\(prevId)", category: .openAI, level: .info)
+            let full: OpenAIResponse
+            do { full = try await api.getResponse(responseId: prevId) } catch {
+                AppLogger.log("[CUA] getResponse failed while resolving pending calls: \(error)", category: .openAI, level: .warning)
+                await MainActor.run { self.lastResponseId = nil }
+                break
+            }
+            
+            // Log all computer call items in the response
+            let computerCalls = full.output.filter { $0.type == "computer_call" }
+            AppLogger.log("[CUA] resolveAllPending: Found \(computerCalls.count) computer_call items in response", category: .openAI, level: .info)
+            for (index, call) in computerCalls.enumerated() {
+                AppLogger.log("[CUA] resolveAllPending: computerCall[\(index)]: id=\(call.id), callId=\(call.callId ?? "nil")", category: .openAI, level: .info)
+            }
+            
+            guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
+            AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
+            resolvedAny = true
+            await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
+            do {
+                try await handleComputerToolCallFromOutputItem(computerCallItem, previousId: prevId, messageId: messageId)
+                // handleNonStreamingResponse inside will update lastResponseId
+            } catch {
+                AppLogger.log("[CUA] resolveAllPendingComputerCallsIfAny error: \(error)", category: .openAI, level: .warning)
+                await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
+                break
+            }
+            await MainActor.run { self.isAwaitingComputerOutput = false }
+            // Loop will check the newly updated lastResponseId for further pending calls
+        }
+        
+        // Reset wait counter when computer use chain completes (successful or not)
+        await MainActor.run { self.consecutiveWaitCount = 0 }
+        
+        return resolvedAny
+    }
+
+    /// Handles a computer tool call using a full-response OutputItem (not streaming) and a known previousId
+    private func handleComputerToolCallFromOutputItem(_ outputItem: OutputItem, previousId: String, messageId: UUID) async throws {
+        guard outputItem.type == "computer_call" else { return }
+        let callId = outputItem.callId ?? ""
+        AppLogger.log("[CUA] (resume) OutputItem callId='\(callId)', id='\(outputItem.id)'", category: .openAI, level: .info)
+        guard !callId.isEmpty else { throw OpenAIServiceError.invalidResponseData }
+        guard var actionData = extractComputerActionFromOutputItem(outputItem) else { throw OpenAIServiceError.invalidResponseData }
+
+        // Heuristic: If the model asked for a bare screenshot as the first step, derive a URL
+        // from the user's message so we don't capture an empty white page.
+        if actionData.type == "screenshot", actionData.parameters["url"] == nil,
+           let derived = deriveURLForScreenshot(from: messageId) {
+            AppLogger.log("[CUA] (resume) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
+            actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+        }
+        
+        // Check for pending safety checks
+        if let safetyChecks = outputItem.pendingSafetyChecks, !safetyChecks.isEmpty {
+            AppLogger.log("[CUA] (resume) SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
+            for check in safetyChecks {
+                AppLogger.log("[CUA] (resume) Safety Check - \(check.code): \(check.message)", category: .openAI, level: .warning)
+            }
+            AppLogger.log("[CUA] (resume) Auto-acknowledging safety checks to proceed with computer use", category: .openAI, level: .info)
+        }
+        
+        AppLogger.log("[CUA] (resume) Executing action type=\(actionData.type) for callId='\(callId)'", category: .openAI)
+    let result = try await computerService.executeAction(actionData)
+        
+        // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
+        // so we can capture any screenshots or results first
+        if actionData.type == "wait" {
+            consecutiveWaitCount += 1
+            AppLogger.log("[CUA] (resume) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
+            
+            if consecutiveWaitCount >= maxConsecutiveWaits {
+                AppLogger.log("[CUA] (resume) BREAKING INFINITE WAIT LOOP: \(consecutiveWaitCount) consecutive waits detected. Aborting computer use chain.", category: .openAI, level: .error)
+                await MainActor.run {
+                    self.consecutiveWaitCount = 0 // Reset counter
+                    
+                    // Add a system message to inform the user
+                    let errorMessage = ChatMessage(
+                        role: .system,
+                        text: "⚠️ Computer use interrupted: Too many consecutive wait actions detected. The previous screenshot (if any) has been preserved."
+                    )
+                    self.messages.append(errorMessage)
+                    
+                    // Clear any streaming status
+                    self.isStreaming = false
+                    self.streamingStatus = .idle
+                    self.lastResponseId = nil
+                }
+                return // Exit without continuing the computer use chain
+            }
+        } else {
+            // Reset wait counter for non-wait actions
+            consecutiveWaitCount = 0
+        }
+        
+        if let screenshot = result.screenshot, !screenshot.isEmpty {
+            AppLogger.log("[CUA] (resume) Screenshot captured (\(screenshot.count) b64 chars), adding to message", category: .openAI, level: .info)
+            await MainActor.run {
+                if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
+                    var updatedMessage = self.messages[index]
+                    if let imageData = Data(base64Encoded: screenshot), let rawImage = UIImage(data: imageData, scale: 1.0) {
+                        let uiImage = rawImage
+                        AppLogger.log("[CUA] (resume) Screenshot decoded successfully - Image size: \(uiImage.size), data length: \(imageData.count) bytes", category: .openAI, level: .info)
+                        if updatedMessage.images == nil { updatedMessage.images = [] }
+                        updatedMessage.images?.removeAll()
+                        updatedMessage.images?.append(uiImage)
+                        
+                        // Update the message in the messages array
+                        var updatedMessages = self.messages
+                        updatedMessages[index] = updatedMessage
+                        self.messages = updatedMessages  // This triggers the setter and UI update
+                        
+                        // Explicitly notify that the UI should refresh and give it a moment to process
+                        Task { @MainActor in
+                            self.objectWillChange.send()
+                            // Give SwiftUI a moment to process the change
+                            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                            self.objectWillChange.send() // Second notification to ensure UI updates
+                        }
+                        
+                        AppLogger.log("[CUA] (resume) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
+                    } else {
+                        AppLogger.log("[CUA] (resume) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
+                    }
+                } else {
+                    AppLogger.log("[CUA] (resume) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
+                }
+            }
+            let output: [String: Any] = [
+                "type": "computer_screenshot",
+                "image_url": "data:image/png;base64,\(screenshot)"
+            ]
+            
+            // Include acknowledged safety checks if they were present
+            let acknowledgedSafetyChecks = outputItem.pendingSafetyChecks
+            if let safetyChecks = acknowledgedSafetyChecks {
+                AppLogger.log("[CUA] (resume) Including \(safetyChecks.count) acknowledged safety checks for callId='\(callId)'", category: .openAI)
+            }
+            
+            AppLogger.log("[CUA] (resume) Sending computer_call_output with callId='\(callId)'", category: .openAI, level: .info)
+            
+            let response = try await api.sendComputerCallOutput(
+                callId: callId, 
+                output: output, 
+                model: activePrompt.openAIModel, 
+                previousResponseId: previousId,
+                acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+                currentUrl: result.currentURL
+            )
+            await MainActor.run { self.handleNonStreamingResponse(response, for: messageId) }
+        } else {
+            AppLogger.log("[CUA] (resume) No screenshot; clearing previousId", category: .openAI, level: .warning)
+            await MainActor.run { self.lastResponseId = nil }
+        }
+    }
+
     /// Internal helper to perform the send after optional transcription is done
     private func performSend(finalUserText: String, fileAttachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, assistantMsgId: UUID) async {
         let streamingEnabled = activePrompt.enableStreaming
         await MainActor.run { self.streamingStatus = .connecting }
         do {
-            // Preflight: resolve any pending computer-use tool calls from the previous response.
-            await self.resolvePendingComputerCallsIfNeeded()
             if streamingEnabled {
                 let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
                 for try await chunk in stream {
@@ -341,76 +552,19 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Preflight guard: if the previous response included a computer-use tool call that
-    /// hasn't been followed up with a computer_call_output yet, send a minimal observation.
-    /// This prevents 400 "No tool output found for computer call" errors on the next turn.
-    private func resolvePendingComputerCallsIfNeeded() async {
-        // Only relevant for the dedicated hosted computer model
-        guard activePrompt.openAIModel == "computer-use-preview" else { 
-            AppLogger.log("Skipping preflight: not computer-use-preview model", category: .ui, level: .debug)
-            return 
-        }
-        // Must have a previous response to examine
-        guard var currentPrevId = lastResponseId else { 
-            AppLogger.log("Skipping preflight: no lastResponseId", category: .ui, level: .debug)
-            return 
-        }
-
-        AppLogger.log("Running preflight to check for pending computer calls in response: \(currentPrevId)", category: .ui, level: .info)
-
-        // Attempt to clear up to 2 consecutive pending calls to be safe but bounded.
-        for attempt in 0..<2 {
-            do {
-                let response = try await api.getResponse(responseId: currentPrevId)
-                AppLogger.log("Preflight attempt \(attempt + 1): Retrieved response with \(response.output.count) output items", category: .ui, level: .debug)
-                
-                // Log all output items for debugging
-                for (index, item) in response.output.enumerated() {
-                    AppLogger.log("Output item \(index): type=\(item.type), name=\(item.name ?? "nil"), callId=\(item.callId ?? "nil")", category: .ui, level: .debug)
-                }
-                
-                // Find the most recent computer tool call, if any (handles both shapes)
-                if let pending = response.output.last(where: {
-                    ($0.type == "tool_call" && $0.name == APICapabilities.ToolType.computer.rawValue && $0.callId != nil)
-                    || ($0.type == "computer_call" && $0.callId != nil)
-                }) {
-                    AppLogger.log("Found pending computer call: callId=\(pending.callId ?? "nil"), type=\(pending.type)", category: .ui, level: .info)
-                    
-                    // Instead of trying to manually resolve, break the chain by clearing the lastResponseId
-                    // This will start a fresh conversation turn without the pending computer call reference
-                    await MainActor.run { 
-                        self.lastResponseId = nil 
-                        AppLogger.log("Cleared lastResponseId to break computer call chain", category: .ui, level: .info)
-                    }
-                    break
-                } else {
-                    // No pending computer call detected
-                    AppLogger.log("No pending computer call found in response \(currentPrevId)", category: .ui, level: .debug)
-                    break
-                }
-            } catch {
-                // If anything fails, don't block sending the user's message
-                AppLogger.log("Preflight failed with error: \(error)", category: .ui, level: .warning)
-                break
-            }
-        }
-    }
-    
-    /// Track computer tool usage when computer events are detected
-    private func trackComputerToolUsage(for messageId: UUID) {
+    private func trackToolUsage(for messageId: UUID, tool: String) {
         guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
         
         var updatedMessages = messages
         if updatedMessages[msgIndex].toolsUsed == nil {
             updatedMessages[msgIndex].toolsUsed = []
         }
-        if !updatedMessages[msgIndex].toolsUsed!.contains("computer") {
-            updatedMessages[msgIndex].toolsUsed!.append("computer")
+        if !updatedMessages[msgIndex].toolsUsed!.contains(tool) {
+            updatedMessages[msgIndex].toolsUsed!.append(tool)
             messages = updatedMessages
-            print("🔧 [Tool Tracking] Added computer tool to message \(messageId)")
         }
     }
-    
+
     /// Track which tools were used in a streaming response
     private func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
         guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
@@ -562,6 +716,23 @@ class ChatViewModel: ObservableObject {
         self.lastResponseId = response.id
         print("Updated lastResponseId to: \(response.id)")
         
+        // CUA Single-shot mode: If we've already taken a screenshot for this user message,
+        // and the model asks for another one, halt further actions. This prevents loops.
+        if let lastUserMessage = messages.last(where: { $0.role == .user }),
+           let images = lastUserMessage.images, !images.isEmpty,
+           response.output.contains(where: { item in
+               item.type == "computer_call" && 
+               item.action?["type"]?.value as? String == "screenshot"
+           }) {
+            
+            AppLogger.log("[CUA] Single-shot mode: Halting further computer-use actions for messageId=\(messageId) because a screenshot was already taken.", category: .openAI)
+            // Break the chain to avoid pending tool output errors and loops
+            self.lastResponseId = nil
+            self.isAwaitingComputerOutput = false
+            if self.streamingStatus != .idle { self.streamingStatus = .done }
+            return
+        }
+        
         // Check for and handle function calls
         if let outputItem = response.output.first, outputItem.type == "function_call" {
             Task {
@@ -619,6 +790,30 @@ class ChatViewModel: ObservableObject {
                 "has_images": updatedMessage.images?.isEmpty == false
             ]
         )
+
+        // If the model returned a computer_call in this non-streaming response (e.g., after
+        // sending computer_call_output), immediately resolve it to keep the chain moving
+        // without waiting for the next user turn.
+        if activePrompt.enableComputerUse,
+           response.output.contains(where: { $0.type == "computer_call" }),
+           !isResolvingComputerCalls {
+            // If this turn is single-shot, stop after first screenshot/output
+            if singleShotMessageIds.contains(messageId) {
+                AppLogger.log("[CUA] Single-shot mode: halting further computer-use actions for messageId=\(messageId)", category: .openAI, level: .info)
+                singleShotMessageIds.remove(messageId)
+                // Break the chain to avoid pending tool output errors and loops
+                self.lastResponseId = nil
+                self.isAwaitingComputerOutput = false
+                if self.streamingStatus != .idle { self.streamingStatus = .done }
+            } else {
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
+                    _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
+                    await MainActor.run { self.isAwaitingComputerOutput = false }
+                }
+            }
+        }
     }
     
     /// Handles a function call from the API by executing the function and sending the result back.
@@ -856,6 +1051,44 @@ class ChatViewModel: ObservableObject {
         
         // Handle different types of streaming events
         switch chunk.type {
+        case "error":
+            // Handle API errors during streaming
+            let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
+            
+            AppLogger.log("🚨 [Streaming Error] \(errorMessage)", category: .openAI, level: .error)
+            
+            // Add an error message to the UI
+            let systemMessage = ChatMessage(
+                role: .system,
+                text: "⚠️ Error: \(errorMessage)"
+            )
+            messages.append(systemMessage)
+            
+            // Reset streaming state
+            isStreaming = false
+            streamingStatus = .idle
+            streamingMessageId = nil
+            isAwaitingComputerOutput = false
+            
+        case "response.failed":
+            // Handle failed responses
+            let errorMessage = chunk.response?.error?.message ?? "The request failed"
+            
+            AppLogger.log("🚨 [Response Failed] \(errorMessage)", category: .openAI, level: .error)
+            
+            // Add an error message to the UI  
+            let systemMessage = ChatMessage(
+                role: .system,
+                text: "⚠️ Request failed: \(errorMessage)"
+            )
+            messages.append(systemMessage)
+            
+            // Reset streaming state
+            isStreaming = false
+            streamingStatus = .idle
+            streamingMessageId = nil
+            isAwaitingComputerOutput = false
+            
         case "response.output_text.delta":
             // Handle text delta updates
             if let delta = chunk.delta {
@@ -880,10 +1113,13 @@ class ChatViewModel: ObservableObject {
                 handleCompletedStreamingItem(item, for: messageId)
                 // Track tool usage
                 trackToolUsage(item, for: messageId)
-                // If the completed item is a computer tool call, send a basic observation to continue the loop
-                if item.type == "tool_call", item.name == APICapabilities.ToolType.computer.rawValue {
+                // If the completed item is a computer tool call, get the full response to extract the action
+                if item.type == "computer_call" {
+                    // Immediately surface the UI state to show we're continuing with computer use
+                    self.isAwaitingComputerOutput = true
+                    self.streamingStatus = .usingComputer
                     Task {
-                        await self.handleComputerToolCall(item, messageId: messageId)
+                        await self.handleComputerToolCallWithFullResponse(item, messageId: messageId)
                     }
                 }
             }
@@ -921,7 +1157,7 @@ class ChatViewModel: ObservableObject {
         // Computer Use streaming events
         case "response.computer_call.in_progress":
             // Computer is starting an action - track tool usage
-            trackComputerToolUsage(for: messageId)
+            trackToolUsage(for: messageId, tool: "computer")
             updateStreamingStatus(for: "computer.in_progress")
             
         case "response.computer_call.screenshot_taken":
@@ -946,16 +1182,264 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// When the model initiates a computer tool call, send a minimal output to continue the agent loop.
-    private func handleComputerToolCall(_ item: StreamingItem, messageId: UUID) async {
-        guard activePrompt.openAIModel == "computer-use-preview" else { return }
+    /// Handles computer tool calls by fetching the full response to get complete action details
+    private func handleComputerToolCallWithFullResponse(_ item: StreamingItem, messageId: UUID) async {
+        guard activePrompt.enableComputerUse else { return }
         guard let previousId = lastResponseId else { return }
-        // Build a minimal observation payload; real env execution can enrich this later
-    let output: [String: Any] = [
-            "status": "observed",
-            "message": "UI acknowledged the computer action"
-        ]
-        // If we recently received a screenshot in the same turn, we could attach it here later.
+
+        AppLogger.log("[CUA] Handling computer_call item.id=\(item.id), previousResponseId=\(previousId)", category: .openAI)
+        await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
+        do {
+            // Fetch the full response to get the complete computer_call action (includes call_id)
+            let fullResponse = try await api.getResponse(responseId: previousId)
+            AppLogger.log("[CUA] Fetched full response for prevId=\(previousId) with \(fullResponse.output.count) items", category: .openAI)
+
+            guard let computerCallItem = fullResponse.output.first(where: { $0.type == "computer_call" && $0.id == item.id }) else {
+                AppLogger.log("[CUA] No matching computer_call item found in full response for streaming item.id=\(item.id)", category: .openAI, level: .warning)
+                await MainActor.run { self.lastResponseId = nil }
+                await MainActor.run { self.isAwaitingComputerOutput = false }
+                return
+            }
+
+            let callId = computerCallItem.callId ?? item.callId ?? ""
+            if callId.isEmpty {
+                AppLogger.log("[CUA] Missing call_id for computer_call id=\(computerCallItem.id). Cannot send output.", category: .openAI, level: .error)
+                await MainActor.run { self.lastResponseId = nil }
+                await MainActor.run { self.isAwaitingComputerOutput = false }
+                return
+            }
+
+            guard var actionData = extractComputerActionFromOutputItem(computerCallItem) else {
+                AppLogger.log("[CUA] Failed to extract action for computer_call id=\(computerCallItem.id)", category: .openAI, level: .error)
+                await MainActor.run { self.lastResponseId = nil }
+                await MainActor.run { self.isAwaitingComputerOutput = false }
+                return
+            }
+
+            // Heuristic for first-step screenshot: derive URL from user's prompt
+            if actionData.type == "screenshot", actionData.parameters["url"] == nil,
+               let derived = deriveURLForScreenshot(from: messageId) {
+                AppLogger.log("[CUA] Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
+                actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+            }
+
+            AppLogger.log("[CUA] Executing action type=\(actionData.type) params=\(actionData.parameters)", category: .openAI)
+            
+            // Check for pending safety checks
+            if let safetyChecks = computerCallItem.pendingSafetyChecks, !safetyChecks.isEmpty {
+                AppLogger.log("[CUA] SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
+                for check in safetyChecks {
+                    AppLogger.log("[CUA] Safety Check - \(check.code): \(check.message)", category: .openAI, level: .warning)
+                }
+                
+                // For now, automatically acknowledge all safety checks to allow the computer use to proceed
+                // In a production app, you might want to prompt the user for confirmation
+                // TODO: Implement user confirmation UI for safety checks
+                AppLogger.log("[CUA] Auto-acknowledging safety checks to proceed with computer use", category: .openAI, level: .info)
+            }
+            
+            
+            let result = try await computerService.executeAction(actionData)
+            
+            // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
+            // so we can capture any screenshots or results first
+            if actionData.type == "wait" {
+                consecutiveWaitCount += 1
+                AppLogger.log("[CUA] (streaming) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
+                
+                if consecutiveWaitCount >= maxConsecutiveWaits {
+                    AppLogger.log("[CUA] (streaming) BREAKING INFINITE WAIT LOOP: \(consecutiveWaitCount) consecutive waits detected. Aborting computer use chain.", category: .openAI, level: .error)
+                    await MainActor.run {
+                        self.consecutiveWaitCount = 0 // Reset counter
+                        self.isAwaitingComputerOutput = false // Reset computer use flag
+                        
+                        // Add a system message to inform the user
+                        let errorMessage = ChatMessage(
+                            role: .system,
+                            text: "⚠️ Computer use interrupted: Too many consecutive wait actions detected. The previous screenshot (if any) has been preserved."
+                        )
+                        self.messages.append(errorMessage)
+                        
+                        // Clear any streaming status
+                        self.isStreaming = false
+                        self.streamingStatus = .idle
+                        self.lastResponseId = nil
+                    }
+                    return // Exit without continuing the computer use chain
+                }
+            } else {
+                // Reset wait counter for non-wait actions
+                consecutiveWaitCount = 0
+            }
+
+            // Attach screenshot to UI if available
+            if let screenshot = result.screenshot, !screenshot.isEmpty {
+                AppLogger.log("[CUA] (streaming) Screenshot captured (\(screenshot.count) b64 chars), adding to message", category: .openAI, level: .info)
+                await MainActor.run {
+                    if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
+                        var updatedMessage = self.messages[index]
+                        if let imageData = Data(base64Encoded: screenshot), let rawImage = UIImage(data: imageData, scale: 1.0) {
+                            // Ensure the image has a proper CGImage
+                            let uiImage: UIImage
+                            if rawImage.cgImage == nil {
+                                AppLogger.log("[CUA] (streaming) WARNING: UIImage has no CGImage, attempting to recreate", category: .openAI, level: .warning)
+                                // Try to recreate the image from PNG data
+                                if let pngData = rawImage.pngData(), let recreatedImage = UIImage(data: pngData) {
+                                    uiImage = recreatedImage
+                                } else {
+                                    AppLogger.log("[CUA] (streaming) FAILED to recreate image with CGImage", category: .openAI, level: .error)
+                                    return
+                                }
+                            } else {
+                                uiImage = rawImage
+                            }
+                            
+                            AppLogger.log("[CUA] (streaming) Screenshot decoded successfully - Image size: \(uiImage.size), data length: \(imageData.count) bytes", category: .openAI, level: .info)
+                            AppLogger.log("[CUA] (streaming) CGImage present: \(uiImage.cgImage != nil), orientation: \(uiImage.imageOrientation.rawValue)", category: .openAI, level: .info)
+                            
+                            if updatedMessage.images == nil { updatedMessage.images = [] }
+                            updatedMessage.images?.removeAll()
+                            updatedMessage.images?.append(uiImage)
+                            
+                            AppLogger.log("[CUA] (streaming) About to update message with \(updatedMessage.images?.count ?? 0) images", category: .openAI, level: .info)
+                            
+                            // Update the message in the messages array
+                            var updatedMessages = self.messages
+                            updatedMessages[index] = updatedMessage
+                            self.messages = updatedMessages  // This triggers the setter and UI update
+                            
+                            AppLogger.log("[CUA] (streaming) Message updated, now has \(self.messages[index].images?.count ?? 0) images", category: .openAI, level: .info)
+                            
+                            // Force multiple UI refresh cycles
+                            Task { @MainActor in
+                                self.objectWillChange.send()
+                                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                                self.objectWillChange.send() 
+                                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                                self.objectWillChange.send()
+                            }
+                            
+                            AppLogger.log("[CUA] (streaming) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
+                        } else {
+                            AppLogger.log("[CUA] (streaming) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
+                        }
+                    } else {
+                        AppLogger.log("[CUA] (streaming) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
+                    }
+                }
+
+                let output: [String: Any] = [
+                    "type": "computer_screenshot",
+                    "image_url": "data:image/png;base64,\(screenshot)"
+                ]
+                // Include acknowledged safety checks if they were present
+                let acknowledgedSafetyChecks = computerCallItem.pendingSafetyChecks
+                
+                AppLogger.log("[CUA] Sending computer_call_output for call_id=\(callId)", category: .openAI)
+                if let safetyChecks = acknowledgedSafetyChecks {
+                    AppLogger.log("[CUA] Including \(safetyChecks.count) acknowledged safety checks", category: .openAI)
+                }
+                
+                do {
+                    let response = try await api.sendComputerCallOutput(
+                        callId: callId,
+                        output: output,
+                        model: activePrompt.openAIModel,
+                        previousResponseId: previousId,
+                        acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+                        currentUrl: result.currentURL
+                    )
+                    await MainActor.run {
+                        self.handleNonStreamingResponse(response, for: messageId)
+                        self.isAwaitingComputerOutput = false
+                    }
+                } catch {
+                    AppLogger.log("[CUA] Failed to send computer_call_output: \(error)", category: .openAI, level: .error)
+                    // Important: Clear previous response ID so subsequent user messages
+                    // don't reference a pending computer_call and trigger 400 errors like
+                    // "No tool output found for computer call ...".
+                    await MainActor.run {
+                        self.handleError(error)
+                        self.lastResponseId = nil
+                        // Provide a lightweight, user-visible hint in the chat
+                        let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
+                        self.messages.append(sys)
+                        self.isAwaitingComputerOutput = false
+                    }
+                }
+            } else {
+                AppLogger.log("[CUA] No screenshot produced by action; clearing previousId to avoid API 400", category: .openAI, level: .warning)
+                await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
+            }
+        } catch {
+            AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
+            await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
+        }
+    }
+    
+    /// Extracts computer action from a full response OutputItem (has complete action data)
+    private func extractComputerActionFromOutputItem(_ item: OutputItem) -> ComputerAction? {
+        guard item.type == "computer_call", let actionData = item.action else {
+            return nil
+        }
+        
+        let actionDict = actionData.mapValues { $0.value }
+        
+        guard let actionType = actionDict["type"] as? String else {
+            return nil
+        }
+        
+        return ComputerAction(type: actionType, parameters: actionDict)
+    }
+
+    /// Derives a URL to navigate to for a screenshot-only action when the model didn't provide one.
+    /// Tries to parse the user's last message for a renderable URL; otherwise returns nil.
+    private func deriveURLForScreenshot(from messageId: UUID) -> URL? {
+        // Find the user's message immediately before the assistant messageId
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }), idx > 0 else { return nil }
+        // Search backwards for the nearest user message
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            let m = messages[i]
+            if m.role == .user, let text = m.text {
+                let urls = URLDetector.extractRenderableURLs(from: text)
+                if let first = urls.first { return first }
+                // Simple domain hint like "google.com" without scheme
+                let tokens = text
+                    .replacingOccurrences(of: ",", with: " ")
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .split(separator: " ")
+                    .map { String($0) }
+                if let domain = tokens.first(where: { $0.contains(".") && !$0.contains(" ") && !$0.contains("http") }) {
+                    return URL(string: "https://\(domain)")
+                }
+                break
+            }
+        }
+        return nil
+    }
+
+    /// Extracts computer action from streaming item
+    private func extractComputerAction(from item: StreamingItem) -> ComputerAction? {
+        guard item.type == "computer_call", let actionDict = item.action else {
+            return nil
+        }
+        
+        guard let actionType = actionDict["type"]?.value as? String else {
+            return nil
+        }
+        
+        var parameters: [String: Any] = [:]
+        for (key, anyCodableValue) in actionDict {
+            if key != "type" {
+                parameters[key] = anyCodableValue.value
+            }
+        }
+        
+        return ComputerAction(type: actionType, parameters: parameters)
+    }
+    
+    /// Sends computer call output back to OpenAI API
+    private func sendComputerCallOutput(item: StreamingItem, output: Any, previousId: String, messageId: UUID) async {
         do {
             let response = try await api.sendComputerCallOutput(
                 call: item,
@@ -967,268 +1451,88 @@ class ChatViewModel: ObservableObject {
                 self.handleNonStreamingResponse(response, for: messageId)
             }
         } catch {
-            await MainActor.run { self.handleError(error) }
-        }
-    }
-    
-    /// Updates the streaming status based on the event type from the API, providing more granular feedback.
-    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil) {
-        // Use a dispatch queue to ensure status updates are processed sequentially
-        // and don't get overwritten by rapid-fire events.
-        DispatchQueue.main.async {
-            switch eventType {
-            case "response.created":
-                self.streamingStatus = .responseCreated
-            case "response.queued":
-                self.streamingStatus = .connecting
-            case "response.in_progress":
-                self.streamingStatus = .connecting
-            case "response.output_item.added":
-                // Check the item type to determine what the model is doing
-                if let item = item {
-                    switch item.type {
-                    case "reasoning":
-                        self.streamingStatus = .thinking
-                    case "message":
-                        // This indicates we're about to receive text
-                        self.streamingStatus = .streamingText
-                    case "tool_call":
-                        // Handle specific tools
-                        if let toolName = item.name {
-                            switch toolName {
-                            case APICapabilities.ToolType.webSearch.rawValue:
-                                self.streamingStatus = .searchingWeb
-                            case APICapabilities.ToolType.codeInterpreter.rawValue:
-                                self.streamingStatus = .generatingCode
-                            case APICapabilities.ToolType.imageGeneration.rawValue:
-                                self.streamingStatus = .generatingImage
-                            case "mcp":
-                                self.streamingStatus = .runningTool("MCP")
-                            default:
-                                self.streamingStatus = .runningTool(toolName)
-                            }
-                        } else {
-                            self.streamingStatus = .runningTool("Unknown")
-                        }
-                    default:
-                        break
-                    }
-                }
-            case "response.output_item.reasoning.started":
-                self.streamingStatus = .thinking
-            case "response.output_item.tool_call.started":
-                // Determine the specific tool being used
-                if let toolName = item?.name {
-                    switch toolName {
-                    case APICapabilities.ToolType.webSearch.rawValue:
-                        self.streamingStatus = .searchingWeb
-                    case APICapabilities.ToolType.codeInterpreter.rawValue:
-                        self.streamingStatus = .generatingCode
-                    case APICapabilities.ToolType.imageGeneration.rawValue:
-                        self.streamingStatus = .generatingImage
-                    case APICapabilities.ToolType.computer.rawValue:
-                        self.streamingStatus = .usingComputer
-                    case "mcp":
-                        self.streamingStatus = .runningTool("MCP")
-                    default:
-                        self.streamingStatus = .runningTool(toolName)
-                    }
-                }
-            case "response.output_item.tool_call.delta":
-                // Handle tool call progress updates
-                if let toolName = item?.name, toolName == "image_generation" {
-                    // For image generation, show progressive updates
-                    self.streamingStatus = .imageGenerationProgress("Processing...")
-                }
-            case "response.output_item.tool_call.done":
-                // Tool call completed
-                if let toolName = item?.name, toolName == "image_generation" {
-                    self.streamingStatus = .imageGenerationProgress("Finalizing image...")
-                }
-            case "response.image_generation_call.in_progress":
-                // gpt-image-1 specific: Image generation started
-                self.streamingStatus = .generatingImage
-            case "response.image_generation_call.generating":
-                // gpt-image-1 specific: Image generation in progress
-                self.streamingStatus = .imageGenerationProgress("Creating your image...")
-            case "response.image_generation_call.partial_image":
-                // gpt-image-1 specific: Partial image preview available
-                self.streamingStatus = .imageGenerationProgress("Preparing preview...")
-            case "response.image_generation_call.completed":
-                // gpt-image-1 specific: Image generation completed
-                self.streamingStatus = .imageGenerationCompleting
-            
-            // Computer Use specific events
-            case "computer.in_progress":
-                self.streamingStatus = .usingComputer
-            case "computer.screenshot":
-                self.streamingStatus = .usingComputer // Could add specific screenshot status later
-            case "computer.action":
-                self.streamingStatus = .usingComputer
-            case "computer.completed":
-                self.streamingStatus = .streamingText // Move to next phase
-                
-            case "response.content_part.added":
-                // We're about to start receiving content
-                self.streamingStatus = .streamingText
-            case "response.output_text.delta":
-                // Once we receive the first text delta, we are actively streaming.
-                if self.streamingStatus != .streamingText {
-                    self.streamingStatus = .streamingText
-                }
-            case "response.output_item.done":
-                // An output item finished, but we might have more coming
-                break
-            case "response.output_text.done":
-                // Text output is complete for this item
-                break
-            case "response.content_part.done":
-                // Content part is complete
-                break
-            case "response.completed", "response.done":
-                self.streamingStatus = .finalizing
-            default:
-                // No status change for other events, but let's log what we're missing
-                print("Unhandled streaming event: \(eventType)")
-                break
+            await MainActor.run {
+                self.handleError(error)
             }
         }
     }
     
-    /// Handle partial image updates from gpt-image-1 streaming
-    private func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
-        guard messages.contains(where: { $0.id == messageId }) else { return }
-        
-        // Convert base64 image data to UIImage and store it
-        if let partialImageB64 = chunk.partialImageB64 {
-            print("Received partial image data (length: \(partialImageB64.count))")
-            
-            // Use optimized image processing
-            ImageProcessingUtils.processBase64Image(partialImageB64) { [weak self] (optimizedImage: UIImage?) in
-                guard let self = self, let image = optimizedImage else { return }
-                
-                // Ensure we're still on the same message
-                guard let currentIndex = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
-                
-                // Add the optimized UIImage to the message
-                if self.messages[currentIndex].images == nil {
-                    self.messages[currentIndex].images = []
-                }
-                self.messages[currentIndex].images?.append(image)
-                
-                // Update status to show image is ready
-                self.streamingStatus = .imageReady
-                
-                // Add subtle haptic feedback for successful image generation
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-                
-                print("Successfully processed and optimized partial image into message")
-            }
-        }
-    }
-    
-    /// Handle computer use screenshots from streaming events
+    /// Handles a screenshot received during streaming for computer use.
     private func handleComputerScreenshot(_ chunk: StreamingEvent, for messageId: UUID) {
-        guard messages.contains(where: { $0.id == messageId }) else { return }
+        AppLogger.log("[CUA] handleComputerScreenshot: Processing streaming screenshot event", category: .openAI, level: .info)
         
-        // Check if there's screenshot data in the chunk
-        if let screenshotB64 = chunk.screenshotB64 {
-            print("Received computer use screenshot (length: \(screenshotB64.count))")
-            
-            // Convert base64 screenshot to UIImage
-            ImageProcessingUtils.processBase64Image(screenshotB64) { [weak self] (optimizedImage: UIImage?) in
-                guard let self = self, let image = optimizedImage else { return }
-                
-                // Ensure we're still on the same message
-                guard let currentIndex = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
-                
-                // Add the screenshot to the message
-                if self.messages[currentIndex].images == nil {
-                    self.messages[currentIndex].images = []
+        guard let item = chunk.item,
+              let content = item.content?.first,
+              let imageData = extractImageDataFromContent(content)
+        else {
+            AppLogger.log("[CUA] handleComputerScreenshot: FAILED to extract image data from streaming chunk", category: .openAI, level: .error)
+            return
+        }
+        
+        if let image = UIImage(data: imageData) {
+            if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
+                var updatedMessages = messages
+                if updatedMessages[msgIndex].images == nil {
+                    updatedMessages[msgIndex].images = []
                 }
-                self.messages[currentIndex].images?.append(image)
-                
-                // Update status
-                self.streamingStatus = .usingComputer
-                
-                print("🖥️ Successfully added computer screenshot to message")
+                // Replace previous screenshot if one exists
+                updatedMessages[msgIndex].images?.removeAll()
+                updatedMessages[msgIndex].images?.append(image)
+                messages = updatedMessages
             }
         }
     }
     
-    /// Handle completed streaming items (like images or final text)
+    /// Helper method to extract image data from various content types
+    private func extractImageDataFromContent(_ content: StreamingContentItem) -> Data? {
+        // Try different ways to get image data based on content type
+        if let imageUrl = content.imageURL ?? content.text,
+           let imageDataString = imageUrl.split(separator: ",").last.map(String.init),
+           let imageData = Data(base64Encoded: imageDataString) {
+            return imageData
+        }
+        return nil
+    }
+    
+    /// Handles the completion of a streaming item, such as an image or tool call.
     private func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        // Find the message to update
+        guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
         
-        // Skip reasoning and system outputs
-        if item.type == "reasoning" || item.type == "system" {
-            return
+        // Handle image generation completion
+        if item.type == "image_generation_call" || item.type == "image_file" || item.type == "image_url" {
+            // For now, skip trying to fetch image data from streaming items
+            // This functionality may need to be implemented differently
+            print("Skipping image fetch for streaming item of type: \(item.type)")
         }
-        
-        // Handle image generation calls
-        if item.type == "image_generation_call" {
-            print("Processing completed image generation call: \(item.id)")
-            // The actual image will be provided in a separate response item
-            // For now, we'll add a placeholder or message indicating the image was generated
-            return
-        }
-        
-        // Process content items
-        if let contentItems = item.content {
-            var updatedMessages = messages
-            var hasUpdates = false
-            
-            for contentItem in contentItems {
-                if let text = contentItem.text, !text.isEmpty {
-                    // Update text content (this might be redundant with delta updates)
-                    updatedMessages[msgIndex].text = text
-                    hasUpdates = true
-                }
-                
-                // Handle image content (note: streaming typically doesn't include images)
-                if contentItem.type.hasPrefix("image") {
-                    // For now, we'll just log this as images are typically not streamed
-                    print("Image content detected in streaming response: \(contentItem.type)")
-                }
-            }
-            
-            if hasUpdates {
-                messages = updatedMessages // Trigger UI update
-            }
-        }
-        
-        // When the stream completes, finalize the message state
-        let finalMessage = messages[msgIndex]
-        
-        // Detect unique URLs in the final message content
-        if let messageText = finalMessage.text {
-            let detectedURLs = URLDetector.detectUniqueURLs(in: messageText)
-            if !detectedURLs.isEmpty {
-                // Update the message with the detected URLs
-                DispatchQueue.main.async {
-                    self.messages[msgIndex].webContentURL = detectedURLs
-                    print("🌐 [Web Content] Detected \(detectedURLs.count) unique renderable URLs in assistant response")
-                    for url in detectedURLs {
-                        print("🌐 [Web Content] Will render: \(url.absoluteString)")
-                    }
-                }
-            }
-        }
-        
-        // Log the final message reception
-        AnalyticsService.shared.trackEvent(
-            name: AnalyticsEvent.messageReceived,
-            parameters: [
-                AnalyticsParameter.model: activePrompt.openAIModel,
-                AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
-                AnalyticsParameter.streamingEnabled: true,
-                "has_images": !(finalMessage.images?.isEmpty ?? true)
-            ]
-        )
     }
     
-    /// Handle errors by appending a system message describing the issue.
+    /// Handles partial image updates from gpt-image-1 model
+    private func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
+        guard let dataString = chunk.item?.content?.first?.text,
+              let imageData = Data(base64Encoded: dataString),
+              let image = UIImage(data: imageData) else {
+            return
+        }
+        
+        // We'll track partial images using a different approach since UIImage doesn't have isPartial
+        if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
+            var updatedMessages = messages
+            if updatedMessages[msgIndex].images == nil {
+                updatedMessages[msgIndex].images = []
+            }
+            
+            // For partial image updates, we'll replace the last image if it exists
+            // This assumes partial updates replace the previous partial image
+            if !updatedMessages[msgIndex].images!.isEmpty {
+                updatedMessages[msgIndex].images!.removeLast()
+            }
+            updatedMessages[msgIndex].images?.append(image)
+            messages = updatedMessages
+        }
+    }
+    
+    /// Handles errors that occur during API calls or other operations.
     func handleError(_ error: Error) {
         let specificError = OpenAIServiceError.from(error: error)
         let errorText = specificError.userFriendlyDescription
@@ -1324,6 +1628,47 @@ class ChatViewModel: ObservableObject {
         streamingMessageId = nil
     }
     
+    /// Updates the streaming status based on the event type and item context
+    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil) {
+        switch eventType {
+        case "response.created":
+            streamingStatus = .connecting
+        case "response.output_text.delta":
+            streamingStatus = .streamingText
+        case "response.image_generation_call.in_progress":
+            streamingStatus = .generatingImage
+        case "response.image_generation_call.partial_image":
+            streamingStatus = .generatingImage
+        case "response.computer_call.in_progress", "computer.in_progress",
+             "response.computer_call.screenshot_taken", "computer.screenshot",
+             "response.computer_call.action_performed", "computer.action",
+             "response.computer_call.completed", "computer.completed":
+            // Always surface the simple, recognizable "Using computer" chip in the UI
+            streamingStatus = .usingComputer
+        case "response.tool_call.started":
+            if let toolName = item?.name {
+                // Special-case the computer tool to keep the UX consistent
+                if toolName == APICapabilities.ToolType.computer.rawValue || toolName == "computer" {
+                    streamingStatus = .usingComputer
+                } else {
+                    streamingStatus = .runningTool(toolName)
+                }
+            } else {
+                streamingStatus = .runningTool("unknown")
+            }
+        case "response.done", "response.completed":
+            streamingStatus = isAwaitingComputerOutput ? .usingComputer : .done
+        default:
+            // Keep current status for unknown events
+            break
+        }
+    }
+    
+    /// Convenience method for updating status with just event type
+    private func updateStreamingStatus(for eventType: String) {
+        updateStreamingStatus(for: eventType, item: nil)
+    }
+
     /// Exports the current conversation as formatted text for sharing
     func exportConversationText() -> String {
         guard let conversation = activeConversation, !conversation.messages.isEmpty else {

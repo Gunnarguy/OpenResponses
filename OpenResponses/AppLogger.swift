@@ -57,10 +57,11 @@ enum AppLogger {
     #endif
     
     /// Whether to print duplicate logs for the same message
-    static var allowDuplicateLogs = false
+    static var allowDuplicateLogs = true  // Temporarily disabled to avoid crashes
     
     /// Store recent log messages to detect duplicates
     private static var recentLogMessages = [String: Date]()
+    private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs", attributes: .concurrent)
     
     /// Time window in seconds to consider logs as duplicates
     private static let duplicateWindowSeconds: TimeInterval = 1.0
@@ -91,20 +92,26 @@ enum AppLogger {
         // Check for duplicate logs if feature is enabled
         if !allowDuplicateLogs {
             let now = Date()
+            var shouldSkip = false
             
-            // Clean up old entries
-            recentLogMessages = recentLogMessages.filter { _, timestamp in
-                now.timeIntervalSince(timestamp) < duplicateWindowSeconds
+            recentLogMessagesQueue.sync {
+                // Clean up old entries
+                recentLogMessages = recentLogMessages.filter { _, timestamp in
+                    now.timeIntervalSince(timestamp) < duplicateWindowSeconds
+                }
+                
+                // Check if this is a duplicate message within the time window
+                if recentLogMessages[logMessage] != nil {
+                    shouldSkip = true
+                } else {
+                    // Store this message
+                    recentLogMessages[logMessage] = now
+                }
             }
             
-            // Check if this is a duplicate message within the time window
-            if recentLogMessages[logMessage] != nil {
-                // Skip duplicate log
+            if shouldSkip {
                 return
             }
-            
-            // Store this message
-            recentLogMessages[logMessage] = now
         }
         
         // Send to system logger

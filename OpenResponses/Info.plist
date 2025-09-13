@@ -12,5 +12,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>OpenResponses uses your location once to autofill city/region/country for web search relevance. This is optional.</string>
 
+	<!-- Local network permission description (for connecting to a LAN-hosted Computer Use Server) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OpenResponses connects to your local network to reach a trusted automation server you control.</string>
+
 </dict>
 </plist>
