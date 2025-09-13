@@ -1118,8 +1118,20 @@ Important notes:
 
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
 
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            AppLogger.log("OpenAI Computer Output Request JSON: \(jsonString)", category: .openAI, level: .debug)
+        // Redact large base64 image payloads from debug logs to keep console readable
+        var redacted = requestObject
+            if var inputArray = redacted["input"] as? [[String: Any]],
+               !inputArray.isEmpty,
+               var first = inputArray[0]["output"] as? [String: Any] {
+                if first["type"] as? String == "computer_screenshot", first["image_url"] != nil {
+                    first["image_url"] = "[redacted base64]"
+                    inputArray[0]["output"] = first
+                    redacted["input"] = inputArray
+                }
+            }
+        if let redactedData = try? JSONSerialization.data(withJSONObject: redacted, options: .prettyPrinted),
+           let redactedString = String(data: redactedData, encoding: .utf8) {
+            AppLogger.log("OpenAI Computer Output Request JSON: \(redactedString)", category: .openAI, level: .debug)
         }
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120

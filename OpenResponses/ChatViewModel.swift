@@ -1328,6 +1328,9 @@ class ChatViewModel: ObservableObject {
                     await MainActor.run {
                         self.handleError(error)
                         self.lastResponseId = nil
+                        // CRITICAL FIX: Reset streaming status on computer_call_output network failure
+                        self.streamingStatus = .idle
+                        self.isStreaming = false
                         // Provide a lightweight, user-visible hint in the chat
                         let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
                         self.messages.append(sys)
@@ -1369,7 +1372,15 @@ class ChatViewModel: ObservableObject {
             let m = messages[i]
             if m.role == .user, let text = m.text {
                 let urls = URLDetector.extractRenderableURLs(from: text)
-                if let first = urls.first { return first }
+                if let first = urls.first {
+                    // Normalize: ensure https scheme and lowercase host to avoid redirects like Google.com -> www.google.com
+                    if var comps = URLComponents(url: first, resolvingAgainstBaseURL: false) {
+                        if comps.scheme == nil { comps.scheme = "https" }
+                        comps.host = comps.host?.lowercased()
+                        if let normalized = comps.url { return normalized }
+                    }
+                    return first
+                }
                 // Simple domain hint like "google.com" without scheme
                 let tokens = text
                     .replacingOccurrences(of: ",", with: " ")
@@ -1377,7 +1388,8 @@ class ChatViewModel: ObservableObject {
                     .split(separator: " ")
                     .map { String($0) }
                 if let domain = tokens.first(where: { $0.contains(".") && !$0.contains(" ") && !$0.contains("http") }) {
-                    return URL(string: "https://\(domain)")
+                    let host = domain.lowercased()
+                    return URL(string: "https://\(host)")
                 }
                 break
             }
@@ -1420,6 +1432,10 @@ class ChatViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.handleError(error)
+                // CRITICAL FIX: Reset streaming status on computer_call_output network failure
+                self.streamingStatus = .idle
+                self.isStreaming = false
+                self.isAwaitingComputerOutput = false
             }
         }
     }
