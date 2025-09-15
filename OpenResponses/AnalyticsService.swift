@@ -131,12 +131,14 @@ class AnalyticsService: ObservableObject {
             AppLogger.logOpenAIRequest(url: url, method: method, headers: headers, body: body)
         } else {
             var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
-            logMessage += "📤 HEADERS: \(redactSensitiveHeaders(headers))\n"
-            
-            if let body = body, let bodyString = prettyPrintJSON(body) {
-                logMessage += "📤 BODY: \(bodyString)"
+            logMessage += "📤 HEADERS: \(redactSensitiveHeaders(headers))"
+
+            if AppLogger.minimizeOpenAILogBodies {
+                logMessage += "\n📤 BODY: (omitted)"
+            } else if let body = body, let pretty = AppLogger.logOpenAIRequestBodyPreview(body) {
+                logMessage += "\n📤 BODY: \(pretty)"
             }
-            
+
             AppLogger.log(logMessage, category: .network, level: .debug)
         }
     }
@@ -168,14 +170,16 @@ class AnalyticsService: ObservableObject {
         } else {
             let success = statusCode >= 200 && statusCode < 300
             let emoji = success ? "📥" : "⚠️"
-            
+
             var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(url.absoluteString)\n"
-            logMessage += "\(emoji) HEADERS: \(headers)\n"
-            
-            if let body = body, let bodyString = prettyPrintJSON(body) {
-                logMessage += "\(emoji) BODY: \(bodyString)"
+            logMessage += "\(emoji) HEADERS: \(headers)"
+
+            if AppLogger.minimizeOpenAILogBodies {
+                logMessage += "\n\(emoji) BODY: (omitted)"
+            } else if let body = body, let pretty = AppLogger.logOpenAIRequestBodyPreview(body) {
+                logMessage += "\n\(emoji) BODY: \(pretty)"
             }
-            
+
             let level: AppLogger.Level = success ? .debug : .warning
             AppLogger.log(logMessage, category: .network, level: level)
         }

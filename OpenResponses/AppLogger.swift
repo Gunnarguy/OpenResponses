@@ -69,6 +69,101 @@ enum AppLogger {
     /// Log level for OpenAI API requests and responses
     /// This allows quick adjustment of verbosity for API logs
     static var openAILogLevel: Level = .debug
+    /// When true, requests/responses bodies are omitted to keep logs concise
+    static var minimizeOpenAILogBodies: Bool = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies") {
+        didSet {
+            log("Minimize API Log Bodies set to: \(minimizeOpenAILogBodies)", category: .openAI, level: .info)
+        }
+    }
+
+    // MARK: - Log Sanitization Helpers
+
+    /// Max number of characters to include from any long string in logs
+    private static let maxStringPreview = 400
+    /// Keys that are likely to contain large base64 or data-URIs
+    private static let heavyPayloadKeys: Set<String> = [
+        "image_url", "partial_image_b64", "screenshot_b64", "image_b64", "partial_image", "imageData", "image"
+    ]
+
+    /// Returns a truncated version of the input string, preserving head/tail around an omission marker.
+    private static func truncateMiddle(_ s: String, max: Int = maxStringPreview) -> String {
+        guard s.count > max, max > 20 else { return s }
+        let headCount = max / 2 - 5
+        let tailCount = max / 2 - 5
+        let head = s.prefix(headCount)
+        let tail = s.suffix(tailCount)
+        return String(head) + " …[truncated]… " + String(tail)
+    }
+
+    /// Heuristically redacts data-URI images and base64 blobs inside strings.
+    private static func sanitizeString(_ s: String) -> String {
+        // Redact data:image/*;base64,....
+        if s.lowercased().hasPrefix("data:image/") {
+            // Keep the header but remove the payload
+            if let comma = s.firstIndex(of: ",") {
+                let header = s[..<comma]
+                let payloadLen = s[comma...].count - 1
+                return "\(header),[\(payloadLen) chars base64 REDACTED]"
+            } else {
+                return "[data:image payload REDACTED]"
+            }
+        }
+        // If string looks like long base64, truncate
+        let base64Chars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n\r")
+        if s.count > 120, s.unicodeScalars.allSatisfy({ base64Chars.contains($0) }) {
+            return truncateMiddle(s)
+        }
+        // Generic truncation for very long strings
+        return truncateMiddle(s)
+    }
+
+    /// Recursively sanitize a JSON object by redacting heavy fields.
+    private static func sanitizeJSONObject(_ obj: Any) -> Any {
+        switch obj {
+        case var dict as [String: Any]:
+            for (k, v) in dict {
+                if let str = v as? String {
+                    if heavyPayloadKeys.contains(k) || str.lowercased().hasPrefix("data:image/") || str.count > maxStringPreview {
+                        dict[k] = sanitizeString(str)
+                    }
+                } else if v is [Any] || v is [String: Any] {
+                    dict[k] = sanitizeJSONObject(v)
+                }
+            }
+            return dict
+        case let arr as [Any]:
+            return arr.map { sanitizeJSONObject($0) }
+        case let s as String:
+            return sanitizeString(s)
+        default:
+            return obj
+        }
+    }
+    
+    /// Pretty print JSON Data with sanitization and truncation safeguards.
+    private static func prettySanitizedJSON(_ data: Data) -> String? {
+        if let obj = try? JSONSerialization.jsonObject(with: data, options: []) {
+            let sanitized = sanitizeJSONObject(obj)
+            if let pretty = try? JSONSerialization.data(withJSONObject: sanitized, options: .prettyPrinted) {
+                var s = String(data: pretty, encoding: .utf8)
+                if let str = s, str.count > 2000 {
+                    s = truncateMiddle(str, max: 2000)
+                }
+                return s
+            }
+        }
+        // Fallback: raw string with generic truncation
+        if let str = String(data: data, encoding: .utf8) {
+            return truncateMiddle(str, max: 2000)
+        }
+        return nil
+    }
+
+    /// Public helper to get a sanitized preview of a JSON body for logging.
+    /// Keeps internal sanitization centralized while letting other components request a preview.
+    static func logOpenAIRequestBodyPreview(_ data: Data) -> String? {
+        return prettySanitizedJSON(data)
+    }
     
     /// Log a message with the specified category and level.
     /// - Parameters:
@@ -190,14 +285,12 @@ enum AppLogger {
         var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
         logMessage += "📤 HEADERS: \(safeHeaders)"
         
-        if let body = body, let jsonObject = try? JSONSerialization.jsonObject(with: body, options: []) {
-            // Pretty print the JSON
-            if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-                logMessage += "\n📤 BODY: \(prettyString)"
-            } else if let rawString = String(data: body, encoding: .utf8) {
-                logMessage += "\n📤 BODY: \(rawString)"
+        if !minimizeOpenAILogBodies {
+            if let body = body, let pretty = prettySanitizedJSON(body) {
+                logMessage += "\n📤 BODY: \(pretty)"
             }
+        } else {
+            logMessage += "\n📤 BODY: (omitted)"
         }
         
         log(
@@ -235,14 +328,12 @@ enum AppLogger {
         var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(url.absoluteString)\n"
         logMessage += "\(emoji) HEADERS: \(headers)"
         
-        if let body = body, let jsonObject = try? JSONSerialization.jsonObject(with: body, options: []) {
-            // Pretty print the JSON
-            if let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: .prettyPrinted),
-               let prettyString = String(data: prettyData, encoding: .utf8) {
-                logMessage += "\n\(emoji) BODY: \(prettyString)"
-            } else if let rawString = String(data: body, encoding: .utf8) {
-                logMessage += "\n\(emoji) BODY: \(rawString)"
+        if !minimizeOpenAILogBodies {
+            if let body = body, let pretty = prettySanitizedJSON(body) {
+                logMessage += "\n\(emoji) BODY: \(pretty)"
             }
+        } else {
+            logMessage += "\n\(emoji) BODY: (omitted)"
         }
         
         log(
@@ -271,11 +362,15 @@ enum AppLogger {
         function: String = #function,
         line: Int = #line
     ) {
-        var logMessage = "🔄 STREAMING EVENT: \(eventType)\n"
-        logMessage += "🔄 RAW DATA: \(data)"
-        
-        if let parsedEvent = parsedEvent {
-            logMessage += "\n🔄 PARSED: \(parsedEvent)"
+        var logMessage = "🔄 STREAMING EVENT: \(eventType)"
+        // Only include payload details when not minimized
+        if !minimizeOpenAILogBodies {
+            // Truncate/sanitize raw data to avoid massive payloads
+            let safeData = truncateMiddle(sanitizeString(data), max: 600)
+            logMessage += "\n🔄 RAW DATA: \(safeData)"
+            if let parsedEvent = parsedEvent {
+                logMessage += "\n🔄 PARSED: \(parsedEvent)"
+            }
         }
         
         log(
@@ -305,7 +400,8 @@ enum AppLogger {
         var logMessage = "🔄 STREAMING EVENT: \(event.type) (seq: \(event.sequenceNumber))"
         
         // Add contextual information based on the event type
-        switch event.type {
+        if !minimizeOpenAILogBodies {
+            switch event.type {
         case "response.created", "response.queued", "response.in_progress", "response.completed":
             if let response = event.response {
                 logMessage += "\n🔄 RESPONSE ID: \(response.id)"
@@ -348,8 +444,10 @@ enum AppLogger {
             }
             
         default:
-            // For unknown event types, include raw data for debugging
-            logMessage += "\n🔄 RAW DATA: \(rawData)"
+            // For unknown event types, include a sanitized snippet only
+            let safe = truncateMiddle(sanitizeString(rawData), max: 600)
+            logMessage += "\n🔄 RAW DATA: \(safe)"
+            }
         }
         
         log(

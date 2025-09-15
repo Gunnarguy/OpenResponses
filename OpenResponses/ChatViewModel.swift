@@ -23,6 +23,8 @@ class ChatViewModel: ObservableObject {
     /// before any new message can be sent. Prevents API 400s due to pending tool output.
     @Published var isAwaitingComputerOutput: Bool = false
     // Computer-use preview removed
+    /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
+    @Published var pendingSafetyApproval: SafetyApprovalRequest?
     
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
@@ -35,6 +37,23 @@ class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
     private lazy var networkMonitor = NetworkMonitor.shared
+    // Coalesces rapid-fire text deltas into fewer UI updates per message.
+    // Keyed by messageId.
+    private var deltaBuffers: [UUID: String] = [:]
+    private var deltaFlushWorkItems: [UUID: DispatchWorkItem] = [:]
+    // Flush after this many milliseconds without new punctuation, to avoid lag.
+    private let deltaFlushDebounceMs: Int = 500
+    // Maintain container file annotations per message to enable sandbox-link fallback fetches
+    private var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
+
+    // Conversation-level cumulative token usage, updated live during streaming
+    @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
+    
+    /// Compact activity feed to surface what's happening under the hood during streaming.
+    /// Keep short, user-friendly messages. Updated when status changes or tools run.
+    @Published var activityLines: [String] = []
+    private var lastActivityLine: String?
+    private let maxActivityLines: Int = 12
     
     /// Tracks retry context for a streaming request keyed by assistant message ID.
     /// Used to transparently retry once when the streaming API emits a transient model_error.
@@ -68,12 +87,23 @@ class ChatViewModel: ObservableObject {
         "facebook": "https://facebook.com",
         "instagram": "https://instagram.com",
         "linkedin": "https://linkedin.com",
-        "nytimes": "https://nytimes.com"
+        "nytimes": "https://nytimes.com",
+        // Common device/computer brands to make "go to <brand>" intuitive
+        "acer": "https://acer.com",
+        "asus": "https://asus.com",
+        "lenovo": "https://lenovo.com",
+        "dell": "https://dell.com",
+        "hp": "https://hp.com",
+        "microsoft": "https://microsoft.com",
+        "samsung": "https://samsung.com"
     ]
     
     // MARK: - Computer Use Circuit Breaker
     private var consecutiveWaitCount: Int = 0
     private let maxConsecutiveWaits: Int = 3
+    // Tracks which messages have already applied the intent-aware search override,
+    // so we don't run it twice (streaming path + resume path).
+    private var appliedSearchOverrideForMessage = Set<UUID>()
 
     // Single-shot Screenshot Mode removed
 
@@ -84,6 +114,8 @@ class ChatViewModel: ObservableObject {
             guard var conversation = activeConversation else { return }
             conversation.messages = newValue
             updateActiveConversation(conversation)
+            // Recompute cumulative usage when messages change (e.g., when final usage arrives)
+            recomputeCumulativeUsage()
         }
     }
 
@@ -107,12 +139,140 @@ class ChatViewModel: ObservableObject {
         
         if conversations.isEmpty {
             createNewConversation()
+            clearActivity()
         } else {
             activeConversation = conversations.first
         }
         
         setupBindings()
         updateModelCompatibility()
+    }
+
+    // MARK: - Streaming Helpers
+    /// Returns true if the provided message is the assistant message currently receiving streamed content.
+    func isStreamingAssistantMessage(_ message: ChatMessage) -> Bool {
+        return isStreaming && message.role == .assistant && streamingMessageId == message.id
+    }
+    /// Returns true if the provided message ID is the one currently receiving streamed content.
+    func isStreamingMessageId(_ id: UUID) -> Bool {
+        return isStreaming && streamingMessageId == id
+    }
+
+    // MARK: - Safety approval handling
+    /// Encapsulates the context needed to continue a computer-use action after the user approves safety checks.
+    struct SafetyApprovalRequest: Identifiable {
+        let id = UUID()
+        let checks: [SafetyCheck]
+        let callId: String
+        let action: ComputerAction
+        let previousResponseId: String
+        let messageId: UUID
+    }
+
+    /// Called when the user approves the pending safety checks.
+    func approveSafetyChecks() {
+        guard let request = pendingSafetyApproval else { return }
+        // Keep the sheet open until we start; then clear to dismiss
+        pendingSafetyApproval = nil
+        Task { [weak self] in
+            await self?.executeComputerCallWithApproval(request)
+        }
+    }
+
+    /// Called when the user denies the pending safety checks; cancels the computer-use chain gracefully.
+    func denySafetyChecks() {
+        guard let request = pendingSafetyApproval else { return }
+        pendingSafetyApproval = nil
+        // Inform the user and reset state to avoid API 400s
+        let sys = ChatMessage(role: .system, text: "❌ Action canceled. Safety checks were not approved. The assistant won't proceed with this step.")
+        messages.append(sys)
+        lastResponseId = nil
+        isAwaitingComputerOutput = false
+        streamingStatus = .idle
+        AppLogger.log("[CUA] Safety approval denied by user for callId=\(request.callId)", category: .openAI, level: .info)
+    }
+
+    /// Continues the computer-use flow after user approval by executing the action and sending the screenshot back.
+    private func executeComputerCallWithApproval(_ request: SafetyApprovalRequest) async {
+        AppLogger.log("[CUA] Proceeding after safety approval for callId=\(request.callId), action=\(request.action.type)", category: .openAI, level: .info)
+        await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
+        do {
+            // First-step helper (disabled in ultra-strict): pre-navigation to avoid about:blank screenshots
+            if !activePrompt.ultraStrictComputerUse {
+                if (request.action.type == "screenshot" && request.action.parameters["url"] == nil) ||
+                   (request.action.type == "click" && computerService.isOnBlankPage()) {
+                    if let derived = deriveURLForScreenshot(from: request.messageId) {
+                        AppLogger.log("[CUA] (approved) Navigating to derived URL before action: \(derived.absoluteString)", category: .openAI, level: .info)
+                        let navigateAction = ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString])
+                        _ = try await computerService.executeAction(navigateAction)
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                    }
+                }
+            }
+
+            let result = try await computerService.executeAction(request.action)
+            if let screenshot = result.screenshot, !screenshot.isEmpty {
+                // Attach screenshot to UI
+                await MainActor.run {
+                    if let index = self.messages.firstIndex(where: { $0.id == request.messageId }) {
+                        var updatedMessage = self.messages[index]
+                        if let imageData = Data(base64Encoded: screenshot), let uiImage = UIImage(data: imageData, scale: 1.0) {
+                            if updatedMessage.images == nil { updatedMessage.images = [] }
+                            updatedMessage.images?.removeAll()
+                            updatedMessage.images?.append(uiImage)
+                            var updatedMessages = self.messages
+                            updatedMessages[index] = updatedMessage
+                            self.messages = updatedMessages
+                            self.objectWillChange.send()
+                        }
+                    }
+                }
+
+                // Build output and send computer_call_output with acknowledged safety checks
+                let output: [String: Any] = [
+                    "type": "computer_screenshot",
+                    "image_url": "data:image/png;base64,\(screenshot)"
+                ]
+                do {
+                    let response = try await api.sendComputerCallOutput(
+                        callId: request.callId,
+                        output: output,
+                        model: activePrompt.openAIModel,
+                        previousResponseId: request.previousResponseId,
+                        acknowledgedSafetyChecks: request.checks,
+                        currentUrl: result.currentURL
+                    )
+                    await MainActor.run {
+                        self.handleNonStreamingResponse(response, for: request.messageId)
+                        self.isAwaitingComputerOutput = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.handleError(error)
+                        self.lastResponseId = nil
+                        self.streamingStatus = .idle
+                        self.streamingMessageId = nil
+                        self.isStreaming = false
+                        self.isAwaitingComputerOutput = false
+                        let sys = ChatMessage(role: .system, text: "Couldn’t continue the approved computer-use step. I’ll start fresh on the next message.")
+                        self.messages.append(sys)
+                    }
+                }
+            } else {
+                AppLogger.log("[CUA] (approved) No screenshot produced by action; clearing previousId", category: .openAI, level: .warning)
+                await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
+            }
+        } catch {
+            AppLogger.log("[CUA] Error while executing approved computer_call: \(error)", category: .openAI, level: .error)
+            await MainActor.run {
+                self.lastResponseId = nil
+                self.isAwaitingComputerOutput = false
+                self.handleError(error)
+                self.streamingStatus = .idle
+                self.streamingMessageId = nil
+                self.isStreaming = false
+            }
+        }
     }
     
     private func setupBindings() {
@@ -168,6 +328,29 @@ class ChatViewModel: ObservableObject {
         )
     }
 
+    /// Recomputes cumulative token usage across the conversation.
+    /// Uses final counts when available; falls back to live estimates for in-flight assistant messages.
+    private func recomputeCumulativeUsage() {
+        var inputSum = 0
+        var outputSum = 0
+        var totalSum = 0
+        var estOut = 0
+        for m in messages {
+            guard m.role == .assistant, let tu = m.tokenUsage else { continue }
+            if let i = tu.input { inputSum += i }
+            if let o = tu.output { outputSum += o } else if let est = tu.estimatedOutput { estOut += est }
+            if let t = tu.total { totalSum += t } else if let i = tu.input, let o = tu.output {
+                totalSum += (i + o)
+            }
+        }
+        var agg = TokenUsage()
+        agg.input = inputSum == 0 ? nil : inputSum
+        agg.output = outputSum == 0 ? nil : outputSum
+        agg.total = totalSum == 0 ? nil : totalSum
+        agg.estimatedOutput = estOut == 0 ? nil : estOut
+        cumulativeTokenUsage = agg
+    }
+
     // Removed detection UI and related method
     
     /// Detects if a user message is requesting image generation
@@ -219,6 +402,11 @@ class ChatViewModel: ObservableObject {
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
+    // Determine streaming mode up front for logging and flow control
+    let streamingEnabled = activePrompt.enableStreaming
+    // Keep recent activity so users can see context; do not clear here to avoid flashing.
+        logActivity("Connecting to OpenAI…")
+        logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
         
         // Append the user's message to the chat with URL detection
         let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
@@ -258,8 +446,7 @@ class ChatViewModel: ObservableObject {
         }
     // no-op: audio removed
         
-        // Check if streaming is enabled from the active prompt
-        let streamingEnabled = activePrompt.enableStreaming
+        // streamingEnabled determined earlier
         print("Using \(streamingEnabled ? "streaming" : "non-streaming") mode")
         
         // Log the message sending event
@@ -299,8 +486,18 @@ class ChatViewModel: ObservableObject {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
                 // If previous responses are awaiting computer_call_output, resolve them all first.
+                // Only do this when the computer tool is both enabled and supported for the current model/streaming mode.
                 if self.activePrompt.enableComputerUse {
-                    _ = try? await self.resolveAllPendingComputerCallsIfAny(for: assistantMsgId)
+                    let supported = ModelCompatibilityService.shared.isToolSupported(
+                        APICapabilities.ToolType.computer,
+                        for: self.activePrompt.openAIModel,
+                        isStreaming: streamingEnabled
+                    )
+                    if supported {
+                        _ = try? await self.resolveAllPendingComputerCallsIfAny(for: assistantMsgId)
+                    } else {
+                        AppLogger.log("[CUA] Skipping pending-call resolution (tool unsupported for model/stream)", category: .openAI, level: .debug)
+                    }
                 }
                 if streamingEnabled {
                     // Use streaming API
@@ -311,6 +508,7 @@ class ChatViewModel: ObservableObject {
                         if Task.isCancelled {
                             await MainActor.run {
                                 self.handleError(CancellationError())
+                                self.logActivity("Cancelled")
                             }
                             break
                         }
@@ -324,6 +522,7 @@ class ChatViewModel: ObservableObject {
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
+                        self.logActivity("Response received")
                     }
                 }
             } catch {
@@ -331,6 +530,7 @@ class ChatViewModel: ObservableObject {
                 if !(error is CancellationError) {
                     await MainActor.run {
                         self.handleError(error)
+                        self.logActivity("Error: \(error.localizedDescription)")
                         // Remove the placeholder message on error
                         self.messages.removeAll { $0.id == assistantMsgId }
                         // CRITICAL: Complete streaming state reset on error
@@ -376,6 +576,7 @@ class ChatViewModel: ObservableObject {
                     self.streamingStatus = .usingComputer
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
+                    self.logActivity("Done")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         self.streamingStatus = .idle
                     }
@@ -418,47 +619,50 @@ class ChatViewModel: ObservableObject {
             
             guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
             
-            // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
-            // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
-            if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
-                // Check if this is a screenshot action - if so, halt to prevent loops
-                if let action = computerCallItem.action,
-                   let actionType = action["type"]?.value as? String,
-                   actionType == "screenshot" {
-                    AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains screenshot and another screenshot was requested. Halting to prevent screenshot loops.", category: .openAI, level: .info)
-                    await MainActor.run { 
-                        self.streamingStatus = .idle // Final state reset
-                        self.lastResponseId = nil // Clear to prevent future loops
+            if !activePrompt.ultraStrictComputerUse {
+                // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
+                // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
+                if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
+                    // Check if this is a screenshot action - if so, halt to prevent loops
+                    if let action = computerCallItem.action,
+                       let actionType = action["type"]?.value as? String,
+                       actionType == "screenshot" {
+                        AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains screenshot and another screenshot was requested. Halting to prevent screenshot loops.", category: .openAI, level: .info)
+                        await MainActor.run { 
+                            self.streamingStatus = .idle // Final state reset
+                            self.lastResponseId = nil // Clear to prevent future loops
+                        }
+                        break // Skip this tool call and exit the loop
                     }
-                    break // Skip this tool call and exit the loop
-                }
-                
-                // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
-                if safetyCounter >= 3, let action = computerCallItem.action,
-                   let actionType = action["type"]?.value as? String,
-                   (actionType == "click" || actionType == "type") {
-                    AppLogger.log("[CUA] resolveAllPending: Loop prevention: Too many actions (\(safetyCounter)) without progress. Halting.", category: .openAI, level: .warning)
-                    await MainActor.run { 
-                        self.streamingStatus = .idle
-                        self.lastResponseId = nil
+                    
+                    // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
+                    if safetyCounter >= 3, let action = computerCallItem.action,
+                       let actionType = action["type"]?.value as? String,
+                       (actionType == "click" || actionType == "type") {
+                        AppLogger.log("[CUA] resolveAllPending: Loop prevention: Too many actions (\(safetyCounter)) without progress. Halting.", category: .openAI, level: .warning)
+                        await MainActor.run { 
+                            self.streamingStatus = .idle
+                            self.lastResponseId = nil
+                        }
+                        break
                     }
-                    break
-                }
-                
-                // URGENT INTERVENTION: If still on about:blank after first action, stop immediately
-                if safetyCounter >= 2, let action = computerCallItem.action,
-                   let actionType = action["type"]?.value as? String,
-                   actionType == "click" {
-                    AppLogger.log("[CUA] resolveAllPending: URGENT: Still clicking on about:blank after attempt \(safetyCounter). AI is not using navigate action properly. Stopping.", category: .openAI, level: .error)
-                    await MainActor.run { 
-                        self.streamingStatus = .idle
-                        self.lastResponseId = nil
+                    
+                    // URGENT INTERVENTION: If still on about:blank after first action and it's trying to click, stop
+                    if safetyCounter >= 2, computerService.isOnBlankPage(),
+                       let action = computerCallItem.action,
+                       let actionType = action["type"]?.value as? String,
+                       actionType == "click" {
+                        AppLogger.log("[CUA] resolveAllPending: URGENT: Still clicking on about:blank after attempt \(safetyCounter). AI is not using navigate action properly. Stopping.", category: .openAI, level: .error)
+                        await MainActor.run { 
+                            self.streamingStatus = .idle
+                            self.lastResponseId = nil
+                        }
+                        break
                     }
-                    break
+                    
+                    // Allow navigation, clicks, typing, etc. even if there's already an image
+                    AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot action: \(String(describing: computerCallItem.action))", category: .openAI, level: .info)
                 }
-                
-                // Allow navigation, clicks, typing, etc. even if there's already an image
-                AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot action: \(String(describing: computerCallItem.action))", category: .openAI, level: .info)
             }
             
             AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
@@ -472,7 +676,12 @@ class ChatViewModel: ObservableObject {
                 await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
                 break
             }
-            await MainActor.run { self.isAwaitingComputerOutput = false }
+            await MainActor.run {
+                // Don't clear awaiting flag if a safety approval is pending
+                if self.pendingSafetyApproval == nil {
+                    self.isAwaitingComputerOutput = false
+                }
+            }
             // Loop will check the newly updated lastResponseId for further pending calls
         }
         
@@ -499,50 +708,88 @@ class ChatViewModel: ObservableObject {
         guard !callId.isEmpty else { throw OpenAIServiceError.invalidResponseData }
         guard var actionData = extractComputerActionFromOutputItem(outputItem) else { throw OpenAIServiceError.invalidResponseData }
 
-        // Heuristic: If the model asked for a bare screenshot as the first step, derive a URL
-        // from the user's message so we don't capture an empty white page.
-        if actionData.type == "screenshot", actionData.parameters["url"] == nil,
-           let derived = deriveURLForScreenshot(from: messageId) {
-            AppLogger.log("[CUA] (resume) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
-            actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+        // Helper (disabled in ultra-strict): attach derived URL to screenshot to avoid blank page
+        if !activePrompt.ultraStrictComputerUse {
+            if actionData.type == "screenshot", actionData.parameters["url"] == nil,
+               let derived = deriveURLForScreenshot(from: messageId) {
+                AppLogger.log("[CUA] (resume) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
+                actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+            }
         }
         
-        // Check for pending safety checks
+        // Check for pending safety checks – pause and ask the user
         if let safetyChecks = outputItem.pendingSafetyChecks, !safetyChecks.isEmpty {
             AppLogger.log("[CUA] (resume) SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
             for check in safetyChecks {
                 AppLogger.log("[CUA] (resume) Safety Check - \(check.code): \(check.message)", category: .openAI, level: .warning)
             }
-            AppLogger.log("[CUA] (resume) Auto-acknowledging safety checks to proceed with computer use", category: .openAI, level: .info)
+            await MainActor.run {
+                self.pendingSafetyApproval = SafetyApprovalRequest(
+                    checks: safetyChecks,
+                    callId: callId,
+                    action: actionData,
+                    previousResponseId: previousId,
+                    messageId: messageId
+                )
+                // Keep awaiting state so tool chain is blocked until approval
+                self.isAwaitingComputerOutput = true
+                self.streamingStatus = .usingComputer
+                let sys = ChatMessage(role: .system, text: "⚠️ Action requires approval before proceeding.")
+                self.messages.append(sys)
+            }
+            return // Wait for user decision
         }
         
+        // Helper (disabled in ultra-strict): pre-navigation before first click if on blank page
+        if !activePrompt.ultraStrictComputerUse {
+            if actionData.type == "click" && computerService.isOnBlankPage(),
+               let derived = deriveURLForScreenshot(from: messageId) {
+                AppLogger.log("[CUA] (resume) WebView blank before click; navigating to derived URL: \(derived.absoluteString)", category: .openAI, level: .info)
+                _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString]))
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+
+        // Intent-guided override: perform the user's explicit search query on known engines
+        if !activePrompt.ultraStrictComputerUse {
+            if !appliedSearchOverrideForMessage.contains(messageId),
+               let searchQuery = extractExplicitSearchQuery(for: messageId) {
+                let refined = refineSearchPhrase(searchQuery)
+                AppLogger.log("[CUA] (resume) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
+                do { try await computerService.performSearchIfOnKnownEngine(query: refined) } catch {
+                    AppLogger.log("[CUA] (resume) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
+                }
+                appliedSearchOverrideForMessage.insert(messageId)
+            }
+        }
+
+        // If this is a click and the user named a target, resolve coordinates by visible text
+        if !activePrompt.ultraStrictComputerUse {
+            if actionData.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
+                if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
+                    AppLogger.log("[CUA] (resume) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
+                    actionData = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"]) 
+                } else {
+                    AppLogger.log("[CUA] (resume) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
+                }
+            }
+        }
+
         AppLogger.log("[CUA] (resume) Executing action type=\(actionData.type) for callId='\(callId)'", category: .openAI)
-    let result = try await computerService.executeAction(actionData)
-        
+        let result = try await computerService.executeAction(actionData)
+
+        // Track if we should halt AFTER sending tool output (to avoid API 400s for missing output)
+        var abortAfterOutput = false
         // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
         // so we can capture any screenshots or results first
         if actionData.type == "wait" {
             consecutiveWaitCount += 1
             AppLogger.log("[CUA] (resume) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
-            
+
             if consecutiveWaitCount >= maxConsecutiveWaits {
-                AppLogger.log("[CUA] (resume) BREAKING INFINITE WAIT LOOP: \(consecutiveWaitCount) consecutive waits detected. Aborting computer use chain.", category: .openAI, level: .error)
-                await MainActor.run {
-                    self.consecutiveWaitCount = 0 // Reset counter
-                    
-                    // Add a system message to inform the user
-                    let errorMessage = ChatMessage(
-                        role: .system,
-                        text: "⚠️ Computer use interrupted: Too many consecutive wait actions detected. The previous screenshot (if any) has been preserved."
-                    )
-                    self.messages.append(errorMessage)
-                    
-                    // Clear any streaming status
-                    self.isStreaming = false
-                    self.streamingStatus = .idle
-                    self.lastResponseId = nil
-                }
-                return // Exit without continuing the computer use chain
+                // Do NOT return early. We'll send the tool output first, then halt gracefully.
+                abortAfterOutput = true
+                AppLogger.log("[CUA] (resume) Reached max consecutive waits; will send output and then halt chain.", category: .openAI, level: .error)
             }
         } else {
             // Reset wait counter for non-wait actions
@@ -596,14 +843,30 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("[CUA] (resume) Sending computer_call_output with callId='\(callId)'", category: .openAI, level: .info)
             
             let response = try await api.sendComputerCallOutput(
-                callId: callId, 
-                output: output, 
-                model: activePrompt.openAIModel, 
+                callId: callId,
+                output: output,
+                model: activePrompt.openAIModel,
                 previousResponseId: previousId,
                 acknowledgedSafetyChecks: acknowledgedSafetyChecks,
                 currentUrl: result.currentURL
             )
-            await MainActor.run { self.handleNonStreamingResponse(response, for: messageId) }
+            if abortAfterOutput {
+                // We've closed out the pending tool call with a valid output. Now halt the chain cleanly.
+                await MainActor.run {
+                    self.consecutiveWaitCount = 0
+                    self.isAwaitingComputerOutput = false
+                    self.isStreaming = false
+                    self.streamingStatus = .idle
+                    self.lastResponseId = nil // Prevent further auto-resolution and avoid 400s later
+                    let sys = ChatMessage(
+                        role: .system,
+                        text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
+                    )
+                    self.messages.append(sys)
+                }
+            } else {
+                await MainActor.run { self.handleNonStreamingResponse(response, for: messageId) }
+            }
         } else {
             AppLogger.log("[CUA] (resume) No screenshot; clearing previousId", category: .openAI, level: .warning)
             await MainActor.run { self.lastResponseId = nil }
@@ -860,8 +1123,29 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+
+        // Also parse assistant text for image links (markdown or plain) and render them if reachable
+        if let text = updatedMessage.text, !text.isEmpty {
+            let links = URLDetector.extractImageLinks(from: text)
+            if !links.isEmpty {
+                Task { [weak self] in
+                    await self?.consumeImageLinks(links, for: messageId)
+                }
+            }
+        }
         
+        // Record final token usage when available (non-streaming path)
+        if let usage = response.usage {
+            var usageModel = updatedMessage.tokenUsage ?? TokenUsage()
+            usageModel.input = usage.promptTokens
+            usageModel.output = usage.completionTokens
+            usageModel.total = usage.totalTokens
+            updatedMessage.tokenUsage = usageModel
+        }
+
         messages[messageIndex] = updatedMessage
+        // Update cumulative totals for non-streaming path
+        recomputeCumulativeUsage()
         
         // Log the final response
         print("Received non-streaming response: \(updatedMessage.text ?? "No text content")")
@@ -1129,8 +1413,8 @@ class ChatViewModel: ObservableObject {
             return
         }
 
-        // Find the message to update
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+    // Ensure the message still exists
+    guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
         
         // Update the streaming status based on the event, passing the item for context
         updateStreamingStatus(for: chunk.type, item: chunk.item)
@@ -1142,7 +1426,44 @@ class ChatViewModel: ObservableObject {
         }
         
         // Handle different types of streaming events
-        switch chunk.type {
+    switch chunk.type {
+        case "response.output_text.annotation.added":
+            // Handle annotations that reference generated files (images) via either Files API or container files
+            // Some server variants nest details under `annotation`; fall back to that if top-level fields are nil.
+            let annoFileId = chunk.fileId ?? chunk.annotation?.fileId
+            let annoFilename = chunk.filename ?? chunk.annotation?.filename
+            let annoContainerId = chunk.containerId ?? chunk.annotation?.containerId
+            // Proceed only if we have a fileId and the message still exists
+            if let fileId = annoFileId, messages.firstIndex(where: { $0.id == messageId }) != nil {
+                // Record mapping for fallback filename-based resolution when links use sandbox:/ paths
+                if let cid = annoContainerId {
+                    var list = containerAnnotationsByMessage[messageId] ?? []
+                    list.append((containerId: cid, fileId: fileId, filename: annoFilename))
+                    containerAnnotationsByMessage[messageId] = list
+                }
+                Task {
+                    do {
+                        let data: Data
+                        if let containerId = annoContainerId, fileId.hasPrefix("cfile_") {
+                            // Container-scoped file (e.g., produced by code interpreter) — use container files endpoint
+                            AppLogger.log("Fetching container file content container_id=\(containerId), file_id=\(fileId)", category: .openAI, level: .info)
+                            data = try await api.fetchContainerFileContent(containerId: containerId, fileId: fileId)
+                        } else {
+                            // Standard OpenAI file download
+                            let contentItem = ContentItem(type: "image_file", text: nil, imageURL: nil, imageFile: ImageFileContent(file_id: fileId))
+                            data = try await api.fetchImageData(for: contentItem)
+                        }
+
+                        if let image = UIImage(data: data) {
+                            await MainActor.run { self.appendImage(image, to: messageId) }
+                        } else {
+                            AppLogger.log("Annotation file did not decode into an image (bytes=\(data.count))", category: .openAI, level: .warning)
+                        }
+                    } catch {
+                        AppLogger.log("Failed to fetch annotation file (file_id=\(fileId), container_id=\(annoContainerId ?? "none")): \(error)", category: .openAI, level: .warning)
+                    }
+                }
+            }
         case "error":
             // Handle API errors during streaming; attempt an automatic retry if eligible.
             let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
@@ -1172,14 +1493,29 @@ class ChatViewModel: ObservableObject {
             isAwaitingComputerOutput = false
             
         case "response.output_text.delta":
-            // Handle text delta updates
+            // Handle text delta updates with a small coalescing buffer to reduce UI churn
             if let delta = chunk.delta {
-                print("🔥 [UI Update] Processing text delta: '\(delta)' for message index \(msgIndex)")
-                var updatedMessages = messages
-                let currentText = updatedMessages[msgIndex].text ?? ""
-                updatedMessages[msgIndex].text = currentText + delta
-                messages = updatedMessages // This triggers the computed property setter and UI update
-                print("🔥 [UI Update] Updated message text to: '\(updatedMessages[msgIndex].text ?? "")'")
+                // Confirm the message still exists to avoid race conditions
+                guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+                AppLogger.log("Buffering text delta (len=\(delta.count)) for index \(messageIndex)", category: .ui, level: .debug)
+                // Append to buffer
+                let existing = deltaBuffers[messageId] ?? ""
+                deltaBuffers[messageId] = existing + delta
+
+                // Update live token estimate for this message using a lightweight heuristic
+                let totalText = (messages[messageIndex].text ?? "") + (deltaBuffers[messageId] ?? "")
+                let estimate = ChatViewModel.estimateTokens(for: totalText)
+                var updated = messages
+                var tu = updated[messageIndex].tokenUsage ?? TokenUsage()
+                tu.estimatedOutput = estimate
+                updated[messageIndex].tokenUsage = tu
+                messages = updated
+                // Update conversation-level estimate live
+                recomputeCumulativeUsage()
+
+                // If delta ends with likely sentence boundary or newline, flush immediately
+                let shouldFlushNow = delta.last.map { ".!?\n\r".contains($0) } ?? false
+                scheduleDeltaFlush(for: messageId, messageIndex: messageIndex, immediate: shouldFlushNow)
             }
             
         case "response.content_part.done":
@@ -1209,7 +1545,30 @@ class ChatViewModel: ObservableObject {
             
         case "response.done", "response.completed":
             // Handle completion of the entire response
-            print("Streaming response completed for message: \(messageId)")
+            AppLogger.log("Streaming response completed for message: \(messageId)", category: .streaming, level: .info)
+
+            // Flush any remaining buffered deltas before finalizing
+            flushDeltaBufferIfNeeded(for: messageId)
+
+            // If final usage is present in the event's response, record it; otherwise keep estimate
+            if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
+                var updated = messages
+                var tu = updated[msgIndex].tokenUsage ?? TokenUsage()
+                if let usage = chunk.response?.usage {
+                    tu.input = usage.inputTokens
+                    tu.output = usage.outputTokens
+                    tu.total = usage.totalTokens
+                    tu.estimatedOutput = nil // Clear estimate once we have authoritative numbers
+                } else {
+                    // Ensure we at least show a stable estimate at end if API omitted usage
+                    let finalText = updated[msgIndex].text ?? ""
+                    tu.estimatedOutput = ChatViewModel.estimateTokens(for: finalText)
+                }
+                updated[msgIndex].tokenUsage = tu
+                messages = updated
+                // Update totals when final usage arrives
+                recomputeCumulativeUsage()
+            }
 
             // CRITICAL: Only reset streaming flags if we're not awaiting computer output
             // If we're awaiting computer output, keep the stream alive for computer use continuation
@@ -1220,20 +1579,56 @@ class ChatViewModel: ObservableObject {
             } else {
                 // Keep streaming alive but update status to show computer use is continuing
                 streamingStatus = .usingComputer
-                print("Stream completed but computer use is continuing - keeping stream alive")
+                AppLogger.log("Stream completed; continuing with computer use", category: .streaming, level: .debug)
             }
 
             // After streaming is complete, detect and add URLs to the message
             if let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
                let text = messages[msgIndex].text, !text.isEmpty {
+                // 1) Web URLs for embedded browsing
                 let detectedURLs = URLDetector.extractRenderableURLs(from: text)
                 if !detectedURLs.isEmpty {
                     var updatedMessages = messages
                     updatedMessages[msgIndex].webURLs = detectedURLs
                     messages = updatedMessages
-                    print("🌐 [Web Content] Detected \(detectedURLs.count) renderable URLs in assistant response")
-                    for url in detectedURLs {
-                        print("🌐 [Web Content] Will render: \(url)")
+                    AppLogger.log("Detected \(detectedURLs.count) renderable URLs in assistant response", category: .ui, level: .debug)
+                }
+
+                // 2) Image links embedded in markdown or plain text
+                let imageLinks = URLDetector.extractImageLinks(from: text)
+                if !imageLinks.isEmpty {
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        await self.consumeImageLinks(imageLinks, for: messageId)
+                    }
+                }
+
+                // 3) Fallback: If no images were appended during streaming, fetch final response for any image content
+                if (messages[msgIndex].images?.isEmpty ?? true), let finalId = lastResponseId {
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        do {
+                            let full = try await self.api.getResponse(responseId: finalId)
+                            for outputItem in full.output {
+                                for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
+                                    do {
+                                        let data = try await self.api.fetchImageData(for: content)
+                                        if let image = UIImage(data: data) {
+                                            await MainActor.run {
+                                                if let idx = self.messages.firstIndex(where: { $0.id == messageId }) {
+                                                    if self.messages[idx].images == nil { self.messages[idx].images = [] }
+                                                    self.messages[idx].images?.append(image)
+                                                }
+                                            }
+                                        }
+                                    } catch {
+                                        AppLogger.log("Fallback image fetch failed: \(error)", category: .openAI, level: .warning)
+                                    }
+                                }
+                            }
+                        } catch {
+                            AppLogger.log("Fallback getResponse failed: \(error)", category: .openAI, level: .warning)
+                        }
                     }
                 }
             }
@@ -1276,9 +1671,54 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Schedules a flush for the buffered text deltas of this message.
+    /// If immediate is true, flush right away; otherwise, debounce for a short interval.
+    private func scheduleDeltaFlush(for messageId: UUID, messageIndex: Int, immediate: Bool) {
+        // Cancel any pending work
+        if let work = deltaFlushWorkItems[messageId] { work.cancel() }
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.flushDeltaBuffer(for: messageId, messageIndex: messageIndex)
+        }
+        deltaFlushWorkItems[messageId] = work
+
+        if immediate {
+            DispatchQueue.main.async(execute: work)
+        } else {
+            let delay = DispatchTime.now() + .milliseconds(deltaFlushDebounceMs)
+            DispatchQueue.main.asyncAfter(deadline: delay, execute: work)
+        }
+    }
+
+    /// Flushes the buffer into the message text and clears the buffer.
+    private func flushDeltaBuffer(for messageId: UUID, messageIndex: Int) {
+        guard let buffered = deltaBuffers[messageId], !buffered.isEmpty else { return }
+        var updated = messages
+        let currentText = updated[messageIndex].text ?? ""
+        updated[messageIndex].text = currentText + buffered
+        messages = updated
+        deltaBuffers[messageId] = nil
+    }
+
+    /// Flush if buffer exists, regardless of known message index (e.g., on completion cleanup)
+    private func flushDeltaBufferIfNeeded(for messageId: UUID) {
+        guard let buffered = deltaBuffers[messageId], !buffered.isEmpty else { return }
+        if let idx = messages.firstIndex(where: { $0.id == messageId }) {
+            flushDeltaBuffer(for: messageId, messageIndex: idx)
+        } else {
+            deltaBuffers[messageId] = nil
+        }
+        // Cancel any pending work after final flush
+        if let work = deltaFlushWorkItems[messageId] { work.cancel() }
+        deltaFlushWorkItems[messageId] = nil
+    }
+
     /// Attempts to transparently retry a failed streaming request once for transient errors.
     /// Returns true if a retry was scheduled; false if not eligible (no retry context or already retried).
     private func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
+        // If any buffered text exists, flush it before deciding eligibility
+        flushDeltaBufferIfNeeded(for: messageId)
         guard var ctx = retryContextByMessageId[messageId], ctx.remainingAttempts > 0 else { return false }
 
         // Only retry if no text has been streamed yet (avoid duplicating partial outputs)
@@ -1289,8 +1729,9 @@ class ChatViewModel: ObservableObject {
         // Decrement attempts and persist; mark retry as scheduled to prevent duplicate notes
         ctx.remainingAttempts -= 1
         if !ctx.retryScheduled {
-            let retryNote = ChatMessage(role: .system, text: "⚠️ Temporary issue from the model (\(reason)). Retrying…")
-            messages.append(retryNote)
+            AppLogger.log("[Streaming Retry] Temporary issue: \(reason). Retrying once…", category: .openAI, level: .warning)
+            // Surface via status chip rather than adding a red system message to the chat
+            streamingStatus = .connecting
         }
         ctx.retryScheduled = true
         retryContextByMessageId[messageId] = ctx
@@ -1410,67 +1851,93 @@ class ChatViewModel: ObservableObject {
                 return
             }
 
-            // Heuristic for first-step actions when we might be on about:blank or help page.
-            // If the first action is a screenshot without URL, or a click while on a blank page,
-            // derive a URL from the user's last message and navigate locally before executing.
-            if (actionData.type == "screenshot" && actionData.parameters["url"] == nil) ||
-               (actionData.type == "click" && computerService.isOnBlankPage()) {
-                if let derived = deriveURLForScreenshot(from: messageId) {
-                    AppLogger.log("[CUA] First-step override: navigating to derived URL before action \(actionData.type): \(derived.absoluteString)", category: .openAI, level: .info)
-                    let navigateAction = ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString])
-                    _ = try await computerService.executeAction(navigateAction)
+            // Minimal generic guardrails to prevent unhelpful first-step blank screenshots or clicks:
+            // - If the model requests a bare screenshot and we're effectively on about:blank, try to
+            //   derive the intended URL from the user's message and attach it to the screenshot action.
+            // - If the model attempts to click while still on about:blank, navigate first using the
+            //   same derivation to reach the likely target site.
+            var actionToExecute = actionData
+            if !activePrompt.ultraStrictComputerUse {
+                if actionToExecute.type == "screenshot", actionToExecute.parameters["url"] == nil,
+                   let derivedURL = deriveURLForScreenshot(from: messageId) {
+                    AppLogger.log("[CUA] (streaming) Auto-attaching URL to screenshot action: \(derivedURL.absoluteString)", category: .openAI, level: .info)
+                    actionToExecute = ComputerAction(type: "screenshot", parameters: ["url": derivedURL.absoluteString])
+                }
+                if actionToExecute.type == "click", computerService.isOnBlankPage(),
+                   let derivedURL = deriveURLForScreenshot(from: messageId) {
+                    AppLogger.log("[CUA] (streaming) WebView blank before click; navigating to derived URL: \(derivedURL.absoluteString)", category: .openAI, level: .info)
+                    _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derivedURL.absoluteString]))
                     try? await Task.sleep(nanoseconds: 400_000_000)
-                } else {
-                    AppLogger.log("[CUA] No URL could be derived for first \(actionData.type); proceeding as-is", category: .openAI, level: .warning)
                 }
             }
 
-            AppLogger.log("[CUA] Executing action type=\(actionData.type) params=\(actionData.parameters)", category: .openAI)
+            // Intent-guided override (streaming path): if the user's instruction was an explicit search,
+            // perform the search directly on known engines BEFORE executing the model's first UI action.
+            // This prevents the model from clicking promo tiles and ensures the first screenshot shows results.
+            if !activePrompt.ultraStrictComputerUse {
+                if !appliedSearchOverrideForMessage.contains(messageId),
+                   let searchQueryRaw = extractExplicitSearchQuery(for: messageId) {
+                    let refined = refineSearchPhrase(searchQueryRaw)
+                    AppLogger.log("[CUA] (streaming) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
+                    do { try await computerService.performSearchIfOnKnownEngine(query: refined) } catch {
+                        AppLogger.log("[CUA] (streaming) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
+                    }
+                    appliedSearchOverrideForMessage.insert(messageId)
+                }
+            }
+
+            // If the action is a click and the user asked to click a named thing, resolve by text.
+            if !activePrompt.ultraStrictComputerUse {
+                if actionToExecute.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
+                    if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
+                        AppLogger.log("[CUA] (streaming) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
+                        actionToExecute = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"]) 
+                    } else {
+                        AppLogger.log("[CUA] (streaming) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
+                    }
+                }
+            }
+
+            // Note: We still execute the model-directed action; the above is a minimal preconditioning step.
+            AppLogger.log("[CUA] Executing action type=\(actionToExecute.type) params=\(actionToExecute.parameters)", category: .openAI)
             
-            // Check for pending safety checks
+            // Check for pending safety checks – pause and ask the user
             if let safetyChecks = pendingSafety, !safetyChecks.isEmpty {
                 AppLogger.log("[CUA] SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
                 for check in safetyChecks {
                     AppLogger.log("[CUA] Safety Check - \(check.code): \(check.message)", category: .openAI, level: .warning)
                 }
-                
-                // For now, automatically acknowledge all safety checks to allow the computer use to proceed
-                // In a production app, you might want to prompt the user for confirmation
-                // TODO: Implement user confirmation UI for safety checks
-                AppLogger.log("[CUA] Auto-acknowledging safety checks to proceed with computer use", category: .openAI, level: .info)
+                await MainActor.run {
+                    self.pendingSafetyApproval = SafetyApprovalRequest(
+                        checks: safetyChecks,
+                        callId: finalCallId,
+                        action: actionData,
+                        previousResponseId: previousId,
+                        messageId: messageId
+                    )
+                    self.isAwaitingComputerOutput = true
+                    self.streamingStatus = .usingComputer
+                    let sys = ChatMessage(role: .system, text: "⚠️ Action requires approval before proceeding.")
+                    self.messages.append(sys)
+                }
+                return // Wait for user decision
             }
             
             
-            let result = try await computerService.executeAction(actionData)
+            let result = try await computerService.executeAction(actionToExecute)
             
             // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
             // so we can capture any screenshots or results first
+            var abortAfterOutput = false
             if actionData.type == "wait" {
                 consecutiveWaitCount += 1
                 AppLogger.log("[CUA] (streaming) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
-                
                 if consecutiveWaitCount >= maxConsecutiveWaits {
-                    AppLogger.log("[CUA] (streaming) BREAKING INFINITE WAIT LOOP: \(consecutiveWaitCount) consecutive waits detected. Aborting computer use chain.", category: .openAI, level: .error)
-                    await MainActor.run {
-                        self.consecutiveWaitCount = 0 // Reset counter
-                        self.isAwaitingComputerOutput = false // Reset computer use flag
-                        
-                        // Add a system message to inform the user
-                        let errorMessage = ChatMessage(
-                            role: .system,
-                            text: "⚠️ Computer use interrupted: Too many consecutive wait actions detected. The previous screenshot (if any) has been preserved."
-                        )
-                        self.messages.append(errorMessage)
-                        
-                        // Clear any streaming status
-                        self.isStreaming = false
-                        self.streamingStatus = .idle
-                        self.lastResponseId = nil
-                    }
-                    return // Exit without continuing the computer use chain
+                    // Don't return yet; mark to abort after we send the output so the tool call is satisfied.
+                    abortAfterOutput = true
+                    AppLogger.log("[CUA] (streaming) Max consecutive waits reached; will send output and then halt chain.", category: .openAI, level: .error)
                 }
             } else {
-                // Reset wait counter for non-wait actions
                 consecutiveWaitCount = 0
             }
 
@@ -1551,9 +2018,24 @@ class ChatViewModel: ObservableObject {
                         acknowledgedSafetyChecks: acknowledgedSafetyChecks,
                         currentUrl: result.currentURL
                     )
-                    await MainActor.run {
-                        self.handleNonStreamingResponse(response, for: messageId)
-                        self.isAwaitingComputerOutput = false
+                    if abortAfterOutput {
+                        await MainActor.run {
+                            self.consecutiveWaitCount = 0
+                            self.isAwaitingComputerOutput = false
+                            self.isStreaming = false
+                            self.streamingStatus = .idle
+                            self.lastResponseId = nil
+                            let sys = ChatMessage(
+                                role: .system,
+                                text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
+                            )
+                            self.messages.append(sys)
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.handleNonStreamingResponse(response, for: messageId)
+                            self.isAwaitingComputerOutput = false
+                        }
                     }
                 } catch {
                     AppLogger.log("[CUA] Failed to send computer_call_output: \(error)", category: .openAI, level: .error)
@@ -1620,6 +2102,79 @@ class ChatViewModel: ObservableObject {
         for i in stride(from: idx - 1, through: 0, by: -1) {
             let m = messages[i]
             if m.role == .user, let text = m.text {
+                let lower = text.lowercased()
+                // Helper: try to convert a token like "brandcom" -> "brand.com" using common TLDs
+                func urlFromConcatenatedDomain(_ token: String) -> URL? {
+                    let tlds = [
+                        "com","org","net","io","co","ai","app","dev","info","biz","me","gg","xyz","us","uk","de","ca","au","edu","gov"
+                    ]
+                    for tld in tlds {
+                        if token.hasSuffix(tld), token.count > tld.count {
+                            let prefix = String(token.dropLast(tld.count))
+                            // Ensure prefix ends with a letter/number
+                            if let last = prefix.last, last.isLetter || last.isNumber {
+                                let host = "\(prefix).\(tld)"
+                                return URL(string: "https://\(host)")
+                            }
+                        }
+                    }
+                    return nil
+                }
+                // Heuristic 1: handle phrases like "go to X" or "open X"
+                if lower.contains("go to ") || lower.contains("open ") {
+                    let trigger = lower.contains("go to ") ? "go to " : "open "
+                    if let range = lower.range(of: trigger) {
+                        // Use the original-case text for extraction (preserve dots and host casing for URLComponents)
+                        let originalTail = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        // First, try to extract an explicit URL or domain from the tail using our detector
+                        let urlsInTail = URLDetector.extractRenderableURLs(from: originalTail)
+                        if let first = urlsInTail.first {
+                            // Normalize: ensure https scheme and lowercase host
+                            if var comps = URLComponents(url: first, resolvingAgainstBaseURL: false) {
+                                if comps.scheme == nil { comps.scheme = "https" }
+                                comps.host = comps.host?.lowercased()
+                                if let normalized = comps.url { return normalized }
+                            }
+                            return first
+                        }
+                        // If not found, fall back to a simple domain token at the beginning of the tail
+                        // Stop at whitespace or punctuation
+                        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",.;:!?"))
+                        let token = originalTail.split(whereSeparator: { ch in
+                            guard let scalar = ch.unicodeScalars.first else { return false }
+                            return separators.contains(scalar)
+                        }).first.map(String.init) ?? originalTail
+                        let tokenLower = token.lowercased()
+                        if tokenLower.contains(".") {
+                            // Build https URL from domain-like token
+                            return URL(string: tokenLower.hasPrefix("http") ? tokenLower : "https://\(tokenLower)")
+                        }
+                        // NEW: Handle concatenated domain like "strykercom" -> "stryker.com"
+                        if let concatenated = urlFromConcatenatedDomain(tokenLower) { return concatenated }
+                        // Map common brand to canonical URL
+                        if let mapped = Self.keywordURLMap.first(where: { tokenLower.contains($0.key) })?.value,
+                           let url = URL(string: mapped) {
+                            return url
+                        }
+                        // Fallback: try https://<token>.com if token is single word and alphanumeric
+                        if tokenLower.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines) == nil,
+                           tokenLower.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
+                            if let url = URL(string: "https://\(tokenLower).com") { return url }
+                        }
+                    }
+                }
+
+                // Heuristic 2: explicit "search <query>" or "find <query>" → Google search
+                if lower.contains("search ") || lower.contains("find ") {
+                    let trigger = lower.contains("search ") ? "search " : "find "
+                    if let range = lower.range(of: trigger) {
+                        let q = String(lower[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+                        let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+                        return URL(string: "https://www.google.com/search?q=\(encoded)")
+                    }
+                }
+
+                // Heuristic 3: extract any explicit URL/domain in the text
                 let urls = URLDetector.extractRenderableURLs(from: text)
                 if let first = urls.first {
                     // Normalize: ensure https scheme and lowercase host to avoid redirects like Google.com -> www.google.com
@@ -1640,16 +2195,225 @@ class ChatViewModel: ObservableObject {
                     let host = domain.lowercased()
                     return URL(string: "https://\(host)")
                 }
+                // NEW: Try concatenated TLDs in tokens (e.g., "Strykercom")
+                if let cat = tokens
+                    .map({ $0.trimmingCharacters(in: .punctuationCharacters).lowercased() })
+                    .compactMap({ urlFromConcatenatedDomain($0) })
+                    .first {
+                    return cat
+                }
                 // Brand/keyword hint like "Google" or "OpenAI" (no dot). Map with a curated list.
-                let lower = text.lowercased()
                 if let match = Self.keywordURLMap.first(where: { lower.contains($0.key) })?.value,
                    let url = URL(string: match) {
                     return url
+                }
+                // FINAL FALLBACK: if message is short and single-word like "acer", try https://acer.com
+                let trimmed = lower.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.count > 1,
+                   !trimmed.contains(" "),
+                   !trimmed.contains("."),
+                   trimmed.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
+                    if let url = URL(string: "https://\(trimmed).com") { return url }
+                }
+                // Fallback: if instruction looks like a query (e.g., "search OpenAI in that field"), go to Google
+                if lower.contains("search") {
+                    return URL(string: "https://google.com")
                 }
                 break
             }
         }
         return nil
+    }
+
+    /// Extracts an explicit search query from the nearest user message.
+    /// Examples:
+    /// - "search OpenAI" → "OpenAI"
+    /// - "ok search for potato chips" → "potato chips"
+    /// - "type in Amazon.com in the search field" → "Amazon.com"
+    /// - "find best laptops" → "best laptops"
+    /// - "go to google and search RTX 5090" → "RTX 5090"
+    private func extractExplicitSearchQuery(for messageId: UUID) -> String? {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }), idx > 0 else { return nil }
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            let m = messages[i]
+            guard m.role == .user, let text = m.text else { continue }
+            let lower = text.lowercased()
+
+            // Accept both Substring and String to avoid call-site mismatch
+            func cleanQuery(_ raw: Substring) -> String? {
+                var q = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                // Remove filler like a leading "for " or surrounding quotes
+                if q.lowercased().hasPrefix("for ") {
+                    q = String(q.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                }
+                q = q.trimmingCharacters(in: CharacterSet(charactersIn: "\"'` "))
+                // Avoid obviously empty/trivial
+                if q.isEmpty { return nil }
+                return q
+            }
+            func cleanQuery(_ raw: String) -> String? { return cleanQuery(raw[raw.startIndex...]) }
+
+            // UI nouns we should not interpret as queries (e.g., "search bar")
+            let uiNouns: Set<String> = ["bar","box","field","icon","button","tab","area","input"]
+
+            // Pattern 0: "type <query> in (…bar/box/field)" — common phrasing
+            if let r = lower.range(of: "type ") {
+                var tailLower = lower[r.upperBound...]
+                // Look for a known UI suffix after the query to bound it
+                let suffixes = [
+                    " in the search bar", " in that search bar", " into the search bar",
+                    " in the search box", " in that search box", " into the search box",
+                    " in the search field", " in that search field", " into the search field",
+                    " in the bar", " in that bar", " into the bar",
+                    " in the box", " in that box", " into the box",
+                    " in the field", " in that field", " into the field",
+                    " in search", " into search"
+                ]
+                if let sfxRange = suffixes
+                    .compactMap({ tailLower.range(of: $0) })
+                    .sorted(by: { $0.lowerBound < $1.lowerBound })
+                    .first {
+                    tailLower = tailLower[..<sfxRange.lowerBound]
+                }
+                if let cleaned = cleanQuery(tailLower) { return cleaned }
+            }
+
+            // Pattern 1: "search <query>" or "search for <query>" (but ignore UI nouns like "search bar")
+            if let r = lower.range(of: "search ") {
+                let tailLower = lower[r.upperBound...]
+                if let firstWordSub = tailLower.split(whereSeparator: { $0.isWhitespace }).first {
+                    let firstWord = String(firstWordSub).trimmingCharacters(in: CharacterSet.punctuationCharacters).lowercased()
+                    if uiNouns.contains(firstWord) == false {
+                        if let cleaned = cleanQuery(tailLower) { return cleaned }
+                    }
+                } else if let cleaned = cleanQuery(tailLower) { return cleaned }
+            }
+            // Pattern 2: "find <query>" or "find for <query>" (also ignore UI nouns)
+            if let r = lower.range(of: "find ") {
+                let tailLower = lower[r.upperBound...]
+                if let firstWordSub = tailLower.split(whereSeparator: { $0.isWhitespace }).first {
+                    let firstWord = String(firstWordSub).trimmingCharacters(in: CharacterSet.punctuationCharacters).lowercased()
+                    if uiNouns.contains(firstWord) == false {
+                        if let cleaned = cleanQuery(tailLower) { return cleaned }
+                    }
+                } else if let cleaned = cleanQuery(tailLower) { return cleaned }
+            }
+            // Pattern 3: "type in <query> ..."
+            if let r = lower.range(of: "type in ") {
+                var tail = text[r.upperBound...]
+                // Trim suffixes like "in the search field" or "and press enter"
+                let suffixes = [" in the search field", " in search", " into the search field", " and press enter", " then press enter"]
+                for sfx in suffixes {
+                    if let range = tail.lowercased().range(of: sfx) {
+                        tail = tail[..<range.lowerBound]
+                        break
+                    }
+                }
+                if let cleaned = cleanQuery(tail) { return cleaned }
+            }
+            // Pattern 3b: "put/enter/input/write/key in/paste <query> in (that|the) (search )?(bar|box|field)"
+            do {
+                let prefixes = ["put ", "enter ", "input ", "write ", "key in ", "paste "]
+                let suffixes = [
+                    " in the search bar", " in that search bar", " into the search bar",
+                    " in the search box", " in that search box", " into the search box",
+                    " in the search field", " in that search field", " into the search field",
+                    " in the bar", " in that bar", " into the bar",
+                    " in the box", " in that box", " into the box",
+                    " in the field", " in that field", " into the field",
+                    " in search", " into search"
+                ]
+                // Try each prefix; extract text between prefix and a following suffix (if any)
+                for pfx in prefixes {
+                    if let pr = lower.range(of: pfx) {
+                        let startIdx = pr.upperBound
+                        // If a known suffix exists after the prefix, extract up to it; else take the rest
+                        var segment = text[startIdx...]
+                        if let sfxRange = suffixes.compactMap({ lower.range(of: $0, range: startIdx..<lower.endIndex) }).sorted(by: { $0.lowerBound < $1.lowerBound }).first {
+                            segment = text[startIdx..<sfxRange.lowerBound]
+                        }
+                        if let cleaned = cleanQuery(segment) { return cleaned }
+                    }
+                }
+            }
+            // Pattern 4: "go to google ... and search <query>"
+            if lower.contains("go to google") || lower.contains("open google") {
+                if let andR = lower.range(of: "and ") {
+                    let tailLower = lower[andR.upperBound...]
+                    if let sr = tailLower.range(of: "search ") {
+                        if let cleaned = cleanQuery(text[sr.upperBound...]) { return cleaned }
+                    }
+                }
+            }
+            break
+        }
+        return nil
+    }
+
+    /// Extract an explicit click target text from the nearest user message, e.g.:
+    /// - click "Backpack Name"
+    /// - click the item named "Backpack Name"
+    /// - click the one named 'Backpack Name'
+    private func extractExplicitClickTarget(for messageId: UUID) -> String? {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }), idx > 0 else { return nil }
+        for i in stride(from: idx - 1, through: 0, by: -1) {
+            let m = messages[i]
+            guard m.role == .user, let text = m.text else { continue }
+            let lower = text.lowercased()
+            guard let cr = lower.range(of: "click ") else { break }
+            let tail = text[cr.upperBound...]
+            // Prefer quoted targets
+            if let qr = tail.range(of: #"\"([^\"]+)\""#, options: .regularExpression) {
+                let inside = tail[qr].dropFirst().dropLast() // remove quotes
+                let value = String(inside)
+                if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return value }
+            }
+            if let qr = tail.range(of: #"'([^']+)'"#, options: .regularExpression) {
+                let inside = tail[qr].dropFirst().dropLast()
+                let value = String(inside)
+                if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return value }
+            }
+            // Fallback pattern: "named <X>"
+            if let nr = lower.range(of: "named ") {
+                let namedTail = text[nr.upperBound...]
+                // up to punctuation or line end
+                let stopSet = CharacterSet(charactersIn: ",.;:!?\n")
+                let fragment = namedTail.prefix { ch in
+                    guard let sc = ch.unicodeScalars.first else { return true }
+                    return !stopSet.contains(sc)
+                }
+                let value = String(fragment).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { return value }
+            }
+            break
+        }
+        return nil
+    }
+
+    /// Normalizes verbose search phrases into concise queries.
+    /// Examples:
+    /// - "find me some pencils" -> "pencils"
+    /// - "find some running shoes" -> "running shoes"
+    /// - "show me laptops" -> "laptops"
+    private func refineSearchPhrase(_ raw: String) -> String {
+        var q = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = q.lowercased()
+        // Strip common leading filler
+        let leadingPatterns = [
+            "find me some ", "find me ", "find some ", "find ",
+            "show me some ", "show me ", "show ",
+            "look for ", "search for ", "search ", "get me ", "get "
+        ]
+        for p in leadingPatterns {
+            if lower.hasPrefix(p) {
+                q = String(q.dropFirst(p.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+        // Strip trivial trailing filler
+        let trailing = [" please", " thanks", ".", ",", "!"]
+        for t in trailing { if q.lowercased().hasSuffix(t) { q = String(q.dropLast(t.count)) } }
+        return q.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extracts computer action from streaming item
@@ -1733,22 +2497,32 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Handles the completion of a streaming item, such as an image or tool call.
+    /// For gpt-image-1, the "completed" event often does not include the final image bytes in `item.content`.
+    /// We primarily rely on partial_image updates for previews/finals and an existing fallback that fetches
+    /// the full response if images are returned as image_url/image_file content.
     private func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
-        // Find the message to update
-        guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
+    // Ensure the message still exists before proceeding
+    guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
         
         // Handle image generation completion
-        if item.type == "image_generation_call" || item.type == "image_file" || item.type == "image_url" {
-            // For now, skip trying to fetch image data from streaming items
-            // This functionality may need to be implemented differently
-            print("Skipping image fetch for streaming item of type: \(item.type)")
+        if item.type == "image_generation_call" {
+            // Completed event may not carry image bytes. If partials arrived, the last partial is already appended.
+            // If the model returned images as image_url/image_file elsewhere, our fallback path (final getResponse)
+            // will fetch them. So we only log a lightweight note here.
+            AppLogger.log("ℹ️ [Image Generation] Completed event received for item \(item.id). Awaiting any final image_url/image_file in subsequent items, if provided.", category: .openAI, level: .info)
         }
+        // Note: For other image types like image_file/image_url, they would be handled by the annotation system
+        // or the fallback mechanism that fetches the final response
     }
     
     /// Handles partial image updates from gpt-image-1 model
+    /// The base64 data for partial images is provided in `partial_image_b64` at the event level.
+    /// We decode it and append/replace the latest preview image.
     private func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
-        guard let dataString = chunk.item?.content?.first?.text,
-              let imageData = Data(base64Encoded: dataString),
+        // Prefer the documented partial_image_b64, but also accept common alternates
+        let candidates: [String?] = [chunk.partialImageB64, chunk.imageB64, chunk.dataB64, chunk.item?.content?.first?.text]
+        guard let b64 = candidates.compactMap({ $0 }).first,
+              let imageData = Data(base64Encoded: b64),
               let image = UIImage(data: imageData) else {
             return
         }
@@ -1768,6 +2542,96 @@ class ChatViewModel: ObservableObject {
             updatedMessages[msgIndex].images?.append(image)
             messages = updatedMessages
         }
+    }
+
+    /// Resolves image links mentioned in assistant text and appends any fetched images to the message.
+    /// Supports data:image base64 and http(s) image URLs. sandbox:/ paths are noted but not fetched.
+    private func consumeImageLinks(_ links: [String], for messageId: UUID) async {
+        let sawSandbox = links.contains { $0.lowercased().hasPrefix("sandbox:/") }
+        // Decode inline data URLs first to provide instant previews
+        for link in links {
+            if link.lowercased().hasPrefix("data:image/") {
+                if let commaIdx = link.firstIndex(of: ",") {
+                    let b64 = String(link[link.index(after: commaIdx)...])
+                    if let data = Data(base64Encoded: b64), let image = UIImage(data: data) {
+                        await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
+                    }
+                }
+            }
+        }
+
+        // Then fetch remote http(s) image URLs
+        for link in links {
+            if let url = URL(string: link), ["http","https"].contains(url.scheme?.lowercased() ?? "") {
+                do {
+                    let (data, resp) = try await URLSession.shared.data(from: url)
+                    guard (resp as? HTTPURLResponse)?.statusCode == 200 else { continue }
+                    if let image = UIImage(data: data) {
+                        await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
+                    }
+                } catch {
+                    AppLogger.log("Failed to fetch image URL: \(link) — \(error)", category: .network, level: .warning)
+                }
+            }
+        }
+
+        // If sandbox links were found, try to resolve them using container annotations (filename match) and fetch via container endpoint
+        if sawSandbox {
+            // Extract lastPathComponent-like filenames from sandbox links
+            let filenames: [String] = links.compactMap { link in
+                guard link.lowercased().hasPrefix("sandbox:/") else { return nil }
+                // Convert to a URL-compatible string to use URL parsing for path components
+                let normalized = link.replacingOccurrences(of: "sandbox:/", with: "sandbox://")
+                return URL(string: normalized)?.lastPathComponent
+            }
+            if let annos = containerAnnotationsByMessage[messageId], !annos.isEmpty {
+                for fname in filenames {
+                    let target = fname.lowercased()
+                    if let match = annos.first(where: { ($0.filename ?? "").lowercased() == target }) {
+                        do {
+                            let data = try await api.fetchContainerFileContent(containerId: match.containerId, fileId: match.fileId)
+                            if let image = UIImage(data: data) {
+                                await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
+                            }
+                        } catch {
+                            AppLogger.log("Sandbox link fallback fetch failed for \(fname): \(error)", category: .openAI, level: .warning)
+                        }
+                    }
+                }
+            }
+            // If after fallback we still have no images, add a one-time note
+            await MainActor.run { [weak self] in
+                guard let self = self, let idx = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
+                let hasImages = !(self.messages[idx].images?.isEmpty ?? true)
+                let alreadyNoted = self.messages.contains { $0.text?.contains("Note: The assistant referenced a sandbox image path.") == true }
+                if !hasImages && !alreadyNoted {
+                    let note = ChatMessage(role: .system, text: "Note: The assistant referenced a sandbox image path. These aren’t directly accessible in the app. Ask it to return the image as an image_file or http(s) link to preview it here.")
+                    self.messages.append(note)
+                }
+            }
+        }
+    }
+
+    /// Appends an image to the specified message safely on the main thread.
+    /// - Ensures the correct message is targeted by re-finding it by ID.
+    /// - Deduplicates identical images by comparing PNG-encoded bytes.
+    /// - Emits a lightweight log for diagnostics.
+    @MainActor
+    private func appendImage(_ image: UIImage, to messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var updated = messages
+        if updated[idx].images == nil { updated[idx].images = [] }
+        let alreadyHas = updated[idx].images!.contains { existing in
+            guard let a = existing.pngData(), let b = image.pngData() else { return false }
+            return a == b
+        }
+        if !alreadyHas {
+            updated[idx].images?.append(image)
+            AppLogger.log("🖼️ Appended image to message \(messageId), total images=\(updated[idx].images?.count ?? 0)", category: .ui, level: .info)
+        } else {
+            AppLogger.log("🖼️ Skipped duplicate image for message \(messageId)", category: .ui, level: .debug)
+        }
+        messages = updated
     }
     
     /// Handles errors that occur during API calls or other operations.
@@ -1845,6 +2709,12 @@ class ChatViewModel: ObservableObject {
     func cancelStreaming() {
         streamingTask?.cancel()
         streamingTask = nil
+        // Cleanup any buffered deltas and pending flush tasks for the current message
+        if let streamingId = streamingMessageId {
+            if let work = deltaFlushWorkItems[streamingId] { work.cancel() }
+            deltaFlushWorkItems[streamingId] = nil
+            flushDeltaBufferIfNeeded(for: streamingId)
+        }
         
         // Update UI immediately
         isStreaming = false
@@ -1871,32 +2741,78 @@ class ChatViewModel: ObservableObject {
         switch eventType {
         case "response.created":
             streamingStatus = .connecting
+            logActivity("Response created")
+        case "response.in_progress":
+            // Generic in-progress heartbeat from the API
+            if streamingStatus == .idle { streamingStatus = .thinking }
+            logActivity("Working…")
         case "response.output_text.delta":
             streamingStatus = .streamingText
+            // Do not log every token to avoid spam
+        case "response.output_item.added":
+            // When a new output item is added (e.g., reasoning, tool call, message)
+            if let typ = item?.type {
+                if typ == "reasoning" { streamingStatus = .thinking }
+                logActivity("Output item added: \(typ)")
+            } else {
+                logActivity("Output item added")
+            }
+        case "response.output_item.delta":
+            // Deltas for a specific output item (e.g., reasoning tokens)
+            if let typ = item?.type, typ == "reasoning" { streamingStatus = .thinking }
+            // Avoid per-token spam; rely on status change and other milestones
+            break
+        case "response.output_item.completed":
+            if let typ = item?.type {
+                logActivity("Output item completed: \(typ)")
+            } else {
+                logActivity("Output item completed")
+            }
         case "response.image_generation_call.in_progress":
             streamingStatus = .generatingImage
+            logActivity("Image generation started")
         case "response.image_generation_call.partial_image":
             streamingStatus = .generatingImage
+            logActivity("Generating image…")
         case "response.computer_call.in_progress", "computer.in_progress",
              "response.computer_call.screenshot_taken", "computer.screenshot",
              "response.computer_call.action_performed", "computer.action",
              "response.computer_call.completed", "computer.completed":
             // Always surface the simple, recognizable "Using computer" chip in the UI
             streamingStatus = .usingComputer
+            switch eventType {
+            case "response.computer_call.in_progress", "computer.in_progress":
+                logActivity("Computer: preparing action…")
+            case "response.computer_call.screenshot_taken", "computer.screenshot":
+                logActivity("Computer: captured screenshot")
+            case "response.computer_call.action_performed", "computer.action":
+                if let action = item?.action, let type = action["type"]?.value as? String {
+                    logActivity("Computer: action \(type)")
+                } else {
+                    logActivity("Computer: action performed")
+                }
+            case "response.computer_call.completed", "computer.completed":
+                logActivity("Computer: step completed")
+            default: break
+            }
         case "response.tool_call.started":
             if let toolName = item?.name {
                 // Special-case the computer tool to keep the UX consistent
                 if toolName == APICapabilities.ToolType.computer.rawValue || toolName == "computer" {
                     streamingStatus = .usingComputer
+                    logActivity("Computer tool started")
                 } else {
                     streamingStatus = .runningTool(toolName)
+                    logActivity("Running tool: \(toolName)")
                 }
             } else {
                 streamingStatus = .runningTool("unknown")
+                logActivity("Running tool…")
             }
         case "response.done", "response.completed":
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
+            logActivity("Response completed")
         default:
             // Keep current status for unknown events
             break
@@ -1942,5 +2858,40 @@ class ChatViewModel: ObservableObject {
         }
         
         return exportText
+    }
+}
+
+// MARK: - Activity Feed Helpers
+extension ChatViewModel {
+    /// Append a short, user-friendly line to the activity feed, deduplicated and capped.
+    func logActivity(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if lastActivityLine == trimmed { return }
+        lastActivityLine = trimmed
+        activityLines.append(trimmed)
+        if activityLines.count > maxActivityLines {
+            activityLines.removeFirst(activityLines.count - maxActivityLines)
+        }
+    }
+    /// Clear activity feed and last-line tracker.
+    func clearActivity() {
+        activityLines.removeAll()
+        lastActivityLine = nil
+    }
+}
+
+// MARK: - Token Estimation
+extension ChatViewModel {
+    /// Lightweight token estimator for live counts during streaming.
+    /// Heuristic: combine char/4 and words*1.33 to avoid wild swings; final values replaced on completion.
+    static func estimateTokens(for text: String) -> Int {
+        guard !text.isEmpty else { return 0 }
+        let compact = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        let words = compact.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        let chars = compact.count
+        let byChars = max(1, chars / 4)
+        let byWords = max(1, Int(Double(words) * 1.33))
+        return max(1, (byChars + byWords) / 2)
     }
 }

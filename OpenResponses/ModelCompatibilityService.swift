@@ -101,6 +101,7 @@ class ModelCompatibilityService {
         case standard // gpt-4, gpt-3.5
     case latest // gpt-5, gpt-4.1 (note: computer use not yet supported by these models)
         case preview // experimental models
+        case deepResearch // long-running deep research models
     }
     
     /// A dictionary mapping model identifiers to their specific API capabilities.
@@ -326,6 +327,12 @@ class ModelCompatibilityService {
             supportsTemperature: false
         )
     ]
+
+    /// Helper: identifies deep-research models that require specific tool presence
+    private func isDeepResearchModel(_ modelId: String) -> Bool {
+        // Current naming pattern used in logs: o4-mini-deep-research-YYYY-MM-DD
+        return modelId.contains("deep-research") || modelId == "o4-mini-deep-research" || modelId.hasPrefix("o4-mini-deep-research-")
+    }
     
     // MARK: - Public API
     
@@ -352,10 +359,9 @@ class ModelCompatibilityService {
             return false
         }
         
-        // Special case: Image generation is not supported during streaming
-        if toolType == .imageGeneration && isStreaming {
-            return false
-        }
+        // Image generation streaming: supported via Responses API with partial previews.
+        // Previously disabled; now allowed when the model supports streaming.
+        // Keep default flow – do not early-return false here.
         
         // Check for specific tool overrides for the given model
         if let toolOverrides = capabilities.toolOverrides {

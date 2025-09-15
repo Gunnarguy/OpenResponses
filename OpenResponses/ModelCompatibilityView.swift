@@ -128,6 +128,8 @@ struct ModelOverviewCard: View {
             return "sparkles"
         case .preview:
             return "flask"
+        case .deepResearch:
+            return "magnifyingglass.circle"
         }
     }
     
@@ -145,6 +147,8 @@ struct ModelOverviewCard: View {
             return .orange
         case .preview:
             return .pink
+        case .deepResearch:
+            return .teal
         }
     }
     
@@ -162,6 +166,8 @@ struct ModelOverviewCard: View {
             return "Latest"
         case .preview:
             return "Preview"
+        case .deepResearch:
+            return "Deep Research"
         }
     }
 }
@@ -392,6 +398,7 @@ struct CompactToolIndicator: View {
     let modelId: String
     let prompt: Prompt
     let isStreaming: Bool
+    @EnvironmentObject private var viewModel: ChatViewModel
     
     private let compatibilityService = ModelCompatibilityService.shared
     
@@ -402,24 +409,57 @@ struct CompactToolIndicator: View {
     }
     
     var body: some View {
-        let activeTools = compatibilityService.getCompatibleTools(for: modelId, prompt: prompt, isStreaming: isStreaming)
-            .filter { $0.isUsed }
-        
-        if !activeTools.isEmpty {
-            HStack(spacing: 4) {
-                ForEach(activeTools, id: \.name) { tool in
-                    Image(systemName: toolIcon(for: tool.name))
-                        .foregroundColor(.green)
-                        .font(.caption2)
+        // Determine enabled tools from the current prompt ("on" state)
+        let enabledTools: [String] = {
+            var list: [String] = []
+            if prompt.enableWebSearch { list.append("web_search") }
+            if prompt.enableCodeInterpreter { list.append("code_interpreter") }
+            if prompt.enableImageGeneration { list.append("image_generation") }
+            if prompt.enableFileSearch { list.append("file_search") }
+            if prompt.enableComputerUse { list.append("computer") }
+            if prompt.enableCustomTool { list.append("function") }
+            return list
+        }()
+
+        // Aggregate tools actually used in this conversation
+        let usedTools: Set<String> = Set(viewModel.messages.flatMap { $0.toolsUsed ?? [] })
+
+        // Determine currently-active tool from streaming status
+        let currentActiveTool: String? = {
+            switch viewModel.streamingStatus {
+            case .usingComputer:
+                return "computer"
+            case .runningTool(let name):
+                return name
+            default:
+                return nil
+            }
+        }()
+
+        // Only render when at least one tool is enabled
+        if !enabledTools.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(enabledTools, id: \.self) { tool in
+                    ZStack {
+                        Image(systemName: toolIcon(for: tool))
+                            .font(.caption2)
+                            .foregroundColor(color(for: tool, usedTools: usedTools, currentActiveTool: currentActiveTool))
+                        // Small dot to indicate "currently active"
+                        if currentActiveTool == tool {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .offset(x: 6, y: -6)
+                        }
+                    }
                 }
-                
-                Text("\(activeTools.count) active")
+                Text("Tools")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.green.opacity(0.1))
+            .background(Color(.systemGray6))
             .cornerRadius(8)
         }
     }
@@ -427,12 +467,20 @@ struct CompactToolIndicator: View {
     private func toolIcon(for toolName: String) -> String {
         switch toolName {
         case "web_search_preview": return "globe"
+        case "web_search": return "globe"
         case "code_interpreter": return "terminal"
         case "image_generation": return "photo"
         case "file_search": return "doc.text.magnifyingglass"
         case "computer": return "display"
         default: return "wrench.and.screwdriver"
         }
+    }
+
+    /// Chooses a color for the tool icon based on whether it's enabled, used before, or currently active
+    private func color(for tool: String, usedTools: Set<String>, currentActiveTool: String?) -> Color {
+        if currentActiveTool == tool { return .green } // actively running now
+        if usedTools.contains(tool) { return .green.opacity(0.85) } // used earlier this convo
+        return .secondary // enabled but not used yet
     }
 }
 

@@ -102,6 +102,14 @@ protocol OpenAIServiceProtocol {
     
     /// Fetches image data from the API.
     func fetchImageData(for imageContent: ContentItem) async throws -> Data
+
+    /// Downloads raw bytes of a file that resides inside a tool container (e.g., code interpreter container).
+    /// Use when handling annotations that reference container files (cfile_*) with a container_id.
+    /// - Parameters:
+    ///   - containerId: The id of the container (cntr_...).
+    ///   - fileId: The id of the file inside the container (cfile_...).
+    /// - Returns: Raw file bytes (e.g., PNG data for images).
+    func fetchContainerFileContent(containerId: String, fileId: String) async throws -> Data
     
     /// Uploads a file to OpenAI.
     func uploadFile(

@@ -1,5 +1,17 @@
 # Advanced Topics
 
+---
+
+**[2025-09-13] Beta Pause Note:**
+This project is paused in a "super beta" state. Major recent work includes:
+
+- Ultra-strict computer-use mode (toggle disables all app-side helpers; see below)
+- Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
+- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
+
+**To resume:** Review this section, ROADMAP.md, and the case study for a full summary of what’s done and what’s next.
+
 This section covers advanced features and concepts for building sophisticated applications with the OpenAI API.
 
 ## Overview
@@ -159,3 +171,38 @@ print(user_profile.model_dump_json(indent=2))
 ```
 
 This feature eliminates the need for complex prompt engineering to enforce a specific output format and provides reliable, type-safe results.
+
+---
+
+## Ultra-strict Computer Use Mode
+
+When you need the agent to follow the model's exact browser actions with zero app-side helpers, enable:
+
+- Settings → Debugging → “Ultra-strict computer use (no helpers)”
+
+What it disables:
+
+- Pre-navigation URL derivation for initial screenshots/clicks
+- Intent-aware search submission on known engines
+- Click-by-text overrides (finding coordinates by visible text)
+- Aggressive loop-prevention heuristics around repeated screenshots/waits
+
+What remains:
+
+- Official computer-use action loop with screenshots and current_url
+- Safety checks and user approvals
+- Error handling and basic UI updates
+
+Use this mode for purist behavior, regression testing, or when you want to evaluate the raw model policy without app-side nudges.
+
+---
+
+## Quieting Simulator Log Noise (Optional)
+
+When running on iOS Simulator, you may see benign logs such as `eligibility.plist` missing or CoreHaptics warnings. These do not affect app behavior.
+
+- In Xcode, use the Console filter to exclude subsystems like `com.apple.CoreHaptics` and messages containing `eligibility.plist`.
+- To broadly reduce OS log chatter in the Run console, you can set an environment variable in your Run scheme:
+  - Add `OS_ACTIVITY_MODE = disable` under Scheme > Run > Arguments > Environment Variables.
+
+This only affects developer ergonomics in Xcode and is not required for production.

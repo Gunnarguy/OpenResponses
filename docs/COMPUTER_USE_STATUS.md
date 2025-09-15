@@ -51,6 +51,7 @@ The Computer Use tool is **100% feature complete** and production ready. All Ope
 - **JavaScript Framework Support**: Enhanced event bubbling for React/Vue applications
 - **Dynamic Content Detection**: Extended wait times for click-triggered content changes
 - **Detailed Action Logging**: Comprehensive feedback about what was clicked and results
+- **Intent-Aware Search Typing**: When the user says “search/find/type in X,” the app will type and submit that query directly in Google/Bing before continuing. This reduces wrong turns from clicking suggestion chips and ensures the exact requested query is honored.
 
 ### ✅ Production Hardening
 
@@ -123,6 +124,11 @@ if (el.click) el.click();
 // Strategy 4: Handler triggering for buttons/links
 if (el.onclick) el.onclick.call(el);
 ```
+
+Additionally, a conservative, site-agnostic guardrail improves precision for ambiguous "hamburger/menu" requests near the top-left corner on mobile layouts:
+
+- If a click target is within ~80x80 CSS px from the top-left, the executor first attempts to resolve a visible, icon-sized, button-like element (aria-label/title includes "menu"/"hamburger" or empty inner text) and clicks its center instead of generic containers.
+- If no such control is visible, the assistant should respond "I cannot find the hamburger menu" rather than guessing. This aligns with the strict non-guessing instruction policy.
 
 ### Confirmation Policy System
 

@@ -1,5 +1,17 @@
 # Production Checklist for OpenResponses
 
+---
+
+**[2025-09-13] Beta Pause Note:**
+This project is paused in a "super beta" state. Major recent work includes:
+
+- Ultra-strict computer-use mode (toggle disables all app-side helpers; see Advanced.md)
+- Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
+- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
+
+**To resume:** Review this section, ROADMAP.md, and the case study for a full summary of what’s done and what’s next.
+
 This checklist covers all essential aspects for App Store submission, organized by the 5-phase roadmap defined in `ROADMAP.md`.
 
 ## Phase 1: Input & Tool Completion ✅ (Current Focus)
@@ -196,7 +208,7 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [x] **URL Detection**: Verified automatic URL extraction from user messages for screenshot actions
 - [x] **Error Handling**: Comprehensive error recovery and fallback mechanisms tested
 - [x] **API Compliance**: Verified proper `current_url` parameter inclusion and safety check handling
-- [ ] **Confirmation Policy**: Implemented at the model-instructions level to avoid unnecessary prompts for benign actions (navigate to URLs, clicking "Learn more"/"Get started"/pagination). The app currently auto-acknowledges safety checks to keep flows smooth; a user confirmation UI for sensitive/irreversible actions (checkout, subscription, settings changes, credential entry, downloads) is deferred (TODO). Verify instruction text in `OpenAIService.buildDefaultComputerUseInstructions`.
+- [x] **Safety Approval Sheet**: When `pending_safety_checks` are returned, the app shows a sheet summarizing the action and checks; approving proceeds and sends `acknowledged_safety_checks`, canceling aborts and clears `previous_response_id`.
 
 **Error Prevention Testing**
 

@@ -1,5 +1,17 @@
 # OpenResponses: Definitive API and Codebase Integration Reference
 
+---
+
+**[2025-09-13] Beta Pause Note:**
+This project is paused in a "super beta" state. Major recent work includes:
+
+- Ultra-strict computer-use mode (toggle disables all app-side helpers; see Advanced.md)
+- Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
+- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
+
+**To resume:** Review this section, ROADMAP.md, and the case study for a full summary of what’s done and what’s next.
+
 | Property | Type     | Required | Description             | App Status & Implementation Details                                                        |
 | :------- | :------- | :------- | :---------------------- | :----------------------------------------------------------------------------------------- |
 | `type`   | `String` | **Yes**  | Must be `"input_text"`. | **Implemented**. The `buildInputMessages` function correctly creates `input_text` objects. |
@@ -54,7 +66,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | `model`        | `String`             | **Yes**  | The ID of the model to use for this request (e.g., `gpt-4-turbo`).                                                                     | **Implemented**. In `OpenAIService.swift`, the `buildRequestObject` function retrieves the model ID from `prompt.model.id`. The user selects this in `SettingsView.swift`, which updates the `activePrompt` in `ChatViewModel`.              |
 | `input`        | `String` or `Array`  | **Yes**  | The core content for the model. Can be a simple string for user input or a rich array of `InputItem` objects for multimodal content.   | **✅ Implemented**. The `buildRequestObject` function handles both text strings and multimodal input arrays. `buildInputMessages` supports `input_text`, `input_image`, and `input_file` with both `file_id` and direct `file_data` uploads. |
 | `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Not Implemented**. The app manages state locally by passing `previous_response_id`. It does not use the Conversations API.                                                                                                                 |
-| `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Partially Implemented**. Streaming is enabled when requested; text deltas, tool calls, and image generation events are handled, but not every possible event type.                                                                         |
+| `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Partially Implemented**. Streaming is enabled when requested; text deltas, tool calls, image generation events, and container file annotations are handled. Some lesser-used event types are still pending.                                |
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. Controlled by `Prompt.backgroundMode`; included by `OpenAIService.buildRequestObject` when enabled.                                                                                                                         |
 | `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, MCP, and Custom Function tools. All major tools are implemented.                                                                 |
 | `tool_choice`  | `String` or `Object` | No       | Forces the model to use a specific tool.                                                                                               | **Implemented**. `Prompt.toolChoice`; added to the request when not `auto`.                                                                                                                                                                  |
@@ -117,7 +129,7 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 
 - **Type:** `code_interpreter`
 - **App Status:** **Fully Implemented**.
-- **Implementation Details:** Enabled via `prompt.enableCodeInterpreter`. Creates tool config with `"container": {"type": "auto"}`. `StreamingStatusView.swift` displays "Executing Code..." status. **Gap:** The app does not yet parse and render the outputs of code execution (charts, images, logs) which can be included via the `include` parameter.
+- **Implementation Details:** Enabled via `prompt.enableCodeInterpreter`. Creates tool config with `"container": {"type": "auto"}`. `StreamingStatusView.swift` displays "Executing Code..." status. Container file citations (cfile\_\*, with container_id) from annotations are now downloaded and rendered in the chat when they contain images. Parsing of other artifact types (e.g., logs) remains limited.
 
 **C. File Search**
 
@@ -166,9 +178,11 @@ The app has extensive tool integration through the `buildTools` function in `Ope
   - 🎉 **PRODUCTION-READY**: Native `ComputerService.swift` with proper WebView frame initialization (440x956)
   - 🎉 **PRODUCTION-READY**: Single-shot mode prevents infinite loops for screenshot-only requests
   - 🎉 **PRODUCTION-READY**: Status chips display "🖥️ Using computer..." during active tool calls
+  - ✅ **USER-IN-THE-LOOP SAFETY**: When `pending_safety_checks` are returned, the app now presents a confirmation sheet to approve or cancel before proceeding; approved checks are sent as `acknowledged_safety_checks` in the next `computer_call_output`.
   - 🎉 **PRODUCTION-READY**: Screenshots are captured and displayed correctly in chat interface
   - 🎉 **PRODUCTION-READY**: Comprehensive error handling and debug logging throughout the pipeline
   - 🎉 **PRODUCTION-READY**: WebView rendering issues resolved - proper content capture instead of blank screens
+  - 🎉 **PRODUCTION-READY**: Intent-aware search with site fallbacks — on Google/Bing/Amazon and most sites with search fields, the app programmatically focuses the search box, types and submits the query. After submission, a brief click-suppression window avoids accidental clicks on suggestions/promos.
   - ⚠️ **Limitation:** Disabled for gpt-5 models due to API restrictions
 - **Available Actions in API:**
   - ✅ `Click(x, y, button)`: Mouse clicks with element targeting and focus management

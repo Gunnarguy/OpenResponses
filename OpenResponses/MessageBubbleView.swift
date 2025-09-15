@@ -3,6 +3,7 @@ import SwiftUI
 struct MessageBubbleView: View {
     let message: ChatMessage
     let onDelete: () -> Void
+    var isStreaming: Bool = false
     
     @ScaledMetric private var bubblePadding: CGFloat = 12
     @ScaledMetric private var cornerRadius: CGFloat = 16
@@ -20,7 +21,30 @@ struct MessageBubbleView: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Text content (formatted for Markdown and code if needed)
                 if let text = message.text, !text.isEmpty {
-                    FormattedTextView(text: text)
+                    ZStack(alignment: .bottomLeading) {
+                        FormattedTextView(text: text)
+                        if isStreaming && message.role == .assistant {
+                            HStack(spacing: 6) {
+                                TypingCursor()
+                                if let est = message.tokenUsage?.estimatedOutput, est > 0 {
+                                    Text("\(est)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .offset(x: 2, y: 2)
+                        }
+                    }
+                } else if isStreaming && message.role == .assistant {
+                    // Show a typing cursor even before first text arrives
+                    TypingCursor()
+                        .padding(.vertical, 4)
+                }
+
+                // Live/final token usage indicator for assistant messages
+                if message.role == .assistant, let usage = message.tokenUsage {
+                    TokenUsageCaption(usage: usage)
+                        .padding(.top, 2)
                 }
                 
                 // Tool usage indicator for assistant messages
@@ -76,6 +100,7 @@ struct MessageBubbleView: View {
         }
         .padding(message.role == .user ? .trailing : .leading, 10)
         .padding(.bottom, 2)
+        .animation(.easeInOut(duration: 0.16), value: message.text)
     }
     
     // Helper: choose bubble background color based on the message role
@@ -138,5 +163,37 @@ struct MessageBubbleView: View {
         case .system:
             return "System notification or error message"
         }
+    }
+}
+
+/// Small caption line that shows tokens: in/out/total, with live estimate when streaming
+private struct TokenUsageCaption: View {
+    let usage: TokenUsage
+    var body: some View {
+        let parts: [String] = {
+            var p: [String] = []
+            if let inTok = usage.input { p.append("in: \(inTok)") }
+            if let outTok = usage.output { p.append("out: \(outTok)") }
+            else if let est = usage.estimatedOutput { p.append("out (est): \(est)") }
+            if let total = usage.total { p.append("total: \(total)") }
+            return p
+        }()
+        return Text(parts.isEmpty ? "" : parts.joined(separator: "  •  "))
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .accessibilityLabel("Token usage")
+    }
+}
+
+/// Small blinking cursor to indicate the assistant is still streaming
+private struct TypingCursor: View {
+    @State private var visible: Bool = true
+    var body: some View {
+        Rectangle()
+            .fill(Color.secondary)
+            .frame(width: 2, height: 16)
+            .opacity(visible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: visible)
+            .onAppear { visible = true }
     }
 }

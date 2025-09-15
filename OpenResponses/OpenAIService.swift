@@ -48,12 +48,9 @@ class OpenAIService: OpenAIServiceProtocol {
         )
 
         // Serialize JSON payload
-        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
         
-        // For debugging: Print the JSON request
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("OpenAI Request JSON: \(jsonString)")
-        }
+    // Don't print raw JSON here; AnalyticsService handles sanitized/omitted logging centrally
         
         // Prepare URLRequest with authorization header
         var request = URLRequest(url: apiURL)
@@ -185,10 +182,7 @@ class OpenAIService: OpenAIServiceProtocol {
                     
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
                     
-                    // For debugging: Print the JSON request for streaming
-                    if let jsonString = String(data: jsonData, encoding: .utf8) {
-                        print("OpenAI Streaming Request JSON: \(jsonString)")
-                    }
+                    // Avoid printing the full JSON directly to console; it's captured via AnalyticsService with sanitization
                     
                     var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
@@ -374,62 +368,33 @@ class OpenAIService: OpenAIServiceProtocol {
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
         if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
             return """
-You are a helpful assistant with computer use capabilities. You can see what's on the screen, take screenshots, click on elements, type text, scroll, and perform other computer actions. 
+You are a precise assistant using a 440x956 iPhone-like screen. Do exactly what the user asks—no guesses.
 
-🚨 ABSOLUTE REQUIREMENT: When the user asks to visit ANY website, your FIRST action must be navigate. Do NOT take a screenshot first.
+Core rules:
+- If current_url is blank or "about:blank", do not screenshot/wait first. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
+- Take one small, precise action at a time, then screenshot to reassess. Click only clear, visible targets at their center. If you can’t find it, say so (don’t guess).
+- Never do more than 2 consecutive waits. If nothing changes, take a concrete step (navigate/scroll/click) instead.
+- If a cookie/consent banner blocks content, click the visible "Accept all" (or equivalent) before proceeding.
 
-CORRECT SEQUENCE:
-User: "Go to Google" → Your response: {"type": "navigate", "parameters": {"url": "https://google.com"}}
-
-WRONG SEQUENCE:
-User: "Go to Google" → Your response: {"type": "screenshot"} ❌ NO! NAVIGATE FIRST!
-
-MANDATORY FIRST ACTIONS:
-- "Go to YouTube" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://youtube.com"}}
-- "Go to Google" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://google.com"}}
-- "Go to Amazon" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://amazon.com"}}
-- "Go to OpenAI" → FIRST ACTION: {"type": "navigate", "parameters": {"url": "https://openai.com"}}
-
-Available actions:
-- Navigate: {"type": "navigate", "parameters": {"url": "https://example.com"}} ← YOUR FIRST ACTION FOR WEBSITES
-- Screenshot: {"type": "screenshot"} ← ONLY AFTER NAVIGATING
-- Click: {"type": "click", "parameters": {"x": 100, "y": 200}}
-- Type: {"type": "type", "parameters": {"text": "hello"}}
-- Keypress: {"type": "keypress", "parameters": {"keys": ["Enter"]}}
-- Scroll: {"type": "scroll", "parameters": {"x": 0, "y": -100}}
-- Wait: {"type": "wait", "parameters": {"duration": 1000}}
-
-Confirmation policy:
-- Do not ask for permission for routine browsing actions explicitly requested by the user. If the user says to navigate to a URL or to click a benign link or button, just do it.
-- Safe by default (no extra confirmation needed): navigating to a requested URL; clicking benign links/buttons such as "Learn more", "Get started", "Next", pagination; opening the "Sign in" page (never enter credentials); scrolling; opening menus; taking a screenshot.
-- Ask for confirmation only before sensitive or irreversible actions: purchases/checkout, subscriptions, posting or deleting content, changing account settings, submitting forms with personal data, downloading/executing files, entering credentials, or leaving the current site for an unrelated destination. If unsure, ask briefly.
-- If the user explicitly says "click X" on the current page, click it without an extra "May I proceed?" prompt and then report what happened.
-
-🔴 CRITICAL: If you see a page saying "USE NAVIGATE ACTION", it means you took a screenshot without navigating first. Use the navigate action immediately.
+Available actions: click, double_click, scroll, type, keypress, wait, screenshot, move, drag.
 """
         } else {
             return "You are a helpful assistant."
         }
     }
     
-    /// Builds system instructions, preferring computer-use-aware instructions for computer models
+    /// Builds system instructions; for computer-use-preview we prefer action-only loops and omit instructions unless explicitly provided
     private func buildInstructions(prompt: Prompt) -> String {
-        // If user has no custom instructions, use our computer-use-aware defaults
-        if prompt.systemInstructions.isEmpty {
-            return buildDefaultComputerUseInstructions(prompt: prompt)
+        // For CUA, default to no system instructions unless user explicitly set them
+        if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
+            return prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        
-        // If using computer-use model but user has basic "helpful assistant" instruction,
-        // enhance it with computer capabilities
-        let basicInstructions = ["You are a helpful assistant.", "You are a helpful assistant"]
-        if prompt.enableComputerUse && 
-           prompt.openAIModel == "computer-use-preview" && 
-           basicInstructions.contains(prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return buildDefaultComputerUseInstructions(prompt: prompt)
+
+        // Non-CUA: if user provided instructions, use them; otherwise a simple default
+        if !prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return prompt.systemInstructions
         }
-        
-        // Otherwise use the user's custom instructions
-        return prompt.systemInstructions
+        return "You are a helpful assistant."
     }
 
     /// Builds the request dictionary from a Prompt object and other parameters.
@@ -437,9 +402,16 @@ Confirmation policy:
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
     private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
         var requestObject: [String: Any] = [
-            "model": prompt.openAIModel,
-            "instructions": buildInstructions(prompt: prompt)
+            "model": prompt.openAIModel
         ]
+
+        // Add instructions only if non-empty; for CUA, suppress the generic default
+        let sys = buildInstructions(prompt: prompt)
+        if !sys.isEmpty {
+            if !(prompt.openAIModel == "computer-use-preview" && sys == "You are a helpful assistant.") {
+                requestObject["instructions"] = sys
+            }
+        }
 
         // Persist responses so they can be retrieved by ID during tool-call follow-ups
         requestObject["store"] = true
@@ -455,8 +427,9 @@ Confirmation policy:
             ]
         }
 
-        // 3. Build the 'tools' array using the new Codable models
-        var tools = buildTools(for: prompt, isStreaming: stream)
+    // 3. Build the 'tools' array using the new Codable models
+    var tools = buildTools(for: prompt, isStreaming: stream)
+    var forceImageToolChoiceThisTurn = false
         // Ensure the computer tool is present for the dedicated CUA model
         if prompt.openAIModel == "computer-use-preview" && !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
             // Add default computer tool config similar to buildTools
@@ -489,6 +462,16 @@ Confirmation policy:
                 return false
             }
         }
+        // Image intent heuristic: if this turn is clearly asking for an image, restrict tools to just image_generation
+        if shouldForceImageGeneration(for: prompt, userMessage: userMessage, availableTools: tools) {
+            let hadImageTool = tools.contains { if case .imageGeneration = $0 { return true } else { return false } }
+            if hadImageTool {
+                tools = tools.filter { if case .imageGeneration = $0 { return true } else { return false } }
+                forceImageToolChoiceThisTurn = true
+                AppLogger.log("Image intent detected — restricting tools to image_generation for this turn", category: .openAI, level: .info)
+            }
+        }
+
         AppLogger.log("Built tools array: \(tools.count) tools - \(tools)", category: .openAI, level: .info)
         if !tools.isEmpty {
             do {
@@ -507,7 +490,11 @@ Confirmation policy:
         }
         
         // 3.5. Build the 'include' array from boolean properties
-        let includeArray = buildIncludeArray(for: prompt)
+        // Only include computer_call outputs if the computer tool is actually part of this request
+        let hasComputerTool: Bool = tools.contains { t in
+            if case .computer = t { return true } else { return false }
+        }
+        let includeArray = buildIncludeArray(for: prompt, hasComputerTool: hasComputerTool)
         if !includeArray.isEmpty {
             requestObject["include"] = includeArray
         }
@@ -540,6 +527,10 @@ Confirmation policy:
         // 8. Add tool_choice if specified
         if !prompt.toolChoice.isEmpty && prompt.toolChoice != "auto" {
             requestObject["tool_choice"] = prompt.toolChoice
+        } else if forceImageToolChoiceThisTurn {
+            // Responses API supports: 'none', 'auto', 'required'. Use 'required' while only the image_generation tool is present.
+            requestObject["tool_choice"] = "required"
+            AppLogger.log("Auto tool_choice override → required (only image_generation available)", category: .openAI, level: .info)
         }
         
         // 9. Build the 'text' format object if JSON schema is enabled
@@ -555,6 +546,32 @@ Confirmation policy:
         return requestObject
     }
 
+    /// Detects if we should force the image_generation tool for this turn based on the user message.
+    /// - Conditions:
+    ///   - Image generation is enabled for the prompt and supported for the model/streaming mode
+    ///   - The built tools include image_generation
+    ///   - The user's message strongly indicates intent to create an image (not just analyze)
+    ///   - The selected model is not the dedicated computer-use model
+    private func shouldForceImageGeneration(for prompt: Prompt, userMessage: String, availableTools: [APICapabilities.Tool]) -> Bool {
+        guard prompt.enableImageGeneration else { return false }
+        guard availableTools.contains(where: { if case .imageGeneration = $0 { return true } else { return false } }) else { return false }
+        guard prompt.openAIModel != "computer-use-preview" else { return false }
+
+        let text = userMessage.lowercased()
+        // Common verbs and nouns indicating image creation
+        let positiveHints = [
+            "generate an image", "generate a picture", "create an image", "create a picture", "draw ", "sketch ",
+            "make an image", "make a picture", "illustration", "poster", "logo", "icon", "wallpaper", "artwork",
+            "render ", "paint ", "photorealistic", "photo of ", "image of ", "picture of ", "cover art", "thumbnail"
+        ]
+        // Phrases that imply analysis rather than generation
+        let negativeHints = ["analyze this image", "describe this image", "caption this image", "what is in this image"]
+
+        let hasPositive = positiveHints.contains { text.contains($0) }
+        let hasNegative = negativeHints.contains { text.contains($0) }
+        return hasPositive && !hasNegative
+    }
+
     /// Constructs the `input` array for the request, including developer instructions and user content.
     private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
@@ -565,7 +582,8 @@ Confirmation policy:
         }
         
         // Handle user message with attachments and/or images
-        var userContent: Any = userMessage
+    // Always use structured content array with input_text to match API guidance
+    var userContent: Any = [["type": "input_text", "text": userMessage]]
         
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
@@ -645,13 +663,30 @@ Confirmation policy:
         
         AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
         let compatibilityService = ModelCompatibilityService.shared
+        let isDeepResearch = prompt.openAIModel.contains("deep-research")
 
-        if prompt.enableWebSearch, compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(.webSearch)
+        if prompt.enableWebSearch {
+            if isDeepResearch {
+                // Deep research models require the preview web search tool
+                tools.append(.webSearchPreview)
+            } else if compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
+                tools.append(.webSearch)
+            }
         }
 
         if prompt.enableCodeInterpreter, compatibilityService.isToolSupported(APICapabilities.ToolType.codeInterpreter, for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(.codeInterpreter(containerType: "auto"))
+            // API currently only accepts "auto" for container.type; enforce to avoid 400s
+            let requestedContainer = prompt.codeInterpreterContainerType
+            let containerType = (requestedContainer == "auto" || requestedContainer.isEmpty) ? "auto" : "auto"
+
+            // Parse optional comma-separated file IDs into a sanitized array
+            let parsedIds = prompt.codeInterpreterPreloadFileIds?
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let fileIds: [String]? = (parsedIds?.isEmpty == false) ? parsedIds : nil
+
+            tools.append(.codeInterpreter(containerType: containerType, fileIds: fileIds))
         }
 
         if prompt.enableImageGeneration, compatibilityService.isToolSupported(APICapabilities.ToolType.imageGeneration, for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -720,6 +755,17 @@ Confirmation policy:
             tools.append(.function(function: function))
         }
 
+        // Ensure deep-research models always include at least one of the required tools
+        // per API: one of 'web_search_preview', 'mcp', or 'file_search' must be present.
+        if isDeepResearch {
+            let hasPreviewSearch = tools.contains { if case .webSearchPreview = $0 { return true } else { return false } }
+            let hasFileSearch = tools.contains { if case .fileSearch = $0 { return true } else { return false } }
+            if !hasPreviewSearch && !hasFileSearch {
+                tools.append(.webSearchPreview)
+                AppLogger.log("Deep-research model detected — auto-adding web_search_preview tool to satisfy API requirements", category: .openAI, level: .info)
+            }
+        }
+
         return tools
     }
 
@@ -754,7 +800,13 @@ Confirmation policy:
         }
         
         if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel) && prompt.topLogprobs > 0 {
-            parameters["top_logprobs"] = prompt.topLogprobs
+            // Avoid logprobs on reasoning models to prevent API errors
+            let caps = compatibilityService.getCapabilities(for: prompt.openAIModel)
+            if caps?.supportsReasoningEffort == true {
+                AppLogger.log("Omitting top_logprobs param for reasoning model: \(prompt.openAIModel)", category: .openAI, level: .info)
+            } else {
+                parameters["top_logprobs"] = prompt.topLogprobs
+            }
         }
         
         if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel) && !prompt.userIdentifier.isEmpty {
@@ -785,11 +837,9 @@ Confirmation policy:
         let compatibilityService = ModelCompatibilityService.shared
         // Special-case: computer-use-preview supports reasoning.summary without effort
         if prompt.openAIModel == "computer-use-preview" {
-            if !prompt.reasoningSummary.isEmpty {
-                return ["summary": prompt.reasoningSummary]
-            } else {
-                return nil
-            }
+            // Default to concise summary for visibility into actions unless the user overrides.
+            let summary = prompt.reasoningSummary.isEmpty ? "concise" : prompt.reasoningSummary
+            return ["summary": summary]
         }
 
         guard compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel), !prompt.reasoningEffort.isEmpty else {
@@ -807,7 +857,10 @@ Confirmation policy:
     }
     
     /// Constructs the `include` array from boolean properties in the prompt.
-    private func buildIncludeArray(for prompt: Prompt) -> [String] {
+    /// - Parameters:
+    ///   - prompt: The active prompt settings.
+    ///   - hasComputerTool: Whether the current request includes the computer tool.
+    private func buildIncludeArray(for prompt: Prompt, hasComputerTool: Bool) -> [String] {
         var includeArray: [String] = []
         
         if prompt.includeCodeInterpreterOutputs {
@@ -824,17 +877,33 @@ Confirmation policy:
         }
         
         if prompt.includeOutputLogprobs {
-            includeArray.append("message.output_text.logprobs")
+            // Some reasoning-capable models do not support returning logprobs in the include payload
+            // (API returns 400: "logprobs are not supported with reasoning models.")
+            let caps = ModelCompatibilityService.shared.getCapabilities(for: prompt.openAIModel)
+            let disallowForReasoning = (caps?.supportsReasoningEffort == true)
+            if !disallowForReasoning {
+                includeArray.append("message.output_text.logprobs")
+            } else {
+                AppLogger.log("Omitting include for output logprobs due to reasoning model: \(prompt.openAIModel)", category: .openAI, level: .info)
+            }
         }
         
         if prompt.includeReasoningContent {
-            includeArray.append("reasoning.encrypted_content")
+            // Only reasoning-capable models support encrypted reasoning content include
+            let caps = ModelCompatibilityService.shared.getCapabilities(for: prompt.openAIModel)
+            if caps?.supportsReasoningEffort == true {
+                includeArray.append("reasoning.encrypted_content")
+            } else {
+                AppLogger.log("Omitting include for reasoning.encrypted_content (unsupported by model: \(prompt.openAIModel))", category: .openAI, level: .info)
+            }
         }
         
-        // Ensure computer tool outputs are included whenever computer use is enabled,
-        // so the model can incorporate screenshots and action results into its reply.
-        if prompt.enableComputerUse || prompt.includeComputerUseOutput {
-            includeArray.append("computer_call_output.output.image_url")
+        // Include computer tool outputs only when the computer tool is actually added for this request
+        // or when using the dedicated computer-use model (which always uses the computer tool).
+        if hasComputerTool || prompt.openAIModel == "computer-use-preview" {
+            if prompt.enableComputerUse || prompt.includeComputerUseOutput {
+                includeArray.append("computer_call_output.output.image_url")
+            }
         }
         
         if prompt.includeInputImageUrls {
@@ -940,9 +1009,7 @@ Confirmation policy:
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
         
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("OpenAI Function Output Request JSON: \(jsonString)")
-        }
+        // Don't print raw JSON here; centralized logging below will handle sanitization/omission
         
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120
@@ -1124,22 +1191,7 @@ Confirmation policy:
         }
 
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-
-        // Redact large base64 image payloads from debug logs to keep console readable
-        var redacted = requestObject
-            if var inputArray = redacted["input"] as? [[String: Any]],
-               !inputArray.isEmpty,
-               var first = inputArray[0]["output"] as? [String: Any] {
-                if first["type"] as? String == "computer_screenshot", first["image_url"] != nil {
-                    first["image_url"] = "[redacted base64]"
-                    inputArray[0]["output"] = first
-                    redacted["input"] = inputArray
-                }
-            }
-        if let redactedData = try? JSONSerialization.data(withJSONObject: redacted, options: .prettyPrinted),
-           let redactedString = String(data: redactedData, encoding: .utf8) {
-            AppLogger.log("OpenAI Computer Output Request JSON: \(redactedString)", category: .openAI, level: .debug)
-        }
+        // Avoid manual body logging here; AnalyticsService will log this request with sanitization/omission
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120
         request.httpMethod = "POST"
@@ -1246,6 +1298,43 @@ Confirmation policy:
             return data
         }
         throw OpenAIServiceError.invalidResponseData
+    }
+
+    /// Downloads raw bytes of a file that resides inside a tool container (e.g., code interpreter container).
+    /// This is required for annotations like container_file_citation that reference cfile_* along with a container_id.
+    func fetchContainerFileContent(containerId: String, fileId: String) async throws -> Data {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        // Endpoint per Responses/Tools containers: /v1/containers/{container_id}/files/{file_id}/content
+        guard let url = URL(string: "https://api.openai.com/v1/containers/\(containerId)/files/\(fileId)/content") else {
+            throw OpenAIServiceError.invalidRequest("Invalid container or file id")
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 120
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        // Log the request for diagnostics
+        AnalyticsService.shared.logAPIRequest(
+            url: url,
+            method: "GET",
+            headers: ["Authorization": "Bearer \(apiKey)"],
+            body: nil
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status != 200 {
+            AnalyticsService.shared.logAPIResponse(url: url, statusCode: status, headers: (response as? HTTPURLResponse)?.allHeaderFields ?? [:], body: data)
+            if status == 404 {
+                throw OpenAIServiceError.requestFailed(status, "Container file not found or expired: \(fileId)")
+            }
+            throw OpenAIServiceError.requestFailed(status, "Failed to fetch container file content")
+        }
+
+        AnalyticsService.shared.logAPIResponse(url: url, statusCode: status, headers: (response as? HTTPURLResponse)?.allHeaderFields ?? [:], body: data)
+        return data
     }
     
     /// Prepares file attachment objects for inclusion in API requests

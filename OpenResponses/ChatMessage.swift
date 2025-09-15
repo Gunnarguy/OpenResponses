@@ -15,12 +15,14 @@ struct ChatMessage: Identifiable, Codable {
     var webURLs: [URL]?     // URLs to render as embedded web content
     var webContentURL: [URL]? // Detected URLs in the message content
     var toolsUsed: [String]? // Track which tools were actually used in this message
+    /// Live and final token usage for this message (assistant messages only)
+    var tokenUsage: TokenUsage?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs, webContentURL, toolsUsed
+        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil) {
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil) {
         self.id = id
         self.role = role
         self.text = text
@@ -28,6 +30,7 @@ struct ChatMessage: Identifiable, Codable {
         self.webURLs = webURLs
         self.webContentURL = webContentURL
         self.toolsUsed = toolsUsed
+        self.tokenUsage = tokenUsage
     }
 
     // MARK: - Codable Conformance
@@ -57,6 +60,7 @@ struct ChatMessage: Identifiable, Codable {
         }
         
         toolsUsed = try container.decodeIfPresent([String].self, forKey: .toolsUsed)
+        tokenUsage = try container.decodeIfPresent(TokenUsage.self, forKey: .tokenUsage)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -81,7 +85,20 @@ struct ChatMessage: Identifiable, Codable {
         }
         
         try container.encodeIfPresent(toolsUsed, forKey: .toolsUsed)
+        try container.encodeIfPresent(tokenUsage, forKey: .tokenUsage)
     }
+}
+
+/// Captures live estimates and final token usage for a message
+struct TokenUsage: Codable {
+    /// During streaming: estimated output tokens based on received text
+    var estimatedOutput: Int?
+    /// Final prompt/input tokens reported by API
+    var input: Int?
+    /// Final completion/output tokens reported by API
+    var output: Int?
+    /// Final total tokens reported by API
+    var total: Int?
 }
 
 /// Codable models for decoding OpenAI /v1/responses API JSON.
@@ -315,12 +332,28 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     
     /// Index of the partial image for image generation events
     let partialImageIndex: Int?
+
+    /// Some image generation payload variants include the base64 image under a generic key.
+    /// We capture common alternates to improve compatibility across event shapes.
+    let imageB64: String? // maps "image"
+    let dataB64: String?  // maps "data"
     
     /// Screenshot data for computer use events (base64 encoded)
     let screenshotB64: String?
     
     /// Computer action data for computer use events
     let computerAction: String?
+
+    // Annotation metadata for output_text.annotation.added (e.g., embedded file references)
+    let fileId: String?
+    let filename: String?
+    let containerId: String?
+    let annotationIndex: Int?
+    
+    /// Full annotation payload when provided as a nested object
+    /// Some streaming payloads include annotation details under an `annotation` object rather than top-level fields.
+    /// We decode it to improve robustness across event variants.
+    let annotation: StreamingAnnotation?
     
     enum CodingKeys: String, CodingKey {
         case type
@@ -334,8 +367,15 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case part
         case partialImageB64 = "partial_image_b64"
         case partialImageIndex = "partial_image_index"
+        case imageB64 = "image"
+        case dataB64 = "data"
         case screenshotB64 = "screenshot_b64"
         case computerAction = "computer_action"
+        case fileId = "file_id"
+        case filename
+        case containerId = "container_id"
+        case annotationIndex = "annotation_index"
+        case annotation
     }
     
     /// Provides a readable description of the event
@@ -364,6 +404,26 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         }
         
         return desc + ")"
+    }
+}
+
+/// Represents a nested annotation object attached to an output_text part
+/// This includes file citation metadata for items produced inside tool containers (e.g., code interpreter).
+struct StreamingAnnotation: Decodable {
+    let type: String?
+    let startIndex: Int?
+    let endIndex: Int?
+    let fileId: String?
+    let filename: String?
+    let containerId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case startIndex = "start_index"
+        case endIndex = "end_index"
+        case fileId = "file_id"
+        case filename
+        case containerId = "container_id"
     }
 }
 

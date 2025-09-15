@@ -28,12 +28,15 @@ public enum APICapabilities {
         
         /// Allows the model to access up-to-date information from the internet.
         case webSearch
+        /// Allows deep-research models to access preview web search capability required by API.
+        /// Encodes as type "web_search_preview".
+        case webSearchPreview
         
         /// Allows the model to search the contents of uploaded files within specified vector stores.
         case fileSearch(vectorStoreIds: [String])
         
         /// Allows the model to write and run Python code in a sandboxed environment.
-        case codeInterpreter(containerType: String)
+        case codeInterpreter(containerType: String, fileIds: [String]?)
         
         /// Allows the model to generate images using a text prompt.
         case imageGeneration(model: String, size: String, quality: String, outputFormat: String)
@@ -55,6 +58,7 @@ public enum APICapabilities {
             case quality
             case outputFormat = "output_format"
             case vectorStoreIds = "vector_store_ids"
+            case fileIds = "file_ids"
             case environment
             case displayWidth = "display_width"
             case displayHeight = "display_height"
@@ -67,13 +71,16 @@ public enum APICapabilities {
             switch typeString {
             case "web_search":
                 self = .webSearch
+            case "web_search_preview":
+                self = .webSearchPreview
             case "file_search":
                 let vectorStoreIds = try container.decodeIfPresent([String].self, forKey: .vectorStoreIds) ?? []
                 self = .fileSearch(vectorStoreIds: vectorStoreIds)
             case "code_interpreter":
                 let containerInfo = try container.decodeIfPresent([String: String].self, forKey: .container)
                 let containerType = containerInfo?["type"] ?? "auto"
-                self = .codeInterpreter(containerType: containerType)
+                let fileIds = try container.decodeIfPresent([String].self, forKey: .fileIds)
+                self = .codeInterpreter(containerType: containerType, fileIds: fileIds)
             case "image_generation":
                 let model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-image-1"
                 let size = try container.decodeIfPresent(String.self, forKey: .size) ?? "auto"
@@ -100,14 +107,19 @@ public enum APICapabilities {
             switch self {
             case .webSearch:
                 try container.encode("web_search", forKey: .type)
+            case .webSearchPreview:
+                try container.encode("web_search_preview", forKey: .type)
             case .fileSearch(let vectorStoreIds):
                 try container.encode("file_search", forKey: .type)
                 if !vectorStoreIds.isEmpty {
                     try container.encode(vectorStoreIds, forKey: .vectorStoreIds)
                 }
-            case .codeInterpreter(let containerType):
+            case .codeInterpreter(let containerType, let fileIds):
                 try container.encode("code_interpreter", forKey: .type)
                 try container.encode(["type": containerType], forKey: .container)
+                if let fileIds = fileIds, !fileIds.isEmpty {
+                    try container.encode(fileIds, forKey: .fileIds)
+                }
             case .imageGeneration(let model, let size, let quality, let outputFormat):
                 try container.encode("image_generation", forKey: .type)
                 try container.encode(model, forKey: .model)

@@ -66,6 +66,81 @@ struct URLDetector {
         let allURLs = extractURLs(from: text)
         return allURLs.filter { isRenderableWebpage($0) }
     }
+
+    /// Extracts image-like links from markdown or plain text.
+    /// Supports:
+    /// - Markdown image syntax: ![alt](url)
+    /// - Bare http(s) image links ending with common extensions
+    /// - Data URLs (data:image/...)
+    /// - Sandbox paths (sandbox:/...) — returned as raw strings for caller to decide handling
+    /// Returns unique links in order of appearance.
+    static func extractImageLinks(from text: String) -> [String] {
+        var results: [String] = []
+        var seen = Set<String>()
+
+        // 1) Markdown image syntax ![...](url)
+        // Simple, robust scan without heavy regex engine dependencies
+        let pattern = #"!\[[^\]]*\]\(([^)]+)\)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+            let ns = text as NSString
+            let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length))
+            for m in matches {
+                if m.numberOfRanges >= 2 {
+                    let r = m.range(at: 1)
+                    if r.location != NSNotFound, let urlStr = ns.substring(with: r).split(separator: " ").first.map(String.init) {
+                        if !seen.contains(urlStr) { results.append(urlStr); seen.insert(urlStr) }
+                    }
+                }
+            }
+        }
+
+        // 2) Bare http(s) links that look like images
+        let httpImagePattern = #"https?://[^\s)]+\.(png|jpg|jpeg|gif|webp)(\?[^\s)]*)?"#
+        if let regex = try? NSRegularExpression(pattern: httpImagePattern, options: .caseInsensitive) {
+            let ns = text as NSString
+            let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length))
+            for m in matches {
+                let r = m.range(at: 0)
+                if r.location != NSNotFound {
+                    let urlStr = ns.substring(with: r)
+                    if !seen.contains(urlStr) { results.append(urlStr); seen.insert(urlStr) }
+                }
+            }
+        }
+
+        // 3) Data URLs
+        // Keep simple prefix detection to avoid massive regex overhead on large blobs
+        if text.lowercased().contains("data:image/") {
+            // Find all occurrences of data:image and attempt to capture until first whitespace or closing paren
+            let tokens = text.components(separatedBy: "data:image")
+            for i in 1..<tokens.count { // skip leading chunk before first token
+                let tail = "data:image" + tokens[i]
+                if let endIdx = tail.firstIndex(where: { $0 == " " || $0 == "\n" || $0 == "\r" }) {
+                    let candidate = String(tail[..<endIdx])
+                    if !seen.contains(candidate) { results.append(candidate); seen.insert(candidate) }
+                } else {
+                    let candidate = tail
+                    if !seen.contains(candidate) { results.append(candidate); seen.insert(candidate) }
+                }
+            }
+        }
+
+        // 4) Sandbox paths (not fetchable by app, but useful to surface)
+        let sandboxPattern = #"sandbox:/[^\s)]+"#
+        if let regex = try? NSRegularExpression(pattern: sandboxPattern, options: []) {
+            let ns = text as NSString
+            let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length))
+            for m in matches {
+                let r = m.range(at: 0)
+                if r.location != NSNotFound {
+                    let path = ns.substring(with: r)
+                    if !seen.contains(path) { results.append(path); seen.insert(path) }
+                }
+            }
+        }
+
+        return results
+    }
     
     /// Detects all URLs in the given text.
     ///

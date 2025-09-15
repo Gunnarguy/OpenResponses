@@ -435,6 +435,7 @@ The implementation includes comprehensive error recovery mechanisms:
 - Intelligent model fallback (computer-use-preview → gpt-4o)
 - Retry logic for temporary API failures
 - Safety check auto-acknowledgment to prevent blocking
+  - Updated: The app now pauses and shows a Safety Approval sheet when `pending_safety_checks` are returned. Users can Approve (sends `acknowledged_safety_checks` with the next `computer_call_output`) or Cancel (aborts the chain and clears `previous_response_id`).
 
 **Action Error Recovery**:
 

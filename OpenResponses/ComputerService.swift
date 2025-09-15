@@ -15,14 +15,26 @@ class ComputerService: NSObject, WKNavigationDelegate {
     
     private var webView: WKWebView?
     
+    // Track attach lifecycle to avoid noisy logs and enable automatic retry when a key window appears.
+    private var hasLoggedNoKeyWindow: Bool = false
+    private var attachObservers: [NSObjectProtocol] = []
+    private var didAttachToWindow: Bool {
+        webView?.superview != nil
+    }
+    
     // Continuations to bridge delegate-based asynchronous operations with async/await.
     private var navigationContinuation: CheckedContinuation<Void, Error>?
     private var javascriptContinuation: CheckedContinuation<Any?, Error>?
+    // Suppresses model-originated clicks for a brief window after we programmatically submit a search.
+    // This helps avoid the model immediately clicking promo/suggestion tiles before results finish loading.
+    private var suppressClicksUntil: Date?
     
     override init() {
         super.init()
         setupWebView()
     }
+
+    // Note: We avoid isolated deinit (requires iOS 18.4+) and rely on successful attach to unregister observers.
 
     /// Returns the current URL loaded in the WebView, if any.
     func currentURL() -> String? {
@@ -57,8 +69,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
         // Present as iPhone Safari to encourage mobile layouts that match our tool display
         webView?.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
         
-        // Defer window attachment until later if no key window is available during initialization
+        // Attempt immediate attach; if not possible, set up observers to retry when app/window becomes active.
         attachToWindowHierarchy()
+        if !(didAttachToWindow) {
+            registerAttachObservers()
+        }
     }
     
     /// Attempts to attach the WebView to the window hierarchy for proper rendering
@@ -67,6 +82,8 @@ class ComputerService: NSObject, WKNavigationDelegate {
         
         // Skip if already attached
         if webView.superview != nil {
+            // Once attached, we can safely remove any observers.
+            unregisterAttachObservers()
             return
         }
         
@@ -88,9 +105,41 @@ class ComputerService: NSObject, WKNavigationDelegate {
             webView.layoutIfNeeded()
             
             AppLogger.log("✅ [WebView Setup] Successfully attached WebView to key window", category: .general, level: .info)
+            unregisterAttachObservers()
         } else {
-            AppLogger.log("⚠️ [WebView Setup] No key window available yet - will retry during first action", category: .general, level: .warning)
+            // Log this warning only once to avoid console spam; future retries are silent until success.
+            if !hasLoggedNoKeyWindow {
+                hasLoggedNoKeyWindow = true
+                AppLogger.log("⚠️ [WebView Setup] No key window available yet - will retry when the app/window becomes active", category: .general, level: .warning)
+            }
         }
+    }
+
+    /// Register observers to retry attaching when the app becomes active or a window becomes key.
+    private func registerAttachObservers() {
+        // Avoid duplicate observers
+        if !attachObservers.isEmpty { return }
+        let center = NotificationCenter.default
+        let didBecomeActive = center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in self.attachToWindowHierarchy() }
+        }
+        let didConnectScene = center.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in self.attachToWindowHierarchy() }
+        }
+        let windowBecameKey = center.addObserver(forName: UIWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in self.attachToWindowHierarchy() }
+        }
+        attachObservers.append(contentsOf: [didBecomeActive, didConnectScene, windowBecameKey])
+    }
+    
+    /// Unregister attach observers once we have successfully attached or when deinitializing.
+    private func unregisterAttachObservers() {
+        let center = NotificationCenter.default
+        for token in attachObservers { center.removeObserver(token) }
+        attachObservers.removeAll()
     }
     
     /// Executes a given `ComputerAction` and returns the result.
@@ -172,34 +221,13 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try await scroll(x: scrollX, y: scrollY)
             
         case "screenshot":
-            // If no page is loaded yet, attempt to navigate to a sensible URL if provided in parameters.
-            // This helps when the model issues a bare "screenshot" as the first action.
+            // Strict mode: do not inject help pages. If about:blank, just capture the current state.
+            // If the model wants to navigate, it should issue a navigate action.
             if webView.url == nil || webView.url?.absoluteString == "about:blank" {
                 if let urlString = action.parameters["url"] as? String, let url = URL(string: urlString) {
                     try await navigate(to: url)
-                } else {
-                    // Create a simple HTML page asking which website to visit
-                    print("🌐 [Navigation Fallback] AI requested screenshot without navigation. Showing help page.")
-                    let helpHTML = """
-                    <!DOCTYPE html>
-                    <html><head><title>Where would you like to go?</title>
-                    <style>body{font-family:system-ui;padding:40px;text-align:center;background:#f5f5f5;}
-                    h1{color:#333;}.suggestion{margin:10px;padding:15px;background:white;border-radius:8px;display:inline-block;}
-                    .warning{color:#d73502;font-weight:bold;margin:20px;}
-                    </style></head>
-                    <body>
-                    <h1>🚫 USE NAVIGATE ACTION</h1>
-                    <div class="warning">DO NOT CLICK - Use navigate action instead:</div>
-                    <p>{"type": "navigate", "parameters": {"url": "https://google.com"}}</p>
-                    <div class="suggestion">Navigate to Google</div>
-                    <div class="suggestion">Navigate to YouTube</div>
-                    <div class="suggestion">Navigate to Amazon</div>
-                    </body></html>
-                    """
-                    webView.loadHTMLString(helpHTML, baseURL: nil)
-                    // Wait a moment for the HTML to load
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
                 }
+                // Else, proceed without injecting any content; the screenshot will reflect the blank state.
             }
             // Otherwise, a screenshot simply captures the current state.
             break
@@ -275,78 +303,184 @@ class ComputerService: NSObject, WKNavigationDelegate {
             }
             return url
         }()
-        print("🌐 [Navigation Debug] Starting navigation to: \(finalURL.absoluteString)")
+        AppLogger.log("🌐 [Navigation] Starting navigation to: \(finalURL.absoluteString)", category: .general, level: .debug)
         try await withCheckedThrowingContinuation { continuation in
             self.navigationContinuation = continuation
             self.webView?.load(URLRequest(url: finalURL))
         }
-        print("🌐 [Navigation Debug] Navigation completed to: \(webView?.url?.absoluteString ?? "unknown")")
+        AppLogger.log("🌐 [Navigation] Completed: \(webView?.url?.absoluteString ?? "unknown")", category: .general, level: .debug)
     }
     
     /// Simulates a click at a specific point on the web page.
     /// Uses multiple strategies to ensure clicks work on modern JavaScript-heavy sites.
     private func click(at point: CGPoint) async throws {
+        // If a post-search suppression window is active, skip executing the click to avoid misclicks
+        if let until = suppressClicksUntil, Date() < until {
+            AppLogger.log("🛡️ [Click Guard] Suppressing click during post-search stabilization window", category: .general, level: .info)
+            return
+        }
+        // Adjust for high-DPI screenshots: model might send coordinates in physical pixels.
+        // Convert to CSS pixels by dividing by devicePixelRatio when coordinates exceed viewport.
         let script = """
         (function() {
-            var el = document.elementFromPoint(\(point.x), \(point.y));
-            if (!el) {
-                return "No element found at point (\(point.x), \(point.y)).";
-            }
-            
-            var result = "Clicked element: " + el.tagName + (el.className ? "." + el.className : "") + 
-                        (el.id ? "#" + el.id : "") + " at (\(point.x), \(point.y))";
-            
-            try {
-                // Strategy 1: Focus the element first
-                if (el.focus) el.focus();
-                
-                // Strategy 2: Multiple mouse events for comprehensive interaction
-                var events = ['mousedown', 'mouseup', 'click'];
-                events.forEach(function(eventType) {
-                    var event = new MouseEvent(eventType, {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window,
-                        clientX: \(point.x),
-                        clientY: \(point.y),
-                        screenX: \(point.x),
-                        screenY: \(point.y),
-                        button: 0,
-                        buttons: eventType === 'mousedown' ? 1 : 0
-                    });
-                    el.dispatchEvent(event);
+            // Generic top-left hamburger/menu guardrail: if the point is near the top-left corner,
+            // avoid clicking generic containers; try to resolve a visible icon-like control first.
+            function findHamburgerNearTopLeft(x, y) {
+                var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                // Envelope ~80x80 CSS px in top-left; conservative and site-agnostic
+                if (x > 80 || y > 80) return null;
+                // Probe several selectors that commonly represent menus/buttons
+                var candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [aria-label]'));
+                // Filter to visible, small-ish controls that are near (x,y)
+                candidates = candidates.filter(function(el){
+                    var r = el.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) return false;
+                    // visibility check
+                    var style = window.getComputedStyle(el);
+                    if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return false;
+                    // proximity to top-left and reasonable icon bounds
+                    var cx = r.left + r.width/2, cy = r.top + r.height/2;
+                    var near = (cx < 120 && cy < 120);
+                    var iconSized = (r.width <= 64 && r.height <= 64);
+                    // textual cues
+                    var txt = (el.innerText || '').toLowerCase();
+                    var lab = (el.getAttribute('aria-label') || '').toLowerCase();
+                    var title = (el.getAttribute('title') || '').toLowerCase();
+                    var looksLikeMenu = lab.includes('menu') || lab.includes('hamburger') || title.includes('menu') || title.includes('hamburger') || txt === '';
+                    return near && iconSized && looksLikeMenu;
                 });
-                
-                // Strategy 3: Also try direct click for good measure
-                if (el.click) {
-                    el.click();
+                // Prefer the closest candidate to (x,y)
+                if (candidates.length) {
+                    candidates.sort(function(a,b){
+                        var ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
+                        var acx=ra.left+ra.width/2, acy=ra.top+ra.height/2;
+                        var bcx=rb.left+rb.width/2, bcy=rb.top+rb.height/2;
+                        function d(cx,cy){ var dx=cx-x, dy=cy-y; return dx*dx+dy*dy; }
+                        return d(acx,acy)-d(bcx,bcy);
+                    });
+                    return candidates[0];
                 }
-                
-                // Strategy 4: For buttons and links, try triggering their specific handlers
-                if (el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button') {
-                    // Trigger any onclick handlers
-                    if (el.onclick) {
-                        el.onclick.call(el);
-                    }
-                    
-                    // For links, try navigation
-                    if (el.href && el.tagName === 'A') {
-                        result += " (Link: " + el.href + ")";
-                    }
-                }
-                
-                // Wait a moment for JavaScript to process
-                setTimeout(function() {
-                    // Check if page is navigating
-                    if (window.location.href !== window.location.href) {
-                        result += " (Page navigation detected)";
-                    }
-                }, 100);
-                
-            } catch (e) {
-                result += " (Error: " + e.message + ")";
+                return null;
             }
-            
+            function pickClickableFromPoint(x,y){
+                var list = (document.elementsFromPoint ? document.elementsFromPoint(x,y) : [document.elementFromPoint(x,y)].filter(Boolean));
+                for (var i=0;i<list.length;i++){
+                    var el = list[i];
+                    var clickable = el.closest && el.closest('a,button,input,textarea,select,[role="button"],[onclick],[tabindex],label');
+                    if (clickable) return clickable;
+                }
+                return document.elementFromPoint(x,y);
+            }
+            function isVisible(el){
+                if (!el) return false;
+                var r = el.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return false;
+                var s = window.getComputedStyle(el);
+                if (s.visibility === 'hidden' || s.display === 'none' || s.pointerEvents === 'none' || parseFloat(s.opacity||'1') === 0) return false;
+                return true;
+            }
+            function looksLikeConsentOverlay(node){
+                if (!node || node === document.body) return false;
+                var txt = ((node.innerText||'') + ' ' + (node.className||'') + ' ' + (node.id||'')).toLowerCase();
+                if (txt.includes('cookie') || txt.includes('consent') || txt.includes('privacy') || txt.includes('onetrust') || txt.includes('gdpr')){
+                    var r = node.getBoundingClientRect();
+                    return (r.height > 120 && isVisible(node));
+                }
+                return false;
+            }
+            function findAncestorOverlay(el){
+                var cur = el;
+                while (cur && cur !== document.body){
+                    if (looksLikeConsentOverlay(cur)) return cur;
+                    cur = cur.parentElement;
+                }
+                return null;
+            }
+            function textOf(el){
+                var t = (el.innerText||'').trim();
+                if (!t && (el.value||'').trim()) t = el.value.trim();
+                if (!t){
+                    var lab = (el.getAttribute('aria-label')||'').trim();
+                    var title = (el.getAttribute('title')||'').trim();
+                    t = lab || title;
+                }
+                return (t||'');
+            }
+            function findConsentButtonWithin(root, x, y){
+                var candidates = Array.from(root.querySelectorAll('button, [role="button"], a, input[type="button"], input[type="submit"]')).filter(isVisible);
+                if (!candidates.length) return null;
+                var PRIORITY = [
+                    /accept all/i,
+                    /accept/i,
+                    /agree/i,
+                    /allow/i,
+                    /ok/i,
+                    /got it/i,
+                    /continue/i
+                ];
+                function score(el){
+                    var t = textOf(el);
+                    for (var i=0;i<PRIORITY.length;i++){
+                        if (PRIORITY[i].test(t)) return 1000 - i*10; // prioritize earlier matches
+                    }
+                    // distance bonus to keep clicks near intended area
+                    var r = el.getBoundingClientRect();
+                    var cx = r.left + r.width/2, cy = r.top + r.height/2;
+                    var dx = cx - x, dy = cy - y;
+                    var dist2 = dx*dx + dy*dy;
+                    return Math.max(0, 500 - Math.min(dist2, 500));
+                }
+                candidates.sort(function(a,b){ return score(b) - score(a); });
+                return candidates[0] || null;
+            }
+            var px = \(point.x);
+            var py = \(point.y);
+            var dpr = (window.devicePixelRatio || 1);
+            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
+            px = Math.max(0, Math.min(vw - 1, px));
+            py = Math.max(0, Math.min(vh - 1, py));
+
+            // Guardrail: attempt to resolve a precise top-left icon if applicable.
+            // If the point is near the top-left but no menu-like control is found, refuse the click.
+            var nearTopLeft = (px <= 80 && py <= 80);
+            var el = null;
+            if (nearTopLeft) {
+                el = findHamburgerNearTopLeft(px, py);
+                if (!el) {
+                    return "Refused click: no menu-like control visible near top-left.";
+                }
+            } else {
+                el = pickClickableFromPoint(px, py);
+                // If the selected element appears to be a consent/cookie overlay container,
+                // prefer a visible consent button within it (e.g., "Accept All").
+                var overlay = el && looksLikeConsentOverlay(el) ? el : (el ? findAncestorOverlay(el) : null);
+                if (overlay) {
+                    var consentBtn = findConsentButtonWithin(overlay, px, py);
+                    if (consentBtn) el = consentBtn;
+                }
+            }
+            if (!el) { return "No element found at point (" + px + ", " + py + ")."; }
+            try { el.scrollIntoView({block:'center', inline:'center', behavior:'auto'}); } catch(e) {}
+            var el2 = pickClickableFromPoint(px, py) || el; el = el2;
+            var rect = el.getBoundingClientRect();
+            var clickX = Math.round(rect.left + Math.min(rect.width/2, Math.max(1, rect.width - 1)));
+            var clickY = Math.round(rect.top + Math.min(rect.height/2, Math.max(1, rect.height - 1)));
+            clickX = Math.max(0, Math.min(vw - 1, clickX));
+            clickY = Math.max(0, Math.min(vh - 1, clickY));
+
+            var result = "Clicked element: " + el.tagName + (el.className ? "." + el.className : "") + (el.id ? "#" + el.id : "") + " at (" + clickX + ", " + clickY + ")";
+            try {
+                if (el.focus) el.focus();
+                ['mousedown','mouseup','click'].forEach(function(type){
+                    var ev = new MouseEvent(type, {bubbles:true, cancelable:true, view:window, clientX:clickX, clientY:clickY, button:0, buttons:(type==='mousedown'?1:0)});
+                    el.dispatchEvent(ev);
+                });
+                if (el.click) el.click();
+                if (el.href && el.tagName === 'A') { result += " (Link: " + el.href + ")"; }
+            } catch(e) { result += " (Error: " + e.message + ")"; }
             return result;
         })();
         """
@@ -356,19 +490,83 @@ class ComputerService: NSObject, WKNavigationDelegate {
         // Give JavaScript frameworks time to process the click
         try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
     }
+
+    // MARK: - Universal element targeting by visible text
+
+    /// Attempts to locate a clickable point for an element whose visible text matches the provided text.
+    /// Site-agnostic: scans a broad set of elements, filters by visibility, and prefers exact match, then contains.
+    /// Returns CSS pixel coordinates within the viewport or nil if no reasonable candidate is found.
+    func findClickablePointByVisibleText(_ text: String, preferExact: Bool = true) async throws -> CGPoint? {
+        guard webView != nil else { return nil }
+        let escaped = text.sanitizedForJS()
+        let script = """
+        (function(){
+            function norm(s){ return (s||'').trim().replace(/\\s+/g,' ').toLowerCase(); }
+            function isVisible(el){
+                if(!el) return false;
+                var style = window.getComputedStyle(el);
+                if(!style || style.visibility==='hidden' || style.display==='none' || style.pointerEvents==='none') return false;
+                var r = el.getBoundingClientRect();
+                if(r.width<=1 || r.height<=1) return false;
+                if(r.bottom < -10 || r.right < -10 || r.top > (window.innerHeight+10) || r.left > (window.innerWidth+10)) return false;
+                return true;
+            }
+            var target = norm('\(escaped)');
+            var selectors = 'a,button,[role="button"],input[type="submit"],input[type="button"],[onclick],[tabindex],div,span,h1,h2,h3,h4,h5,h6,li,article,section';
+            var els = Array.from(document.querySelectorAll(selectors)).filter(isVisible);
+            if(!els.length) return null;
+            function score(el){
+                var t = norm(el.innerText);
+                if(!t) return -1;
+                if(t === target) return 100; // exact match
+                if(t.includes(target)) return 60 + Math.min(20, Math.floor((target.length/Math.max(1,t.length))*20));
+                var tt = new Set(t.split(' '));
+                var tg = new Set(target.split(' '));
+                var inter = 0; tg.forEach(w=>{ if(tt.has(w)) inter++; });
+                if(inter>0) return 30 + inter;
+                return -1;
+            }
+            var best = null; var bestScore = -1;
+            for (var el of els){
+                var s = score(el);
+                if (s > bestScore){ bestScore = s; best = el; }
+            }
+            if(!best || bestScore < 0) return null;
+            var r = best.getBoundingClientRect();
+            var cx = Math.max(1, Math.min(window.innerWidth-1, r.left + r.width/2));
+            var cy = Math.max(1, Math.min(window.innerHeight-1, r.top + r.height/2));
+            return {x: cx, y: cy, text: best.innerText};
+        })();
+        """
+        let result = try await evaluateJavaScript(script)
+        if let dict = result as? [String: Any], let x = dict["x"] as? CGFloat, let y = dict["y"] as? CGFloat {
+            self.suppressClicksUntil = Date().addingTimeInterval(0.5)
+            return CGPoint(x: x, y: y)
+        }
+        return nil
+    }
     
     /// Simulates a double-click at a specific point on the web page.
     private func doubleClick(at point: CGPoint) async throws {
         let script = """
         (function() {
-            var el = document.elementFromPoint(\(point.x), \(point.y));
+            var px = \(point.x);
+            var py = \(point.y);
+            var dpr = (window.devicePixelRatio || 1);
+            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
+            px = Math.max(0, Math.min(vw - 1, px));
+            py = Math.max(0, Math.min(vh - 1, py));
+
+            var el = document.elementFromPoint(px, py);
             if (el) {
                 el.focus();
                 var event = new MouseEvent('dblclick', {
                     bubbles: true,
                     cancelable: true,
-                    clientX: \(point.x),
-                    clientY: \(point.y),
+                    clientX: px,
+                    clientY: py,
                     button: 0
                 });
                 el.dispatchEvent(event);
@@ -384,21 +582,30 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private func moveMouse(to point: CGPoint) async throws {
         let script = """
         (function() {
-            var el = document.elementFromPoint(\(point.x), \(point.y));
+            var px = \(point.x);
+            var py = \(point.y);
+            var dpr = (window.devicePixelRatio || 1);
+            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
+            px = Math.max(0, Math.min(vw - 1, px));
+            py = Math.max(0, Math.min(vh - 1, py));
+
+            var el = document.elementFromPoint(px, py);
             if (el) {
                 var event = new MouseEvent('mouseover', {
                     bubbles: true,
                     cancelable: true,
-                    clientX: \(point.x),
-                    clientY: \(point.y)
+                    clientX: px,
+                    clientY: py
                 });
                 el.dispatchEvent(event);
                 
                 var moveEvent = new MouseEvent('mousemove', {
                     bubbles: true,
                     cancelable: true,
-                    clientX: \(point.x),
-                    clientY: \(point.y)
+                    clientX: px,
+                    clientY: py
                 });
                 el.dispatchEvent(moveEvent);
                 
@@ -583,10 +790,14 @@ class ComputerService: NSObject, WKNavigationDelegate {
         
         let script = """
         (function() {
-            var startX = \(startX);
-            var startY = \(startY);
-            var endX = \(endX);
-            var endY = \(endY);
+            var startX = \(startX); var startY = \(startY); var endX = \(endX); var endY = \(endY);
+            var dpr = (window.devicePixelRatio || 1);
+            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+            function normX(v){ if (v>vw||v<0) v = v/dpr; return Math.max(0, Math.min(vw-1, v)); }
+            function normY(v){ if (v>vh||v<0) v = v/dpr; return Math.max(0, Math.min(vh-1, v)); }
+            startX = normX(startX); startY = normY(startY);
+            endX = normX(endX); endY = normY(endY);
             
             var startElement = document.elementFromPoint(startX, startY);
             if (!startElement) {
@@ -654,6 +865,25 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private func scroll(x: Double, y: Double) async throws {
         let script = "window.scrollBy(\(x), \(y));"
         _ = try await evaluateJavaScript(script)
+    }
+
+    /// Scrolls to the very bottom of the page deterministically.
+    /// Uses `document.scrollingElement` (fallbacks to body) to compute scroll height.
+    func scrollToBottom() async throws {
+        let js = """
+        (function(){
+            try {
+                var el = document.scrollingElement || document.documentElement || document.body;
+                var maxY = Math.max(el.scrollHeight || 0, document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0);
+                window.scrollTo({ top: maxY, left: 0, behavior: 'auto' });
+                return 'Scrolled to bottom: ' + maxY;
+            } catch (e) { return 'ScrollToBottom error: ' + e.message; }
+        })();
+        """
+        _ = try await evaluateJavaScript(js)
+        // Give layout/render a brief moment, then ensure we have a paint before screenshot
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        try await waitForDomReadyAndPaint()
     }
     
     /// Captures a screenshot of the web view's visible content.
@@ -749,6 +979,98 @@ class ComputerService: NSObject, WKNavigationDelegate {
         // Restore original alpha before returning
         webView.alpha = originalAlpha
         return nil
+    }
+
+    /// Focuses a site search box (if present), types the query, and submits it.
+    ///
+    /// Behavior:
+    /// - Amazon: uses specific selectors and prefers clicking the submit button (avoids intercepts).
+    /// - Other sites (incl. Google/Bing): tries a broad set of search selectors and submits via form or Enter.
+    /// - Adds a short post-submit click suppression window to avoid immediate promo/suggestion clicks.
+    func performSearchIfOnKnownEngine(query: String) async throws {
+        guard let webView = webView else { return }
+        let host = webView.url?.host?.lowercased()
+        let isAmazon = (host?.contains("amazon.") ?? false)
+
+        let escaped = query.sanitizedForJS()
+        let js: String
+        if isAmazon {
+            js = """
+            (function(){
+                // Try common Amazon search selectors
+                var sel = document.querySelector('#twotabsearchtextbox, input[name="field-keywords"], input[aria-label="Search Amazon"], input[type="search"][name="k"]');
+                if(!sel){ return 'No Amazon search box found'; }
+                if (sel.focus) sel.focus();
+                sel.value = '\(escaped)';
+                try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
+                try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
+                // Prefer clicking the submit button to avoid Amazon intercepts
+                var submitBtn = document.querySelector('#nav-search-submit-button, input[type="submit"][value], input[type="submit"]');
+                if (submitBtn) {
+                    try { submitBtn.click(); return 'Amazon search submitted via button'; } catch(e) {}
+                }
+                // Fallback: press Enter in the field
+                try {
+                    var kd = new KeyboardEvent('keydown', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(kd);
+                    var ku = new KeyboardEvent('keyup', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(ku);
+                    return 'Amazon search submitted via Enter';
+                } catch(e) {}
+                return 'Amazon search typed but not submitted';
+            })();
+            """
+        } else {
+            js = """
+            (function(){
+                function isVisible(el){
+                    if(!el) return false;
+                    var style = window.getComputedStyle(el);
+                    var rect = el.getBoundingClientRect();
+                    return style && style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+                }
+                // Broad set of search selectors for generic sites, Google, Bing, etc.
+                var selectors = [
+                    'input[name="q"]', 'textarea[name="q"]',
+                    'input[type="search"]', 'textarea[type="search"]',
+                    'input[aria-label="Search"]', 'textarea[aria-label="Search"]',
+                    'input[placeholder*="Search" i]', 'textarea[placeholder*="Search" i]',
+                    'input[placeholder*="search" i]', 'textarea[placeholder*="search" i]'
+                ];
+                var sel = null;
+                for (var s of selectors){
+                    var cands = Array.from(document.querySelectorAll(s));
+                    sel = cands.find(isVisible);
+                    if (sel) break;
+                }
+                if(!sel){ return 'No search box found'; }
+                if (sel.focus) sel.focus();
+                sel.value = '\(escaped)';
+                try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
+                try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
+                // Try to submit via nearby submit button first, then form.submit, then Enter
+                var submitted = false;
+                try {
+                    var root = sel.form || document;
+                    var btn = root.querySelector('button[type="submit"], input[type="submit"], [aria-label="Search" i][role="button"], [type="image"][name="btnG"]');
+                    if (btn && isVisible(btn)) { btn.click(); submitted = true; }
+                } catch(e) {}
+                if (!submitted && sel.form) { try { sel.form.submit(); submitted = true; } catch(e) {} }
+                if (!submitted) {
+                    try {
+                        var kd = new KeyboardEvent('keydown', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(kd);
+                        var ku = new KeyboardEvent('keyup', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(ku);
+                        submitted = true;
+                    } catch(e) {}
+                }
+                return submitted ? 'Search submitted' : 'Search typed but not submitted';
+            })();
+            """
+        }
+        _ = try await evaluateJavaScript(js)
+        // Start a short suppression window to ignore model-originated clicks right after programmatic submit
+        self.suppressClicksUntil = Date().addingTimeInterval(1.0)
+        // Give the page time to navigate and paint results
+        try? await Task.sleep(nanoseconds: 700_000_000) // 700ms
+        try await waitForDomReadyAndPaint()
     }
     
     /// Evaluates a JavaScript string in the web view.

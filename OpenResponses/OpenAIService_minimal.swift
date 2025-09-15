@@ -136,6 +136,10 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
         throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
     }
     
+    func fetchContainerFileContent(containerId: String, fileId: String) async throws -> Data {
+        throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
+    }
+    
     func uploadFile(fileData: Data, filename: String, purpose: String) async throws -> OpenAIFile {
         throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
     }

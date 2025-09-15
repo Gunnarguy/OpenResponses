@@ -23,6 +23,8 @@ struct Prompt: Codable, Identifiable, Equatable {
     var webSearchMaxPages: Int
     var webSearchCrawlDepth: Int
     var enableCodeInterpreter: Bool
+    var codeInterpreterContainerType: String
+    var codeInterpreterPreloadFileIds: String?
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String?
@@ -82,6 +84,12 @@ struct Prompt: Codable, Identifiable, Equatable {
     var includeReasoningContent: Bool
     var includeComputerUseOutput: Bool = false
     
+    // Behavior Controls
+    /// When true, the app will not apply any helper heuristics around computer-use actions
+    /// (no pre-navigation URL derivation, no intent-aware search submission, no click-by-text overrides).
+    /// The agent will execute exactly the model's actions. Useful for purists and debugging.
+    var ultraStrictComputerUse: Bool = false
+    
     // Streaming and Published Prompts
     var enableStreaming: Bool
     var enablePublishedPrompt: Bool
@@ -107,14 +115,15 @@ struct Prompt: Codable, Identifiable, Equatable {
         // Explicitly list all properties to be encoded/decoded
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
     case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth
-    case enableCodeInterpreter, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
+    case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
     case enableComputerUse
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
-        case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
+    case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
+    case ultraStrictComputerUse
         case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
         case toolChoice, metadata, searchContextSize
         case id // Make sure 'id' is included
@@ -137,6 +146,8 @@ struct Prompt: Codable, Identifiable, Equatable {
             webSearchMaxPages: 0,
             webSearchCrawlDepth: 0,
             enableCodeInterpreter: true,
+            codeInterpreterContainerType: "auto",
+            codeInterpreterPreloadFileIds: "",
             enableImageGeneration: true,
             enableFileSearch: false,
             selectedVectorStoreIds: "",
@@ -179,6 +190,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             includeOutputLogprobs: false,
             includeReasoningContent: false,
             includeComputerUseOutput: false,
+            ultraStrictComputerUse: false,
             enableStreaming: true,
             enablePublishedPrompt: false,
             publishedPromptId: "",

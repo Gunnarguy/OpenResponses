@@ -1,5 +1,17 @@
 # Case Study: Building OpenResponses
 
+---
+
+**[2025-09-13] Beta Pause Note:**
+This project is paused in a "super beta" state. Major recent work includes:
+
+- Ultra-strict computer-use mode (toggle disables all app-side helpers; see Advanced.md)
+- Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
+- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- All changes are documented for easy resumption—see ROADMAP.md and Full_API_Reference.md for technical details.
+
+**To resume:** Review this section, ROADMAP.md, and the API reference for a full summary of what’s done and what’s next.
+
 ## Abstract
 
 OpenResponses is a native SwiftUI application for iOS and macOS, conceived as a power-user's gateway to the full capabilities of the OpenAI API. While appearing as a simple chat interface, it is a sophisticated tool designed for developers, researchers, and enthusiasts who require granular control over model interactions.
@@ -64,7 +76,8 @@ The OpenAI API can respond in two ways: as a complete, single block of data, or 
     - `streamChatRequest(...)`: Uses `URLSession.shared.bytes(for:)` to get an `AsyncThrowingStream` of data. It parses Server-Sent Events (SSE) line-by-line, decodes each into a `StreamingEvent` struct, and `yield`s it to the caller.
 3.  **UI/UX Handling**:
     - In non-streaming mode, the UI waits for the final response.
-    - In streaming mode, the `ChatViewModel` first appends a blank assistant message. As text deltas arrive, it appends the text to this message, creating the "typing" effect. The `StreamingStatusView` is updated based on events like `response.connecting` or `response.in_progress` to give the user clear feedback.
+
+- In streaming mode, the `ChatViewModel` first appends a blank assistant message. As text deltas arrive, it appends the text to this message, creating the "typing" effect. To reduce UI churn, a lightweight text coalescer buffers rapid-fire deltas and flushes on sentence boundaries or a short debounce. The `StreamingStatusView` is updated based on events like `response.connecting` or `response.in_progress` to give the user clear feedback.
 
 #### B. Dynamic Tool and Parameter Construction
 
