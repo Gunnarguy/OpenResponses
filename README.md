@@ -11,10 +11,10 @@ This project is currently in a "super beta" state, with a focus on achieving 100
 ### Core Functionality
 
 - **Multi-Model Support**: Switch between a wide range of models, categorized for clarity:
-    - **Latest Models**: `gpt-5`, `gpt-4.1`, and their variants.
-    - **Standard Models**: `gpt-4o`, `gpt-4`, and `gpt-3.5-turbo`.
-    - **Reasoning Models**: `o-series` models for complex, multi-step tasks.
-    - **Specialized Models**: `computer-use-preview` for browser automation tasks.
+  - **Latest Models**: `gpt-5`, `gpt-4.1`, and their variants.
+  - **Standard Models**: `gpt-4o`, `gpt-4`, and `gpt-3.5-turbo`.
+  - **Reasoning Models**: `o-series` models for complex, multi-step tasks.
+  - **Specialized Models**: `computer-use-preview` for browser automation tasks.
 - **Dynamic Model Selection**: Automatically fetches and displays the latest available models from OpenAI's API with intelligent categorization.
 - **Enhanced Streaming Experience**: Real-time responses with granular status updates showing when the AI is thinking, searching the web, generating code, or running specific tools.
 - **Cancellable Operations**: Stop streaming responses mid-generation with full control.
@@ -25,9 +25,9 @@ This project is currently in a "super beta" state, with a focus on achieving 100
 - **Computer Use**: A production-ready tool (primarily for the `computer-use-preview` model) that allows the model to control a web browser to perform complex tasks. It supports a full range of actions including navigation, clicking, typing, and scrolling with robust error handling.
 - **Web Search**: Access up-to-date information from the internet, with support for both standard and preview search capabilities.
 - **Code Interpreter**: Execute Python code in a secure, sandboxed environment. Features include:
-    - **Container Selection**: Choose between `auto`, `secure`, or `gpu` execution environments.
-    - **File Preloading**: Provide file IDs to be available in the sandbox from the start.
-    - **Artifact Parsing**: Richly displays outputs like logs, images, and data files.
+  - **Container Selection**: Choose between `auto`, `secure`, or `gpu` execution environments.
+  - **File Preloading**: Provide file IDs to be available in the sandbox from the start.
+  - **Artifact Parsing**: Richly displays outputs like logs, images, and data files.
 - **Image Generation**: Create images from text prompts using `gpt-image-1` with real-time streaming previews and configurable quality settings.
 - **File Search**: Perform searches across multiple vector stores simultaneously, enabling powerful knowledge retrieval from uploaded documents.
 - **MCP Integration**: Connect to Model Context Protocol (MCP) servers for extended functionality, featuring a discovery service for popular platforms and a secure approval workflow.
