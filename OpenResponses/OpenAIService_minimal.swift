@@ -159,6 +159,14 @@ class OpenAIServiceMinimal: OpenAIServiceProtocol {
     func listModels() async throws -> [OpenAIModel] {
         throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
     }
+    
+    func sendMCPApprovalResponse(
+        approvalResponse: MCPApprovalResponse,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse {
+        throw OpenAIServiceError.requestFailed(501, "Not implemented in minimal version")
+    }
 
     // No audio transcription in minimal version
 

@@ -15,7 +15,7 @@ class AppContainer {
     /// Initializes the container and sets up the dependencies.
     /// For now, it creates a standard `OpenAIService`. In a testing environment,
     /// a mock service could be injected here.
-    init() {
+    private init() {
         self.openAIService = OpenAIService()
         self.computerService = ComputerService()
     }

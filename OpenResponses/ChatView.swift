@@ -72,6 +72,24 @@ struct ChatView: View {
             SafetyApprovalSheet()
                 .environmentObject(viewModel)
         }
+        // MCP approval sheet for MCP tool calls
+        .sheet(
+            isPresented: Binding(
+                get: { viewModel.pendingMCPApproval != nil },
+                set: { newValue in if !newValue { viewModel.pendingMCPApproval = nil } }
+            )
+        ) {
+            if let request = viewModel.pendingMCPApproval {
+                MCPApprovalSheet(request: request) { decision in
+                    switch decision {
+                    case .approve:
+                        viewModel.approveMCPTool()
+                    case .deny:
+                        viewModel.denyMCPTool()
+                    }
+                }
+            }
+        }
         .confirmationDialog("Add Attachment", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
             Button("📷 Select Images") {
                 showImagePicker = true

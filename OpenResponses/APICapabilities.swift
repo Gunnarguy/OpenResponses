@@ -16,6 +16,7 @@ public enum APICapabilities {
         case fileSearch = "file_search"
         case function = "function"
         case computer = "computer"
+        case mcp = "mcp"
     }
 
     // MARK: - Tools
@@ -47,6 +48,9 @@ public enum APICapabilities {
         /// Allows the model to interact with the user's computer.
         case computer(environment: String?, displayWidth: Int?, displayHeight: Int?)
 
+        /// Allows the model to connect to Model Context Protocol (MCP) servers.
+        case mcp(serverLabel: String, serverURL: String, headers: [String: String]?, requireApproval: String?, allowedTools: [String]?)
+
         // MARK: - Codable Implementation
         
         private enum CodingKeys: String, CodingKey {
@@ -62,6 +66,11 @@ public enum APICapabilities {
             case environment
             case displayWidth = "display_width"
             case displayHeight = "display_height"
+            case serverLabel = "server_label"
+            case serverURL = "server_url"
+            case headers
+            case requireApproval = "require_approval"
+            case allowedTools = "allowed_tools"
         }
 
         public init(from decoder: Decoder) throws {
@@ -95,6 +104,13 @@ public enum APICapabilities {
                 let displayWidth = try container.decodeIfPresent(Int.self, forKey: .displayWidth)
                 let displayHeight = try container.decodeIfPresent(Int.self, forKey: .displayHeight)
                 self = .computer(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
+            case "mcp":
+                let serverLabel = try container.decode(String.self, forKey: .serverLabel)
+                let serverURL = try container.decode(String.self, forKey: .serverURL)
+                let headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
+                let requireApproval = try container.decodeIfPresent(String.self, forKey: .requireApproval)
+                let allowedTools = try container.decodeIfPresent([String].self, forKey: .allowedTools)
+                self = .mcp(serverLabel: serverLabel, serverURL: serverURL, headers: headers, requireApproval: requireApproval, allowedTools: allowedTools)
             default:
                 throw DecodingError.dataCorrupted(
                     DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown tool type: \(typeString)")
@@ -139,6 +155,19 @@ public enum APICapabilities {
                 }
                 if let displayHeight = displayHeight {
                     try container.encode(displayHeight, forKey: .displayHeight)
+                }
+            case .mcp(let serverLabel, let serverURL, let headers, let requireApproval, let allowedTools):
+                try container.encode("mcp", forKey: .type)
+                try container.encode(serverLabel, forKey: .serverLabel)
+                try container.encode(serverURL, forKey: .serverURL)
+                if let headers = headers {
+                    try container.encode(headers, forKey: .headers)
+                }
+                if let requireApproval = requireApproval {
+                    try container.encode(requireApproval, forKey: .requireApproval)
+                }
+                if let allowedTools = allowedTools {
+                    try container.encode(allowedTools, forKey: .allowedTools)
                 }
             }
         }

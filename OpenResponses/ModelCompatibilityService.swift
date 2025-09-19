@@ -378,6 +378,8 @@ class ModelCompatibilityService {
                 if toolOverrides.computer == .disabled { return false }
             case .function:
                 break // No override for function tool
+            case .mcp:
+                break // No override for MCP tool currently
             }
         }
         

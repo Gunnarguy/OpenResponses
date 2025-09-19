@@ -71,6 +71,12 @@ struct MessageBubbleView: View {
                     }
                 }
                 
+                // Code interpreter artifacts (files, logs, data outputs)
+                if let artifacts = message.artifacts, !artifacts.isEmpty {
+                    ArtifactsView(artifacts: artifacts)
+                        .padding(.vertical, 4)
+                }
+                
                 // Web content (if any URLs in the message)
                 if let webURLs = message.webURLs {
                     ForEach(webURLs, id: \.self) { url in

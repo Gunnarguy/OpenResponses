@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showingPromptLibrary = false
     @State private var showingAPIInspector = false
     @State private var showingDebugConsole = false
+    @State private var showingMCPDiscovery = false
     @State private var selectedPresetId: UUID?
     
     @StateObject private var promptLibrary = PromptLibrary()
@@ -89,6 +90,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingAPIInspector) { APIInspectorView() }
         .sheet(isPresented: $showingDebugConsole) { DebugConsoleView() }
+        .sheet(isPresented: $showingMCPDiscovery) { MCPToolDiscoveryView() }
     }
     
     // MARK: - Form Sections
@@ -364,9 +366,33 @@ struct SettingsView: View {
             }
 
             // MCP Tool
-            Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+            HStack {
+                Toggle("MCP Tool", isOn: $viewModel.activePrompt.enableMCPTool)
+                Spacer()
+                Button(action: {
+                    showingMCPDiscovery = true
+                }) {
+                    Image(systemName: "list.bullet.circle")
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help("Browse MCP Servers")
+            }
             if viewModel.activePrompt.enableMCPTool {
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Server Configuration")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Discover Servers") {
+                            showingMCPDiscovery = true
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                    }
+                    
                     TextField("Server Label", text: $viewModel.activePrompt.mcpServerLabel)
                         .textFieldStyle(.roundedBorder)
                     TextField("Server URL (SSE)", text: $viewModel.activePrompt.mcpServerURL)
@@ -377,6 +403,70 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
+                    Text("Example: {\"Authorization\": \"Bearer YOUR_TOKEN\"}")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    // Secure token input for popular services
+                    if viewModel.activePrompt.mcpServerLabel == "github" {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("🔐 GitHub Token (Secure)")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            SecureField("GitHub Personal Access Token", text: Binding(
+                                get: {
+                                    // Show placeholder if auth is set
+                                    return viewModel.activePrompt.secureMCPHeaders["Authorization"]?.replacingOccurrences(of: "Bearer ", with: "") == "YOUR_GITHUB_TOKEN_HERE" ? "" : "••••••••••••"
+                                },
+                                set: { newToken in
+                                    if !newToken.isEmpty {
+                                        viewModel.activePrompt.secureMCPHeaders = ["Authorization": "Bearer \(newToken)"]
+                                    }
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                            Text("Create at github.com/settings/tokens")
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    
+                    HStack {
+                        Button("GitHub Setup") {
+                            // Ultra-intuitive GitHub setup
+                            viewModel.activePrompt.mcpServerLabel = "github"
+                            viewModel.activePrompt.mcpServerURL = "https://api.github.com/mcp"
+                            // Save auth securely to keychain instead of showing in text field
+                            viewModel.activePrompt.secureMCPHeaders = ["Authorization": "Bearer YOUR_GITHUB_TOKEN_HERE"]
+                            viewModel.activePrompt.mcpRequireApproval = "prompt"
+                            viewModel.activePrompt.mcpAllowedTools = "list_repositories,get_issues,create_issue"
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                        
+                        Button("Notion Setup") {
+                            viewModel.activePrompt.mcpServerLabel = "notion"
+                            viewModel.activePrompt.mcpServerURL = "https://api.notion.com/mcp"
+                            viewModel.activePrompt.secureMCPHeaders = ["Authorization": "Bearer YOUR_NOTION_TOKEN_HERE"]
+                            viewModel.activePrompt.mcpRequireApproval = "prompt"
+                        }
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                        
+                        Button("Reset") {
+                            viewModel.activePrompt.mcpServerLabel = ""
+                            viewModel.activePrompt.mcpServerURL = ""
+                            viewModel.activePrompt.mcpHeaders = ""
+                            viewModel.activePrompt.mcpRequireApproval = ""
+                            viewModel.activePrompt.mcpAllowedTools = ""
+                            // Clear keychain auth
+                            if !viewModel.activePrompt.mcpServerLabel.isEmpty {
+                                KeychainService.shared.delete(forKey: "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)")
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundColor(.red)
+                    }
                     TextField("Approval Policy (e.g., always|never|prompt)", text: $viewModel.activePrompt.mcpRequireApproval)
                         .textFieldStyle(.roundedBorder)
                     TextField("Allowed Tools (comma-separated)", text: $viewModel.activePrompt.mcpAllowedTools)

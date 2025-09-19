@@ -288,21 +288,30 @@ class OpenAIService: OpenAIServiceProtocol {
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
                                 
-                                // Log the streaming event using the enhanced structured logging
-                                AnalyticsService.shared.logStreamingEvent(
-                                    eventType: decodedChunk.type,
-                                    data: dataString,
-                                    parsedEvent: decodedChunk
-                                )
+                                // Optimized logging: Only log structured events for important types
+                                let importantEventTypes = [
+                                    "response.created", "response.completed", "response.failed",
+                                    "response.image_generation_call.completed", "response.computer_call.completed"
+                                ]
                                 
-                                // Track analytics event (high-level metrics)
-                                AnalyticsService.shared.trackEvent(
-                                    name: AnalyticsEvent.streamingEventReceived,
-                                    parameters: [
-                                        AnalyticsParameter.eventType: decodedChunk.type,
-                                        AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
-                                    ]
-                                )
+                                if importantEventTypes.contains(decodedChunk.type) {
+                                    AnalyticsService.shared.logStreamingEvent(
+                                        eventType: decodedChunk.type,
+                                        data: dataString,
+                                        parsedEvent: decodedChunk
+                                    )
+                                }
+                                
+                                // Track analytics only for milestone events to reduce overhead
+                                if ["response.created", "response.completed", "response.failed"].contains(decodedChunk.type) {
+                                    AnalyticsService.shared.trackEvent(
+                                        name: AnalyticsEvent.streamingEventReceived,
+                                        parameters: [
+                                            AnalyticsParameter.eventType: decodedChunk.type,
+                                            AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
+                                        ]
+                                    )
+                                }
                                 
                                 continuation.yield(decodedChunk)
                             } catch {
@@ -473,6 +482,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         AppLogger.log("Built tools array: \(tools.count) tools - \(tools)", category: .openAI, level: .info)
+        
+        // Count MCP tools specifically for debugging
+        let mcpToolCount = tools.compactMap { tool -> String? in
+            if case .mcp(let serverLabel, _, _, _, _) = tool {
+                return serverLabel
+            }
+            return nil
+        }
+        if !mcpToolCount.isEmpty {
+            AppLogger.log("MCP tools included: \(mcpToolCount)", category: .openAI, level: .info)
+        }
+        
         if !tools.isEmpty {
             do {
                 let encoder = JSONEncoder()
@@ -661,7 +682,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [APICapabilities.Tool] {
         var tools: [APICapabilities.Tool] = []
         
-        AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
+        AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), enableMCPTool=\(prompt.enableMCPTool), model=\(prompt.openAIModel)", category: .openAI, level: .info)
+        
+        // Log MCP configuration status for debugging
+        if prompt.enableMCPTool {
+            let manualConfigured = !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty
+            let discoveryCount = MCPDiscoveryService.shared.getEnabledServersWithConfigs().count
+            AppLogger.log("MCP Status - Manual: \(manualConfigured ? "✓" : "✗"), Discovery: \(discoveryCount) servers", category: .openAI, level: .info)
+        }
         let compatibilityService = ModelCompatibilityService.shared
         let isDeepResearch = prompt.openAIModel.contains("deep-research")
 
@@ -754,13 +782,66 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             )
             tools.append(.function(function: function))
         }
+        
+        if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
+            AppLogger.log("MCP tool enabled, checking configurations...", category: .openAI, level: .info)
+            
+            // First, add any manually configured MCP server from the prompt
+            if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
+                AppLogger.log("Adding manual MCP server: \(prompt.mcpServerLabel)", category: .openAI, level: .info)
+                // Use secure headers from keychain-backed property
+                let headers = prompt.secureMCPHeaders.isEmpty ? nil : prompt.secureMCPHeaders
+                
+                // Parse allowed tools from comma-separated string
+                let allowedTools: [String]? = prompt.mcpAllowedTools.isEmpty ? nil : prompt.mcpAllowedTools
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                
+                tools.append(.mcp(
+                    serverLabel: prompt.mcpServerLabel,
+                    serverURL: prompt.mcpServerURL,
+                    headers: headers,
+                    requireApproval: prompt.mcpRequireApproval.isEmpty ? nil : prompt.mcpRequireApproval,
+                    allowedTools: allowedTools
+                ))
+            }
+            
+            // Then, add all enabled servers from the discovery service
+            let enabledServers = MCPDiscoveryService.shared.getEnabledServersWithConfigs()
+            AppLogger.log("Found \(enabledServers.count) enabled discovery servers", category: .openAI, level: .info)
+            for (server, config) in enabledServers {
+                // Skip if this server is already configured manually (avoid duplicates)
+                if server.name == prompt.mcpServerLabel {
+                    AppLogger.log("Skipping duplicate server: \(server.name)", category: .openAI, level: .info)
+                    continue
+                }
+                
+                AppLogger.log("Adding discovery server: \(server.name) with \(config.selectedTools.count) tools", category: .openAI, level: .info)
+                
+                // Convert discovery service configuration to API format
+                let requireApproval = config.approvalSettings.defaultAction.rawValue
+                let selectedTools = Array(config.selectedTools)
+                
+                tools.append(.mcp(
+                    serverLabel: server.name,
+                    serverURL: server.serverURL,
+                    headers: config.authConfiguration,
+                    requireApproval: requireApproval,
+                    allowedTools: selectedTools.isEmpty ? nil : selectedTools
+                ))
+            }
+        } else if prompt.enableMCPTool {
+            AppLogger.log("MCP tool enabled but not supported for model \(prompt.openAIModel) in streaming mode", category: .openAI, level: .warning)
+        }
 
         // Ensure deep-research models always include at least one of the required tools
         // per API: one of 'web_search_preview', 'mcp', or 'file_search' must be present.
         if isDeepResearch {
             let hasPreviewSearch = tools.contains { if case .webSearchPreview = $0 { return true } else { return false } }
             let hasFileSearch = tools.contains { if case .fileSearch = $0 { return true } else { return false } }
-            if !hasPreviewSearch && !hasFileSearch {
+            let hasMCP = tools.contains { if case .mcp = $0 { return true } else { return false } }
+            if !hasPreviewSearch && !hasFileSearch && !hasMCP {
                 tools.append(.webSearchPreview)
                 AppLogger.log("Deep-research model detected — auto-adding web_search_preview tool to satisfy API requirements", category: .openAI, level: .info)
             }
@@ -2374,6 +2455,120 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             return try JSONDecoder().decode(InputItemsResponse.self, from: data)
         } catch {
             print("Input items response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    // MARK: - MCP Approval Response Methods
+    
+    /// Sends an MCP approval response back to the API to continue or terminate an MCP tool call flow.
+    /// This method creates a new response with the approval decision that references the previous response.
+    func sendMCPApprovalResponse(
+        approvalResponse: MCPApprovalResponse,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse {
+        
+        // Ensure API key is set
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        AppLogger.log("[MCP] Sending approval response: approve=\(approvalResponse.approve) for request=\(approvalResponse.approvalRequestId)", category: .openAI, level: .info)
+        
+        let url = URL(string: "https://api.openai.com/v1/responses")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("OpenResponses/1.0", forHTTPHeaderField: "User-Agent")
+        
+        // Create the request body with the approval response as input
+        var requestBody: [String: Any] = [
+            "model": model,
+            "stream": false, // We don't need streaming for approval responses
+            "input": [
+                [
+                    "type": approvalResponse.type,
+                    "approval_request_id": approvalResponse.approvalRequestId,
+                    "approve": approvalResponse.approve
+                ]
+            ]
+        ]
+        
+        // Include previous response ID to chain the conversation
+        if let prevId = previousResponseId {
+            requestBody["previous_response_id"] = prevId
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestBody)
+        request.httpBody = jsonData
+        
+        // Log the request
+        AnalyticsService.shared.logAPIRequest(
+            url: url,
+            method: "POST",
+            headers: request.allHTTPHeaderFields ?? [:],
+            body: jsonData
+        )
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses",
+                AnalyticsParameter.requestMethod: "POST",
+                AnalyticsParameter.model: model,
+                "mcp_approval": approvalResponse.approve,
+                "approval_request_id": approvalResponse.approvalRequestId
+            ]
+        )
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        // Log the response
+        AnalyticsService.shared.logAPIResponse(
+            url: url,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "responses",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAIMCPApprovalAPI"
+                ]
+            )
+            
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count,
+                "mcp_approval_sent": true
+            ]
+        )
+        
+        do {
+            let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+            AppLogger.log("[MCP] Approval response sent successfully, response_id=\(response.id)", category: .openAI, level: .info)
+            return response
+        } catch {
+            AppLogger.log("[MCP] Approval response decoding error: \(error)", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
     }

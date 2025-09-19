@@ -1,6 +1,8 @@
 # OpenResponses
 
-OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful and flexible playground for exploring OpenAI's language models. It provides a robust chat interface, deep tool integration, and extensive customization options for developers and power users.
+OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful and flexible playground for exploring the full range of OpenAI's API capabilities. It provides a robust chat interface, deep tool integration, and extensive customization options for developers and power users aiming to work with the latest models and features.
+
+This project is currently in a "super beta" state, with a focus on achieving 100% compliance with the latest OpenAI APIs, including advanced tools like `computer` and backend conversation management.
 
 ![App Screenshot](ABFB8418-0099-402B-B479-E4789A6E3536.PNG)
 
@@ -8,27 +10,26 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 
 ### Core Functionality
 
-- **Multi-Model Support**: Switch between standard models (`gpt-4o`) and reasoning models (`o1`, `o3`, `o3-mini`).
-- **Dynamic Model Selection**: Automatically fetch and display the latest available models from OpenAI's API with intelligent categorization.
+- **Multi-Model Support**: Switch between the latest models like `gpt-4o` and specialized models such as `computer-use-preview`.
+- **Dynamic Model Selection**: Automatically fetches and displays the latest available models from OpenAI's API with intelligent categorization.
 - **Enhanced Streaming Experience**: Real-time responses with granular status updates showing when the AI is thinking, searching the web, generating code, or running specific tools.
 - **Cancellable Operations**: Stop streaming responses mid-generation with full control.
 - **Native SwiftUI Interface**: A clean, responsive, and platform-native experience for iOS and macOS.
 
 ### Powerful Tool Integration
 
-- **Enhanced Web Search**: Comprehensive search with location settings, language preferences, recency filtering, and quality controls.
-- **Code Interpreter**: Execute Python code in a secure sandbox environment.
-- **Image Generation**: Create images from text prompts using DALL-E.
-- **File Search**: Search through uploaded documents and PDFs with advanced vector store management.
-- **MCP Integration**: Connect to Model Context Protocol servers for extended functionality.
-- **Custom Tools**: Define and use your own custom tools with configurable parameters.
-- **Calculator**: Built-in mathematical calculation capabilities.
+- **Computer Use**: A production-ready tool that allows the model to control a web browser to perform complex tasks. It supports a full range of actions including navigation, clicking, typing, and scrolling with robust error handling.
+- **Web Search**: Access up-to-date information from the internet, with support for both standard and preview search capabilities.
+- **Code Interpreter**: Execute Python code in a secure, sandboxed environment with support for container selection (`auto`, `secure`, `gpu`) and pre-loading files.
+- **Image Generation**: Create images from text prompts using `gpt-image-1` with real-time streaming previews.
+- **File Search**: Perform searches across multiple vector stores simultaneously, enabling powerful knowledge retrieval from uploaded documents.
+- **MCP Integration**: Connect to Model Context Protocol (MCP) servers for extended functionality, featuring a discovery service for popular platforms and a secure approval workflow.
+- **Custom Functions**: Define and call your own custom functions within the chat flow.
 
 ### Advanced File & Data Management
 
-- **Comprehensive File Management**: Upload, organize, and search through documents, PDFs, and text files.
-- **Vector Store Operations**: Full CRUD operations with expiration settings and multi-store search.
-- **File Format Support**: Plain text, PDF, JSON, and other text-based formats.
+- **Direct File Uploads**: Upload files directly from your device for use in prompts, supporting over 43 file types.
+- **Vector Store Management**: Organize and manage documents in vector stores for efficient file searching.
 - **Smart Organization**: Group related documents for better search results.
 
 ### Prompt Management & Presets
@@ -40,7 +41,6 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 ### Advanced API Controls & Customization
 
 - **Core Parameters**: Adjust `temperature`, `max_output_tokens`, `presence_penalty`, `frequency_penalty`, `top_p`, and more.
-- **JSON Schema Mode**: Enforce specific output structures with strict schema validation.
 - **Advanced Reasoning**: Configure summary output for O-series models.
 - **Include Controls**: Choose what additional data to include in API responses.
 - **Service Tier Management**: Configure API service tiers and background processing.
@@ -59,6 +59,39 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 - **Dynamic Type Support**: Adapts to user's preferred text sizes.
 - **Keyboard Navigation**: Complete keyboard accessibility for all features.
 - **Error Recovery**: Graceful error handling with user-friendly messages.
+
+## 🏗️ Architecture
+
+OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) pattern with additional service layers for robust functionality.
+
+### Core Architecture
+
+- **`OpenResponsesApp.swift`**: The app's entry point, which injects the shared `ChatViewModel` and manages app-wide state.
+- **`ChatView.swift`**: The main UI, containing the message list, input view, and settings navigation.
+- **`ChatViewModel.swift`**: The central ViewModel, managing chat state, API calls, streaming, tool execution, and error handling.
+
+### Service Layer
+
+- **`OpenAIService.swift`**: The networking layer responsible for all communication with the OpenAI API.
+- **`APICapabilities.swift`**: A type-safe blueprint defining all supported OpenAI API features and tools, acting as a single source of truth for the app's capabilities.
+- **`ComputerService.swift`**: Manages the `computer` tool, providing robust browser automation via a native `WKWebView`.
+- **`MCPDiscoveryService.swift`**: Handles the discovery and configuration of MCP (Model Context Protocol) servers.
+- **`KeychainService.swift`**: Securely manages the OpenAI API key and other sensitive data.
+- **`AnalyticsService.swift`**: Tracks API requests, performance metrics, and provides debugging insights.
+- **`AppLogger.swift`**: Centralized logging system with categorization and structured output.
+- **`NetworkMonitor.swift`**: Monitors network connectivity and handles offline scenarios.
+
+### Management Systems
+
+- **`PromptLibrary.swift`**: Manages saved prompt presets and configurations.
+- **`FileManagerView.swift`**: Comprehensive file and vector store management interface.
+- **`AccessibilityUtils.swift`**: Centralized accessibility configuration and utilities.
+
+### Development Tools
+
+- **`APIInspectorView.swift`**: Real-time API request/response inspection for debugging.
+- **`DebugConsoleView.swift`**: Live debug log viewer with filtering capabilities.
+- **Models**: `Codable` structs that match the OpenAI API's JSON structure with full type safety.
 
 ## � Getting Started
 

@@ -26,9 +26,20 @@ class ChatViewModel: ObservableObject {
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
     
+    /// When non-nil, an MCP tool approval is required before proceeding with the tool call.
+    @Published var pendingMCPApproval: MCPApprovalRequest?
+    
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
+    
+    /// Prevents multiple concurrent MCP approval resolution tasks
+    private var isResolvingMCPApprovals: Bool = false
 
+    /// Cache for container file content to avoid duplicate downloads
+    private var containerFileCache: [String: Data] = [:]
+    /// Cache for processed artifacts to avoid duplicate processing
+    private var processedAnnotations: Set<String> = []
+    
     // MARK: - Private Properties
     private let api: OpenAIServiceProtocol
     private let computerService: ComputerService
@@ -42,7 +53,9 @@ class ChatViewModel: ObservableObject {
     private var deltaBuffers: [UUID: String] = [:]
     private var deltaFlushWorkItems: [UUID: DispatchWorkItem] = [:]
     // Flush after this many milliseconds without new punctuation, to avoid lag.
-    private let deltaFlushDebounceMs: Int = 500
+    private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
+    // Minimum buffer size before forcing a flush (characters)
+    private let minBufferSizeForFlush: Int = 20
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
     private var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
 
@@ -66,6 +79,10 @@ class ChatViewModel: ObservableObject {
         var retryScheduled: Bool = false
     }
     private var retryContextByMessageId: [UUID: StreamRetryContext] = [:]
+    
+    /// Image generation heartbeat tracking to provide progress feedback during long waits
+    private var imageHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
+    private var imageHeartbeatCounters: [UUID: Int] = [:]
     
     /// Fallback mapping from common site keywords to canonical URLs used when the model
     /// requests a first-step screenshot without having navigated yet (e.g., user says "Google").
@@ -275,6 +292,126 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    // MARK: - MCP Approval Methods
+    
+    /// Called when the user approves the pending MCP tool call.
+    func approveMCPTool() {
+        guard let request = pendingMCPApproval else { return }
+        pendingMCPApproval = nil
+        Task { [weak self] in
+            await self?.sendMCPApprovalResponse(request, approve: true)
+        }
+    }
+
+    /// Called when the user denies the pending MCP tool call; cancels the action gracefully.
+    func denyMCPTool() {
+        guard let request = pendingMCPApproval else { return }
+        pendingMCPApproval = nil
+        Task { [weak self] in
+            await self?.sendMCPApprovalResponse(request, approve: false)
+        }
+    }
+    
+    /// Handles MCP approval requests from streaming events
+    private func handleMCPApprovalRequest(_ item: StreamingItem, for messageId: UUID) {
+        guard !isResolvingMCPApprovals else {
+            AppLogger.log("[MCP] Already resolving MCP approvals - ignoring new request", category: .openAI, level: .warning)
+            return
+        }
+        
+        // Extract approval request details
+        guard let toolName = item.name,
+              let arguments = item.arguments,
+              let serverLabel = item.serverLabel else {
+            AppLogger.log("[MCP] Missing required fields in approval request: name=\(item.name ?? "nil"), arguments=\(item.arguments ?? "nil"), serverLabel=\(item.serverLabel ?? "nil")", category: .openAI, level: .error)
+            return
+        }
+        
+        let approvalRequest = MCPApprovalRequest(
+            id: item.id,
+            type: item.type,
+            serverLabel: serverLabel,
+            toolName: toolName,
+            arguments: arguments,
+            requestContext: nil // Could be extracted from content if available
+        )
+        
+        AppLogger.log("[MCP] Approval request received: server=\(serverLabel), tool=\(toolName)", category: .openAI, level: .info)
+        
+        // Show approval UI
+        pendingMCPApproval = approvalRequest
+        updateStreamingStatus(for: "mcp.approval_requested")
+        
+        // Add system message to show what's happening
+        let systemMsg = ChatMessage(
+            role: .system,
+            text: "🔐 MCP Tool Approval Required\n\nServer: \(serverLabel)\nTool: \(toolName)\n\nPlease review and approve or deny this action."
+        )
+        messages.append(systemMsg)
+    }
+    
+    /// Sends the MCP approval response back to the API
+    private func sendMCPApprovalResponse(_ request: MCPApprovalRequest, approve: Bool) async {
+        guard !isResolvingMCPApprovals else {
+            AppLogger.log("[MCP] Already resolving MCP approval - ignoring duplicate", category: .openAI, level: .warning)
+            return
+        }
+        
+        isResolvingMCPApprovals = true
+        AppLogger.log("[MCP] Sending approval response: approve=\(approve) for request=\(request.id)", category: .openAI, level: .info)
+        
+        await MainActor.run {
+            // Add feedback message
+            let feedbackMsg = ChatMessage(
+                role: .system,
+                text: approve ? "✅ MCP tool approved - proceeding with \(request.toolName)" : "❌ MCP tool denied - action canceled"
+            )
+            self.messages.append(feedbackMsg)
+        }
+        
+        do {
+            // Create the MCP approval response
+            let approvalResponse = MCPApprovalResponse(
+                approvalRequestId: request.id,
+                approve: approve
+            )
+            
+            // Send the approval response as a new request with the previous response ID
+            let response = try await api.sendMCPApprovalResponse(
+                approvalResponse: approvalResponse,
+                model: activePrompt.openAIModel,
+                previousResponseId: lastResponseId
+            )
+            
+            await MainActor.run {
+                // Continue with the new streaming response
+                if approve {
+                    self.lastResponseId = response.id
+                    self.updateStreamingStatus(for: "mcp.proceeding")
+                    // The API will continue streaming with the tool execution
+                } else {
+                    // Reset state as the flow is terminated
+                    self.streamingStatus = .idle
+                    self.isStreaming = false
+                    self.streamingMessageId = nil
+                }
+            }
+            
+        } catch {
+            AppLogger.log("[MCP] Error sending approval response: \(error)", category: .openAI, level: .error)
+            await MainActor.run {
+                self.handleError(error)
+                self.streamingStatus = .idle
+                self.isStreaming = false
+                self.streamingMessageId = nil
+            }
+        }
+        
+        await MainActor.run {
+            self.isResolvingMCPApprovals = false
+        }
+    }
+    
     private func setupBindings() {
         networkMonitor.$isConnected
             .receive(on: DispatchQueue.main)
@@ -300,6 +437,14 @@ class ChatViewModel: ObservableObject {
                 
                 self.saveActivePrompt()
                 self.updateModelCompatibility()
+            }
+            .store(in: &cancellables)
+        
+        // Periodic cache cleanup to prevent memory bloat
+        Timer.publish(every: 300, on: .main, in: .common) // Every 5 minutes
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.cleanupPerformanceCaches()
             }
             .store(in: &cancellables)
     }
@@ -571,14 +716,16 @@ class ChatViewModel: ObservableObject {
                 
                 self.streamingMessageId = nil
                 self.isStreaming = false // Re-enable input
+                // Stop any image generation heartbeats
+                self.stopImageGenerationHeartbeat(for: assistantMsgId)
                 // Mark as done and reset after a delay, unless we're awaiting computer output
                 if self.isAwaitingComputerOutput {
                     self.streamingStatus = .usingComputer
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     self.logActivity("Done")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        self.streamingStatus = .idle
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                        self?.streamingStatus = .idle
                     }
                 }
             }
@@ -881,7 +1028,12 @@ class ChatViewModel: ObservableObject {
             if streamingEnabled {
                 let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
                 for try await chunk in stream {
-                    if Task.isCancelled { await MainActor.run { self.handleError(CancellationError()) }; break }
+                    if Task.isCancelled { 
+                        await MainActor.run { [weak self] in
+                            self?.handleError(CancellationError())
+                        }
+                        break 
+                    }
                     await MainActor.run { self.handleStreamChunk(chunk, for: assistantMsgId) }
                 }
             } else {
@@ -911,7 +1063,12 @@ class ChatViewModel: ObservableObject {
             }
             self.streamingMessageId = nil
             self.isStreaming = false
-            if self.streamingStatus != .idle { self.streamingStatus = .done; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.streamingStatus = .idle } }
+            if self.streamingStatus != .idle { 
+                self.streamingStatus = .done
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    self?.streamingStatus = .idle
+                }
+            }
         }
     }
 
@@ -947,6 +1104,8 @@ class ChatViewModel: ObservableObject {
                     toolName = "code_interpreter"
                 case "file_search":
                     toolName = "file_search"
+                case "mcp_call", "mcp_list_tools":
+                    toolName = "mcp"
                 default:
                     toolName = name
                 }
@@ -955,6 +1114,8 @@ class ChatViewModel: ObservableObject {
             toolName = "computer"
         case "image_generation_call":
             toolName = "image_generation"
+        case "mcp_call", "mcp_list_tools", "mcp_approval_request":
+            toolName = "mcp"
         default:
             break
         }
@@ -1417,7 +1578,7 @@ class ChatViewModel: ObservableObject {
     guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
         
         // Update the streaming status based on the event, passing the item for context
-        updateStreamingStatus(for: chunk.type, item: chunk.item)
+        updateStreamingStatus(for: chunk.type, item: chunk.item, messageId: messageId)
         
         // Update the last response ID for continuity. This is critical for maintaining conversation state.
         // The ID is received in events like 'response.created' and 'response.output_item.added'.
@@ -1428,39 +1589,85 @@ class ChatViewModel: ObservableObject {
         // Handle different types of streaming events
     switch chunk.type {
         case "response.output_text.annotation.added":
-            // Handle annotations that reference generated files (images) via either Files API or container files
+            // Handle annotations that reference generated files from code interpreter execution
+            // This now supports all 43 file types including images, text, data, logs, documents, etc.
             // Some server variants nest details under `annotation`; fall back to that if top-level fields are nil.
             let annoFileId = chunk.fileId ?? chunk.annotation?.fileId
             let annoFilename = chunk.filename ?? chunk.annotation?.filename
             let annoContainerId = chunk.containerId ?? chunk.annotation?.containerId
+            
             // Proceed only if we have a fileId and the message still exists
-            if let fileId = annoFileId, messages.firstIndex(where: { $0.id == messageId }) != nil {
+            if let fileId = annoFileId, let filename = annoFilename, messages.firstIndex(where: { $0.id == messageId }) != nil {
+                
+                // Create unique key for this annotation
+                let annotationKey = "\(annoContainerId ?? "")_\(fileId)"
+                
+                // Skip if already processed
+                guard !processedAnnotations.contains(annotationKey) else {
+                    return
+                }
+                processedAnnotations.insert(annotationKey)
+                
                 // Record mapping for fallback filename-based resolution when links use sandbox:/ paths
                 if let cid = annoContainerId {
                     var list = containerAnnotationsByMessage[messageId] ?? []
-                    list.append((containerId: cid, fileId: fileId, filename: annoFilename))
+                    list.append((containerId: cid, fileId: fileId, filename: filename))
                     containerAnnotationsByMessage[messageId] = list
                 }
+                
                 Task {
                     do {
                         let data: Data
-                        if let containerId = annoContainerId, fileId.hasPrefix("cfile_") {
-                            // Container-scoped file (e.g., produced by code interpreter) — use container files endpoint
-                            AppLogger.log("Fetching container file content container_id=\(containerId), file_id=\(fileId)", category: .openAI, level: .info)
-                            data = try await api.fetchContainerFileContent(containerId: containerId, fileId: fileId)
+                        
+                        // Check cache first
+                        if let cachedData = containerFileCache[annotationKey] {
+                            data = cachedData
+                            AppLogger.log("Using cached data for \(filename)", category: .openAI, level: .debug)
                         } else {
-                            // Standard OpenAI file download
-                            let contentItem = ContentItem(type: "image_file", text: nil, imageURL: nil, imageFile: ImageFileContent(file_id: fileId))
-                            data = try await api.fetchImageData(for: contentItem)
+                            // Fetch from API
+                            if let containerId = annoContainerId, fileId.hasPrefix("cfile_") {
+                                // Container-scoped file (e.g., produced by code interpreter) — use container files endpoint
+                                AppLogger.log("Fetching container file content container_id=\(containerId), file_id=\(fileId), filename=\(filename)", category: .openAI, level: .info)
+                                data = try await api.fetchContainerFileContent(containerId: containerId, fileId: fileId)
+                            } else {
+                                // Standard OpenAI file download
+                                let contentItem = ContentItem(type: "image_file", text: nil, imageURL: nil, imageFile: ImageFileContent(file_id: fileId))
+                                data = try await api.fetchImageData(for: contentItem)
+                            }
+                            
+                            // Cache the data
+                            containerFileCache[annotationKey] = data
                         }
 
-                        if let image = UIImage(data: data) {
-                            await MainActor.run { self.appendImage(image, to: messageId) }
-                        } else {
-                            AppLogger.log("Annotation file did not decode into an image (bytes=\(data.count))", category: .openAI, level: .warning)
+                        // Create artifact based on file type and content
+                        let artifact = self.createArtifact(
+                            fileId: fileId,
+                            filename: filename,
+                            containerId: annoContainerId ?? "unknown",
+                            data: data
+                        )
+                        
+                        await MainActor.run {
+                            self.appendArtifact(artifact, to: messageId)
                         }
+                        
+                        AppLogger.log("Successfully processed artifact: \(filename) (\(artifact.artifactType.rawValue), \(data.count) bytes)", category: .openAI, level: .info)
+                        
                     } catch {
                         AppLogger.log("Failed to fetch annotation file (file_id=\(fileId), container_id=\(annoContainerId ?? "none")): \(error)", category: .openAI, level: .warning)
+                        
+                        // Create error artifact
+                        let errorArtifact = CodeInterpreterArtifact(
+                            fileId: fileId,
+                            filename: filename,
+                            containerId: annoContainerId ?? "unknown",
+                            mimeType: nil,
+                            content: .error("Failed to load: \(error.localizedDescription)")
+                        )
+                        
+                        await MainActor.run {
+                            self.appendArtifact(errorArtifact, to: messageId)
+                        }
                     }
                 }
             }
@@ -1513,8 +1720,9 @@ class ChatViewModel: ObservableObject {
                 // Update conversation-level estimate live
                 recomputeCumulativeUsage()
 
-                // If delta ends with likely sentence boundary or newline, flush immediately
-                let shouldFlushNow = delta.last.map { ".!?\n\r".contains($0) } ?? false
+                // Optimized flushing: flush immediately on sentence boundaries, or when buffer gets large
+                let bufferedText = deltaBuffers[messageId] ?? ""
+                let shouldFlushNow = delta.last.map { ".!?\n\r".contains($0) } ?? false || bufferedText.count >= minBufferSizeForFlush
                 scheduleDeltaFlush(for: messageId, messageIndex: messageIndex, immediate: shouldFlushNow)
             }
             
@@ -1640,7 +1848,19 @@ class ChatViewModel: ObservableObject {
         case "response.image_generation_call.completed":
             // Handle completed image generation
             if let item = chunk.item {
+                // Show completing status briefly before final result
+                streamingStatus = .imageGenerationCompleting
+                logActivity("🎨 Finalizing image…")
+                
+                // Process the completed item
                 handleCompletedStreamingItem(item, for: messageId)
+                stopImageGenerationHeartbeat(for: messageId)
+                
+                // Brief delay to show the finalizing status, then show ready
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    self?.streamingStatus = .imageReady
+                    self?.logActivity("🖼️ Image generated successfully!")
+                }
             }
             
         // Computer Use streaming events
@@ -1664,6 +1884,13 @@ class ChatViewModel: ObservableObject {
                 handleCompletedStreamingItem(item, for: messageId)
             }
             updateStreamingStatus(for: "computer.completed")
+            
+        // MCP Approval streaming events
+        case "response.output_item.added":
+            // Check if this is an MCP approval request
+            if let item = chunk.item, item.type == "mcp_approval_request" {
+                handleMCPApprovalRequest(item, for: messageId)
+            }
             
         default:
             // Other events are handled by the status updater
@@ -1757,7 +1984,12 @@ class ChatViewModel: ObservableObject {
                     previousResponseId: ctx.basePreviousResponseId
                 )
                 for try await chunk in stream {
-                    if Task.isCancelled { await MainActor.run { self.handleError(CancellationError()) }; break }
+                    if Task.isCancelled { 
+                        await MainActor.run { [weak self] in
+                            self?.handleError(CancellationError())
+                        }
+                        break 
+                    }
                     await MainActor.run { self.handleStreamChunk(chunk, for: messageId) }
                 }
             } catch {
@@ -1790,7 +2022,9 @@ class ChatViewModel: ObservableObject {
                     self.streamingStatus = .usingComputer
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.streamingStatus = .idle }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                        self?.streamingStatus = .idle
+                    }
                 }
                 // Retry path complete—clear context
                 self.retryContextByMessageId.removeValue(forKey: messageId)
@@ -2681,8 +2915,8 @@ class ChatViewModel: ObservableObject {
         // If rate limited, disable input temporarily
         if case .rateLimited(let retryAfter, _) = specificError {
             isStreaming = true // Disable input
-            DispatchQueue.main.asyncAfter(deadline: .now() + TimeInterval(retryAfter)) {
-                self.isStreaming = false // Re-enable input after delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + TimeInterval(retryAfter)) { [weak self] in
+                self?.isStreaming = false // Re-enable input after delay
             }
         }
     }
@@ -2692,6 +2926,14 @@ class ChatViewModel: ObservableObject {
         guard var conversation = activeConversation else { return }
         conversation.messages.removeAll()
         conversation.lastResponseId = nil
+        
+        // Clear performance caches
+        containerFileCache.removeAll()
+        processedAnnotations.removeAll()
+        deltaBuffers.removeAll()
+        deltaFlushWorkItems.values.forEach { $0.cancel() }
+        deltaFlushWorkItems.removeAll()
+        
         updateActiveConversation(conversation)
     }
     
@@ -2714,6 +2956,8 @@ class ChatViewModel: ObservableObject {
             if let work = deltaFlushWorkItems[streamingId] { work.cancel() }
             deltaFlushWorkItems[streamingId] = nil
             flushDeltaBufferIfNeeded(for: streamingId)
+            // Stop any image generation heartbeats
+            stopImageGenerationHeartbeat(for: streamingId)
         }
         
         // Update UI immediately
@@ -2737,7 +2981,7 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Updates the streaming status based on the event type and item context
-    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil) {
+    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil, messageId: UUID? = nil) {
         switch eventType {
         case "response.created":
             streamingStatus = .connecting
@@ -2770,10 +3014,15 @@ class ChatViewModel: ObservableObject {
             }
         case "response.image_generation_call.in_progress":
             streamingStatus = .generatingImage
-            logActivity("Image generation started")
+            logActivity("🎨 Image generation started")
+            // Start a heartbeat to show progress during long generation times
+            // Only start if not already running for this message
+            if let msgId = messageId, imageHeartbeatTasks[msgId] == nil {
+                startImageGenerationHeartbeat(for: msgId)
+            }
         case "response.image_generation_call.partial_image":
-            streamingStatus = .generatingImage
-            logActivity("Generating image…")
+            streamingStatus = .imageGenerationProgress("Generating image…")
+            logActivity("🖼️ Image preview updating…")
         case "response.computer_call.in_progress", "computer.in_progress",
              "response.computer_call.screenshot_taken", "computer.screenshot",
              "response.computer_call.action_performed", "computer.action",
@@ -2801,6 +3050,9 @@ class ChatViewModel: ObservableObject {
                 if toolName == APICapabilities.ToolType.computer.rawValue || toolName == "computer" {
                     streamingStatus = .usingComputer
                     logActivity("Computer tool started")
+                } else if toolName == "code_interpreter" {
+                    streamingStatus = .generatingCode
+                    logActivity("Code interpreter started")
                 } else {
                     streamingStatus = .runningTool(toolName)
                     logActivity("Running tool: \(toolName)")
@@ -2809,10 +3061,20 @@ class ChatViewModel: ObservableObject {
                 streamingStatus = .runningTool("unknown")
                 logActivity("Running tool…")
             }
+        case "response.output_text.annotation.added":
+            // When artifacts are being processed from code interpreter
+            streamingStatus = .processingArtifacts
+            logActivity("Processing generated files…")
         case "response.done", "response.completed":
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
             logActivity("Response completed")
+        case "mcp.approval_requested":
+            streamingStatus = .mcpApprovalRequested
+            logActivity("MCP tool approval required")
+        case "mcp.proceeding":
+            streamingStatus = .mcpProceeding
+            logActivity("Proceeding with MCP tool")
         default:
             // Keep current status for unknown events
             break
@@ -2821,7 +3083,7 @@ class ChatViewModel: ObservableObject {
     
     /// Convenience method for updating status with just event type
     private func updateStreamingStatus(for eventType: String) {
-        updateStreamingStatus(for: eventType, item: nil)
+        updateStreamingStatus(for: eventType, item: nil, messageId: nil)
     }
 
     /// Exports the current conversation as formatted text for sharing
@@ -2854,10 +3116,104 @@ class ChatViewModel: ObservableObject {
                 exportText += "[Contains \(images.count) image(s)]\n"
             }
             
+            if let artifacts = message.artifacts, !artifacts.isEmpty {
+                exportText += "[Contains \(artifacts.count) artifact(s): "
+                exportText += artifacts.map { "\($0.filename) (\($0.artifactType.rawValue))" }.joined(separator: ", ")
+                exportText += "]\n"
+            }
+            
             exportText += "\n---\n\n"
         }
         
         return exportText
+    }
+}
+
+// MARK: - Artifact Management
+extension ChatViewModel {
+    /// Create an artifact from raw data based on file type
+    private func createArtifact(fileId: String, filename: String, containerId: String, data: Data) -> CodeInterpreterArtifact {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        
+        // Determine MIME type from extension
+        let mimeType = mimeTypeForExtension(ext)
+        
+        // Create appropriate content based on file type
+        let content: ArtifactContent
+        
+        // Image types
+        if ["jpg", "jpeg", "png", "gif"].contains(ext) {
+            if let image = UIImage(data: data) {
+                content = .image(image)
+            } else {
+                content = .error("Invalid image data")
+            }
+        }
+        // Text-based types that should be displayed as text
+        else if ["txt", "log", "py", "js", "html", "css", "json", "csv", "md", "c", "cpp", "java", "rb", "php", "sh", "ts", "xml"].contains(ext) {
+            if let textContent = String(data: data, encoding: .utf8) {
+                content = .text(textContent)
+            } else {
+                content = .error("Could not decode text content")
+            }
+        }
+        // Binary data files
+        else {
+            content = .data(data)
+        }
+        
+        return CodeInterpreterArtifact(
+            fileId: fileId,
+            filename: filename,
+            containerId: containerId,
+            mimeType: mimeType,
+            content: content
+        )
+    }
+    
+    /// Append an artifact to a message
+    private func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        
+        if messages[index].artifacts == nil {
+            messages[index].artifacts = []
+        }
+        messages[index].artifacts?.append(artifact)
+        
+        // If it's an image artifact, also add to the legacy images array for backward compatibility
+        if case .image(let image) = artifact.content {
+            appendImage(image, to: messageId)
+        }
+    }
+    
+    /// Get MIME type for file extension
+    private func mimeTypeForExtension(_ ext: String) -> String {
+        switch ext.lowercased() {
+        case "txt": return "text/plain"
+        case "log": return "text/plain"
+        case "py": return "text/x-python"
+        case "js": return "text/javascript"
+        case "html": return "text/html"
+        case "css": return "text/css"
+        case "json": return "application/json"
+        case "csv": return "text/csv"
+        case "md": return "text/markdown"
+        case "c": return "text/x-c"
+        case "cpp": return "text/x-c++"
+        case "java": return "text/x-java"
+        case "rb": return "text/x-ruby"
+        case "php": return "text/x-php"
+        case "sh": return "application/x-sh"
+        case "ts": return "application/typescript"
+        case "xml": return "application/xml"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "pdf": return "application/pdf"
+        case "zip": return "application/zip"
+        case "tar": return "application/x-tar"
+        default: return "application/octet-stream"
+        }
     }
 }
 
@@ -2878,6 +3234,83 @@ extension ChatViewModel {
     func clearActivity() {
         activityLines.removeAll()
         lastActivityLine = nil
+    }
+    
+    /// Starts a heartbeat task during image generation to show periodic progress updates
+    private func startImageGenerationHeartbeat(for messageId: UUID) {
+        // Cancel any existing heartbeat for this message
+        imageHeartbeatTasks[messageId]?.cancel()
+        imageHeartbeatCounters[messageId] = 0
+        
+        imageHeartbeatTasks[messageId] = Task { [weak self] in
+            guard let self = self else { return }
+            
+            let heartbeatMessages = [
+                "🎨 Composing image…",
+                "🖼️ Refining details…", 
+                "✨ Adding lighting effects…",
+                "🎨 Adjusting composition…",
+                "🖼️ Enhancing quality…",
+                "✨ Almost ready…"
+            ]
+            
+            var counter = 0
+            while !Task.isCancelled {
+                // Check if the streaming message is still active (without weak self here since we're in the capture)
+                guard self.streamingMessageId == messageId else { break }
+                
+                // Wait 3-5 seconds between heartbeats (randomized to feel more natural)
+                let delay = Double.random(in: 3.0...5.0)
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { break }
+                guard self.streamingMessageId == messageId else { break }
+                
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    let index = counter % heartbeatMessages.count
+                    self.logActivity(heartbeatMessages[index])
+                    self.imageHeartbeatCounters[messageId] = counter
+                    
+                    // Update streaming status with progress indicator
+                    if counter > 0 {
+                        let progressText = heartbeatMessages[index].replacingOccurrences(of: "…", with: "")
+                        self.streamingStatus = .imageGenerationProgress(progressText)
+                    }
+                }
+                counter += 1
+            }
+            
+            // Cleanup
+            await MainActor.run { [weak self] in
+                self?.imageHeartbeatTasks[messageId] = nil
+                self?.imageHeartbeatCounters[messageId] = nil
+            }
+        }
+    }
+    
+    /// Stops the image generation heartbeat for a specific message
+    private func stopImageGenerationHeartbeat(for messageId: UUID) {
+        imageHeartbeatTasks[messageId]?.cancel()
+        imageHeartbeatTasks[messageId] = nil
+        imageHeartbeatCounters[messageId] = nil
+    }
+    
+    /// Periodic cleanup of performance caches to prevent memory bloat
+    private func cleanupPerformanceCaches() {
+        // Keep only the 20 most recent container file cache entries
+        if containerFileCache.count > 20 {
+            let keysToRemove = containerFileCache.keys.prefix(containerFileCache.count - 20)
+            keysToRemove.forEach { containerFileCache.removeValue(forKey: $0) }
+        }
+        
+        // Clear processed annotations older than current conversation
+        let currentMessageIds = Set(messages.map { $0.id })
+        processedAnnotations = processedAnnotations.filter { annotation in
+            // Keep annotations that might still be relevant
+            currentMessageIds.contains { $0.uuidString.contains(annotation.prefix(8)) }
+        }
+        
+        AppLogger.log("Cleaned performance caches: \(containerFileCache.count) files, \(processedAnnotations.count) annotations", category: .ui, level: .debug)
     }
 }
 

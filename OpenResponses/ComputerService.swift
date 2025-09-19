@@ -32,6 +32,13 @@ class ComputerService: NSObject, WKNavigationDelegate {
     override init() {
         super.init()
         setupWebView()
+        
+        // Proactively attempt to attach when app is ready
+        Task { @MainActor in
+            // Small delay to let the app fully initialize
+            try? await Task.sleep(for: .seconds(0.5))
+            self.attachToWindowHierarchy()
+        }
     }
 
     // Note: We avoid isolated deinit (requires iOS 18.4+) and rely on successful attach to unregister observers.
@@ -154,8 +161,22 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         
         // Ensure WebView is attached to window hierarchy before any actions
+        // Wait up to 2 seconds for window to become available
         await MainActor.run {
             attachToWindowHierarchy()
+        }
+        
+        // If still not attached after first attempt, wait and retry once
+        if !didAttachToWindow {
+            try? await Task.sleep(for: .seconds(1))
+            await MainActor.run {
+                attachToWindowHierarchy()
+            }
+            
+            // Final check - if still no window, we can proceed but log the issue
+            if !didAttachToWindow {
+                AppLogger.log("⚠️ [WebView Setup] Proceeding without window attachment - rendering may be suboptimal", category: .general, level: .warning)
+            }
         }
         
         // Verify WebView is now properly set up

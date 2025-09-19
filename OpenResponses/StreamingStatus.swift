@@ -8,6 +8,7 @@ enum StreamingStatus: Equatable {
     case thinking
     case searchingWeb
     case generatingCode
+    case processingArtifacts // New: when processing code interpreter outputs
     case usingComputer
     case runningTool(String) // Associated value for the tool name
     case generatingImage
@@ -17,6 +18,9 @@ enum StreamingStatus: Equatable {
     case streamingText
     case finalizing
     case done
+    // MCP-specific states
+    case mcpApprovalRequested
+    case mcpProceeding
 
     /// A user-friendly description of the current status.
     var description: String {
@@ -32,7 +36,9 @@ enum StreamingStatus: Equatable {
         case .searchingWeb:
             return "Searching the web..."
         case .generatingCode:
-            return "Generating code..."
+            return "Executing code..."
+        case .processingArtifacts:
+            return "📄 Processing generated files..."
         case .usingComputer:
             return "🖥️ Using computer..."
         case .runningTool(let name):
@@ -51,6 +57,10 @@ enum StreamingStatus: Equatable {
             return "Finalizing..."
         case .done:
             return "Done"
+        case .mcpApprovalRequested:
+            return "🔐 MCP approval required..."
+        case .mcpProceeding:
+            return "🔗 Continuing with MCP tool..."
         }
     }
 }

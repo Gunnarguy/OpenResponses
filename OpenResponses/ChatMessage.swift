@@ -17,12 +17,14 @@ struct ChatMessage: Identifiable, Codable {
     var toolsUsed: [String]? // Track which tools were actually used in this message
     /// Live and final token usage for this message (assistant messages only)
     var tokenUsage: TokenUsage?
+    /// Code interpreter artifacts (files, logs, data outputs)
+    var artifacts: [CodeInterpreterArtifact]?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage
+        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil) {
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil, artifacts: [CodeInterpreterArtifact]? = nil) {
         self.id = id
         self.role = role
         self.text = text
@@ -31,6 +33,7 @@ struct ChatMessage: Identifiable, Codable {
         self.webContentURL = webContentURL
         self.toolsUsed = toolsUsed
         self.tokenUsage = tokenUsage
+        self.artifacts = artifacts
     }
 
     // MARK: - Codable Conformance
@@ -61,6 +64,7 @@ struct ChatMessage: Identifiable, Codable {
         
         toolsUsed = try container.decodeIfPresent([String].self, forKey: .toolsUsed)
         tokenUsage = try container.decodeIfPresent(TokenUsage.self, forKey: .tokenUsage)
+        artifacts = try container.decodeIfPresent([CodeInterpreterArtifact].self, forKey: .artifacts)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -86,6 +90,7 @@ struct ChatMessage: Identifiable, Codable {
         
         try container.encodeIfPresent(toolsUsed, forKey: .toolsUsed)
         try container.encodeIfPresent(tokenUsage, forKey: .tokenUsage)
+        try container.encodeIfPresent(artifacts, forKey: .artifacts)
     }
 }
 
@@ -563,10 +568,15 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     /// Safety checks that need to be acknowledged before proceeding
     let pendingSafetyChecks: [SafetyCheck]?
     
+    // Fields for MCP approval request items
+    /// Server label for MCP approval requests
+    let serverLabel: String?
+    
     enum CodingKeys: String, CodingKey {
         case id, type, status, content, role, name, arguments, action
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
+        case serverLabel = "server_label"
     }
     
     /// Provides a readable description of the item

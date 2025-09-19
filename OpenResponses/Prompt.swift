@@ -35,9 +35,41 @@ struct Prompt: Codable, Identifiable, Equatable {
     // MARK: - MCP Tool Parameters
     var mcpServerLabel: String
     var mcpServerURL: String
-    var mcpHeaders: String
+    var mcpHeaders: String // Will be migrated to keychain storage
     var mcpRequireApproval: String
     var mcpAllowedTools: String
+    
+    // MARK: - Secure MCP Auth Helper
+    /// Gets the MCP headers, preferring secure keychain storage over the mcpHeaders string
+    var secureMCPHeaders: [String: String] {
+        get {
+            // First try to load from keychain using server label as key
+            if !mcpServerLabel.isEmpty,
+               let authData = KeychainService.shared.load(forKey: "mcp_manual_\(mcpServerLabel)"),
+               let authDict = try? JSONSerialization.jsonObject(with: Data(authData.utf8)) as? [String: String] {
+                return authDict
+            }
+            
+            // Fall back to parsing mcpHeaders string (legacy)
+            if let data = mcpHeaders.data(using: .utf8),
+               let parsedHeaders = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                return parsedHeaders
+            }
+            
+            return [:]
+        }
+        set {
+            // Save to keychain if we have a server label
+            if !mcpServerLabel.isEmpty {
+                if let authData = try? JSONSerialization.data(withJSONObject: newValue),
+                   let authString = String(data: authData, encoding: .utf8) {
+                    KeychainService.shared.save(value: authString, forKey: "mcp_manual_\(mcpServerLabel)")
+                    // Clear the old string format for security
+                    mcpHeaders = ""
+                }
+            }
+        }
+    }
 
     // MARK: - Custom Tool Parameters
     var customToolName: String
@@ -151,7 +183,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             enableImageGeneration: true,
             enableFileSearch: false,
             selectedVectorStoreIds: "",
-            enableMCPTool: false,
+            enableMCPTool: true,
             enableCustomTool: false,
             enableComputerUse: true,
             mcpServerLabel: "paypal",

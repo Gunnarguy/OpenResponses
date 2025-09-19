@@ -132,6 +132,18 @@ protocol OpenAIServiceProtocol {
     
     /// Lists available models from the OpenAI API.
     func listModels() async throws -> [OpenAIModel]
+    
+    /// Sends an MCP approval response back to the API to continue or terminate an MCP tool call flow.
+    /// - Parameters:
+    ///   - approvalResponse: The MCP approval response containing the decision
+    ///   - model: The model to use for the continuation
+    ///   - previousResponseId: The response ID to chain from
+    /// - Returns: The new response object
+    func sendMCPApprovalResponse(
+        approvalResponse: MCPApprovalResponse,
+        model: String,
+        previousResponseId: String?
+    ) async throws -> OpenAIResponse
 
 }
 
