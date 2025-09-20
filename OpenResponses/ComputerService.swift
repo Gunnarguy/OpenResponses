@@ -31,6 +31,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
     
     override init() {
         super.init()
+        AppLogger.log("🔧 [ComputerService] Initializing new ComputerService instance", category: .general, level: .info)
         setupWebView()
         
         // Proactively attempt to attach when app is ready
@@ -100,8 +101,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
         
         if let window = keyWindow {
             // IMPORTANT: Keep the webView within window bounds so WebKit renders paint frames.
-            // We make it non-interactive and nearly transparent so it won't affect UX.
-            webView.alpha = 0.01 // Low alpha still renders; alpha=0 may skip rendering on some devices
+            // Position it completely off-screen but still in the window hierarchy for reliable rendering.
+            webView.frame = CGRect(x: -1000, y: -1000, width: 440, height: 956) // Move completely off-screen
+            webView.alpha = 1.0 // Keep full alpha since it's positioned off-screen
             webView.isHidden = false // Must not be hidden for reliable snapshots
             webView.isUserInteractionEnabled = false // Do not intercept touches
             webView.accessibilityElementsHidden = true // Keep it out of accessibility focus
@@ -111,7 +113,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             webView.setNeedsLayout()
             webView.layoutIfNeeded()
             
-            AppLogger.log("✅ [WebView Setup] Successfully attached WebView to key window", category: .general, level: .info)
+            AppLogger.log("✅ [WebView Setup] Successfully attached WebView to key window (off-screen)", category: .general, level: .info)
             unregisterAttachObservers()
         } else {
             // Log this warning only once to avoid console spam; future retries are silent until success.

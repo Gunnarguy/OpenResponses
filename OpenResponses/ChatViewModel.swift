@@ -1674,7 +1674,10 @@ class ChatViewModel: ObservableObject {
         case "error":
             // Handle API errors during streaming; attempt an automatic retry if eligible.
             let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
-            AppLogger.log("🚨 [Streaming Error] \(errorMessage)", category: .openAI, level: .error)
+            let errorCode = chunk.response?.error?.code ?? "unknown"
+            AppLogger.log("🚨 [Streaming Error] Code: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
+            AppLogger.log("🔍 [Error Context] Event type: \(chunk.type), Response ID: \(chunk.response?.id ?? "none")", category: .openAI, level: .info)
+            
             if attemptStreamingRetry(for: messageId, reason: errorMessage) {
                 // A retry has been scheduled; avoid surfacing a hard error to the user here.
                 return
@@ -1689,7 +1692,31 @@ class ChatViewModel: ObservableObject {
         case "response.failed":
             // Handle failed responses; attempt an automatic retry if eligible.
             let errorMessage = chunk.response?.error?.message ?? "The request failed"
-            AppLogger.log("🚨 [Response Failed] \(errorMessage)", category: .openAI, level: .error)
+            let errorCode = chunk.response?.error?.code ?? "unknown"
+            let responseStatus = chunk.response?.status ?? "unknown"
+            AppLogger.log("🚨 [Response Failed] Status: \(responseStatus), Error: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
+            
+            // Log response details for debugging
+            if let response = chunk.response {
+                AppLogger.log("🔍 [Response Failed Details] ID: \(response.id), Output count: \(response.output?.count ?? 0)", category: .openAI, level: .info)
+                
+                // Enhanced error logging for MCP-related failures
+                if let output = response.output {
+                    for (index, outputItem) in output.enumerated() {
+                        AppLogger.log("🔍 [Response Failed Output \(index)] Type: \(outputItem.type), ID: \(outputItem.id), Status: \(outputItem.status ?? "unknown")", category: .openAI, level: .info)
+                        
+                        // Check for MCP-specific errors in output content
+                        if let content = outputItem.content {
+                            for contentItem in content {
+                                if contentItem.type.contains("mcp") {
+                                    AppLogger.log("🔍 [MCP Content Error] Type: \(contentItem.type)", category: .openAI, level: .info)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             if attemptStreamingRetry(for: messageId, reason: errorMessage) {
                 return
             }
@@ -1885,11 +1912,21 @@ class ChatViewModel: ObservableObject {
             }
             updateStreamingStatus(for: "computer.completed")
             
-        // MCP Approval streaming events
+        // MCP streaming events
         case "response.output_item.added":
             // Check if this is an MCP approval request
             if let item = chunk.item, item.type == "mcp_approval_request" {
                 handleMCPApprovalRequest(item, for: messageId)
+            }
+            // Track tool usage for MCP items
+            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
+                trackToolUsage(for: messageId, tool: "mcp")
+            }
+            
+        case "response.output_item.completed":
+            // Handle MCP item completion
+            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
+                handleCompletedStreamingItem(item, for: messageId)
             }
             
         default:
@@ -2745,6 +2782,39 @@ class ChatViewModel: ObservableObject {
             // will fetch them. So we only log a lightweight note here.
             AppLogger.log("ℹ️ [Image Generation] Completed event received for item \(item.id). Awaiting any final image_url/image_file in subsequent items, if provided.", category: .openAI, level: .info)
         }
+        
+        // Handle MCP tool completion
+        if item.type == "mcp_call" {
+            if let toolName = item.name, let serverLabel = item.serverLabel {
+                AppLogger.log("✅ [MCP] Tool call completed: \(toolName) on server \(serverLabel)", category: .openAI, level: .info)
+                
+                // Add a subtle completion indicator to the message if it exists
+                if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
+                    // Check if we already have tool tracking for this message
+                    var updatedMessages = messages
+                    if updatedMessages[msgIndex].toolsUsed == nil {
+                        updatedMessages[msgIndex].toolsUsed = []
+                    }
+                    if !updatedMessages[msgIndex].toolsUsed!.contains("mcp") {
+                        updatedMessages[msgIndex].toolsUsed!.append("mcp")
+                        messages = updatedMessages
+                        AppLogger.log("🔧 [MCP Tool Tracking] Added MCP tool to message \(messageId)", category: .openAI, level: .debug)
+                    }
+                }
+            } else {
+                AppLogger.log("✅ [MCP] Tool call completed for item \(item.id)", category: .openAI, level: .info)
+            }
+        }
+        
+        // Handle MCP tool list loading completion
+        if item.type == "mcp_list_tools" {
+            if let serverLabel = item.serverLabel {
+                AppLogger.log("📋 [MCP] Tool list loaded from server \(serverLabel)", category: .openAI, level: .info)
+            } else {
+                AppLogger.log("📋 [MCP] Tool list loaded for item \(item.id)", category: .openAI, level: .info)
+            }
+        }
+        
         // Note: For other image types like image_file/image_url, they would be handled by the annotation system
         // or the fallback mechanism that fetches the final response
     }
@@ -3075,6 +3145,36 @@ class ChatViewModel: ObservableObject {
         case "mcp.proceeding":
             streamingStatus = .mcpProceeding
             logActivity("Proceeding with MCP tool")
+        case "response.output_item.added" where item?.type == "mcp_list_tools":
+            streamingStatus = .runningTool("mcp")
+            if let serverLabel = item?.serverLabel {
+                logActivity("MCP: Loading tools from \(serverLabel)")
+            } else {
+                logActivity("MCP: Loading available tools")
+            }
+        case "response.output_item.added" where item?.type == "mcp_call":
+            streamingStatus = .runningTool("mcp")
+            if let toolName = item?.name, let serverLabel = item?.serverLabel {
+                logActivity("MCP: Executing \(toolName) on \(serverLabel)")
+            } else if let toolName = item?.name {
+                logActivity("MCP: Executing \(toolName)")
+            } else {
+                logActivity("MCP: Running tool call")
+            }
+        case "response.output_item.completed" where item?.type == "mcp_list_tools":
+            if let serverLabel = item?.serverLabel {
+                logActivity("MCP: Tools loaded from \(serverLabel)")
+            } else {
+                logActivity("MCP: Tools loaded successfully")
+            }
+        case "response.output_item.completed" where item?.type == "mcp_call":
+            if let toolName = item?.name, let serverLabel = item?.serverLabel {
+                logActivity("MCP: Completed \(toolName) on \(serverLabel)")
+            } else if let toolName = item?.name {
+                logActivity("MCP: Completed \(toolName)")
+            } else {
+                logActivity("MCP: Tool call completed")
+            }
         default:
             // Keep current status for unknown events
             break

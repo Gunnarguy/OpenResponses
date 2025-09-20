@@ -4,11 +4,16 @@ import Foundation
 
 /// Represents a discovered MCP server with its available tools
 public struct MCPServerInfo: Codable, Identifiable, Hashable {
-    public let id = UUID()
+    // Use a stable identity derived from the server's unique name to ensure
+    // consistent identity across view updates and sheet(item:) presentations.
+    public var id: String { name }
     public let name: String
     public let displayName: String
     public let description: String
     public let serverURL: String
+    /// Optional: when this server is available as an OpenAI connector,
+    /// specify the connector_id (e.g., "connector_googledrive").
+    public let connectorId: String?
     public let category: MCPServerCategory
     public let isOfficial: Bool
     public let requiredAuth: MCPAuthType
@@ -21,6 +26,7 @@ public struct MCPServerInfo: Codable, Identifiable, Hashable {
         displayName: String,
         description: String,
         serverURL: String,
+        connectorId: String? = nil,
         category: MCPServerCategory,
         isOfficial: Bool = false,
         requiredAuth: MCPAuthType = .none,
@@ -32,6 +38,7 @@ public struct MCPServerInfo: Codable, Identifiable, Hashable {
         self.displayName = displayName
         self.description = description
         self.serverURL = serverURL
+        self.connectorId = connectorId
         self.category = category
         self.isOfficial = isOfficial
         self.requiredAuth = requiredAuth
@@ -41,7 +48,7 @@ public struct MCPServerInfo: Codable, Identifiable, Hashable {
     }
     
     private enum CodingKeys: String, CodingKey {
-        case name, displayName, description, serverURL, category, isOfficial, requiredAuth, supportedCapabilities, availableTools, setupInstructions
+        case name, displayName, description, serverURL, connectorId, category, isOfficial, requiredAuth, supportedCapabilities, availableTools, setupInstructions
     }
 }
 

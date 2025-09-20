@@ -241,6 +241,10 @@ print(resp.output_text)
 
 You must trust any remote MCP server you use, as a malicious server could exfiltrate sensitive data.
 
+#### GitHub MCP specific note
+
+- The official GitHub MCP server prefers OAuth over Personal Access Tokens (PAT). To prevent repeated 400 Bad Request errors during tool discovery (mcp_list_tools), the app will automatically skip adding the GitHub MCP server unless an OAuth-style token is detected. If you only have a PAT configured, GitHub-related prompts will proceed without the MCP server until OAuth support is available.
+
 ---
 
 ## Function Calling

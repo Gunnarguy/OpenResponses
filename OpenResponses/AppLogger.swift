@@ -96,7 +96,7 @@ enum AppLogger {
     }
 
     /// Heuristically redacts data-URI images and base64 blobs inside strings.
-    private static func sanitizeString(_ s: String) -> String {
+    private static func sanitizeString(_ s: String, shouldTruncate: Bool = true) -> String {
         // Redact data:image/*;base64,....
         if s.lowercased().hasPrefix("data:image/") {
             // Keep the header but remove the payload
@@ -108,13 +108,13 @@ enum AppLogger {
                 return "[data:image payload REDACTED]"
             }
         }
-        // If string looks like long base64, truncate
+        // If string looks like long base64, truncate only if requested
         let base64Chars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n\r")
         if s.count > 120, s.unicodeScalars.allSatisfy({ base64Chars.contains($0) }) {
-            return truncateMiddle(s)
+            return shouldTruncate ? truncateMiddle(s) : s
         }
-        // Generic truncation for very long strings
-        return truncateMiddle(s)
+        // Generic truncation for very long strings - only if requested
+        return shouldTruncate ? truncateMiddle(s) : s
     }
 
     /// Recursively sanitize a JSON object by redacting heavy fields.
@@ -365,9 +365,14 @@ enum AppLogger {
         var logMessage = "🔄 STREAMING EVENT: \(eventType)"
         // Only include payload details when not minimized
         if !minimizeOpenAILogBodies {
-            // Truncate/sanitize raw data to avoid massive payloads
-            let safeData = truncateMiddle(sanitizeString(data), max: 600)
-            logMessage += "\n🔄 RAW DATA: \(safeData)"
+            // For failed responses, don't truncate at all to capture complete error details
+            if eventType.contains("failed") || eventType.contains("error") {
+                let safeData = sanitizeString(data, shouldTruncate: false)  // No truncation for errors
+                logMessage += "\n🔄 RAW DATA: \(safeData)"
+            } else {
+                let safeData = truncateMiddle(sanitizeString(data), max: 600)
+                logMessage += "\n🔄 RAW DATA: \(safeData)"
+            }
             if let parsedEvent = parsedEvent {
                 logMessage += "\n🔄 PARSED: \(parsedEvent)"
             }
@@ -441,6 +446,19 @@ enum AppLogger {
         case "response.output_text.done":
             if let itemId = event.itemId {
                 logMessage += "\n🔄 ITEM ID: \(itemId)"
+            }
+            
+        case "response.failed", "error":
+            // For failed responses, include complete raw data without truncation for debugging
+            let safeData = sanitizeString(rawData, shouldTruncate: false)
+            logMessage += "\n🔄 RAW DATA: \(safeData)"
+            if let response = event.response {
+                logMessage += "\n🔄 RESPONSE ID: \(response.id)"
+                logMessage += "\n🔄 STATUS: \(response.status ?? "failed")"
+                if let error = response.error {
+                    logMessage += "\n🔄 ERROR CODE: \(error.code ?? "unknown")"
+                    logMessage += "\n🔄 ERROR MESSAGE: \(error.message)"
+                }
             }
             
         default:

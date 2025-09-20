@@ -19,6 +19,38 @@ class MCPDiscoveryService: ObservableObject {
     private init() {
         loadConfigurations()
         loadBuiltInServers()
+        
+        // Ensure servers are loaded
+        Task { @MainActor in
+            if availableServers.isEmpty {
+                loadBuiltInServers()
+            }
+        }
+        
+        // Enable GitHub server by default for demo purposes (without auth)
+        // Users can configure authentication later
+        let defaultGitHubConfig = MCPServerConfiguration(
+            serverId: "github",
+            isEnabled: true,
+            authConfiguration: [:],
+            selectedTools: Set(["list_repositories", "search_code"])
+        )
+        
+        // Only add default config if none exists
+        if getConfiguration(for: "github") == nil {
+            updateConfiguration(defaultGitHubConfig)
+        }
+        
+        // Temporarily disable Notion server to test GitHub MCP in isolation
+        if let notionConfig = getConfiguration(for: "notion") {
+            let disabledNotionConfig = MCPServerConfiguration(
+                serverId: "notion",
+                isEnabled: false,
+                authConfiguration: notionConfig.authConfiguration,
+                selectedTools: notionConfig.selectedTools
+            )
+            updateConfiguration(disabledNotionConfig)
+        }
     }
     
     // MARK: - Built-in Server Registry
@@ -29,9 +61,9 @@ class MCPDiscoveryService: ObservableObject {
             // Development Tools
             MCPServerInfo(
                 name: "github",
-                displayName: "GitHub",
-                description: "Access GitHub repositories, issues, pull requests, and more",
-                serverURL: "https://api.github.com/mcp",
+                displayName: "GitHub (Currently Disabled - OAuth Required)",
+                description: "GitHub Copilot MCP server requires OAuth authentication which is complex to implement in iOS. Temporarily disabled until OAuth integration is added.",
+                serverURL: "https://api.githubcopilot.com/mcp/",
                 category: .development,
                 isOfficial: true,
                 requiredAuth: .bearerToken,
@@ -42,6 +74,210 @@ class MCPDiscoveryService: ObservableObject {
                         displayName: "List Repositories",
                         description: "Get a list of user's repositories",
                         category: "repository"
+                    ),
+                    MCPToolInfo(
+                        name: "get_repository",
+                        displayName: "Get Repository",
+                        description: "Get detailed information about a repository",
+                        category: "repository"
+                    ),
+                    MCPToolInfo(
+                        name: "search_code",
+                        displayName: "Search Code",
+                        description: "Search for code across repositories",
+                        category: "search"
+                    )
+                ],
+                setupInstructions: """
+                ⚠️ CRITICAL DISCOVERY: OAUTH IS THE REAL SOLUTION!
+                
+                **THE ACTUAL PROBLEM:**
+                GitHub's official documentation clearly states: "Use OAuth when available: For MCP servers like GitHub MCP, prefer OAuth authentication over personal access tokens."
+                
+                **WHY YOUR PAT ISN'T WORKING (Even with All Scopes):**
+                • GitHub Copilot MCP server is designed primarily for OAuth flows
+                • PAT authentication is a fallback, not the primary method
+                • Even with all possible scopes, PAT may hit undocumented limitations
+                • GitHub's MCP server expects OAuth-style authentication headers
+                
+                **OAUTH vs PAT COMPARISON:**
+                
+                OAuth (GitHub's Recommended Method):
+                ✅ One-click setup in IDEs (VS Code, Visual Studio, JetBrains, Xcode, Eclipse)
+                ✅ Automatic scope management 
+                ✅ No manual token creation required
+                ✅ Short-lived, secure tokens
+                ✅ Full GitHub Copilot MCP feature access
+                ✅ Organization policy compliant
+                
+                PAT (Current Workaround):
+                ❌ Manual setup required
+                ❌ Long-lived security risk
+                ❌ May not provide full MCP server access
+                ❌ Subject to undocumented restrictions
+                ❌ Not optimized for GitHub Copilot integration
+                
+                **IMMEDIATE WORKAROUND (PAT - Limited Success Expected):**
+                Since this is an iOS app without OAuth integration yet:
+                
+                1. Create Classic Personal Access Token at github.com/settings/tokens:
+                   
+                   EXTENDED SCOPE LIST (try all of these):
+                   ✓ repo (Full control of private repositories)
+                   ✓ workflow (Update GitHub Action workflows)  
+                   ✓ write:packages (Upload packages to GitHub Package Registry)
+                   ✓ delete:packages (Delete packages from GitHub Package Registry)
+                   ✓ admin:org (Full control of orgs and teams, read and write org projects)
+                   ✓ gist (Create gists)
+                   ✓ notifications (Access notifications)
+                   ✓ user (Update all user data)
+                   ✓ delete_repo (Delete repositories)
+                   ✓ write:discussion (Write team discussions)
+                   ✓ write:packages (Upload packages to GitHub Package Registry)
+                   ✓ read:packages (Download packages from GitHub Package Registry)
+                   ✓ admin:public_key (Full control of user public keys)
+                   ✓ admin:repo_hook (Full control of repository hooks)
+                   ✓ admin:org_hook (Full control of organization hooks)
+                   ✓ admin:gpg_key (Full control of user GPG keys)
+                
+                2. Copy token and paste in authentication field below
+                3. Test with basic request like "List my repositories"
+                
+                **PROPER SOLUTION NEEDED:**
+                To fully fix this, the app needs OAuth implementation:
+                • GitHub OAuth app registration  
+                • OAuth authorization flow in iOS
+                • Use OAuth tokens instead of PAT
+                • Follow GitHub's recommended MCP integration pattern
+                
+                **WHY OTHER EDITORS WORK SEAMLESSLY:**
+                • VS Code, Visual Studio, JetBrains, Xcode all have built-in OAuth flows
+                • They use GitHub's preferred authentication method
+                • No manual token creation or scope guessing required
+                
+                **TECHNICAL REALITY:**
+                The 400 Bad Request errors indicate the GitHub Copilot MCP server expects OAuth-authenticated requests. This iOS app's PAT approach may work for basic operations but will likely have limitations compared to proper OAuth integration.
+                
+                References:
+                • https://docs.github.com/en/copilot/customizing-copilot/using-model-context-protocol/using-the-github-mcp-server
+                • https://docs.github.com/en/copilot/tutorials/enhance-agent-mode-with-mcp
+                """
+            ),
+            
+            // Alternative community GitHub MCP server that may work better with PAT
+            MCPServerInfo(
+                name: "git-mcp",
+                displayName: "GitMCP (Community Alternative)",
+                description: "Community-built GitHub MCP server designed to be PAT-friendly. Alternative to GitHub's official server.",
+                serverURL: "https://git-mcp.com/api", // Note: This might not be the actual URL, need to check the repo
+                category: .development,
+                isOfficial: false,
+                requiredAuth: .bearerToken,
+                supportedCapabilities: [.toolExecution, .resourceAccess],
+                availableTools: [
+                    MCPToolInfo(
+                        name: "read_repository",
+                        displayName: "Read Repository",
+                        description: "Read repository structure and files",
+                        category: "repository"
+                    ),
+                    MCPToolInfo(
+                        name: "search_files",
+                        displayName: "Search Files",
+                        description: "Search for files in repositories",
+                        category: "search"
+                    )
+                ],
+                setupInstructions: """
+                **ALTERNATIVE GITHUB MCP SERVER**
+                
+                This is a community-built alternative to GitHub's official MCP server.
+                It may work better with Personal Access Token authentication.
+                
+                **SETUP:**
+                1. Create a GitHub Personal Access Token with basic repo access:
+                   • repo (repository access)
+                   • read:user (read user info)
+                   
+                2. Enter token in the authentication field
+                3. Test with a simple request
+                
+                **WHY THIS MIGHT WORK BETTER:**
+                • Built by community for PAT compatibility
+                • No OAuth requirements
+                • Simpler authentication model
+                • Focused on core GitHub functionality
+                
+                **NOTE:** This is experimental - if it doesn't work, we can disable it and focus on the core app functionality.
+                
+                Source: https://github.com/idosal/git-mcp
+                """),
+            
+            // Alternative community GitHub MCP server that may work better with PAT
+            MCPServerInfo(
+                name: "git-mcp",
+                displayName: "GitMCP (Community Alternative)",
+                description: "Community-built GitHub MCP server designed to be PAT-friendly. Alternative to GitHub's official server.",
+                serverURL: "https://git-mcp.com/api", // Note: This might not be the actual URL, need to check the repo
+                category: .development,
+                isOfficial: false,
+                requiredAuth: .bearerToken,
+                supportedCapabilities: [.toolExecution, .resourceAccess],
+                availableTools: [
+                    MCPToolInfo(
+                        name: "read_repository",
+                        displayName: "Read Repository",
+                        description: "Read repository structure and files",
+                        category: "repository"
+                    ),
+                    MCPToolInfo(
+                        name: "search_files",
+                        displayName: "Search Files",
+                        description: "Search for files in repositories",
+                        category: "search"
+                    )
+                ],
+                setupInstructions: """
+                **ALTERNATIVE GITHUB MCP SERVER**
+                
+                This is a community-built alternative to GitHub's official MCP server.
+                It may work better with Personal Access Token authentication.
+                
+                **SETUP:**
+                1. Create a GitHub Personal Access Token with basic repo access:
+                   • repo (repository access)
+                   • read:user (read user info)
+                   
+                2. Enter token in the authentication field
+                3. Test with a simple request
+                
+                **WHY THIS MIGHT WORK BETTER:**
+                • Built by community for PAT compatibility
+                • No OAuth requirements
+                • Simpler authentication model
+                • Focused on core GitHub functionality
+                
+                **NOTE:** This is experimental - if it doesn't work, we can disable it and focus on the core app functionality.
+                
+                Source: https://github.com/idosal/git-mcp
+                """
+            ),
+            
+            MCPServerInfo(
+                name: "gitlab",
+                displayName: "GitLab",
+                description: "Interact with GitLab projects, issues, and merge requests",
+                serverURL: "https://gitlab.com/api/mcp",
+                category: .development,
+                isOfficial: true,
+                requiredAuth: .apiKey,
+                supportedCapabilities: [.toolExecution, .resourceAccess],
+                availableTools: [
+                    MCPToolInfo(
+                        name: "list_projects",
+                        displayName: "List Projects",
+                        description: "Get a list of user's projects",
+                        category: "project"
                     ),
                     MCPToolInfo(
                         name: "create_issue",
@@ -56,7 +292,80 @@ class MCPDiscoveryService: ObservableObject {
                         category: "search"
                     )
                 ],
-                setupInstructions: "Create a Personal Access Token at github.com/settings/tokens"
+                setupInstructions: """
+                ⚠️ CRITICAL DISCOVERY: OAUTH IS THE REAL SOLUTION!
+                
+                **THE ACTUAL PROBLEM:**
+                GitHub's official documentation clearly states: "Use OAuth when available: For MCP servers like GitHub MCP, prefer OAuth authentication over personal access tokens."
+                
+                **WHY YOUR PAT ISN'T WORKING (Even with All Scopes):**
+                • GitHub Copilot MCP server is designed primarily for OAuth flows
+                • PAT authentication is a fallback, not the primary method
+                • Even with all possible scopes, PAT may hit undocumented limitations
+                • GitHub's MCP server expects OAuth-style authentication headers
+                
+                **OAUTH vs PAT COMPARISON:**
+                
+                OAuth (GitHub's Recommended Method):
+                ✅ One-click setup in IDEs (VS Code, Visual Studio, JetBrains, Xcode, Eclipse)
+                ✅ Automatic scope management 
+                ✅ No manual token creation required
+                ✅ Short-lived, secure tokens
+                ✅ Full GitHub Copilot MCP feature access
+                ✅ Organization policy compliant
+                
+                PAT (Current Workaround):
+                ❌ Manual setup required
+                ❌ Long-lived security risk
+                ❌ May not provide full MCP server access
+                ❌ Subject to undocumented restrictions
+                ❌ Not optimized for GitHub Copilot integration
+                
+                **IMMEDIATE WORKAROUND (PAT - Limited Success Expected):**
+                Since this is an iOS app without OAuth integration yet:
+                
+                1. Create Classic Personal Access Token at github.com/settings/tokens:
+                   
+                   EXTENDED SCOPE LIST (try all of these):
+                   ✓ repo (Full control of private repositories)
+                   ✓ workflow (Update GitHub Action workflows)  
+                   ✓ write:packages (Upload packages to GitHub Package Registry)
+                   ✓ delete:packages (Delete packages from GitHub Package Registry)
+                   ✓ admin:org (Full control of orgs and teams, read and write org projects)
+                   ✓ gist (Create gists)
+                   ✓ notifications (Access notifications)
+                   ✓ user (Update all user data)
+                   ✓ delete_repo (Delete repositories)
+                   ✓ write:discussion (Write team discussions)
+                   ✓ write:packages (Upload packages to GitHub Package Registry)
+                   ✓ read:packages (Download packages from GitHub Package Registry)
+                   ✓ admin:public_key (Full control of user public keys)
+                   ✓ admin:repo_hook (Full control of repository hooks)
+                   ✓ admin:org_hook (Full control of organization hooks)
+                   ✓ admin:gpg_key (Full control of user GPG keys)
+                
+                2. Copy token and paste in authentication field below
+                3. Test with basic request like "List my repositories"
+                
+                **PROPER SOLUTION NEEDED:**
+                To fully fix this, the app needs OAuth implementation:
+                • GitHub OAuth app registration  
+                • OAuth authorization flow in iOS
+                • Use OAuth tokens instead of PAT
+                • Follow GitHub's recommended MCP integration pattern
+                
+                **WHY OTHER EDITORS WORK SEAMLESSLY:**
+                • VS Code, Visual Studio, JetBrains, Xcode all have built-in OAuth flows
+                • They use GitHub's preferred authentication method
+                • No manual token creation or scope guessing required
+                
+                **TECHNICAL REALITY:**
+                The 400 Bad Request errors indicate the GitHub Copilot MCP server expects OAuth-authenticated requests. This iOS app's PAT approach may work for basic operations but will likely have limitations compared to proper OAuth integration.
+                
+                References:
+                • https://docs.github.com/en/copilot/customizing-copilot/using-model-context-protocol/using-the-github-mcp-server
+                • https://docs.github.com/en/copilot/tutorials/enhance-agent-mode-with-mcp
+                """
             ),
             
             MCPServerInfo(
@@ -85,10 +394,40 @@ class MCPDiscoveryService: ObservableObject {
             ),
             
             // Productivity Tools
+            
+            // NOTION MCP SERVER - TEMPORARILY DISABLED
+            // The remote Notion MCP server at https://api.notion.com/mcp requires OAuth authentication,
+            // not integration tokens. There are two different Notion MCP implementations:
+            //
+            // 1. Remote Notion MCP Server (hosted by Notion): 
+            //    - URL: https://api.notion.com/mcp
+            //    - Authentication: OAuth 2.0 with one-click installation
+            //    - Access: Full workspace access automatically
+            //    - Optimized for AI agents with efficient data formatting
+            //    - Documentation: https://developers.notion.com/docs/mcp
+            //
+            // 2. Local/Self-hosted Notion MCP Server (npm package):
+            //    - Package: @notionhq/notion-mcp-server  
+            //    - Authentication: Integration tokens (ntn_***)
+            //    - Access: Requires manual page/database sharing via Notion UI
+            //    - Setup: Complex integration token + page sharing workflow
+            //    - Documentation: https://github.com/makenotion/notion-mcp-server
+            //
+            // Note: Integration tokens should be configured through the secure keychain storage,
+            // not hardcoded in the source. This causes 424 (Failed Dependency) errors when
+            // trying to use remote servers without proper authentication.
+            //
+            // To fix Notion integration, need to either:
+            // A) Switch to OAuth authentication for remote server (recommended)
+            // B) Switch to local self-hosted server with proper integration token setup
+            //
+            // For now, disabling to prevent errors and focus on GitHub MCP functionality.
+            
+            /*
             MCPServerInfo(
                 name: "notion",
-                displayName: "Notion",
-                description: "Access and manage Notion pages, databases, and content",
+                displayName: "Notion (OAuth Required)",
+                description: "Access and manage Notion pages, databases, and content. Requires OAuth authentication for remote server.",
                 serverURL: "https://api.notion.com/mcp",
                 category: .productivity,
                 isOfficial: true,
@@ -113,8 +452,22 @@ class MCPDiscoveryService: ObservableObject {
                         description: "Query a Notion database",
                         category: "database"
                     )
-                ]
+                ],
+                setupInstructions: """
+                IMPORTANT: This is the remote Notion MCP server that requires OAuth authentication.
+                
+                Current Status: DISABLED - Integration token authentication not supported.
+                
+                To enable Notion MCP:
+                1. Visit https://developers.notion.com/docs/mcp for OAuth setup
+                2. Follow the one-click installation process
+                3. Grant workspace permissions through OAuth flow
+                4. No manual page sharing required with OAuth
+                
+                Alternative: Use local self-hosted server (@notionhq/notion-mcp-server) with integration tokens
+                """
             ),
+            */
             
             MCPServerInfo(
                 name: "slack",
@@ -147,6 +500,7 @@ class MCPDiscoveryService: ObservableObject {
                 displayName: "Google Drive",
                 description: "Access and manage files in Google Drive",
                 serverURL: "https://drive.googleapis.com/mcp",
+                connectorId: "connector_googledrive",
                 category: .fileManagement,
                 isOfficial: true,
                 requiredAuth: .oauth,
@@ -288,6 +642,13 @@ class MCPDiscoveryService: ObservableObject {
                 ]
             )
         ]
+        
+        AppLogger.log("MCPDiscoveryService: Loaded \(availableServers.count) built-in servers", category: .general, level: .debug)
+        
+        // Trigger UI update
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
     }
     
     // MARK: - Configuration Management

@@ -108,7 +108,7 @@ class ModelCompatibilityService {
     private var modelCapabilities: [String: ModelCapabilities] = [
     "gpt-4o": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer],
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp], // Added .mcp support
             parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
@@ -237,7 +237,7 @@ class ModelCompatibilityService {
         ),
         "gpt-5-turbo": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp], // Added .mcp support
             parameters: ["temperature", "top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
@@ -312,7 +312,7 @@ class ModelCompatibilityService {
         ),
         "gpt-5": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp], // Added .mcp support
             // Note: temperature is not supported for gpt-5 per API; use reasoning_effort instead
             parameters: ["top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(

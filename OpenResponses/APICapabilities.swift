@@ -49,7 +49,17 @@ public enum APICapabilities {
         case computer(environment: String?, displayWidth: Int?, displayHeight: Int?)
 
         /// Allows the model to connect to Model Context Protocol (MCP) servers.
-        case mcp(serverLabel: String, serverURL: String, headers: [String: String]?, requireApproval: String?, allowedTools: [String]?)
+        /// Supports either a remote server_url or a connector_id with authorization.
+        case mcp(
+            serverLabel: String,
+            serverURL: String?,
+            connectorId: String?,
+            authorization: String?,
+            headers: [String: String]?,
+            requireApproval: String?,
+            allowedTools: [String]?,
+            serverDescription: String? = nil
+        )
 
         // MARK: - Codable Implementation
         
@@ -68,9 +78,12 @@ public enum APICapabilities {
             case displayHeight = "display_height"
             case serverLabel = "server_label"
             case serverURL = "server_url"
+            case connectorId = "connector_id"
+            case authorization
             case headers
             case requireApproval = "require_approval"
             case allowedTools = "allowed_tools"
+            case serverDescription = "server_description"
         }
 
         public init(from decoder: Decoder) throws {
@@ -106,11 +119,24 @@ public enum APICapabilities {
                 self = .computer(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
             case "mcp":
                 let serverLabel = try container.decode(String.self, forKey: .serverLabel)
-                let serverURL = try container.decode(String.self, forKey: .serverURL)
+                // Either server_url or connector_id may be present
+                let serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL)
+                let connectorId = try container.decodeIfPresent(String.self, forKey: .connectorId)
+                let authorization = try container.decodeIfPresent(String.self, forKey: .authorization)
                 let headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
                 let requireApproval = try container.decodeIfPresent(String.self, forKey: .requireApproval)
                 let allowedTools = try container.decodeIfPresent([String].self, forKey: .allowedTools)
-                self = .mcp(serverLabel: serverLabel, serverURL: serverURL, headers: headers, requireApproval: requireApproval, allowedTools: allowedTools)
+                let serverDescription = try container.decodeIfPresent(String.self, forKey: .serverDescription)
+                self = .mcp(
+                    serverLabel: serverLabel,
+                    serverURL: serverURL,
+                    connectorId: connectorId,
+                    authorization: authorization,
+                    headers: headers,
+                    requireApproval: requireApproval,
+                    allowedTools: allowedTools,
+                    serverDescription: serverDescription
+                )
             default:
                 throw DecodingError.dataCorrupted(
                     DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown tool type: \(typeString)")
@@ -156,10 +182,18 @@ public enum APICapabilities {
                 if let displayHeight = displayHeight {
                     try container.encode(displayHeight, forKey: .displayHeight)
                 }
-            case .mcp(let serverLabel, let serverURL, let headers, let requireApproval, let allowedTools):
+            case .mcp(let serverLabel, let serverURL, let connectorId, let authorization, let headers, let requireApproval, let allowedTools, let serverDescription):
                 try container.encode("mcp", forKey: .type)
                 try container.encode(serverLabel, forKey: .serverLabel)
-                try container.encode(serverURL, forKey: .serverURL)
+                if let serverURL = serverURL {
+                    try container.encode(serverURL, forKey: .serverURL)
+                }
+                if let connectorId = connectorId {
+                    try container.encode(connectorId, forKey: .connectorId)
+                }
+                if let authorization = authorization {
+                    try container.encode(authorization, forKey: .authorization)
+                }
                 if let headers = headers {
                     try container.encode(headers, forKey: .headers)
                 }
@@ -168,6 +202,9 @@ public enum APICapabilities {
                 }
                 if let allowedTools = allowedTools {
                     try container.encode(allowedTools, forKey: .allowedTools)
+                }
+                if let serverDescription = serverDescription {
+                    try container.encode(serverDescription, forKey: .serverDescription)
                 }
             }
         }

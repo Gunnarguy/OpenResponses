@@ -437,7 +437,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
     // 3. Build the 'tools' array using the new Codable models
-    var tools = buildTools(for: prompt, isStreaming: stream)
+    var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: stream)
     var forceImageToolChoiceThisTurn = false
         // Ensure the computer tool is present for the dedicated CUA model
         if prompt.openAIModel == "computer-use-preview" && !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
@@ -485,7 +485,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         // Count MCP tools specifically for debugging
         let mcpToolCount = tools.compactMap { tool -> String? in
-            if case .mcp(let serverLabel, _, _, _, _) = tool {
+            if case .mcp(let serverLabel, _, _, _, _, _, _, _) = tool {
                 return serverLabel
             }
             return nil
@@ -679,7 +679,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     }
 
     /// Assembles the `tools` array for the request, checking for model compatibility.
-    private func buildTools(for prompt: Prompt, isStreaming: Bool) -> [APICapabilities.Tool] {
+    private func buildTools(for prompt: Prompt, userMessage: String, isStreaming: Bool) -> [APICapabilities.Tool] {
         var tools: [APICapabilities.Tool] = []
         
         AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), enableMCPTool=\(prompt.enableMCPTool), model=\(prompt.openAIModel)", category: .openAI, level: .info)
@@ -786,28 +786,94 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
             AppLogger.log("MCP tool enabled, checking configurations...", category: .openAI, level: .info)
             
-            // First, add any manually configured MCP server from the prompt
-            if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
-                AppLogger.log("Adding manual MCP server: \(prompt.mcpServerLabel)", category: .openAI, level: .info)
-                // Use secure headers from keychain-backed property
-                let headers = prompt.secureMCPHeaders.isEmpty ? nil : prompt.secureMCPHeaders
-                
-                // Parse allowed tools from comma-separated string
-                let allowedTools: [String]? = prompt.mcpAllowedTools.isEmpty ? nil : prompt.mcpAllowedTools
-                    .split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                
-                tools.append(.mcp(
-                    serverLabel: prompt.mcpServerLabel,
-                    serverURL: prompt.mcpServerURL,
-                    headers: headers,
-                    requireApproval: prompt.mcpRequireApproval.isEmpty ? nil : prompt.mcpRequireApproval,
-                    allowedTools: allowedTools
-                ))
+            // Analyze the prompt content to determine which MCP servers are relevant
+            let relevantServerNames = analyzePromptForRelevantServers(prompt: prompt, userMessage: userMessage)
+            AppLogger.log("Intelligent server selection: relevant servers [\(relevantServerNames.joined(separator: ", "))]", category: .openAI, level: .info)
+            
+            // Helper closures to identify GitHub MCP and validate auth.
+            // We temporarily skip GitHub MCP when only PAT/no OAuth is configured to avoid 400s.
+            let isGitHubServer: (_ label: String, _ url: String?) -> Bool = { label, url in
+                let lower = label.lowercased()
+                if lower == "github" { return true }
+                if let url = url?.lowercased(), url.contains("githubcopilot.com/mcp") { return true }
+                return false
+            }
+            let isOAuthAuthorization: (_ auth: String?) -> Bool = { auth in
+                guard var token = auth else { return false }
+                if token.lowercased().hasPrefix("bearer ") { token.removeFirst("Bearer ".count) }
+                // GitHub OAuth tokens commonly start with gho_ or ghu_
+                return token.hasPrefix("gho_") || token.hasPrefix("ghu_")
             }
             
-            // Then, add all enabled servers from the discovery service
+            // First, add any manually configured MCP server from the prompt
+            if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
+                // Check if manual server is relevant to the prompt
+                if relevantServerNames.isEmpty || relevantServerNames.contains(prompt.mcpServerLabel.lowercased()) {
+                    AppLogger.log("Adding manual MCP server: \(prompt.mcpServerLabel)", category: .openAI, level: .info)
+                    // Use secure headers from keychain-backed property
+                    let headers = prompt.secureMCPHeaders.isEmpty ? nil : prompt.secureMCPHeaders
+                    
+                    // Parse allowed tools from comma-separated string
+                    let allowedTools: [String]? = prompt.mcpAllowedTools.isEmpty ? nil : prompt.mcpAllowedTools
+                        .split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    
+                    // Map internal approval values to API-compliant values
+                    let requireApprovalValue: String? = {
+                        if prompt.mcpRequireApproval.isEmpty { return nil }
+                        switch prompt.mcpRequireApproval {
+                        case "allow": return "never"
+                        case "deny": return "always"  
+                        case "prompt": return "always" // prompt -> always require approval (safest)
+                        default: return prompt.mcpRequireApproval // pass through in case it's already API-compliant
+                        }
+                    }()
+                    
+                    let authorization = headers?["Authorization"]
+                    // Clean headers: exclude Authorization when using top-level authorization parameter  
+                    var cleanHeaders: [String: String]? = nil
+                    if let headers = headers {
+                        var filteredHeaders = headers
+                        if authorization != nil {
+                            filteredHeaders.removeValue(forKey: "Authorization")
+                        }
+                        cleanHeaders = filteredHeaders.isEmpty ? nil : filteredHeaders
+                    }
+                    // Guard against adding GitHub MCP when OAuth token isn't present
+                    if isGitHubServer(prompt.mcpServerLabel, prompt.mcpServerURL) {
+                        if !isOAuthAuthorization(authorization) {
+                            AppLogger.log("Skipping GitHub MCP (manual): OAuth token not detected (PAT or missing). Preventing 400 mcp_list_tools.", category: .openAI, level: .warning)
+                        } else {
+                            tools.append(.mcp(
+                                serverLabel: prompt.mcpServerLabel,
+                                serverURL: Optional(prompt.mcpServerURL),
+                                connectorId: nil,
+                                authorization: authorization,
+                                headers: cleanHeaders,
+                                requireApproval: requireApprovalValue,
+                                allowedTools: allowedTools,
+                                serverDescription: nil
+                            ))
+                        }
+                    } else {
+                        tools.append(.mcp(
+                            serverLabel: prompt.mcpServerLabel,
+                            serverURL: Optional(prompt.mcpServerURL),
+                            connectorId: nil,
+                            authorization: authorization,
+                            headers: cleanHeaders,
+                            requireApproval: requireApprovalValue,
+                            allowedTools: allowedTools,
+                            serverDescription: nil
+                        ))
+                    }
+                } else {
+                    AppLogger.log("Skipping manual MCP server \(prompt.mcpServerLabel): not relevant to prompt", category: .openAI, level: .info)
+                }
+            }
+            
+            // Then, add only relevant enabled servers from the discovery service
             let enabledServers = MCPDiscoveryService.shared.getEnabledServersWithConfigs()
             AppLogger.log("Found \(enabledServers.count) enabled discovery servers", category: .openAI, level: .info)
             for (server, config) in enabledServers {
@@ -817,18 +883,67 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     continue
                 }
                 
+                // Intelligent server selection: only add servers relevant to the prompt
+                let serverNameLower = server.name.lowercased()
+                if !relevantServerNames.isEmpty && !relevantServerNames.contains(serverNameLower) {
+                    AppLogger.log("Skipping server \(server.name): not relevant to prompt content", category: .openAI, level: .info)
+                    continue
+                }
+                
                 AppLogger.log("Adding discovery server: \(server.name) with \(config.selectedTools.count) tools", category: .openAI, level: .info)
                 
                 // Convert discovery service configuration to API format
-                let requireApproval = config.approvalSettings.defaultAction.rawValue
+                // Map our internal enum values to API-compliant values
+                let requireApproval: String = {
+                    switch config.approvalSettings.defaultAction {
+                    case .allow: return "never"  // allow internally = never require approval
+                    case .deny: return "always"  // deny internally = always require approval
+                    case .prompt: return "always" // prompt internally = always require approval (safest default)
+                    }
+                }()
                 let selectedTools = Array(config.selectedTools)
+                // Determine if this server should be expressed as a connector
+                let connectorId: String? = server.connectorId
+                // Derive authorization string from authConfiguration if present
+                var authorization: String? = nil
+                if let auth = config.authConfiguration["Authorization"] {
+                    authorization = auth
+                } else if let bearer = config.authConfiguration["Bearer"] { // fallback mapping
+                    authorization = bearer.starts(with: "Bearer ") ? bearer : "Bearer \(bearer)"
+                } else if let token = config.authConfiguration["access_token"] { // typical oauth
+                    authorization = token.starts(with: "Bearer ") ? token : "Bearer \(token)"
+                } else if let bearerToken = config.authConfiguration["bearer_token"] { // our UI stores this
+                    authorization = bearerToken.starts(with: "Bearer ") ? bearerToken : "Bearer \(bearerToken)"
+                }
                 
+                // Clean headers: exclude authorization-related keys when using top-level authorization parameter
+                var cleanHeaders: [String: String]? = nil
+                if !config.authConfiguration.isEmpty {
+                    var filteredHeaders = config.authConfiguration
+                    if authorization != nil {
+                        // Remove auth-related keys to avoid conflicts with top-level authorization parameter
+                        filteredHeaders.removeValue(forKey: "Authorization")
+                        filteredHeaders.removeValue(forKey: "Bearer")  
+                        filteredHeaders.removeValue(forKey: "access_token")
+                        filteredHeaders.removeValue(forKey: "bearer_token")
+                    }
+                    cleanHeaders = filteredHeaders.isEmpty ? nil : filteredHeaders
+                }
+                
+                // Guard: Skip GitHub MCP discovered server unless OAuth auth is present
+                if isGitHubServer(server.name, server.serverURL) && !isOAuthAuthorization(authorization) {
+                    AppLogger.log("Skipping GitHub MCP (discovery): OAuth token not detected (PAT or missing). Preventing 400 mcp_list_tools.", category: .openAI, level: .warning)
+                    continue
+                }
                 tools.append(.mcp(
                     serverLabel: server.name,
-                    serverURL: server.serverURL,
-                    headers: config.authConfiguration,
+                    serverURL: connectorId == nil ? server.serverURL : nil,
+                    connectorId: connectorId,
+                    authorization: authorization,
+                    headers: cleanHeaders,
                     requireApproval: requireApproval,
-                    allowedTools: selectedTools.isEmpty ? nil : selectedTools
+                    allowedTools: selectedTools.isEmpty ? nil : selectedTools,
+                    serverDescription: server.description
                 ))
             }
         } else if prompt.enableMCPTool {
@@ -848,6 +963,63 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         return tools
+    }
+    
+    /// Analyzes the prompt content to determine which MCP servers are relevant to the user's request.
+    /// Returns an array of server names that should be included based on the prompt content.
+    /// An empty array means all enabled servers should be included (fallback behavior).
+    private func analyzePromptForRelevantServers(prompt: Prompt, userMessage: String) -> [String] {
+        // Combine user message and system instructions for analysis
+        let userText = userMessage.lowercased()
+        let systemText = prompt.systemInstructions.lowercased()
+        let developerText = prompt.developerInstructions.lowercased()
+        let combinedText = "\(userText) \(systemText) \(developerText)"
+        
+        var relevantServers: [String] = []
+        
+        // GitHub-related keywords that indicate GitHub MCP server is needed
+        let githubKeywords = [
+            "github", "git", "repository", "repo", "repositories", "commit", "commits", "push", "pull", 
+            "pull request", "pr", "branch", "merge", "fork", "clone", "issue", "issues", "gist", 
+            "star", "watch", "release", "tag", "contributor", "organization", "org", "workflow", 
+            "action", "actions", "ci", "cd", "continuous integration", "deployment"
+        ]
+        
+        // Notion-related keywords that indicate Notion MCP server is needed
+        let notionKeywords = [
+            "notion", "page", "pages", "database", "databases", "workspace", "note", "notes", 
+            "document", "documents", "block", "blocks", "property", "properties", "template", 
+            "templates", "formula", "formulas", "relation", "relations", "rollup", "rollups"
+        ]
+        
+        // Check for GitHub-related content
+        let hasGitHubContent = githubKeywords.contains { keyword in
+            combinedText.contains(keyword)
+        }
+        
+        // Check for Notion-related content  
+        let hasNotionContent = notionKeywords.contains { keyword in
+            combinedText.contains(keyword)
+        }
+        
+        // Add relevant server names based on content analysis
+        if hasGitHubContent {
+            relevantServers.append("github")
+        }
+        
+        if hasNotionContent {
+            relevantServers.append("notion")
+        }
+        
+        // Special case: if no specific keywords found, allow all servers (fallback)
+        // This ensures backward compatibility and handles ambiguous requests
+        if relevantServers.isEmpty {
+            AppLogger.log("No specific server keywords detected - allowing all enabled servers", category: .openAI, level: .info)
+        } else {
+            AppLogger.log("Detected relevant servers for prompt: \(relevantServers.joined(separator: ", "))", category: .openAI, level: .info)
+        }
+        
+        return relevantServers
     }
 
     /// Gathers various API parameters based on model compatibility.
@@ -1493,12 +1665,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             headers = parsedHeaders
         }
 
+        // Map internal approval values to API-compliant values
+        let requireApprovalValue: String = {
+            switch prompt.mcpRequireApproval {
+            case "allow": return "never"
+            case "deny": return "always"
+            case "prompt": return "always" // prompt -> always require approval (safest)
+            default: return prompt.mcpRequireApproval // pass through in case it's already API-compliant
+            }
+        }()
+
         var config: [String: Any] = [
             "type": "mcp",
             "server_label": prompt.mcpServerLabel,
             "server_url": prompt.mcpServerURL,
             "headers": headers,
-            "require_approval": prompt.mcpRequireApproval,
+            "require_approval": requireApprovalValue,
         ]
 
         // Parse allowed tools from comma-separated string

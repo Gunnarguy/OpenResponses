@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// A comprehensive view for discovering, configuring, and managing MCP servers and tools
 struct MCPToolDiscoveryView: View {
@@ -8,83 +9,104 @@ struct MCPToolDiscoveryView: View {
     @State private var showOnlyOfficial = false
     @State private var showOnlyNoAuth = false
     @State private var selectedServer: MCPServerInfo? = nil
-    @State private var showingServerDetail = false
     @State private var showingAuthSetup = false
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Search and Filters
-                VStack(spacing: 12) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
+                // Debug info - remove in production
+                if discoveryService.availableServers.isEmpty {
+                    VStack {
+                        ProgressView()
+                            .padding()
+                        Text("Loading servers...")
+                            .font(.caption)
                             .foregroundColor(.secondary)
-                        TextField("Search servers and tools...", text: $searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
-                    
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            FilterChip(
-                                title: "All",
-                                isSelected: selectedCategory == nil
-                            ) {
-                                selectedCategory = nil
-                            }
-                            
-                            ForEach(MCPServerCategory.allCases, id: \.self) { category in
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    // Search and Filters
+                    VStack(spacing: 12) {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField("Search servers and tools...", text: $searchText)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
                                 FilterChip(
-                                    title: category.displayName,
-                                    isSelected: selectedCategory == category
+                                    title: "All",
+                                    isSelected: selectedCategory == nil
                                 ) {
-                                    selectedCategory = category
+                                    selectedCategory = nil
+                                }
+                                
+                                ForEach(MCPServerCategory.allCases, id: \.self) { category in
+                                    FilterChip(
+                                        title: category.displayName,
+                                        isSelected: selectedCategory == category
+                                    ) {
+                                        selectedCategory = category
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        
+                        HStack {
+                            Toggle("Official only", isOn: $showOnlyOfficial)
+                            Spacer()
+                            Toggle("No auth required", isOn: $showOnlyNoAuth)
+                        }
+                        .font(.caption)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    
+                    // Server List
+                    List {
+                        ForEach(filteredServers, id: \.name) { server in
+                            ServerRowView(
+                                server: server,
+                                isEnabled: discoveryService.isServerEnabled(server.name)
+                            ) {
+                                selectedServer = server
+                            } onToggle: { isEnabled in
+                                if isEnabled {
+                                    discoveryService.enableServer(server)
+                                } else {
+                                    discoveryService.disableServer(server.name)
                                 }
                             }
                         }
-                        .padding(.horizontal)
                     }
-                    
-                    HStack {
-                        Toggle("Official only", isOn: $showOnlyOfficial)
-                        Spacer()
-                        Toggle("No auth required", isOn: $showOnlyNoAuth)
-                    }
-                    .font(.caption)
+                    .listStyle(PlainListStyle())
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                
-                // Server List
-                List {
-                    ForEach(filteredServers, id: \.name) { server in
-                        ServerRowView(
-                            server: server,
-                            isEnabled: discoveryService.isServerEnabled(server.name)
-                        ) {
-                            selectedServer = server
-                            showingServerDetail = true
-                        } onToggle: { isEnabled in
-                            if isEnabled {
-                                discoveryService.enableServer(server)
-                            } else {
-                                discoveryService.disableServer(server.name)
-                            }
-                        }
-                    }
-                }
-                .listStyle(PlainListStyle())
             }
             .navigationTitle("MCP Tools")
             .navigationBarTitleDisplayMode(.large)
-            .sheet(isPresented: $showingServerDetail) {
-                if let server = selectedServer {
-                    ServerDetailView(server: server)
+            .onAppear {
+                // Force refresh of discovery service data
+                if discoveryService.availableServers.isEmpty {
+                    Task { @MainActor in
+                        discoveryService.objectWillChange.send()
+                    }
                 }
+            }
+            .sheet(item: $selectedServer) { server in
+                ServerDetailView(server: server)
             }
         }
     }
     
     private var filteredServers: [MCPServerInfo] {
+        // If no servers are loaded yet, return empty array
+        guard !discoveryService.availableServers.isEmpty else {
+            return []
+        }
+        
         var servers = discoveryService.searchServers(query: searchText)
         
         if let category = selectedCategory {
@@ -464,7 +486,15 @@ struct AuthConfigurationView: View {
             case .bearerToken:
                 SecureField("Bearer Token", text: Binding(
                     get: { configuration["bearer_token"] ?? "" },
-                    set: { configuration["bearer_token"] = $0 }
+                    set: {
+                        configuration["bearer_token"] = $0
+                        // Also mirror into Authorization header for server_url-based MCPs
+                        if !$0.isEmpty {
+                            configuration["Authorization"] = $0.starts(with: "Bearer ") ? $0 : "Bearer \($0)"
+                        } else {
+                            configuration.removeValue(forKey: "Authorization")
+                        }
+                    }
                 ))
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 
@@ -485,6 +515,20 @@ struct AuthConfigurationView: View {
                     TextField("Redirect URI", text: Binding(
                         get: { configuration["redirect_uri"] ?? "" },
                         set: { configuration["redirect_uri"] = $0 }
+                    ))
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                    SecureField("Access Token", text: Binding(
+                        get: { configuration["access_token"] ?? "" },
+                        set: {
+                            configuration["access_token"] = $0
+                            // Mirror into Authorization header for connectors
+                            if !$0.isEmpty {
+                                configuration["Authorization"] = $0.starts(with: "Bearer ") ? $0 : "Bearer \($0)"
+                            } else {
+                                configuration.removeValue(forKey: "Authorization")
+                            }
+                        }
                     ))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
