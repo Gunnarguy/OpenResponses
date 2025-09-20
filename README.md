@@ -4,7 +4,7 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 
 This project is currently in a "super beta" state, with a focus on achieving 100% compliance with the latest OpenAI APIs, including advanced tools like `computer` and backend conversation management.
 
-![App Screenshot](ABFB8418-0099-402B-B479-E4789A6E3536.PNG)
+![App Screenshot](OpenResponses/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png)
 
 ## 🚀 Features
 
