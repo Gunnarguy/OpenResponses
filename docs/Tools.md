@@ -1,6 +1,6 @@
 # Using Tools
 
-Extend model capabilities with built-in tools and remote MCP servers to search the web, retrieve files, call functions, or access third-party services.
+Extend model capabilities with built-in tools to search the web, retrieve files, call functions, or access third-party services.
 
 ## Overview
 
@@ -13,7 +13,6 @@ This guide covers the following tools:
 - [Function Calling](#function-calling)
 - [Code Interpreter](#code-interpreter)
 - [Image Generation](#image-generation)
-- [Connectors and MCP Servers](#connectors-and-mcp-servers)
 
 ---
 
@@ -208,42 +207,6 @@ if image_data:
     with open("city_skyline.png", "wb") as f:
         f.write(base64.b64decode(image_base64))
 ```
-
----
-
-## Connectors and MCP Servers
-
-Connectors and remote Model Context Protocol (MCP) servers give models new capabilities by allowing them to connect to and control external services.
-
-### Using a Remote MCP Server
-
-```python
-from openai import OpenAI
-
-client = OpenAI()
-
-resp = client.responses.create(
-    model="gpt-5",
-    tools=[
-        {
-            "type": "mcp",
-            "server_label": "dmcp",
-            "server_description": "A Dungeons and Dragons MCP server to assist with dice rolling.",
-            "server_url": "https://dmcp-server.deno.dev/sse",
-            "require_approval": "never",
-        },
-    ],
-    input="Roll 2d4+1",
-)
-
-print(resp.output_text)
-```
-
-You must trust any remote MCP server you use, as a malicious server could exfiltrate sensitive data.
-
-#### GitHub MCP specific note
-
-- The official GitHub MCP server prefers OAuth over Personal Access Tokens (PAT). To prevent repeated 400 Bad Request errors during tool discovery (mcp_list_tools), the app will automatically skip adding the GitHub MCP server unless an OAuth-style token is detected. If you only have a PAT configured, GitHub-related prompts will proceed without the MCP server until OAuth support is available.
 
 ---
 
