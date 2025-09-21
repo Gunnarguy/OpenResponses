@@ -419,13 +419,8 @@ struct CompactToolIndicator: View {
             if prompt.enableComputerUse { list.append("computer") }
             if prompt.enableCustomTool { list.append("function") }
             if prompt.enableMCPTool { 
-                // Include MCP servers from both manual config and discovery service
+                // Include MCP servers from manual config only
                 if !prompt.mcpServerLabel.isEmpty {
-                    list.append("mcp")
-                }
-                // Count enabled discovery servers
-                let enabledServerCount = MCPDiscoveryService.shared.getEnabledServersWithConfigs().count
-                if enabledServerCount > 0 {
                     list.append("mcp")
                 }
             }

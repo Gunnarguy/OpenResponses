@@ -26,14 +26,8 @@ class ChatViewModel: ObservableObject {
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
     
-    /// When non-nil, an MCP tool approval is required before proceeding with the tool call.
-    @Published var pendingMCPApproval: MCPApprovalRequest?
-    
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
-    
-    /// Prevents multiple concurrent MCP approval resolution tasks
-    private var isResolvingMCPApprovals: Bool = false
 
     /// Cache for container file content to avoid duplicate downloads
     private var containerFileCache: [String: Data] = [:]
@@ -289,126 +283,6 @@ class ChatViewModel: ObservableObject {
                 self.streamingMessageId = nil
                 self.isStreaming = false
             }
-        }
-    }
-    
-    // MARK: - MCP Approval Methods
-    
-    /// Called when the user approves the pending MCP tool call.
-    func approveMCPTool() {
-        guard let request = pendingMCPApproval else { return }
-        pendingMCPApproval = nil
-        Task { [weak self] in
-            await self?.sendMCPApprovalResponse(request, approve: true)
-        }
-    }
-
-    /// Called when the user denies the pending MCP tool call; cancels the action gracefully.
-    func denyMCPTool() {
-        guard let request = pendingMCPApproval else { return }
-        pendingMCPApproval = nil
-        Task { [weak self] in
-            await self?.sendMCPApprovalResponse(request, approve: false)
-        }
-    }
-    
-    /// Handles MCP approval requests from streaming events
-    private func handleMCPApprovalRequest(_ item: StreamingItem, for messageId: UUID) {
-        guard !isResolvingMCPApprovals else {
-            AppLogger.log("[MCP] Already resolving MCP approvals - ignoring new request", category: .openAI, level: .warning)
-            return
-        }
-        
-        // Extract approval request details
-        guard let toolName = item.name,
-              let arguments = item.arguments,
-              let serverLabel = item.serverLabel else {
-            AppLogger.log("[MCP] Missing required fields in approval request: name=\(item.name ?? "nil"), arguments=\(item.arguments ?? "nil"), serverLabel=\(item.serverLabel ?? "nil")", category: .openAI, level: .error)
-            return
-        }
-        
-        let approvalRequest = MCPApprovalRequest(
-            id: item.id,
-            type: item.type,
-            serverLabel: serverLabel,
-            toolName: toolName,
-            arguments: arguments,
-            requestContext: nil // Could be extracted from content if available
-        )
-        
-        AppLogger.log("[MCP] Approval request received: server=\(serverLabel), tool=\(toolName)", category: .openAI, level: .info)
-        
-        // Show approval UI
-        pendingMCPApproval = approvalRequest
-        updateStreamingStatus(for: "mcp.approval_requested")
-        
-        // Add system message to show what's happening
-        let systemMsg = ChatMessage(
-            role: .system,
-            text: "🔐 MCP Tool Approval Required\n\nServer: \(serverLabel)\nTool: \(toolName)\n\nPlease review and approve or deny this action."
-        )
-        messages.append(systemMsg)
-    }
-    
-    /// Sends the MCP approval response back to the API
-    private func sendMCPApprovalResponse(_ request: MCPApprovalRequest, approve: Bool) async {
-        guard !isResolvingMCPApprovals else {
-            AppLogger.log("[MCP] Already resolving MCP approval - ignoring duplicate", category: .openAI, level: .warning)
-            return
-        }
-        
-        isResolvingMCPApprovals = true
-        AppLogger.log("[MCP] Sending approval response: approve=\(approve) for request=\(request.id)", category: .openAI, level: .info)
-        
-        await MainActor.run {
-            // Add feedback message
-            let feedbackMsg = ChatMessage(
-                role: .system,
-                text: approve ? "✅ MCP tool approved - proceeding with \(request.toolName)" : "❌ MCP tool denied - action canceled"
-            )
-            self.messages.append(feedbackMsg)
-        }
-        
-        do {
-            // Create the MCP approval response
-            let approvalResponse = MCPApprovalResponse(
-                approvalRequestId: request.id,
-                approve: approve
-            )
-            
-            // Send the approval response as a new request with the previous response ID
-            let response = try await api.sendMCPApprovalResponse(
-                approvalResponse: approvalResponse,
-                model: activePrompt.openAIModel,
-                previousResponseId: lastResponseId
-            )
-            
-            await MainActor.run {
-                // Continue with the new streaming response
-                if approve {
-                    self.lastResponseId = response.id
-                    self.updateStreamingStatus(for: "mcp.proceeding")
-                    // The API will continue streaming with the tool execution
-                } else {
-                    // Reset state as the flow is terminated
-                    self.streamingStatus = .idle
-                    self.isStreaming = false
-                    self.streamingMessageId = nil
-                }
-            }
-            
-        } catch {
-            AppLogger.log("[MCP] Error sending approval response: \(error)", category: .openAI, level: .error)
-            await MainActor.run {
-                self.handleError(error)
-                self.streamingStatus = .idle
-                self.isStreaming = false
-                self.streamingMessageId = nil
-            }
-        }
-        
-        await MainActor.run {
-            self.isResolvingMCPApprovals = false
         }
     }
     
@@ -1104,8 +978,6 @@ class ChatViewModel: ObservableObject {
                     toolName = "code_interpreter"
                 case "file_search":
                     toolName = "file_search"
-                case "mcp_call", "mcp_list_tools":
-                    toolName = "mcp"
                 default:
                     toolName = name
                 }
@@ -1114,8 +986,6 @@ class ChatViewModel: ObservableObject {
             toolName = "computer"
         case "image_generation_call":
             toolName = "image_generation"
-        case "mcp_call", "mcp_list_tools", "mcp_approval_request":
-            toolName = "mcp"
         default:
             break
         }
@@ -1912,20 +1782,16 @@ class ChatViewModel: ObservableObject {
             }
             updateStreamingStatus(for: "computer.completed")
             
-        // MCP streaming events
         case "response.output_item.added":
-            // Check if this is an MCP approval request
-            if let item = chunk.item, item.type == "mcp_approval_request" {
-                handleMCPApprovalRequest(item, for: messageId)
-            }
-            // Track tool usage for MCP items
-            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
-                trackToolUsage(for: messageId, tool: "mcp")
+            // Handle output item addition
+            if let item = chunk.item {
+                // Track tool usage for items
+                trackToolUsage(item, for: messageId)
             }
             
         case "response.output_item.completed":
-            // Handle MCP item completion
-            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
+            // Handle item completion
+            if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
             }
             
@@ -2806,14 +2672,6 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        // Handle MCP tool list loading completion
-        if item.type == "mcp_list_tools" {
-            if let serverLabel = item.serverLabel {
-                AppLogger.log("📋 [MCP] Tool list loaded from server \(serverLabel)", category: .openAI, level: .info)
-            } else {
-                AppLogger.log("📋 [MCP] Tool list loaded for item \(item.id)", category: .openAI, level: .info)
-            }
-        }
         
         // Note: For other image types like image_file/image_url, they would be handled by the annotation system
         // or the fallback mechanism that fetches the final response
@@ -3139,42 +2997,6 @@ class ChatViewModel: ObservableObject {
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
             logActivity("Response completed")
-        case "mcp.approval_requested":
-            streamingStatus = .mcpApprovalRequested
-            logActivity("MCP tool approval required")
-        case "mcp.proceeding":
-            streamingStatus = .mcpProceeding
-            logActivity("Proceeding with MCP tool")
-        case "response.output_item.added" where item?.type == "mcp_list_tools":
-            streamingStatus = .runningTool("mcp")
-            if let serverLabel = item?.serverLabel {
-                logActivity("MCP: Loading tools from \(serverLabel)")
-            } else {
-                logActivity("MCP: Loading available tools")
-            }
-        case "response.output_item.added" where item?.type == "mcp_call":
-            streamingStatus = .runningTool("mcp")
-            if let toolName = item?.name, let serverLabel = item?.serverLabel {
-                logActivity("MCP: Executing \(toolName) on \(serverLabel)")
-            } else if let toolName = item?.name {
-                logActivity("MCP: Executing \(toolName)")
-            } else {
-                logActivity("MCP: Running tool call")
-            }
-        case "response.output_item.completed" where item?.type == "mcp_list_tools":
-            if let serverLabel = item?.serverLabel {
-                logActivity("MCP: Tools loaded from \(serverLabel)")
-            } else {
-                logActivity("MCP: Tools loaded successfully")
-            }
-        case "response.output_item.completed" where item?.type == "mcp_call":
-            if let toolName = item?.name, let serverLabel = item?.serverLabel {
-                logActivity("MCP: Completed \(toolName) on \(serverLabel)")
-            } else if let toolName = item?.name {
-                logActivity("MCP: Completed \(toolName)")
-            } else {
-                logActivity("MCP: Tool call completed")
-            }
         default:
             // Keep current status for unknown events
             break
