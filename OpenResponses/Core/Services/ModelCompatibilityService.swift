@@ -313,8 +313,8 @@ class ModelCompatibilityService {
         "gpt-5": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp], // Added .mcp support
-            // Note: temperature is not supported for gpt-5 per API; use reasoning_effort instead
-            parameters: ["top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            // Note: temperature and top_p are not supported for gpt-5 per API; use reasoning_effort instead
+            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
                 codeInterpreter: .enabled,

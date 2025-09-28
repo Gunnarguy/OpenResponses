@@ -16,23 +16,12 @@ This section covers advanced features and concepts for building sophisticated ap
 
 ## Overview
 
-- **[Connectors and MCP Servers](#connectors-and-mcp-servers):** Extend model capabilities by connecting to external services.
 - **[Prompt Caching](#prompt-caching):** Reduce latency and cost for repetitive prompts.
 - **[Reasoning Models](#reasoning-models):** Leverage models designed for complex problem-solving and planning.
 - **[Streaming](#streaming):** Receive model outputs as they are generated for real-time applications.
 - **[Structured Outputs](#structured-outputs):** Ensure model responses conform to a specific JSON schema.
 
 ---
-
-## Connectors and MCP Servers
-
-Connectors and remote Model Context Protocol (MCP) servers give models new capabilities by allowing them to connect to and control external services. This enables you to build powerful integrations with services like Google Workspace, Dropbox, or your own custom APIs.
-
-### Using a Remote MCP Server
-
-You can connect to any server on the public internet that implements a remote MCP server. This requires providing a `server_url` and potentially an OAuth token for authorization.
-
-**Important:** You must trust any remote MCP server you use, as a malicious server could exfiltrate sensitive data from the model's context.
 
 ```python
 from openai import OpenAI

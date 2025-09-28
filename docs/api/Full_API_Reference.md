@@ -5,12 +5,11 @@ OpenResponses has successfully completed Phase 1 of its development roadmap! All
 - ✅ **Direct File Uploads**: Complete implementation with 43+ supported file types
 - ✅ **Computer Use Tool**: 100% bulletproof with all OpenAI actions and comprehensive error handling
 - ✅ **Image Generation**: Full streaming support with real-time feedback
-- ✅ **MCP Integration**: Complete discovery system, secure storage, and approval workflow
 - ✅ **Code Interpreter**: Full artifact parsing with rich UI for all 43 file types
 - ✅ **File Search**: Multi-vector-store search with advanced configurations
 - ✅ **Performance Optimizations**: Ultra-intuitive UI with 3x faster updates and reduced overhead
 
-**To resume Phase 2:** Focus on backend Conversations API integration and cross-device sync capabilities. All foundational systems are complete and robust.es: Definitive API and Codebase Integration Reference
+**To resume Phase 2:** Focus on backend Conversations API integration and cross-device sync capabilities. All foundational systems are complete and robust.
 
 ---
 
@@ -80,7 +79,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Not Implemented**. The app manages state locally by passing `previous_response_id`. It does not use the Conversations API.                                                                                                                 |
 | `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Partially Implemented**. Streaming is enabled when requested; text deltas, tool calls, image generation events, and container file annotations are handled. Some lesser-used event types are still pending.                                |
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. Controlled by `Prompt.backgroundMode`; included by `OpenAIService.buildRequestObject` when enabled.                                                                                                                         |
-| `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, MCP, and Custom Function tools. All major tools are implemented.                                                                 |
+| `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, and Custom Function tools. All major tools are implemented.                                                                      |
 | `tool_choice`  | `String` or `Object` | No       | Forces the model to use a specific tool.                                                                                               | **Implemented**. `Prompt.toolChoice`; added to the request when not `auto`.                                                                                                                                                                  |
 | `include`      | `Array<String>`      | No       | Specifies additional data to include in the output (e.g., `message.output_text.logprobs`).                                             | **Partially Implemented**. Built by `buildIncludeArray`: supports `file_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`, `reasoning.encrypted_content`, and `message.input_image.image_url`.          |
 
@@ -161,19 +160,13 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 - **App Status:** **Fully Implemented**.
 - **Implementation Details:** Enabled via `Prompt.enableImageGeneration`. Streaming-supported with partial previews and completion events. Config includes `size: auto`, `quality: high`, `output_format: png`.
 
-**F. MCP Tool**
-
-- **Type:** `mcp`
-- **App Status:** **🎉 100% Complete - Phase 1 Finished**.
-- **Implementation Details:** Enabled via `Prompt.enableMCPTool`. Manual servers use (`server_url` + `headers`) and optional `require_approval` and `allowed_tools`. ✅ Now supports OpenAI Connectors via `connector_id` + `authorization` in addition to `server_url`. ✅ Discovery registry includes connector-aware entries (e.g., Google Drive → `connector_googledrive`). ✅ `OpenAIService.buildTools()` maps discovery configs to either `server_url` or `connector_id` automatically and derives `authorization` from saved tokens (Keychain-backed). ✅ Fully integrated into `APICapabilities.swift` and `buildTools()` with encoding/decoding for `connector_id`, `authorization`, and `server_description`. ✅ Complete discovery system with `MCPDiscoveryService`, `MCPToolDiscoveryView`, built-in server registry (GitHub, Notion, Slack, Google Drive, Shopify, Airtable, etc.), user-friendly tool selection UI, and seamless integration with `SettingsView`. ✅ `ChatViewModel` and `ModelCompatibilityView` properly track MCP tool usage. ✅ **Security:** All tokens stored in Keychain. ✅ **Approvals:** MCP approval system via `MCPApprovalView.swift` with streaming event handling.
-
-**G. Custom Tool**
+**F. Custom Tool**
 
 - **Type:** `function` (user-defined)
 - **App Status:** **Fully Implemented**.
 - **Implementation Details:** Enabled via `prompt.enableCustomTool`. Uses `customToolName` and `customToolDescription` from prompt to create function schema.
 
-**H. Computer Use**
+**G. Computer Use**
 
 - **Type:** `computer_use_preview`
 - **App Status:** **🎉 COMPLETE & PRODUCTION-READY**. Fully functional native implementation with all technical issues resolved.
@@ -346,7 +339,7 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 | **File Input**              | ✅ **Complete**              | Full support for both `file_id` references and direct file uploads with `file_data` - 43+ supported file types                     |
 | **Audio Input**             | ❌ **Intentionally Removed** | Audio capture and API integration intentionally removed from the app to focus on core features                                     |
 | **Basic Tools**             | ✅ **Complete**              | Web search, code interpreter, file search fully integrated with advanced configurations                                            |
-| **Advanced Tools**          | ✅ **Complete**              | Computer Use (100% bulletproof), MCP (complete discovery system), Custom Functions (full implementation)                           |
+| **Advanced Tools**          | ✅ **Complete**              | Computer Use (100% bulletproof), Custom Functions (full implementation)                                                            |
 | **Streaming Response**      | ✅ **Complete**              | Comprehensive handling for text deltas, tool calls, image generation, computer use, with real-time status                          |
 | **Rich Content Output**     | 🟡 **Partial**               | Text rendering complete with copy functionality; artifact parsing complete for 43 file types; some annotation enhancements pending |
 | **Conversation Management** | ❌ **Phase 2 Target**        | Local storage complete and robust; backend Conversations API integration is the next major milestone                               |
@@ -361,10 +354,9 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 2. ✅ **Image Input Processing**: Full image attachment system with detail level control and base64 encoding
 3. ✅ **Computer Use Tool**: 100% bulletproof implementation with all OpenAI actions and comprehensive error handling
 4. ✅ **Image Generation**: Complete streaming support with real-time feedback and high-quality output
-5. ✅ **MCP Integration**: Full discovery system, secure keychain storage, and complete approval workflow
-6. ✅ **Code Interpreter**: Complete artifact parsing for all 43 file types with rich UI and copy functionality
-7. ✅ **File Search**: Multi-vector-store search with advanced configurations
-8. ✅ **Performance Optimizations**: 3x faster UI updates, reduced network overhead, intelligent caching
+5. ✅ **Code Interpreter**: Complete artifact parsing for all 43 file types with rich UI and copy functionality
+6. ✅ **File Search**: Multi-vector-store search with advanced configurations
+7. ✅ **Performance Optimizations**: 3x faster UI updates, reduced network overhead, intelligent caching
 
 **Phase 2: Next Major Milestone - Backend Integration**
 

@@ -18,9 +18,6 @@ enum StreamingStatus: Equatable {
     case streamingText
     case finalizing
     case done
-    // MCP-specific states
-    case mcpApprovalRequested
-    case mcpProceeding
 
     /// A user-friendly description of the current status.
     var description: String {
@@ -57,10 +54,6 @@ enum StreamingStatus: Equatable {
             return "Finalizing..."
         case .done:
             return "Done"
-        case .mcpApprovalRequested:
-            return "🔐 MCP approval required..."
-        case .mcpProceeding:
-            return "🔗 Continuing with MCP tool..."
         }
     }
 }

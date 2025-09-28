@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
 
+/// Coordinates the end-to-end chat experience, binding UI state, OpenAI streaming, and on-device storage.
+/// Splitting streaming logic into `ChatViewModel+Streaming` keeps this primary type focused on orchestration.
 @MainActor
 class ChatViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -26,38 +28,32 @@ class ChatViewModel: ObservableObject {
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
     
-    /// When non-nil, an MCP tool approval is required before proceeding with the tool call.
-    @Published var pendingMCPApproval: MCPApprovalRequest?
-    
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
-    
-    /// Prevents multiple concurrent MCP approval resolution tasks
-    private var isResolvingMCPApprovals: Bool = false
 
     /// Cache for container file content to avoid duplicate downloads
-    private var containerFileCache: [String: Data] = [:]
+    var containerFileCache: [String: Data] = [:]
     /// Cache for processed artifacts to avoid duplicate processing
-    private var processedAnnotations: Set<String> = []
+    var processedAnnotations: Set<String> = []
     
     // MARK: - Private Properties
-    private let api: OpenAIServiceProtocol
+    let api: OpenAIServiceProtocol
     private let computerService: ComputerService
     private let storageService: ConversationStorageService
-    private var streamingMessageId: UUID?
+    var streamingMessageId: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
     private lazy var networkMonitor = NetworkMonitor.shared
     // Coalesces rapid-fire text deltas into fewer UI updates per message.
     // Keyed by messageId.
-    private var deltaBuffers: [UUID: String] = [:]
+    var deltaBuffers: [UUID: String] = [:]
     private var deltaFlushWorkItems: [UUID: DispatchWorkItem] = [:]
     // Flush after this many milliseconds without new punctuation, to avoid lag.
     private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
     // Minimum buffer size before forcing a flush (characters)
-    private let minBufferSizeForFlush: Int = 20
+    let minBufferSizeForFlush: Int = 20
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
-    private var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
+    var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
@@ -136,7 +132,7 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    private var lastResponseId: String? {
+    var lastResponseId: String? {
         get { activeConversation?.lastResponseId }
         set {
             guard var conversation = activeConversation else { return }
@@ -292,126 +288,6 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    // MARK: - MCP Approval Methods
-    
-    /// Called when the user approves the pending MCP tool call.
-    func approveMCPTool() {
-        guard let request = pendingMCPApproval else { return }
-        pendingMCPApproval = nil
-        Task { [weak self] in
-            await self?.sendMCPApprovalResponse(request, approve: true)
-        }
-    }
-
-    /// Called when the user denies the pending MCP tool call; cancels the action gracefully.
-    func denyMCPTool() {
-        guard let request = pendingMCPApproval else { return }
-        pendingMCPApproval = nil
-        Task { [weak self] in
-            await self?.sendMCPApprovalResponse(request, approve: false)
-        }
-    }
-    
-    /// Handles MCP approval requests from streaming events
-    private func handleMCPApprovalRequest(_ item: StreamingItem, for messageId: UUID) {
-        guard !isResolvingMCPApprovals else {
-            AppLogger.log("[MCP] Already resolving MCP approvals - ignoring new request", category: .openAI, level: .warning)
-            return
-        }
-        
-        // Extract approval request details
-        guard let toolName = item.name,
-              let arguments = item.arguments,
-              let serverLabel = item.serverLabel else {
-            AppLogger.log("[MCP] Missing required fields in approval request: name=\(item.name ?? "nil"), arguments=\(item.arguments ?? "nil"), serverLabel=\(item.serverLabel ?? "nil")", category: .openAI, level: .error)
-            return
-        }
-        
-        let approvalRequest = MCPApprovalRequest(
-            id: item.id,
-            type: item.type,
-            serverLabel: serverLabel,
-            toolName: toolName,
-            arguments: arguments,
-            requestContext: nil // Could be extracted from content if available
-        )
-        
-        AppLogger.log("[MCP] Approval request received: server=\(serverLabel), tool=\(toolName)", category: .openAI, level: .info)
-        
-        // Show approval UI
-        pendingMCPApproval = approvalRequest
-        updateStreamingStatus(for: "mcp.approval_requested")
-        
-        // Add system message to show what's happening
-        let systemMsg = ChatMessage(
-            role: .system,
-            text: "🔐 MCP Tool Approval Required\n\nServer: \(serverLabel)\nTool: \(toolName)\n\nPlease review and approve or deny this action."
-        )
-        messages.append(systemMsg)
-    }
-    
-    /// Sends the MCP approval response back to the API
-    private func sendMCPApprovalResponse(_ request: MCPApprovalRequest, approve: Bool) async {
-        guard !isResolvingMCPApprovals else {
-            AppLogger.log("[MCP] Already resolving MCP approval - ignoring duplicate", category: .openAI, level: .warning)
-            return
-        }
-        
-        isResolvingMCPApprovals = true
-        AppLogger.log("[MCP] Sending approval response: approve=\(approve) for request=\(request.id)", category: .openAI, level: .info)
-        
-        await MainActor.run {
-            // Add feedback message
-            let feedbackMsg = ChatMessage(
-                role: .system,
-                text: approve ? "✅ MCP tool approved - proceeding with \(request.toolName)" : "❌ MCP tool denied - action canceled"
-            )
-            self.messages.append(feedbackMsg)
-        }
-        
-        do {
-            // Create the MCP approval response
-            let approvalResponse = MCPApprovalResponse(
-                approvalRequestId: request.id,
-                approve: approve
-            )
-            
-            // Send the approval response as a new request with the previous response ID
-            let response = try await api.sendMCPApprovalResponse(
-                approvalResponse: approvalResponse,
-                model: activePrompt.openAIModel,
-                previousResponseId: lastResponseId
-            )
-            
-            await MainActor.run {
-                // Continue with the new streaming response
-                if approve {
-                    self.lastResponseId = response.id
-                    self.updateStreamingStatus(for: "mcp.proceeding")
-                    // The API will continue streaming with the tool execution
-                } else {
-                    // Reset state as the flow is terminated
-                    self.streamingStatus = .idle
-                    self.isStreaming = false
-                    self.streamingMessageId = nil
-                }
-            }
-            
-        } catch {
-            AppLogger.log("[MCP] Error sending approval response: \(error)", category: .openAI, level: .error)
-            await MainActor.run {
-                self.handleError(error)
-                self.streamingStatus = .idle
-                self.isStreaming = false
-                self.streamingMessageId = nil
-            }
-        }
-        
-        await MainActor.run {
-            self.isResolvingMCPApprovals = false
-        }
-    }
-    
     private func setupBindings() {
         networkMonitor.$isConnected
             .receive(on: DispatchQueue.main)
@@ -475,7 +351,7 @@ class ChatViewModel: ObservableObject {
 
     /// Recomputes cumulative token usage across the conversation.
     /// Uses final counts when available; falls back to live estimates for in-flight assistant messages.
-    private func recomputeCumulativeUsage() {
+    func recomputeCumulativeUsage() {
         var inputSum = 0
         var outputSum = 0
         var totalSum = 0
@@ -585,10 +461,8 @@ class ChatViewModel: ObservableObject {
         if imageAttachments != nil {
             pendingImageAttachments.removeAll()
         }
-        if !pendingFileData.isEmpty {
-            pendingFileData.removeAll()
-            pendingFileNames.removeAll()
-        }
+        // NOTE: Don't clear pendingFileData/pendingFileNames here - they're still needed for the API call
+        // They will be cleared after successful API call completion
     // no-op: audio removed
         
         // streamingEnabled determined earlier
@@ -676,6 +550,8 @@ class ChatViewModel: ObservableObject {
                     await MainActor.run {
                         self.handleError(error)
                         self.logActivity("Error: \(error.localizedDescription)")
+                        // Clear pending files on error so they don't get stuck
+                        self.clearPendingFileAttachments()
                         // Remove the placeholder message on error
                         self.messages.removeAll { $0.id == assistantMsgId }
                         // CRITICAL: Complete streaming state reset on error
@@ -855,7 +731,6 @@ class ChatViewModel: ObservableObject {
         guard !callId.isEmpty else { throw OpenAIServiceError.invalidResponseData }
         guard var actionData = extractComputerActionFromOutputItem(outputItem) else { throw OpenAIServiceError.invalidResponseData }
 
-        // Helper (disabled in ultra-strict): attach derived URL to screenshot to avoid blank page
         if !activePrompt.ultraStrictComputerUse {
             if actionData.type == "screenshot", actionData.parameters["url"] == nil,
                let derived = deriveURLForScreenshot(from: messageId) {
@@ -863,8 +738,7 @@ class ChatViewModel: ObservableObject {
                 actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
             }
         }
-        
-        // Check for pending safety checks – pause and ask the user
+
         if let safetyChecks = outputItem.pendingSafetyChecks, !safetyChecks.isEmpty {
             AppLogger.log("[CUA] (resume) SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
             for check in safetyChecks {
@@ -878,16 +752,14 @@ class ChatViewModel: ObservableObject {
                     previousResponseId: previousId,
                     messageId: messageId
                 )
-                // Keep awaiting state so tool chain is blocked until approval
                 self.isAwaitingComputerOutput = true
                 self.streamingStatus = .usingComputer
                 let sys = ChatMessage(role: .system, text: "⚠️ Action requires approval before proceeding.")
                 self.messages.append(sys)
             }
-            return // Wait for user decision
+            return
         }
-        
-        // Helper (disabled in ultra-strict): pre-navigation before first click if on blank page
+
         if !activePrompt.ultraStrictComputerUse {
             if actionData.type == "click" && computerService.isOnBlankPage(),
                let derived = deriveURLForScreenshot(from: messageId) {
@@ -897,7 +769,6 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        // Intent-guided override: perform the user's explicit search query on known engines
         if !activePrompt.ultraStrictComputerUse {
             if !appliedSearchOverrideForMessage.contains(messageId),
                let searchQuery = extractExplicitSearchQuery(for: messageId) {
@@ -910,7 +781,6 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        // If this is a click and the user named a target, resolve coordinates by visible text
         if !activePrompt.ultraStrictComputerUse {
             if actionData.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
                 if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
@@ -925,24 +795,18 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("[CUA] (resume) Executing action type=\(actionData.type) for callId='\(callId)'", category: .openAI)
         let result = try await computerService.executeAction(actionData)
 
-        // Track if we should halt AFTER sending tool output (to avoid API 400s for missing output)
         var abortAfterOutput = false
-        // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
-        // so we can capture any screenshots or results first
         if actionData.type == "wait" {
             consecutiveWaitCount += 1
             AppLogger.log("[CUA] (resume) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
-
             if consecutiveWaitCount >= maxConsecutiveWaits {
-                // Do NOT return early. We'll send the tool output first, then halt gracefully.
                 abortAfterOutput = true
                 AppLogger.log("[CUA] (resume) Reached max consecutive waits; will send output and then halt chain.", category: .openAI, level: .error)
             }
         } else {
-            // Reset wait counter for non-wait actions
             consecutiveWaitCount = 0
         }
-        
+
         if let screenshot = result.screenshot, !screenshot.isEmpty {
             AppLogger.log("[CUA] (resume) Screenshot captured (\(screenshot.count) b64 chars), adding to message", category: .openAI, level: .info)
             await MainActor.run {
@@ -954,20 +818,14 @@ class ChatViewModel: ObservableObject {
                         if updatedMessage.images == nil { updatedMessage.images = [] }
                         updatedMessage.images?.removeAll()
                         updatedMessage.images?.append(uiImage)
-                        
-                        // Update the message in the messages array
                         var updatedMessages = self.messages
                         updatedMessages[index] = updatedMessage
-                        self.messages = updatedMessages  // This triggers the setter and UI update
-                        
-                        // Explicitly notify that the UI should refresh and give it a moment to process
+                        self.messages = updatedMessages
                         Task { @MainActor in
                             self.objectWillChange.send()
-                            // Give SwiftUI a moment to process the change
-                            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                            self.objectWillChange.send() // Second notification to ensure UI updates
+                            try? await Task.sleep(nanoseconds: 50_000_000)
+                            self.objectWillChange.send()
                         }
-                        
                         AppLogger.log("[CUA] (resume) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
                     } else {
                         AppLogger.log("[CUA] (resume) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
@@ -976,19 +834,19 @@ class ChatViewModel: ObservableObject {
                     AppLogger.log("[CUA] (resume) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
                 }
             }
+
             let output: [String: Any] = [
                 "type": "computer_screenshot",
                 "image_url": "data:image/png;base64,\(screenshot)"
             ]
-            
-            // Include acknowledged safety checks if they were present
+
             let acknowledgedSafetyChecks = outputItem.pendingSafetyChecks
             if let safetyChecks = acknowledgedSafetyChecks {
                 AppLogger.log("[CUA] (resume) Including \(safetyChecks.count) acknowledged safety checks for callId='\(callId)'", category: .openAI)
             }
-            
+
             AppLogger.log("[CUA] (resume) Sending computer_call_output with callId='\(callId)'", category: .openAI, level: .info)
-            
+
             let response = try await api.sendComputerCallOutput(
                 callId: callId,
                 output: output,
@@ -998,13 +856,12 @@ class ChatViewModel: ObservableObject {
                 currentUrl: result.currentURL
             )
             if abortAfterOutput {
-                // We've closed out the pending tool call with a valid output. Now halt the chain cleanly.
                 await MainActor.run {
                     self.consecutiveWaitCount = 0
                     self.isAwaitingComputerOutput = false
                     self.isStreaming = false
                     self.streamingStatus = .idle
-                    self.lastResponseId = nil // Prevent further auto-resolution and avoid 400s later
+                    self.lastResponseId = nil
                     let sys = ChatMessage(
                         role: .system,
                         text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
@@ -1017,340 +874,6 @@ class ChatViewModel: ObservableObject {
         } else {
             AppLogger.log("[CUA] (resume) No screenshot; clearing previousId", category: .openAI, level: .warning)
             await MainActor.run { self.lastResponseId = nil }
-        }
-    }
-
-    /// Internal helper to perform the send after optional transcription is done
-    private func performSend(finalUserText: String, fileAttachments: [[String: Any]]?, imageAttachments: [InputImage]?, previousResponseId: String?, assistantMsgId: UUID) async {
-        let streamingEnabled = activePrompt.enableStreaming
-        await MainActor.run { self.streamingStatus = .connecting }
-        do {
-            if streamingEnabled {
-                let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
-                for try await chunk in stream {
-                    if Task.isCancelled { 
-                        await MainActor.run { [weak self] in
-                            self?.handleError(CancellationError())
-                        }
-                        break 
-                    }
-                    await MainActor.run { self.handleStreamChunk(chunk, for: assistantMsgId) }
-                }
-            } else {
-                let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: fileAttachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: previousResponseId)
-                await MainActor.run { self.handleNonStreamingResponse(response, for: assistantMsgId) }
-            }
-        } catch {
-            if !(error is CancellationError) {
-                await MainActor.run {
-                    self.handleError(error)
-                    self.messages.removeAll { $0.id == assistantMsgId }
-                    self.streamingStatus = .idle
-                }
-            }
-        }
-        await MainActor.run {
-            if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
-                AnalyticsService.shared.trackEvent(
-                    name: AnalyticsEvent.messageReceived,
-                    parameters: [
-                        AnalyticsParameter.model: self.activePrompt.openAIModel,
-                        AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
-                        AnalyticsParameter.streamingEnabled: true,
-                        "has_images": finalMessage.images?.isEmpty == false
-                    ]
-                )
-            }
-            self.streamingMessageId = nil
-            self.isStreaming = false
-            if self.streamingStatus != .idle { 
-                self.streamingStatus = .done
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                    self?.streamingStatus = .idle
-                }
-            }
-        }
-    }
-
-    private func trackToolUsage(for messageId: UUID, tool: String) {
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-        
-        var updatedMessages = messages
-        if updatedMessages[msgIndex].toolsUsed == nil {
-            updatedMessages[msgIndex].toolsUsed = []
-        }
-        if !updatedMessages[msgIndex].toolsUsed!.contains(tool) {
-            updatedMessages[msgIndex].toolsUsed!.append(tool)
-            messages = updatedMessages
-        }
-    }
-
-    /// Track which tools were used in a streaming response
-    private func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-        
-        var toolName: String?
-        
-        // Detect tool type from the streaming item
-        switch item.type {
-        case "tool_call":
-            if let name = item.name {
-                switch name {
-                case APICapabilities.ToolType.computer.rawValue:
-                    toolName = "computer"
-                case "web_search":
-                    toolName = "web_search"
-                case "code_interpreter":
-                    toolName = "code_interpreter"
-                case "file_search":
-                    toolName = "file_search"
-                case "mcp_call", "mcp_list_tools":
-                    toolName = "mcp"
-                default:
-                    toolName = name
-                }
-            }
-        case "computer_call":
-            toolName = "computer"
-        case "image_generation_call":
-            toolName = "image_generation"
-        case "mcp_call", "mcp_list_tools", "mcp_approval_request":
-            toolName = "mcp"
-        default:
-            break
-        }
-        
-        // Add the tool to the message's toolsUsed array
-        if let tool = toolName {
-            var updatedMessages = messages
-            if updatedMessages[msgIndex].toolsUsed == nil {
-                updatedMessages[msgIndex].toolsUsed = []
-            }
-            if !updatedMessages[msgIndex].toolsUsed!.contains(tool) {
-                updatedMessages[msgIndex].toolsUsed!.append(tool)
-                messages = updatedMessages
-                print("🔧 [Tool Tracking] Added tool '\(tool)' to message \(messageId)")
-            }
-        }
-    }
-    
-    /// Handles the selection of a file, uploads it, and prepares it for the next message.
-    func attachFile(from url: URL) {
-        // Ensure we can access the file's data
-        guard url.startAccessingSecurityScopedResource() else {
-            handleError(NSError(domain: "FileAttachmentError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not access file."]))
-            return
-        }
-        
-        // Show a status message
-        let attachingMessage = ChatMessage(role: .system, text: "Attaching \(url.lastPathComponent)...", images: nil)
-        messages.append(attachingMessage)
-        
-        Task {
-            do {
-                // Read file data
-                let fileData = try Data(contentsOf: url)
-                let filename = url.lastPathComponent
-                
-                // Upload the file using the API service
-                let openAIFile = try await api.uploadFile(
-                    fileData: fileData,
-                    filename: filename,
-                    purpose: "assistants"
-                )
-                
-                // Stop accessing the resource once we're done
-                url.stopAccessingSecurityScopedResource()
-                
-                await MainActor.run {
-                    // Add the file ID to the pending list
-                    self.pendingFileAttachments.append(openAIFile.id)
-                    
-                    // Update the status message
-                    if let lastMessageIndex = self.messages.lastIndex(where: { $0.id == attachingMessage.id }) {
-                        self.messages[lastMessageIndex].text = "✅ File '\(url.lastPathComponent)' attached. It will be sent with your next message."
-                    }
-                }
-            } catch {
-                url.stopAccessingSecurityScopedResource()
-                await MainActor.run {
-                    self.handleError(error)
-                    // Update the status message to show failure
-                    if let lastMessageIndex = self.messages.lastIndex(where: { $0.id == attachingMessage.id }) {
-                        self.messages[lastMessageIndex].text = "❌ Failed to attach file: \(error.localizedDescription)"
-                    }
-                }
-            }
-        }
-    }
-    
-    /// Handles the selection of images for attachment to the next message
-    func attachImages(_ images: [UIImage]) {
-        // Add images to pending attachments
-        pendingImageAttachments.append(contentsOf: images)
-        
-        // Show a status message
-        let imageCount = images.count
-        let statusText = imageCount == 1 ? 
-            "✅ Image attached. It will be sent with your next message." :
-            "✅ \(imageCount) images attached. They will be sent with your next message."
-        
-        let attachingMessage = ChatMessage(role: .system, text: statusText, images: nil)
-        messages.append(attachingMessage)
-    }
-    
-    /// Removes an image from pending attachments
-    func removeImageAttachment(at index: Int) {
-        guard index < pendingImageAttachments.count else { return }
-        pendingImageAttachments.remove(at: index)
-        
-        // Update status message if no images remain
-        if pendingImageAttachments.isEmpty {
-            let statusMessage = ChatMessage(role: .system, text: "All image attachments removed.", images: nil)
-            messages.append(statusMessage)
-        }
-    }
-    
-    /// Removes a file from pending attachments
-    func removeFileAttachment(at index: Int) {
-        guard index < pendingFileData.count && index < pendingFileNames.count else { return }
-        pendingFileData.remove(at: index)
-        pendingFileNames.remove(at: index)
-        
-        // Update status message if no files remain
-        if pendingFileData.isEmpty {
-            let statusMessage = ChatMessage(role: .system, text: "All file attachments removed.", images: nil)
-            messages.append(statusMessage)
-        }
-    }
-    
-    /// Clears all pending image attachments
-    func clearImageAttachments() {
-        pendingImageAttachments.removeAll()
-    }
-    
-    // Audio attach/remove removed
-    
-    /// Handle non-streaming response from OpenAI API
-    private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
-        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-        
-        // CRITICAL: Update the lastResponseId to maintain conversation state.
-        // This ID is required for the next message to continue the conversation.
-        self.lastResponseId = response.id
-        print("Updated lastResponseId to: \(response.id)")
-        
-        // Single-shot mode disabled: do not halt on repeated screenshot requests; let stream complete
-        
-        // Check for and handle function calls
-        if let outputItem = response.output.first, outputItem.type == "function_call" {
-            Task {
-                await handleFunctionCall(outputItem, for: messageId)
-            }
-            return // Stop further processing, as we'll get a new response
-        }
-        
-        // Update the message with the complete response
-        var updatedMessage = messages[messageIndex]
-
-        // Extract the first text content from any output item (the first may be reasoning)
-        let nestedContents: [[ContentItem]] = response.output.compactMap { $0.content }
-        let allContents: [ContentItem] = nestedContents.flatMap { $0 }
-
-        if let textContent = allContents.first(where: { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) }) {
-            updatedMessage.text = textContent.text ?? ""
-        } else if let anyText = allContents.first(where: { $0.text?.isEmpty == false })?.text {
-            // Fallback: if type labels vary, still capture non-empty text
-            updatedMessage.text = anyText
-        }
-
-        // Extract images from all output items (not only the first)
-        for outputItem in response.output {
-            for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
-                Task {
-                    do {
-                        let data = try await api.fetchImageData(for: content)
-                        if let image = UIImage(data: data) {
-                            await MainActor.run {
-                                if let msgIndex = self.messages.firstIndex(where: { $0.id == messageId }) {
-                                    if self.messages[msgIndex].images == nil { self.messages[msgIndex].images = [] }
-                                    self.messages[msgIndex].images?.append(image)
-                                }
-                            }
-                        }
-                    } catch {
-                        print("Failed to fetch image data: \(error)")
-                    }
-                }
-            }
-        }
-
-        // Also parse assistant text for image links (markdown or plain) and render them if reachable
-        if let text = updatedMessage.text, !text.isEmpty {
-            let links = URLDetector.extractImageLinks(from: text)
-            if !links.isEmpty {
-                Task { [weak self] in
-                    await self?.consumeImageLinks(links, for: messageId)
-                }
-            }
-        }
-        
-        // Record final token usage when available (non-streaming path)
-        if let usage = response.usage {
-            var usageModel = updatedMessage.tokenUsage ?? TokenUsage()
-            usageModel.input = usage.promptTokens
-            usageModel.output = usage.completionTokens
-            usageModel.total = usage.totalTokens
-            updatedMessage.tokenUsage = usageModel
-        }
-
-        messages[messageIndex] = updatedMessage
-        // Update cumulative totals for non-streaming path
-        recomputeCumulativeUsage()
-        
-        // Log the final response
-        print("Received non-streaming response: \(updatedMessage.text ?? "No text content")")
-        
-        // Log the received message
-        AnalyticsService.shared.trackEvent(
-            name: AnalyticsEvent.messageReceived,
-            parameters: [
-                AnalyticsParameter.model: activePrompt.openAIModel,
-                AnalyticsParameter.messageLength: updatedMessage.text?.count ?? 0,
-                AnalyticsParameter.streamingEnabled: false,
-                "has_images": updatedMessage.images?.isEmpty == false
-            ]
-        )
-
-        // If the model returned a computer_call in this non-streaming response (e.g., after
-        // sending computer_call_output), immediately resolve it to keep the chain moving
-        // without waiting for the next user turn.
-        if activePrompt.enableComputerUse,
-           response.output.contains(where: { $0.type == "computer_call" }),
-           !isResolvingComputerCalls {
-            Task { [weak self] in
-                guard let self = self else { return }
-                await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
-                _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
-                await MainActor.run { 
-                    self.isAwaitingComputerOutput = false
-                    // If no more computer calls are pending and we were streaming, clean up the stream
-                    if self.streamingMessageId != nil && self.lastResponseId == nil {
-                        self.streamingMessageId = nil
-                        self.isStreaming = false
-                        self.streamingStatus = .idle
-                        print("Computer use completed - cleaning up stream state")
-                    }
-                }
-            }
-        } else if !activePrompt.enableComputerUse || !response.output.contains(where: { $0.type == "computer_call" }) {
-            // No computer calls in response, safe to clean up streaming state if we were streaming
-            if streamingMessageId != nil {
-                streamingMessageId = nil
-                isStreaming = false
-                streamingStatus = .idle
-                print("Non-streaming response completed - cleaning up stream state")
-            }
         }
     }
     
@@ -1567,377 +1090,10 @@ class ChatViewModel: ObservableObject {
         activeConversation = conversation
     }
     
-    /// Process a single chunk from the OpenAI streaming response.
-    private func handleStreamChunk(_ chunk: StreamingEvent, for messageId: UUID) {
-        // Ensure we are still streaming this message to prevent race conditions
-        guard streamingMessageId == messageId else {
-            return
-        }
-
-    // Ensure the message still exists
-    guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
-        
-        // Update the streaming status based on the event, passing the item for context
-        updateStreamingStatus(for: chunk.type, item: chunk.item, messageId: messageId)
-        
-        // Update the last response ID for continuity. This is critical for maintaining conversation state.
-        // The ID is received in events like 'response.created' and 'response.output_item.added'.
-        if let response = chunk.response {
-            lastResponseId = response.id
-        }
-        
-        // Handle different types of streaming events
-    switch chunk.type {
-        case "response.output_text.annotation.added":
-            // Handle annotations that reference generated files from code interpreter execution
-            // This now supports all 43 file types including images, text, data, logs, documents, etc.
-            // Some server variants nest details under `annotation`; fall back to that if top-level fields are nil.
-            let annoFileId = chunk.fileId ?? chunk.annotation?.fileId
-            let annoFilename = chunk.filename ?? chunk.annotation?.filename
-            let annoContainerId = chunk.containerId ?? chunk.annotation?.containerId
-            
-            // Proceed only if we have a fileId and the message still exists
-            if let fileId = annoFileId, let filename = annoFilename, messages.firstIndex(where: { $0.id == messageId }) != nil {
-                
-                // Create unique key for this annotation
-                let annotationKey = "\(annoContainerId ?? "")_\(fileId)"
-                
-                // Skip if already processed
-                guard !processedAnnotations.contains(annotationKey) else {
-                    return
-                }
-                processedAnnotations.insert(annotationKey)
-                
-                // Record mapping for fallback filename-based resolution when links use sandbox:/ paths
-                if let cid = annoContainerId {
-                    var list = containerAnnotationsByMessage[messageId] ?? []
-                    list.append((containerId: cid, fileId: fileId, filename: filename))
-                    containerAnnotationsByMessage[messageId] = list
-                }
-                
-                Task {
-                    do {
-                        let data: Data
-                        
-                        // Check cache first
-                        if let cachedData = containerFileCache[annotationKey] {
-                            data = cachedData
-                            AppLogger.log("Using cached data for \(filename)", category: .openAI, level: .debug)
-                        } else {
-                            // Fetch from API
-                            if let containerId = annoContainerId, fileId.hasPrefix("cfile_") {
-                                // Container-scoped file (e.g., produced by code interpreter) — use container files endpoint
-                                AppLogger.log("Fetching container file content container_id=\(containerId), file_id=\(fileId), filename=\(filename)", category: .openAI, level: .info)
-                                data = try await api.fetchContainerFileContent(containerId: containerId, fileId: fileId)
-                            } else {
-                                // Standard OpenAI file download
-                                let contentItem = ContentItem(type: "image_file", text: nil, imageURL: nil, imageFile: ImageFileContent(file_id: fileId))
-                                data = try await api.fetchImageData(for: contentItem)
-                            }
-                            
-                            // Cache the data
-                            containerFileCache[annotationKey] = data
-                        }
-
-                        // Create artifact based on file type and content
-                        let artifact = self.createArtifact(
-                            fileId: fileId,
-                            filename: filename,
-                            containerId: annoContainerId ?? "unknown",
-                            data: data
-                        )
-                        
-                        await MainActor.run {
-                            self.appendArtifact(artifact, to: messageId)
-                        }
-                        
-                        AppLogger.log("Successfully processed artifact: \(filename) (\(artifact.artifactType.rawValue), \(data.count) bytes)", category: .openAI, level: .info)
-                        
-                    } catch {
-                        AppLogger.log("Failed to fetch annotation file (file_id=\(fileId), container_id=\(annoContainerId ?? "none")): \(error)", category: .openAI, level: .warning)
-                        
-                        // Create error artifact
-                        let errorArtifact = CodeInterpreterArtifact(
-                            fileId: fileId,
-                            filename: filename,
-                            containerId: annoContainerId ?? "unknown",
-                            mimeType: nil,
-                            content: .error("Failed to load: \(error.localizedDescription)")
-                        )
-                        
-                        await MainActor.run {
-                            self.appendArtifact(errorArtifact, to: messageId)
-                        }
-                    }
-                }
-            }
-        case "error":
-            // Handle API errors during streaming; attempt an automatic retry if eligible.
-            let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
-            let errorCode = chunk.response?.error?.code ?? "unknown"
-            AppLogger.log("🚨 [Streaming Error] Code: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
-            AppLogger.log("🔍 [Error Context] Event type: \(chunk.type), Response ID: \(chunk.response?.id ?? "none")", category: .openAI, level: .info)
-            
-            if attemptStreamingRetry(for: messageId, reason: errorMessage) {
-                // A retry has been scheduled; avoid surfacing a hard error to the user here.
-                return
-            }
-            // If not retrying, surface the error and reset state.
-            messages.append(ChatMessage(role: .system, text: "⚠️ Error: \(errorMessage)"))
-            isStreaming = false
-            streamingStatus = .idle
-            streamingMessageId = nil
-            isAwaitingComputerOutput = false
-            
-        case "response.failed":
-            // Handle failed responses; attempt an automatic retry if eligible.
-            let errorMessage = chunk.response?.error?.message ?? "The request failed"
-            let errorCode = chunk.response?.error?.code ?? "unknown"
-            let responseStatus = chunk.response?.status ?? "unknown"
-            AppLogger.log("🚨 [Response Failed] Status: \(responseStatus), Error: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
-            
-            // Log response details for debugging
-            if let response = chunk.response {
-                AppLogger.log("🔍 [Response Failed Details] ID: \(response.id), Output count: \(response.output?.count ?? 0)", category: .openAI, level: .info)
-                
-                // Enhanced error logging for MCP-related failures
-                if let output = response.output {
-                    for (index, outputItem) in output.enumerated() {
-                        AppLogger.log("🔍 [Response Failed Output \(index)] Type: \(outputItem.type), ID: \(outputItem.id), Status: \(outputItem.status ?? "unknown")", category: .openAI, level: .info)
-                        
-                        // Check for MCP-specific errors in output content
-                        if let content = outputItem.content {
-                            for contentItem in content {
-                                if contentItem.type.contains("mcp") {
-                                    AppLogger.log("🔍 [MCP Content Error] Type: \(contentItem.type)", category: .openAI, level: .info)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            if attemptStreamingRetry(for: messageId, reason: errorMessage) {
-                return
-            }
-            messages.append(ChatMessage(role: .system, text: "⚠️ Request failed: \(errorMessage)"))
-            isStreaming = false
-            streamingStatus = .idle
-            streamingMessageId = nil
-            isAwaitingComputerOutput = false
-            
-        case "response.output_text.delta":
-            // Handle text delta updates with a small coalescing buffer to reduce UI churn
-            if let delta = chunk.delta {
-                // Confirm the message still exists to avoid race conditions
-                guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
-                AppLogger.log("Buffering text delta (len=\(delta.count)) for index \(messageIndex)", category: .ui, level: .debug)
-                // Append to buffer
-                let existing = deltaBuffers[messageId] ?? ""
-                deltaBuffers[messageId] = existing + delta
-
-                // Update live token estimate for this message using a lightweight heuristic
-                let totalText = (messages[messageIndex].text ?? "") + (deltaBuffers[messageId] ?? "")
-                let estimate = ChatViewModel.estimateTokens(for: totalText)
-                var updated = messages
-                var tu = updated[messageIndex].tokenUsage ?? TokenUsage()
-                tu.estimatedOutput = estimate
-                updated[messageIndex].tokenUsage = tu
-                messages = updated
-                // Update conversation-level estimate live
-                recomputeCumulativeUsage()
-
-                // Optimized flushing: flush immediately on sentence boundaries, or when buffer gets large
-                let bufferedText = deltaBuffers[messageId] ?? ""
-                let shouldFlushNow = delta.last.map { ".!?\n\r".contains($0) } ?? false || bufferedText.count >= minBufferSizeForFlush
-                scheduleDeltaFlush(for: messageId, messageIndex: messageIndex, immediate: shouldFlushNow)
-            }
-            
-        case "response.content_part.done":
-            // Handle completion of content items (like images)
-            if let item = chunk.item {
-                handleCompletedStreamingItem(item, for: messageId)
-            }
-            // Computer-use screenshot handling removed
-            
-        case "response.output_item.done":
-            // Handle completion of output items
-            if let item = chunk.item {
-                handleCompletedStreamingItem(item, for: messageId)
-                // Track tool usage
-                trackToolUsage(item, for: messageId)
-                // If the completed item is a computer tool call, get the full response to extract the action
-                if item.type == "computer_call" {
-                    // Immediately surface the UI state to show we're continuing with computer use
-                    self.isAwaitingComputerOutput = true
-                    self.streamingStatus = .usingComputer
-                    Task {
-                        await self.handleComputerToolCallWithFullResponse(item, messageId: messageId)
-                    }
-                }
-            }
-            // Computer-use screenshot handling removed
-            
-        case "response.done", "response.completed":
-            // Handle completion of the entire response
-            AppLogger.log("Streaming response completed for message: \(messageId)", category: .streaming, level: .info)
-
-            // Flush any remaining buffered deltas before finalizing
-            flushDeltaBufferIfNeeded(for: messageId)
-
-            // If final usage is present in the event's response, record it; otherwise keep estimate
-            if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
-                var updated = messages
-                var tu = updated[msgIndex].tokenUsage ?? TokenUsage()
-                if let usage = chunk.response?.usage {
-                    tu.input = usage.inputTokens
-                    tu.output = usage.outputTokens
-                    tu.total = usage.totalTokens
-                    tu.estimatedOutput = nil // Clear estimate once we have authoritative numbers
-                } else {
-                    // Ensure we at least show a stable estimate at end if API omitted usage
-                    let finalText = updated[msgIndex].text ?? ""
-                    tu.estimatedOutput = ChatViewModel.estimateTokens(for: finalText)
-                }
-                updated[msgIndex].tokenUsage = tu
-                messages = updated
-                // Update totals when final usage arrives
-                recomputeCumulativeUsage()
-            }
-
-            // CRITICAL: Only reset streaming flags if we're not awaiting computer output
-            // If we're awaiting computer output, keep the stream alive for computer use continuation
-            if !isAwaitingComputerOutput {
-                isStreaming = false
-                streamingStatus = .idle
-                streamingMessageId = nil
-            } else {
-                // Keep streaming alive but update status to show computer use is continuing
-                streamingStatus = .usingComputer
-                AppLogger.log("Stream completed; continuing with computer use", category: .streaming, level: .debug)
-            }
-
-            // After streaming is complete, detect and add URLs to the message
-            if let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
-               let text = messages[msgIndex].text, !text.isEmpty {
-                // 1) Web URLs for embedded browsing
-                let detectedURLs = URLDetector.extractRenderableURLs(from: text)
-                if !detectedURLs.isEmpty {
-                    var updatedMessages = messages
-                    updatedMessages[msgIndex].webURLs = detectedURLs
-                    messages = updatedMessages
-                    AppLogger.log("Detected \(detectedURLs.count) renderable URLs in assistant response", category: .ui, level: .debug)
-                }
-
-                // 2) Image links embedded in markdown or plain text
-                let imageLinks = URLDetector.extractImageLinks(from: text)
-                if !imageLinks.isEmpty {
-                    Task { [weak self] in
-                        guard let self = self else { return }
-                        await self.consumeImageLinks(imageLinks, for: messageId)
-                    }
-                }
-
-                // 3) Fallback: If no images were appended during streaming, fetch final response for any image content
-                if (messages[msgIndex].images?.isEmpty ?? true), let finalId = lastResponseId {
-                    Task { [weak self] in
-                        guard let self = self else { return }
-                        do {
-                            let full = try await self.api.getResponse(responseId: finalId)
-                            for outputItem in full.output {
-                                for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
-                                    do {
-                                        let data = try await self.api.fetchImageData(for: content)
-                                        if let image = UIImage(data: data) {
-                                            await MainActor.run {
-                                                if let idx = self.messages.firstIndex(where: { $0.id == messageId }) {
-                                                    if self.messages[idx].images == nil { self.messages[idx].images = [] }
-                                                    self.messages[idx].images?.append(image)
-                                                }
-                                            }
-                                        }
-                                    } catch {
-                                        AppLogger.log("Fallback image fetch failed: \(error)", category: .openAI, level: .warning)
-                                    }
-                                }
-                            }
-                        } catch {
-                            AppLogger.log("Fallback getResponse failed: \(error)", category: .openAI, level: .warning)
-                        }
-                    }
-                }
-            }
-            
-        case "response.image_generation_call.partial_image":
-            // Handle partial image preview from gpt-image-1
-            handlePartialImageUpdate(chunk, for: messageId)
-            
-        case "response.image_generation_call.completed":
-            // Handle completed image generation
-            if let item = chunk.item {
-                // Show completing status briefly before final result
-                streamingStatus = .imageGenerationCompleting
-                logActivity("🎨 Finalizing image…")
-                
-                // Process the completed item
-                handleCompletedStreamingItem(item, for: messageId)
-                stopImageGenerationHeartbeat(for: messageId)
-                
-                // Brief delay to show the finalizing status, then show ready
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                    self?.streamingStatus = .imageReady
-                    self?.logActivity("🖼️ Image generated successfully!")
-                }
-            }
-            
-        // Computer Use streaming events
-        case "response.computer_call.in_progress":
-            // Computer is starting an action - track tool usage
-            trackToolUsage(for: messageId, tool: "computer")
-            updateStreamingStatus(for: "computer.in_progress")
-            
-        case "response.computer_call.screenshot_taken":
-            // Computer took a screenshot - display it to user
-            updateStreamingStatus(for: "computer.screenshot")
-            handleComputerScreenshot(chunk, for: messageId)
-            
-        case "response.computer_call.action_performed":
-            // Computer performed an action (click, type, etc.)
-            updateStreamingStatus(for: "computer.action")
-            
-        case "response.computer_call.completed":
-            // Computer use action completed
-            if let item = chunk.item {
-                handleCompletedStreamingItem(item, for: messageId)
-            }
-            updateStreamingStatus(for: "computer.completed")
-            
-        // MCP streaming events
-        case "response.output_item.added":
-            // Check if this is an MCP approval request
-            if let item = chunk.item, item.type == "mcp_approval_request" {
-                handleMCPApprovalRequest(item, for: messageId)
-            }
-            // Track tool usage for MCP items
-            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
-                trackToolUsage(for: messageId, tool: "mcp")
-            }
-            
-        case "response.output_item.completed":
-            // Handle MCP item completion
-            if let item = chunk.item, ["mcp_list_tools", "mcp_call"].contains(item.type) {
-                handleCompletedStreamingItem(item, for: messageId)
-            }
-            
-        default:
-            // Other events are handled by the status updater
-            break
-        }
-    }
 
     /// Schedules a flush for the buffered text deltas of this message.
     /// If immediate is true, flush right away; otherwise, debounce for a short interval.
-    private func scheduleDeltaFlush(for messageId: UUID, messageIndex: Int, immediate: Bool) {
+    func scheduleDeltaFlush(for messageId: UUID, messageIndex: Int, immediate: Bool) {
         // Cancel any pending work
         if let work = deltaFlushWorkItems[messageId] { work.cancel() }
 
@@ -1966,7 +1122,7 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Flush if buffer exists, regardless of known message index (e.g., on completion cleanup)
-    private func flushDeltaBufferIfNeeded(for messageId: UUID) {
+    func flushDeltaBufferIfNeeded(for messageId: UUID) {
         guard let buffered = deltaBuffers[messageId], !buffered.isEmpty else { return }
         if let idx = messages.firstIndex(where: { $0.id == messageId }) {
             flushDeltaBuffer(for: messageId, messageIndex: idx)
@@ -1980,7 +1136,7 @@ class ChatViewModel: ObservableObject {
 
     /// Attempts to transparently retry a failed streaming request once for transient errors.
     /// Returns true if a retry was scheduled; false if not eligible (no retry context or already retried).
-    private func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
+    func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
         // If any buffered text exists, flush it before deciding eligibility
         flushDeltaBufferIfNeeded(for: messageId)
         guard var ctx = retryContextByMessageId[messageId], ctx.remainingAttempts > 0 else { return false }
@@ -2080,7 +1236,7 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Handles computer tool calls by fetching the full response to get complete action details
-    private func handleComputerToolCallWithFullResponse(_ item: StreamingItem, messageId: UUID) async {
+    func handleComputerToolCallWithFullResponse(_ item: StreamingItem, messageId: UUID) async {
         guard activePrompt.enableComputerUse else { return }
         guard let previousId = lastResponseId else { return }
 
@@ -2209,7 +1365,7 @@ class ChatViewModel: ObservableObject {
                     AppLogger.log("[CUA] (streaming) Max consecutive waits reached; will send output and then halt chain.", category: .openAI, level: .error)
                 }
             } else {
-                consecutiveWaitCount = 0
+ consecutiveWaitCount = 0
             }
 
             // Attach screenshot to UI if available
@@ -2731,7 +1887,7 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Handles a screenshot received during streaming for computer use.
-    private func handleComputerScreenshot(_ chunk: StreamingEvent, for messageId: UUID) {
+    func handleComputerScreenshot(_ chunk: StreamingEvent, for messageId: UUID) {
         AppLogger.log("[CUA] handleComputerScreenshot: Processing streaming screenshot event", category: .openAI, level: .info)
         
         guard let item = chunk.item,
@@ -2771,7 +1927,7 @@ class ChatViewModel: ObservableObject {
     /// For gpt-image-1, the "completed" event often does not include the final image bytes in `item.content`.
     /// We primarily rely on partial_image updates for previews/finals and an existing fallback that fetches
     /// the full response if images are returned as image_url/image_file content.
-    private func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
+    func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
     // Ensure the message still exists before proceeding
     guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
         
@@ -2806,14 +1962,6 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        // Handle MCP tool list loading completion
-        if item.type == "mcp_list_tools" {
-            if let serverLabel = item.serverLabel {
-                AppLogger.log("📋 [MCP] Tool list loaded from server \(serverLabel)", category: .openAI, level: .info)
-            } else {
-                AppLogger.log("📋 [MCP] Tool list loaded for item \(item.id)", category: .openAI, level: .info)
-            }
-        }
         
         // Note: For other image types like image_file/image_url, they would be handled by the annotation system
         // or the fallback mechanism that fetches the final response
@@ -2822,7 +1970,7 @@ class ChatViewModel: ObservableObject {
     /// Handles partial image updates from gpt-image-1 model
     /// The base64 data for partial images is provided in `partial_image_b64` at the event level.
     /// We decode it and append/replace the latest preview image.
-    private func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
+    func handlePartialImageUpdate(_ chunk: StreamingEvent, for messageId: UUID) {
         // Prefer the documented partial_image_b64, but also accept common alternates
         let candidates: [String?] = [chunk.partialImageB64, chunk.imageB64, chunk.dataB64, chunk.item?.content?.first?.text]
         guard let b64 = candidates.compactMap({ $0 }).first,
@@ -2850,7 +1998,7 @@ class ChatViewModel: ObservableObject {
 
     /// Resolves image links mentioned in assistant text and appends any fetched images to the message.
     /// Supports data:image base64 and http(s) image URLs. sandbox:/ paths are noted but not fetched.
-    private func consumeImageLinks(_ links: [String], for messageId: UUID) async {
+    func consumeImageLinks(_ links: [String], for messageId: UUID) async {
         let sawSandbox = links.contains { $0.lowercased().hasPrefix("sandbox:/") }
         // Decode inline data URLs first to provide instant previews
         for link in links {
@@ -2874,7 +2022,7 @@ class ChatViewModel: ObservableObject {
                         await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
                     }
                 } catch {
-                    AppLogger.log("Failed to fetch image URL: \(link) — \(error)", category: .network, level: .warning)
+                    AppLogger.log("Failed to fetch image URL: \(link) — \(error)", category: .openAI, level: .warning)
                 }
             }
         }
@@ -3051,7 +2199,7 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Updates the streaming status based on the event type and item context
-    private func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil, messageId: UUID? = nil) {
+    func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil, messageId: UUID? = nil) {
         switch eventType {
         case "response.created":
             streamingStatus = .connecting
@@ -3093,10 +2241,10 @@ class ChatViewModel: ObservableObject {
         case "response.image_generation_call.partial_image":
             streamingStatus = .imageGenerationProgress("Generating image…")
             logActivity("🖼️ Image preview updating…")
-        case "response.computer_call.in_progress", "computer.in_progress",
-             "response.computer_call.screenshot_taken", "computer.screenshot",
-             "response.computer_call.action_performed", "computer.action",
-             "response.computer_call.completed", "computer.completed":
+       case "response.computer_call.in_progress", "computer.in_progress",
+           "response.computer_call.screenshot_taken", "computer.screenshot",
+           "response.computer_call.action_performed", "computer.action",
+           "response.computer_call.completed", "computer.completed":
             // Always surface the simple, recognizable "Using computer" chip in the UI
             streamingStatus = .usingComputer
             switch eventType {
@@ -3139,42 +2287,6 @@ class ChatViewModel: ObservableObject {
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
             logActivity("Response completed")
-        case "mcp.approval_requested":
-            streamingStatus = .mcpApprovalRequested
-            logActivity("MCP tool approval required")
-        case "mcp.proceeding":
-            streamingStatus = .mcpProceeding
-            logActivity("Proceeding with MCP tool")
-        case "response.output_item.added" where item?.type == "mcp_list_tools":
-            streamingStatus = .runningTool("mcp")
-            if let serverLabel = item?.serverLabel {
-                logActivity("MCP: Loading tools from \(serverLabel)")
-            } else {
-                logActivity("MCP: Loading available tools")
-            }
-        case "response.output_item.added" where item?.type == "mcp_call":
-            streamingStatus = .runningTool("mcp")
-            if let toolName = item?.name, let serverLabel = item?.serverLabel {
-                logActivity("MCP: Executing \(toolName) on \(serverLabel)")
-            } else if let toolName = item?.name {
-                logActivity("MCP: Executing \(toolName)")
-            } else {
-                logActivity("MCP: Running tool call")
-            }
-        case "response.output_item.completed" where item?.type == "mcp_list_tools":
-            if let serverLabel = item?.serverLabel {
-                logActivity("MCP: Tools loaded from \(serverLabel)")
-            } else {
-                logActivity("MCP: Tools loaded successfully")
-            }
-        case "response.output_item.completed" where item?.type == "mcp_call":
-            if let toolName = item?.name, let serverLabel = item?.serverLabel {
-                logActivity("MCP: Completed \(toolName) on \(serverLabel)")
-            } else if let toolName = item?.name {
-                logActivity("MCP: Completed \(toolName)")
-            } else {
-                logActivity("MCP: Tool call completed")
-            }
         default:
             // Keep current status for unknown events
             break
@@ -3182,8 +2294,45 @@ class ChatViewModel: ObservableObject {
     }
     
     /// Convenience method for updating status with just event type
-    private func updateStreamingStatus(for eventType: String) {
+    func updateStreamingStatus(for eventType: String) {
         updateStreamingStatus(for: eventType, item: nil, messageId: nil)
+    }
+
+    /// Clears any pending file attachments and related temporary buffers.
+    /// This is called on error/completion to ensure no stale attachments leak into the next request.
+    func clearPendingFileAttachments() {
+        pendingFileAttachments.removeAll()
+        pendingImageAttachments.removeAll()
+        pendingFileData.removeAll()
+        pendingFileNames.removeAll()
+    }
+
+    // MARK: - Attachment Helpers (used by ChatView)
+    /// Appends selected images to the pending attachments list.
+    func attachImages(_ images: [UIImage]) {
+        guard !images.isEmpty else { return }
+        pendingImageAttachments.append(contentsOf: images)
+    }
+
+    /// Removes a pending image attachment by index safely.
+    func removeImageAttachment(at index: Int) {
+        guard pendingImageAttachments.indices.contains(index) else { return }
+        pendingImageAttachments.remove(at: index)
+    }
+
+    /// Removes a pending file attachment by index safely.
+    func removeFileAttachment(at index: Int) {
+        // Keep names/data arrays in sync when removing
+        if pendingFileNames.indices.contains(index) {
+            pendingFileNames.remove(at: index)
+        }
+        if pendingFileData.indices.contains(index) {
+            pendingFileData.remove(at: index)
+        }
+        // For file_search-style attachments referenced by ID, maintain that list too
+        if pendingFileAttachments.indices.contains(index) {
+            pendingFileAttachments.remove(at: index)
+        }
     }
 
     /// Exports the current conversation as formatted text for sharing
@@ -3232,7 +2381,7 @@ class ChatViewModel: ObservableObject {
 // MARK: - Artifact Management
 extension ChatViewModel {
     /// Create an artifact from raw data based on file type
-    private func createArtifact(fileId: String, filename: String, containerId: String, data: Data) -> CodeInterpreterArtifact {
+    func createArtifact(fileId: String, filename: String, containerId: String, data: Data) -> CodeInterpreterArtifact {
         let ext = (filename as NSString).pathExtension.lowercased()
         
         // Determine MIME type from extension
@@ -3272,7 +2421,7 @@ extension ChatViewModel {
     }
     
     /// Append an artifact to a message
-    private func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {
+    func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
         
         if messages[index].artifacts == nil {
@@ -3389,7 +2538,7 @@ extension ChatViewModel {
     }
     
     /// Stops the image generation heartbeat for a specific message
-    private func stopImageGenerationHeartbeat(for messageId: UUID) {
+    func stopImageGenerationHeartbeat(for messageId: UUID) {
         imageHeartbeatTasks[messageId]?.cancel()
         imageHeartbeatTasks[messageId] = nil
         imageHeartbeatCounters[messageId] = nil
@@ -3426,5 +2575,165 @@ extension ChatViewModel {
         let byChars = max(1, chars / 4)
         let byWords = max(1, Int(Double(words) * 1.33))
         return max(1, (byChars + byWords) / 2)
+    }
+}
+
+// MARK: - Non-Streaming Response Handling
+extension ChatViewModel {
+    /// Records tool usage for analytics and marks the tool on the message.
+    func trackToolUsage(for messageId: UUID, tool: String) {
+        // Update message toolsUsed for quick UI badges
+        if let idx = messages.firstIndex(where: { $0.id == messageId }) {
+            var updated = messages
+            if updated[idx].toolsUsed == nil { updated[idx].toolsUsed = [] }
+            if !updated[idx].toolsUsed!.contains(tool) {
+                updated[idx].toolsUsed!.append(tool)
+                messages = updated
+            }
+        }
+
+        // Analytics
+        AnalyticsService.shared.trackEvent(
+            name: "tool_used",
+            parameters: [
+                "tool": tool,
+                AnalyticsParameter.model: activePrompt.openAIModel
+            ]
+        )
+    }
+
+    /// Overload that infers tool name from a streaming item.
+    func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
+        let tool: String
+        if item.type == "mcp_call" {
+            tool = "mcp"
+        } else if item.type == "computer_call" {
+            tool = "computer"
+        } else if item.type == "image_generation_call" {
+            tool = "image"
+        } else if item.type == "function_call" {
+            tool = "function"
+        } else {
+            tool = item.type
+        }
+        trackToolUsage(for: messageId, tool: tool)
+    }
+    /// Handles non-streaming responses from the OpenAI API.
+    /// Consolidates text, images, token usage, and triggers follow-up tool workflows.
+    private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        // Persist response ID so the next request can continue the conversation.
+        lastResponseId = response.id
+        AppLogger.log("Updated lastResponseId to: \(response.id)", category: .openAI, level: .info)
+
+        // If the response is a function call, execute it asynchronously and wait for the follow-up.
+        if let outputItem = response.output.first, outputItem.type == "function_call" {
+            Task { [weak self] in
+                guard let self = self else { return }
+                await self.handleFunctionCall(outputItem, for: messageId)
+            }
+            return
+        }
+
+        var updatedMessage = messages[messageIndex]
+
+        // Consolidate assistant text from any output item (reasoning blocks excluded when possible).
+        let allContents = response.output
+            .compactMap { $0.content }
+            .flatMap { $0 }
+
+        if let textContent = allContents.first(where: { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) }) {
+            updatedMessage.text = textContent.text ?? ""
+        } else if let anyText = allContents.first(where: { $0.text?.isEmpty == false })?.text {
+            updatedMessage.text = anyText
+        }
+
+        // Retrieve image content bundled in the response.
+        for outputItem in response.output {
+            for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    do {
+                        let data = try await api.fetchImageData(for: content)
+                        if let image = UIImage(data: data) {
+                            await MainActor.run {
+                                if let idx = self.messages.firstIndex(where: { $0.id == messageId }) {
+                                    if self.messages[idx].images == nil { self.messages[idx].images = [] }
+                                    self.messages[idx].images?.append(image)
+                                }
+                            }
+                        }
+                    } catch {
+                        AppLogger.log("Failed to fetch image data: \(error)", category: .openAI, level: .warning)
+                    }
+                }
+            }
+        }
+
+        // Parse assistant text for external image links and load previews when reachable.
+        if let text = updatedMessage.text, !text.isEmpty {
+            let links = URLDetector.extractImageLinks(from: text)
+            if !links.isEmpty {
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    await self.consumeImageLinks(links, for: messageId)
+                }
+            }
+        }
+
+        // Store deterministic token usage metrics supplied by the API.
+        if let usage = response.usage {
+            var usageModel = updatedMessage.tokenUsage ?? TokenUsage()
+            usageModel.input = usage.promptTokens
+            usageModel.output = usage.completionTokens
+            usageModel.total = usage.totalTokens
+            updatedMessage.tokenUsage = usageModel
+        }
+
+        messages[messageIndex] = updatedMessage
+        recomputeCumulativeUsage()
+
+    AppLogger.log("Received non-streaming response: \(updatedMessage.text ?? "<no text>")", category: .openAI, level: .info)
+
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageReceived,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: updatedMessage.text?.count ?? 0,
+                AnalyticsParameter.streamingEnabled: false,
+                "has_images": updatedMessage.images?.isEmpty == false
+            ]
+        )
+
+        // Auto-resolve any computer calls that arrive in non-streaming mode to keep chains progressing.
+        if activePrompt.enableComputerUse,
+           response.output.contains(where: { $0.type == "computer_call" }),
+           !isResolvingComputerCalls {
+            Task { [weak self] in
+                guard let self = self else { return }
+                await MainActor.run {
+                    self.isAwaitingComputerOutput = true
+                    self.streamingStatus = .usingComputer
+                }
+                _ = try? await self.resolveAllPendingComputerCallsIfAny(for: messageId)
+                await MainActor.run {
+                    self.isAwaitingComputerOutput = false
+                    if self.streamingMessageId != nil && self.lastResponseId == nil {
+                        self.streamingMessageId = nil
+                        self.isStreaming = false
+                        self.streamingStatus = .idle
+                        AppLogger.log("Computer use completed - cleaning up stream state", category: .openAI, level: .info)
+                    }
+                }
+            }
+        } else if !activePrompt.enableComputerUse || !response.output.contains(where: { $0.type == "computer_call" }) {
+            if streamingMessageId != nil {
+                streamingMessageId = nil
+                isStreaming = false
+                streamingStatus = .idle
+                AppLogger.log("Non-streaming response completed - cleaning up stream state", category: .openAI, level: .info)
+            }
+        }
     }
 }
