@@ -410,38 +410,89 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
     private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
-        var requestObject: [String: Any] = [
-            "model": prompt.openAIModel
+        var requestObject = baseRequestMetadata(for: prompt, stream: stream)
+        requestObject["input"] = buildInputMessages(
+            for: prompt,
+            userMessage: userMessage,
+            attachments: attachments,
+            fileData: fileData,
+            fileNames: fileNames,
+            imageAttachments: imageAttachments
+        )
+
+        let (tools, forceImageToolChoice) = assembleTools(
+            for: prompt,
+            userMessage: userMessage,
+            isStreaming: stream
+        )
+
+        if let encodedTools = encodeTools(tools) {
+            requestObject["tools"] = encodedTools
+        }
+
+        let hasComputerTool = tools.contains { if case .computer = $0 { return true } else { return false } }
+        let includeArray = buildIncludeArray(for: prompt, hasComputerTool: hasComputerTool)
+        if !includeArray.isEmpty {
+            requestObject["include"] = includeArray
+        }
+
+        mergeTopLevelParameters(for: prompt, into: &requestObject)
+
+        if let reasoning = buildReasoningObject(for: prompt) {
+            requestObject["reasoning"] = reasoning
+        }
+
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
+
+        if prompt.backgroundMode {
+            requestObject["background"] = true
+        }
+
+        applyToolChoice(
+            for: prompt,
+            forceImageToolChoice: forceImageToolChoice,
+            into: &requestObject
+        )
+
+        if let textFormat = buildTextFormat(for: prompt) {
+            requestObject["text"] = textFormat
+        }
+
+        if let promptObject = buildPromptObject(for: prompt) {
+            requestObject["prompt"] = promptObject
+        }
+
+        return requestObject
+    }
+
+    /// Builds base metadata for a request, adding instructions, store flag, and stream options.
+    private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
+        var metadata: [String: Any] = [
+            "model": prompt.openAIModel,
+            "store": true
         ]
 
-        // Add instructions only if non-empty; for CUA, suppress the generic default
-        let sys = buildInstructions(prompt: prompt)
-        if !sys.isEmpty {
-            if !(prompt.openAIModel == "computer-use-preview" && sys == "You are a helpful assistant.") {
-                requestObject["instructions"] = sys
-            }
+        let instructions = buildInstructions(prompt: prompt)
+        if !instructions.isEmpty, !(prompt.openAIModel == "computer-use-preview" && instructions == "You are a helpful assistant.") {
+            metadata["instructions"] = instructions
         }
 
-        // Persist responses so they can be retrieved by ID during tool-call follow-ups
-        requestObject["store"] = true
-
-        // 1. Build the 'input' messages array
-    requestObject["input"] = buildInputMessages(for: prompt, userMessage: userMessage, attachments: attachments, fileData: fileData, fileNames: fileNames, imageAttachments: imageAttachments)
-
-        // 2. Add streaming flag if required
         if stream {
-            requestObject["stream"] = true
-            requestObject["stream_options"] = [
-                "include_obfuscation": false
-            ]
+            metadata["stream"] = true
+            metadata["stream_options"] = ["include_obfuscation": false]
         }
 
-    // 3. Build the 'tools' array using the new Codable models
-    var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: stream)
-    var forceImageToolChoiceThisTurn = false
-        // Ensure the computer tool is present for the dedicated CUA model
+        return metadata
+    }
+
+    /// Assembles the tool list for the given request and returns whether tool choice should be forced.
+    private func assembleTools(for prompt: Prompt, userMessage: String, isStreaming: Bool) -> ([APICapabilities.Tool], Bool) {
+        var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: isStreaming)
+        var forceImageToolChoice = false
+
         if prompt.openAIModel == "computer-use-preview" && !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
-            // Add default computer tool config similar to buildTools
             let environment: String
             #if os(iOS)
             environment = "browser"
@@ -464,96 +515,72 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 displayHeight: Int(screenSize.height)
             ))
         }
-        // If the selected model is the dedicated computer-use model, restrict tools to only the computer tool
+
         if prompt.openAIModel == "computer-use-preview" {
-            tools = tools.filter { tool in
-                if case .computer = tool { return true }
-                return false
+            tools.removeAll { tool in
+                if case .computer = tool { return false }
+                return true
             }
         }
-        // Image intent heuristic: if this turn is clearly asking for an image, restrict tools to just image_generation
+
         if shouldForceImageGeneration(for: prompt, userMessage: userMessage, availableTools: tools) {
-            let hadImageTool = tools.contains { if case .imageGeneration = $0 { return true } else { return false } }
-            if hadImageTool {
+            let hasImageTool = tools.contains { if case .imageGeneration = $0 { return true } else { return false } }
+            if hasImageTool {
                 tools = tools.filter { if case .imageGeneration = $0 { return true } else { return false } }
-                forceImageToolChoiceThisTurn = true
+                forceImageToolChoice = true
                 AppLogger.log("Image intent detected — restricting tools to image_generation for this turn", category: .openAI, level: .info)
             }
         }
 
         AppLogger.log("Built tools array: \(tools.count) tools - \(tools)", category: .openAI, level: .info)
-        
-        if !tools.isEmpty {
-            do {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .prettyPrinted // Optional: for debugging
-                let toolsData = try encoder.encode(tools)
-                if let toolsJSON = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
-                    requestObject["tools"] = toolsJSON
-                    AppLogger.log("Successfully added tools to request", category: .openAI, level: .info)
-                }
-            } catch {
-                AppLogger.log("Failed to encode tools: \(error)", category: .openAI, level: .error)
-            }
-        } else {
+        return (tools, forceImageToolChoice)
+    }
+
+    /// Encodes tools into a JSON-compatible array payload.
+    private func encodeTools(_ tools: [APICapabilities.Tool]) -> [Any]? {
+        guard !tools.isEmpty else {
             AppLogger.log("No tools to include in request", category: .openAI, level: .info)
-        }
-        
-        // 3.5. Build the 'include' array from boolean properties
-        // Only include computer_call outputs if the computer tool is actually part of this request
-        let hasComputerTool: Bool = tools.contains { t in
-            if case .computer = t { return true } else { return false }
-        }
-        let includeArray = buildIncludeArray(for: prompt, hasComputerTool: hasComputerTool)
-        if !includeArray.isEmpty {
-            requestObject["include"] = includeArray
+            return nil
         }
 
-        // 4. Build and merge other top-level parameters
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let toolsData = try encoder.encode(tools)
+            if let json = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
+                AppLogger.log("Successfully added tools to request", category: .openAI, level: .info)
+                return json
+            }
+            return nil
+        } catch {
+            AppLogger.log("Failed to encode tools: \(error)", category: .openAI, level: .error)
+            return nil
+        }
+    }
+
+    /// Merges top-level sampling parameters into the request and applies model-specific overrides.
+    private func mergeTopLevelParameters(for prompt: Prompt, into request: inout [String: Any]) {
         var parameters = buildParameters(for: prompt)
-        // CUA requirement: truncation must be "auto"
         if prompt.openAIModel == "computer-use-preview" {
             parameters["truncation"] = "auto"
         }
+
         for (key, value) in parameters {
-            requestObject[key] = value
+            request[key] = value
         }
+    }
 
-        // 5. Build the 'reasoning' object if applicable
-    if let reasoning = buildReasoningObject(for: prompt) {
-            requestObject["reasoning"] = reasoning
-        }
-
-        // 6. Add the previous response ID for stateful conversation
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId
-        }
-        
-        // 7. Add background mode if enabled
-        if prompt.backgroundMode {
-            requestObject["background"] = true
-        }
-        
-        // 8. Add tool_choice if specified
+    /// Applies explicit or inferred tool choice values.
+    private func applyToolChoice(for prompt: Prompt, forceImageToolChoice: Bool, into request: inout [String: Any]) {
         if !prompt.toolChoice.isEmpty && prompt.toolChoice != "auto" {
-            requestObject["tool_choice"] = prompt.toolChoice
-        } else if forceImageToolChoiceThisTurn {
-            // Responses API supports: 'none', 'auto', 'required'. Use 'required' while only the image_generation tool is present.
-            requestObject["tool_choice"] = "required"
+            request["tool_choice"] = prompt.toolChoice
+            return
+        }
+
+        if forceImageToolChoice {
+            request["tool_choice"] = "required"
             AppLogger.log("Auto tool_choice override → required (only image_generation available)", category: .openAI, level: .info)
         }
-        
-        // 9. Build the 'text' format object if JSON schema is enabled
-        if let textFormat = buildTextFormat(for: prompt) {
-            requestObject["text"] = textFormat
-        }
-
-        // 10. Build the 'prompt' object if published prompt is enabled
-        if let promptObject = buildPromptObject(for: prompt) {
-            requestObject["prompt"] = promptObject
-        }
-        
-        return requestObject
     }
 
     /// Detects if we should force the image_generation tool for this turn based on the user message.

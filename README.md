@@ -4,7 +4,7 @@ OpenResponses is a native SwiftUI app for iOS and macOS, designed as a powerful 
 
 This project is currently in a "super beta" state, with a focus on achieving 100% compliance with the latest OpenAI APIs, including advanced tools like `computer` and backend conversation management.
 
-![App Screenshot](OpenResponses/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png)
+![App Screenshot](OpenResponses/Resources/Assets/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png)
 
 ## 🚀 Features
 
@@ -159,45 +159,32 @@ This project is currently in a "super beta" state, with a focus on achieving 100
 
 ## 🏗️ Architecture
 
-OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) pattern with additional service layers for robust functionality.
+OpenResponses is built with SwiftUI and follows the MVVM (Model-View-ViewModel) pattern with feature-oriented folders that keep views, models, and services focused and discoverable.
+
+### Project Structure
+
+- **`OpenResponses/App`**: Application bootstrap code such as `OpenResponsesApp.swift`, `AppContainer.swift`, and logging/analytics setup.
+- **`OpenResponses/Core`**: Shared models, services, and protocols (`ChatMessage.swift`, `OpenAIService.swift`, `APICapabilities.swift`, `KeychainService.swift`, etc.).
+- **`OpenResponses/Features`**: Feature-specific views and view models. For example, the chat feature lives in `Features/Chat` with UI components, `ChatViewModel.swift`, and related extensions like `ChatViewModel+Streaming.swift` that now own streaming handlers.
+- **`OpenResponses/Shared`**: Cross-cutting UI components and utilities reused across multiple features.
+- **`OpenResponses/Resources`**: Assets, localized strings, and UI resources (`Assets.xcassets`, `Launch Screen.storyboard`, `Localizable.xcstrings`).
+- **`OpenResponses/Support`**: Legacy implementations, sample data, and developer tooling kept separate from production code.
 
 ### Core Architecture
 
-- **`OpenResponsesApp.swift`**: The app's entry point with sophisticated initialization, API key migration from UserDefaults to Keychain, MCP authentication migration, and dependency injection.
-- **`ContentView.swift`**: Main application coordinator handling onboarding flow, API key validation, settings presentation, and share sheet integration.
-- **`ChatView.swift`**: The main UI, containing the message list, input view, settings navigation, and comprehensive sheet management for approvals and file selection.
-- **`ChatViewModel.swift`**: The central ViewModel managing chat state, API calls, streaming, tool execution, error handling, and sophisticated retry logic with circuit breakers.
+- **`ChatView.swift`**: Primary conversation UI that renders message history, the input surface, and feature sheets.
+- **`ChatViewModel.swift` + `ChatViewModel+Streaming.swift`**: The view model manages chat state, orchestrates API calls, and delegates streaming event parsing to the dedicated extension to keep functions small and focused.
+- **`ContentView.swift`**: Coordinates onboarding, API key setup, settings presentation, and deep links.
+- **`OpenAIService.swift`**: Central networking layer that builds `/v1/responses` payloads using composable helpers for models, tools, and attachments, and streams events back to the view model.
+- **`ConversationStorageService.swift`**: Handles persistence of local conversations and metadata.
+- **`AppContainer.swift`**: Dependency registry that wires services together for injection throughout the app.
+- **`APICapabilities.swift`** & **`ModelCompatibilityService.swift`**: Type-safe definitions describing available tools and which models support them.
 
-### Service Layer
+### Management & Tooling Highlights
 
-- **`OpenAIService.swift`**: The networking layer responsible for all communication with the OpenAI API with comprehensive error handling, retry mechanisms, and rate limiting support.
-- **`OpenAIService_minimal.swift`**: Lightweight testing implementation of OpenAI service with minimal parameters for debugging and testing scenarios.
-- **`OpenAIServiceProtocol.swift`**: Protocol definition ensuring consistency across OpenAI service implementations with comprehensive error types and endpoint management.
-- **`APICapabilities.swift`**: A type-safe blueprint defining all supported OpenAI API features and tools, acting as a single source of truth for the app's capabilities.
-- **`ComputerService.swift`**: Manages the `computer` tool, providing robust browser automation via a native `WKWebView`.
-- **`MCPDiscoveryService.swift`**: Handles the discovery and configuration of MCP (Model Context Protocol) servers.
-- **`ConversationStorageService.swift`**: Manages local conversation persistence using JSON files in the Application Support directory.
-- **`KeychainService.swift`**: Securely manages the OpenAI API key and other sensitive data with automatic migration from insecure storage.
-- **`AnalyticsService.swift`**: Tracks API requests, performance metrics, and provides debugging insights with comprehensive request/response logging.
-- **`AppLogger.swift`**: Centralized logging system with categorization, structured output, and specialized OpenAI API logging with sanitization.
-- **`NetworkMonitor.swift`**: Monitors network connectivity and handles offline scenarios with real-time connection status updates.
-- **`ModelCompatibilityService.swift`**: Manages model-specific tool compatibility and feature availability with comprehensive model support matrix.
-- **`ImageProcessingUtils.swift`**: Optimized image processing and memory management utilities.
-- **`AccessibilityUtils.swift`**: Centralized accessibility configuration and utilities with comprehensive UI testing identifiers.
-
-### Management Systems
-
-- **`PromptLibrary.swift`**: Manages saved prompt presets and configurations.
-- **`FileManagerView.swift`**: Comprehensive file and vector store management interface.
-- **`DocumentPicker.swift`**: Native document selection and file import functionality.
-- **`ChatInputView.swift`**: Advanced input interface with file attachments and quick actions.
-- **`SelectedFilesView.swift`**: Displays and manages currently attached files with removal capabilities.
-- **`PromptLibraryView.swift`**: Library of reusable prompts and prompt management interface.
-- **`SettingsView.swift`**: Configuration interface for API keys, model preferences, and app settings.
-- **`ConversationTokenCounterView.swift`**: Token usage tracking and conversation cost estimation.
-- **`APIInspectorView.swift`**: Real-time API request/response inspector for debugging and transparency.
-- **`DebugConsoleView.swift`**: Comprehensive debugging interface with system information and logs.
-- **`MCPToolDiscoveryView.swift`**: Comprehensive MCP server discovery interface with search, filtering, and configuration.
+- **Prompt & File Management**: `PromptLibrary` and `FileManagerView` provide reusable prompt presets and file/vector store workflows.
+- **Diagnostics & Debugging**: Views such as `APIInspectorView`, `DebugConsoleView`, and `ConversationTokenCounterView` aid in troubleshooting and monitoring usage.
+- **Tool Integrations**: `ComputerService`, MCP discovery components, and code interpreter helpers live in `Core/Services` and are surfaced through feature modules.
 - **`MCPIntegrationStatus.swift`**: Complete MCP integration status monitoring and validation system.
 
 ### User Interface Components
@@ -248,7 +235,7 @@ Comprehensive `Codable` data structures providing full type safety and matching 
 - **`Prompt.swift`**: Configuration model containing all prompt settings, tool selections, and parameters.
 - **`StreamingStatus.swift`**: Enumerated streaming states with user-friendly descriptions.
 
-## � Getting Started
+## 🧭 Getting Started
 
 ### Prerequisites
 
@@ -257,20 +244,27 @@ Comprehensive `Codable` data structures providing full type safety and matching 
 
 ### Installation
 
-1.  **Clone the repository:**
-    ```sh
-    git clone https://github.com/Gunnarguy/OpenResponses.git
-    cd OpenResponses
-    ```
-2.  **Open the project:**
-    Open the `OpenResponses.xcodeproj` file in Xcode.
-3.  **Build and Run:**
-    Select your target device (iOS or macOS) and run the app.
-4.  **Configure the App:**
-    - On first launch, navigate to the **Settings** screen.
-    - Enter your OpenAI API key to enable communication with the API.
-    - Select your preferred model and configure any desired tools or advanced settings.
-    - **Optional**: Create prompt presets to save your favorite configurations for quick switching.
+1. **Clone the repository:**
+
+  ```sh
+  git clone https://github.com/Gunnarguy/OpenResponses.git
+  cd OpenResponses
+  ```
+
+1. **Open the project:**
+
+  Open the `OpenResponses.xcodeproj` file in Xcode.
+
+1. **Build and Run:**
+
+  Select your target device (iOS or macOS) and run the app.
+
+1. **Configure the App:**
+
+   - On first launch, navigate to the **Settings** screen.
+   - Enter your OpenAI API key to enable communication with the API.
+   - Select your preferred model and configure any desired tools or advanced settings.
+   - **Optional**: Create prompt presets to save your favorite configurations for quick switching.
 
 ## 📚 Key Features Guide
 
@@ -358,11 +352,11 @@ This project includes comprehensive testing capabilities:
 
 Contributions are welcome! If you'd like to contribute, please follow these steps:
 
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes and commit them (`git commit -m 'Add some feature'`).
-4.  Push to the branch (`git push origin feature/your-feature-name`).
-5.  Open a Pull Request.
+1. Fork the repository.
+1. Create a new branch (`git checkout -b feature/your-feature-name`).
+1. Make your changes and commit them (`git commit -m 'Add some feature'`).
+1. Push to the branch (`git push origin feature/your-feature-name`).
+1. Open a Pull Request.
 
 ## 📄 License
 

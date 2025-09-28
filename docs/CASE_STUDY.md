@@ -17,6 +17,17 @@ OpenResponses has achieved a major milestone - **Phase 1 is now 100% complete**!
 
 ---
 
+**[2025-09-20] Architecture Refresh Note:**
+Recent cleanup work modernized the codebase layout to better support feature teams and AI agents:
+
+- Migrated the monolithic `OpenResponses` folder into purpose-driven groups (`App`, `Core`, `Features`, `Shared`, `Resources`, `Support`) that align with MVVM boundaries and reduce Xcode project clutter.
+- Split the streaming pipeline out of `ChatViewModel.swift` into a focused `ChatViewModel+Streaming.swift` extension, making each handler short, documented, and easier to evolve for new `StreamingEvent` types.
+- Refactored `OpenAIService.swift` request construction into smaller helper methods so future Conversations API work can reuse the same composable builders for tools, attachments, and metadata.
+
+This structural refresh preserves existing functionality while making it simpler to reason about responsibilities, onboard contributors, and satisfy the roadmap's upcoming Conversations API migration.
+
+---
+
 **[2025-09-13] Beta Pause Note:**
 This project is paused in a "super beta" state. Major recent work includes:
 
@@ -85,11 +96,11 @@ The true robustness of OpenResponses is evident in how it handles the API's most
 
 The OpenAI API can respond in two ways: as a complete, single block of data, or as a real-time stream of events. Supporting both required a dual-path approach:
 
-1.  **`ChatViewModel` Logic**: A simple `Bool` from `UserDefaults` determines which path to take.
-2.  **`OpenAIService` Methods**:
+1. **`ChatViewModel` Logic**: A simple `Bool` from `UserDefaults` determines which path to take.
+2. **`OpenAIService` Methods**:
     - `sendChatRequest(...)`: Uses a standard `async/await` `URLSession.shared.data(for:)` call. It returns a single, complete `OpenAIResponse` object.
     - `streamChatRequest(...)`: Uses `URLSession.shared.bytes(for:)` to get an `AsyncThrowingStream` of data. It parses Server-Sent Events (SSE) line-by-line, decodes each into a `StreamingEvent` struct, and `yield`s it to the caller.
-3.  **UI/UX Handling**:
+3. **UI/UX Handling**:
     - In non-streaming mode, the UI waits for the final response.
 
 - In streaming mode, the `ChatViewModel` first appends a blank assistant message. As text deltas arrive, it appends the text to this message, creating the "typing" effect. To reduce UI churn, a lightweight text coalescer buffers rapid-fire deltas and flushes on sentence boundaries or a short debounce. The `StreamingStatusView` is updated based on events like `response.connecting` or `response.in_progress` to give the user clear feedback.
@@ -267,13 +278,13 @@ File Search is not just a toggle; it's a complete management system.
 
 - **The Challenge**: The API requires multiple steps to use File Search: upload a file, create a vector store, and then associate the file with the store.
 - **The Solution**: The `FileManagerView` provides a dedicated UI for this entire lifecycle. It performs full **CRUD (Create, Read, Update, Delete)** operations for both files and vector stores. A user can:
-  1.  Upload files.
-  2.  Create a new vector store, optionally associating files at creation time.
-  3.  View all files within a store.
-  4.  Add existing files to a store.
-  5.  Remove files from a store.
-  6.  Edit a store's name and metadata.
-  7.  Delete files and stores entirely.
+    1. Upload files.
+    1. Create a new vector store, optionally associating files at creation time.
+    1. View all files within a store.
+    1. Add existing files to a store.
+    1. Remove files from a store.
+    1. Edit a store's name and metadata.
+    1. Delete files and stores entirely.
 - **Multi-Store Support**: The UI also supports selecting multiple vector stores for a single search, a powerful feature for querying across different knowledge bases.
 
 This makes a highly complex workflow intuitive and manageable for the end-user.
@@ -322,7 +333,7 @@ The `AccessibilityUtils` system provides:
 
 ### 5. Phase 1 Completion: Production-Ready Implementation
 
-**🎉 September 2025: A Major Milestone Achieved**
+### 🎉 September 2025: A Major Milestone Achieved
 
 Phase 1 represents the most comprehensive implementation of OpenAI API capabilities in a native iOS application to date. Every feature has been implemented with production-ready quality, comprehensive error handling, and user-centric design.
 

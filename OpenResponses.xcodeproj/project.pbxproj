@@ -10,22 +10,9 @@
 		B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenResponses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		B0F51BEA2E5AF26A008E0AF1 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				B0F51BEA2E5AF26A008E0AF1 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */,
-			);
 			path = OpenResponses;
 			sourceTree = "<group>";
 		};
@@ -263,7 +250,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z3E334EXZD;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "OpenResponses needs access to your documents folder to allow you to attach files to your AI conversations.";
+				INFOPLIST_KEY_NSFilesystemUsageDescription = "OpenResponses needs access to your files to allow you to upload and attach them to your AI conversations.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenResponses connects to your local network to reach a trusted automation server you control.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OpenResponses uses your location once to autofill city/region/country for web search relevance. This is optional.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "OpenResponses needs access to your photo library to allow you to attach images to your AI conversations.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -299,7 +292,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z3E334EXZD;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "OpenResponses needs access to your documents folder to allow you to attach files to your AI conversations.";
+				INFOPLIST_KEY_NSFilesystemUsageDescription = "OpenResponses needs access to your files to allow you to upload and attach them to your AI conversations.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenResponses connects to your local network to reach a trusted automation server you control.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "OpenResponses uses your location once to autofill city/region/country for web search relevance. This is optional.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "OpenResponses needs access to your photo library to allow you to attach images to your AI conversations.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
