@@ -145,8 +145,15 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 **C. File Search**
 
 - **Type:** `file_search`
-- **App Status:** **Fully Implemented**.
-- **Implementation Details:** Enabled via `prompt.enableFileSearch`. Requires `selectedVectorStoreIds` from the prompt to be configured. Creates tool config with vector store IDs. **Gap:** The app does not yet parse and render the search results which can be included via the `include` parameter.
+- **App Status:** **✅ Fully Implemented with Advanced Features**.
+- **Implementation Details:** Enabled via `prompt.enableFileSearch`. Requires `selectedVectorStoreIds` from the prompt to be configured. Creates tool config with vector store IDs.
+- **Advanced Parameters (NEW):**
+  - **`max_num_results`** (1-50): Fully implemented with UI slider in SettingsView. Controls result chunk count. Stored in `prompt.fileSearchMaxResults`.
+  - **`ranking_options`**: Fully implemented. Includes `ranker` selection ("auto", "default-2024-08-21") and `score_threshold` (0.0-1.0) slider. Stored in `prompt.fileSearchRanker` and `prompt.fileSearchScoreThreshold`.
+  - **`filters`**: Model support complete via `AttributeFilter` enum with comparison (eq, ne, gt, gte, lt, lte) and compound (and, or) operators. UI builder coming soon.
+  - **`chunking_strategy`**: API support complete via `ChunkingStrategy` struct. Supports auto and static modes with `max_chunk_size_tokens` (100-4096) and `chunk_overlap_tokens` parameters. Available in `addFileToVectorStore()` method.
+  - **`attributes`**: Model support complete for file metadata (up to 16 keys, 256 chars each). Passed to `addFileToVectorStore()` method. UI for attribute management coming soon.
+- **Gap:** The app does not yet parse and render the search results which can be included via the `include` parameter.
 
 **D. Custom Function Tools (User-Defined)**
 

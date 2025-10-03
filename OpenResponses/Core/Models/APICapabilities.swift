@@ -34,7 +34,17 @@ public enum APICapabilities {
         case webSearchPreview
         
         /// Allows the model to search the contents of uploaded files within specified vector stores.
-        case fileSearch(vectorStoreIds: [String])
+        /// - Parameters:
+        ///   - vectorStoreIds: Array of vector store IDs to search
+        ///   - maxNumResults: Optional limit on number of results (1-50)
+        ///   - rankingOptions: Optional ranking configuration
+        ///   - filters: Optional attribute filtering
+        case fileSearch(
+            vectorStoreIds: [String],
+            maxNumResults: Int?,
+            rankingOptions: RankingOptions?,
+            filters: AttributeFilter?
+        )
         
         /// Allows the model to write and run Python code in a sandboxed environment.
         case codeInterpreter(containerType: String, fileIds: [String]?)
@@ -72,6 +82,9 @@ public enum APICapabilities {
             case quality
             case outputFormat = "output_format"
             case vectorStoreIds = "vector_store_ids"
+            case maxNumResults = "max_num_results"
+            case rankingOptions = "ranking_options"
+            case filters
             case fileIds = "file_ids"
             case environment
             case displayWidth = "display_width"
@@ -97,7 +110,15 @@ public enum APICapabilities {
                 self = .webSearchPreview
             case "file_search":
                 let vectorStoreIds = try container.decodeIfPresent([String].self, forKey: .vectorStoreIds) ?? []
-                self = .fileSearch(vectorStoreIds: vectorStoreIds)
+                let maxNumResults = try container.decodeIfPresent(Int.self, forKey: .maxNumResults)
+                let rankingOptions = try container.decodeIfPresent(RankingOptions.self, forKey: .rankingOptions)
+                let filters = try container.decodeIfPresent(AttributeFilter.self, forKey: .filters)
+                self = .fileSearch(
+                    vectorStoreIds: vectorStoreIds,
+                    maxNumResults: maxNumResults,
+                    rankingOptions: rankingOptions,
+                    filters: filters
+                )
             case "code_interpreter":
                 let containerInfo = try container.decodeIfPresent([String: String].self, forKey: .container)
                 let containerType = containerInfo?["type"] ?? "auto"
@@ -151,10 +172,19 @@ public enum APICapabilities {
                 try container.encode("web_search", forKey: .type)
             case .webSearchPreview:
                 try container.encode("web_search_preview", forKey: .type)
-            case .fileSearch(let vectorStoreIds):
+            case .fileSearch(let vectorStoreIds, let maxNumResults, let rankingOptions, let filters):
                 try container.encode("file_search", forKey: .type)
                 if !vectorStoreIds.isEmpty {
                     try container.encode(vectorStoreIds, forKey: .vectorStoreIds)
+                }
+                if let maxNumResults = maxNumResults {
+                    try container.encode(maxNumResults, forKey: .maxNumResults)
+                }
+                if let rankingOptions = rankingOptions {
+                    try container.encode(rankingOptions, forKey: .rankingOptions)
+                }
+                if let filters = filters {
+                    try container.encode(filters, forKey: .filters)
                 }
             case .codeInterpreter(let containerType, let fileIds):
                 try container.encode("code_interpreter", forKey: .type)
@@ -395,5 +425,128 @@ public struct AnyCodable: Codable, Hashable {
         } else {
             throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type"))
         }
+    }
+}
+
+// MARK: - Attribute Filtering
+
+/// Attribute filtering for file search
+public enum AttributeFilter: Codable, Hashable {
+    case comparison(property: String, operator: ComparisonOperator, value: AttributeValue)
+    case compound(operator: CompoundOperator, filters: [AttributeFilter])
+    
+    public enum ComparisonOperator: String, Codable {
+        case eq, ne, gt, gte, lt, lte
+    }
+    
+    public enum CompoundOperator: String, Codable {
+        case and, or
+    }
+    
+    public enum AttributeValue: Codable, Hashable {
+        case string(String)
+        case int(Int)
+        case double(Double)
+        
+        public func hash(into hasher: inout Hasher) {
+            switch self {
+            case .string(let val): hasher.combine(val)
+            case .int(let val): hasher.combine(val)
+            case .double(let val): hasher.combine(val)
+            }
+        }
+        
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let intVal = try? container.decode(Int.self) {
+                self = .int(intVal)
+            } else if let doubleVal = try? container.decode(Double.self) {
+                self = .double(doubleVal)
+            } else if let stringVal = try? container.decode(String.self) {
+                self = .string(stringVal)
+            } else {
+                throw DecodingError.typeMismatch(AttributeValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported attribute value type"))
+            }
+        }
+        
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let val): try container.encode(val)
+            case .int(let val): try container.encode(val)
+            case .double(let val): try container.encode(val)
+            }
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case type, property, value, filters
+        case `operator` = "operator"
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+        switch self {
+        case .comparison(let property, let op, let value):
+            hasher.combine("comparison")
+            hasher.combine(property)
+            hasher.combine(op)
+            hasher.combine(value)
+        case .compound(let op, let filters):
+            hasher.combine("compound")
+            hasher.combine(op)
+            hasher.combine(filters)
+        }
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        
+        switch type {
+        case "and", "or":
+            let op = CompoundOperator(rawValue: type)!
+            let filters = try container.decode([AttributeFilter].self, forKey: .filters)
+            self = .compound(operator: op, filters: filters)
+        default:
+            // Comparison operators
+            let property = try container.decode(String.self, forKey: .property)
+            let op = ComparisonOperator(rawValue: type)!
+            let value = try container.decode(AttributeValue.self, forKey: .value)
+            self = .comparison(property: property, operator: op, value: value)
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        switch self {
+        case .comparison(let property, let op, let value):
+            try container.encode(op.rawValue, forKey: .type)
+            try container.encode(property, forKey: .property)
+            try container.encode(value, forKey: .value)
+        case .compound(let op, let filters):
+            try container.encode(op.rawValue, forKey: .type)
+            try container.encode(filters, forKey: .filters)
+        }
+    }
+}
+
+// MARK: - Ranking Options
+
+/// Ranking options for file search results
+public struct RankingOptions: Codable, Hashable {
+    let ranker: String // "auto" or "default-2024-08-21"
+    let scoreThreshold: Double // 0.0 to 1.0
+    
+    enum CodingKeys: String, CodingKey {
+        case ranker
+        case scoreThreshold = "score_threshold"
+    }
+    
+    public static let auto = RankingOptions(ranker: "auto", scoreThreshold: 0.0)
+    
+    public init(ranker: String, scoreThreshold: Double) {
+        self.ranker = ranker
+        self.scoreThreshold = min(max(scoreThreshold, 0.0), 1.0)
     }
 }

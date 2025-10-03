@@ -9,6 +9,8 @@ struct ChatView: View {
     @State private var showFilePicker: Bool = false // To present the file importer
     @State private var showImagePicker: Bool = false // To present the image picker
     @State private var showAttachmentMenu: Bool = false // To show attachment options
+    @State private var showVectorStoreUpload: Bool = false // To show vector store upload flow
+    @State private var uploadSuccessMessage: String? = nil // Success message after upload
     @FocusState private var inputFocused: Bool  // Focus state for the input field
     
     var body: some View {
@@ -82,6 +84,21 @@ struct ChatView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Choose the type of content to attach to your message.")
+        }
+        .sheet(isPresented: $showVectorStoreUpload) {
+            VectorStoreSmartUploadView(onUploadComplete: { successCount, failedCount in
+                if successCount > 0 {
+                    uploadSuccessMessage = "✅ Successfully uploaded \(successCount) file\(successCount == 1 ? "" : "s") to vector store\(failedCount > 0 ? " (\(failedCount) failed)" : "")"
+                }
+            })
+                .environmentObject(viewModel)
+        }
+        .alert("Upload Complete", isPresented: .constant(uploadSuccessMessage != nil)) {
+            Button("OK") {
+                uploadSuccessMessage = nil
+            }
+        } message: {
+            Text(uploadSuccessMessage ?? "")
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
             Button("OK") {
@@ -206,6 +223,9 @@ struct ChatView: View {
                     inputFocused = false        // Dismiss keyboard
                 },
                 onAttach: { showAttachmentMenu = true },
+                onVectorStoreUpload: { showVectorStoreUpload = true },
+                vectorStoreCount: viewModel.activePrompt.selectedVectorStoreIds?.split(separator: ",").count ?? 0,
+                fileSearchEnabled: viewModel.activePrompt.enableFileSearch,
                 onImageGenerate: {
                     // Quick image generation
                     userInput = "Generate an image of "

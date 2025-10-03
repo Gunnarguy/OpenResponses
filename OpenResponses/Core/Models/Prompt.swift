@@ -28,6 +28,12 @@ struct Prompt: Codable, Identifiable, Equatable {
     var enableImageGeneration: Bool
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String?
+    
+    // File Search Advanced Options
+    var fileSearchMaxResults: Int? // 1-50
+    var fileSearchRanker: String? // "auto" or "default-2024-08-21"
+    var fileSearchScoreThreshold: Double? // 0.0-1.0
+    
     var enableMCPTool: Bool
     var enableCustomTool: Bool
     var enableComputerUse: Bool
@@ -148,6 +154,7 @@ struct Prompt: Codable, Identifiable, Equatable {
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
     case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
+    case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold
     case enableComputerUse
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
@@ -183,6 +190,9 @@ struct Prompt: Codable, Identifiable, Equatable {
             enableImageGeneration: true,
             enableFileSearch: false,
             selectedVectorStoreIds: "",
+            fileSearchMaxResults: nil,
+            fileSearchRanker: nil,
+            fileSearchScoreThreshold: nil,
             enableMCPTool: true,
             enableCustomTool: false,
             enableComputerUse: true,

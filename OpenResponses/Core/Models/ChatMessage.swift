@@ -256,6 +256,46 @@ struct ExpiresAfter: Decodable {
 struct VectorStoreListResponse: Decodable {
     let object: String // "list"
     let data: [VectorStore]
+    let hasMore: Bool
+    let firstId: String?
+    let lastId: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case object, data
+        case hasMore = "has_more"
+        case firstId = "first_id"
+        case lastId = "last_id"
+    }
+}
+
+/// Chunking strategy for vector store files
+struct ChunkingStrategy: Codable {
+    let type: String // "auto" or "static"
+    let `static`: StaticChunkingStrategy?
+    
+    struct StaticChunkingStrategy: Codable {
+        let maxChunkSizeTokens: Int // 100-4096
+        let chunkOverlapTokens: Int // 0 to maxChunkSizeTokens/2
+        
+        enum CodingKeys: String, CodingKey {
+            case maxChunkSizeTokens = "max_chunk_size_tokens"
+            case chunkOverlapTokens = "chunk_overlap_tokens"
+        }
+    }
+    
+    static var auto: ChunkingStrategy {
+        ChunkingStrategy(type: "auto", static: nil)
+    }
+    
+    static func staticStrategy(maxTokens: Int, overlapTokens: Int) -> ChunkingStrategy {
+        ChunkingStrategy(
+            type: "static",
+            static: StaticChunkingStrategy(
+                maxChunkSizeTokens: maxTokens,
+                chunkOverlapTokens: overlapTokens
+            )
+        )
+    }
 }
 
 /// Vector store file relationship
@@ -267,13 +307,16 @@ struct VectorStoreFile: Decodable, Identifiable {
     let vectorStoreId: String
     let status: String
     let lastError: VectorStoreFileError?
+    let chunkingStrategy: ChunkingStrategy?
+    let attributes: [String: String]?
     
     enum CodingKeys: String, CodingKey {
-        case id, object, status
+        case id, object, status, attributes
         case usageBytes = "usage_bytes"
         case createdAt = "created_at"
         case vectorStoreId = "vector_store_id"
         case lastError = "last_error"
+        case chunkingStrategy = "chunking_strategy"
     }
 }
 

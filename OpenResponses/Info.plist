@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>OpenResponses needs access to your photo library to allow you to attach images to your AI conversations.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>OpenResponses needs access to your documents folder to allow you to attach files to your AI conversations.</string>
+	<key>NSFilesystemUsageDescription</key>
+	<string>OpenResponses needs access to your files to allow you to upload and attach them to your AI conversations.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OpenResponses uses your location once to autofill city/region/country for web search relevance. This is optional.</string>
+
+	<!-- Local network permission description (for connecting to a LAN-hosted Computer Use Server) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OpenResponses connects to your local network to reach a trusted automation server you control.</string>
+
+</dict>
+</plist>

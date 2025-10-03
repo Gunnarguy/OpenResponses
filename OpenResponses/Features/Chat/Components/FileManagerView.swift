@@ -2,7 +2,13 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
-/// View for managing files and vector stores with OpenAI
+/// Redesigned view for managing files and vector stores with OpenAI
+/// Features:
+/// - Tabbed interface for better organization
+/// - Quick actions for common workflows
+/// - Search and filter capabilities
+/// - Inline file management
+/// - Intuitive vector store selection
 struct FileManagerView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
@@ -11,19 +17,33 @@ struct FileManagerView: View {
     @State private var vectorStores: [VectorStore] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedTab: FileManagerTab = .quickActions
+    
+    // Vector store selection state
+    @State private var multiSelectVectorStores: Set<String> = []
+    @State private var showSaveMultiSelect: Bool = false
+    @State private var multiStoreInit: Bool = false
+    @State private var multiStoreMode: Bool = false
+    
+    // Search and filter state
+    @State private var searchText: String = ""
+    @State private var showOnlyActiveStores: Bool = false
+    
+    // Sheet presentation state
     @State private var showingFilePicker = false
     @State private var showingCreateVectorStore = false
     @State private var showingEditVectorStore = false
+    @State private var showingQuickUpload = false
     @State private var selectedVectorStore: VectorStore?
     @State private var vectorStoreToEdit: VectorStore?
     @State private var vectorStoreFiles: [VectorStoreFile] = []
+    @State private var targetVectorStoreForUpload: VectorStore?
     
-    @State private var multiSelectVectorStores: Set<String> = []
-    @State private var showSaveMultiSelect: Bool = false // Show save button when multi-select changes
-    @State private var multiStoreInit: Bool = false // Track if we've initialized multi-store toggle
-    @State private var multiStoreMode: Bool = false // Local state for multi-store mode
+    // DocumentPicker state
+    @State private var selectedFileData: [Data] = []
+    @State private var selectedFilenames: [String] = []
     
-    // New state variables for delete confirmation
+    // Delete confirmation state
     @State private var fileToDelete: OpenAIFile?
     @State private var vectorStoreToDelete: VectorStore?
     @State private var showingDeleteFileConfirmation = false
@@ -31,25 +51,55 @@ struct FileManagerView: View {
     
     private let api = OpenAIService()
     
-    var body: some View {
-        NavigationView {
-            List {
-                // File Search Toggle Section
-                Section(header: Text("File Search Tool")) {
-                    Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                        .accessibilityHint("Enables the AI to search through uploaded files and documents")
-                        .onChange(of: viewModel.activePrompt.enableFileSearch) { _, newValue in
-                            if !newValue {
-                                viewModel.activePrompt.selectedVectorStoreIds = nil
-                                multiSelectVectorStores.removeAll()
-                            }
+    enum FileManagerTab: String, CaseIterable {
+        case quickActions = "Quick Actions"
+        case files = "Files"
+        case vectorStores = "Vector Stores"
+        
+        var icon: String {
+            switch self {
+            case .quickActions: return "bolt.fill"
+            case .files: return "doc.fill"
+            case .vectorStores: return "folder.fill"
+            }
+        }
+    }
+    
+    // MARK: - Quick Actions Tab
+    
+    private var quickActionsView: some View {
+        List {
+            Section {
+                VStack(spacing: 16) {
+                    Text("Quick Actions")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text("Common workflows for managing files and vector stores")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical)
+                .listRowBackground(Color.clear)
+            }
+            
+            Section("File Search Configuration") {
+                Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                    .accessibilityHint("Enables the AI to search through uploaded files and documents")
+                    .onChange(of: viewModel.activePrompt.enableFileSearch) { _, newValue in
+                        if !newValue {
+                            viewModel.activePrompt.selectedVectorStoreIds = nil
+                            multiSelectVectorStores.removeAll()
                         }
-                    Toggle("Enable Multi-Store File Search", isOn: $multiStoreMode)
-                        .disabled(!viewModel.activePrompt.enableFileSearch)
-                        .accessibilityHint("Allows searching across multiple vector stores simultaneously")
+                        viewModel.saveActivePrompt()
+                    }
+                
+                if viewModel.activePrompt.enableFileSearch {
+                    Toggle("Multi-Store Search (Max 2)", isOn: $multiStoreMode)
+                        .accessibilityHint("Search across multiple vector stores simultaneously")
                         .onChange(of: multiStoreMode) { _, newValue in
                             if newValue {
-                                // Restore selection from saved IDs
                                 if let savedIds = viewModel.activePrompt.selectedVectorStoreIds, !savedIds.isEmpty {
                                     let ids = Set(savedIds.split(separator: ",").map { String($0) })
                                     multiSelectVectorStores = ids
@@ -60,113 +110,390 @@ struct FileManagerView: View {
                                 viewModel.saveActivePrompt()
                             }
                         }
-                    // Show save button if multi-select is enabled
-                    if multiStoreMode {
-                        Button("Save Selected Vector Stores") {
+                }
+            }
+            
+            Section("Active Vector Stores") {
+                if !viewModel.activePrompt.enableFileSearch {
+                    Text("Enable File Search to select vector stores")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                } else if vectorStores.isEmpty {
+                    Text("No vector stores available")
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(selectedVectorStoresList, id: \.id) { store in
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(store.name ?? "Unnamed Store")
+                                    .font(.headline)
+                                Text("\(store.fileCounts.total) files")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                if multiStoreMode {
+                                    multiSelectVectorStores.remove(store.id)
+                                    showSaveMultiSelect = true
+                                } else {
+                                    viewModel.activePrompt.selectedVectorStoreIds = nil
+                                    viewModel.saveActivePrompt()
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    
+                    if multiStoreMode && showSaveMultiSelect {
+                        Button("Save Changes") {
                             viewModel.activePrompt.selectedVectorStoreIds = multiSelectVectorStores.isEmpty ? nil : multiSelectVectorStores.joined(separator: ",")
                             viewModel.saveActivePrompt()
                             showSaveMultiSelect = false
                         }
-                        .disabled(multiSelectVectorStores.isEmpty)
                         .foregroundColor(.accentColor)
-                        .opacity(showSaveMultiSelect ? 1 : 0.5)
+                        .font(.headline)
                     }
                 }
-                // Vector Stores Section
-                Section(header: Text(multiStoreMode ? "Vector Stores (Multi-Select)" : "Vector Stores")) {
-                    if vectorStores.isEmpty && !isLoading {
-                        Text("No vector stores found")
+            }
+            
+            Section("Quick Upload") {
+                Button {
+                    showingQuickUpload = true
+                } label: {
+                    Label("Upload File to Vector Store", systemImage: "doc.badge.plus")
+                }
+                .foregroundColor(.accentColor)
+                
+                Button {
+                    showingFilePicker = true
+                } label: {
+                    Label("Upload File Only", systemImage: "doc.fill")
+                }
+                .foregroundColor(.accentColor)
+                
+                Button {
+                    showingCreateVectorStore = true
+                } label: {
+                    Label("Create New Vector Store", systemImage: "folder.badge.plus")
+                }
+                .foregroundColor(.accentColor)
+            }
+            
+            Section("Statistics") {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Total Files")
+                            .font(.caption)
                             .foregroundColor(.secondary)
+                        Text("\(files.count)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                    }
+                    Spacer()
+                    VStack(alignment: .leading) {
+                        Text("Vector Stores")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(vectorStores.count)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                    }
+                    Spacer()
+                    VStack(alignment: .leading) {
+                        Text("Active")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(selectedVectorStoresList.count)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Files Tab
+    
+    private var filesView: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("Search files...", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            Section(header: Text("Uploaded Files (\(filteredFiles.count))")) {
+                if filteredFiles.isEmpty {
+                    if isLoading {
+                        ProgressView("Loading files...")
+                    } else if files.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "doc.badge.plus")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("No Files Uploaded")
+                                .font(.headline)
+                            Text("Upload your first file to get started")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
                     } else {
-                        ForEach(vectorStores) { store in
-                            VectorStoreRow(
-                                store: store,
-                                isSelected: multiStoreMode ? multiSelectVectorStores.contains(store.id) : (store.id == (viewModel.activePrompt.selectedVectorStoreIds ?? "")),
-                                onSelect: {
-                                    if viewModel.activePrompt.enableFileSearch {
-                                        if multiStoreMode {
-                                            if multiSelectVectorStores.contains(store.id) {
-                                                multiSelectVectorStores.remove(store.id)
-                                            } else {
-                                                multiSelectVectorStores.insert(store.id)
-                                            }
-                                            showSaveMultiSelect = true
-                                        } else {
-                                            viewModel.activePrompt.selectedVectorStoreIds = store.id
-                                            viewModel.saveActivePrompt()
-                                            // Also clear multi-select if switching back
-                                            multiSelectVectorStores.removeAll()
-                                        }
-                                    } else {
-                                        viewModel.activePrompt.selectedVectorStoreIds = store.id
-                                        viewModel.saveActivePrompt()
-                                    }
-                                },
-                                onDelete: {
-                                    vectorStoreToDelete = store
-                                    showingDeleteVectorStoreConfirmation = true
-                                },
-                                onEdit: {
-                                    vectorStoreToEdit = store
-                                    showingEditVectorStore = true
-                                },
-                                onViewFiles: {
-                                    selectedVectorStore = store
-                                    Task {
-                                        await loadVectorStoreFiles(store.id)
-                                    }
+                        Text("No files match your search")
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    ForEach(filteredFiles) { file in
+                        ImprovedFileRow(
+                            file: file,
+                            vectorStores: vectorStores,
+                            onDelete: {
+                                fileToDelete = file
+                                showingDeleteFileConfirmation = true
+                            },
+                            onAddToVectorStore: { store in
+                                Task {
+                                    await addFileToVectorStore(file, vectorStore: store)
                                 }
-                            )
-                        }
+                            }
+                        )
                     }
-                    Button("Create Vector Store") {
-                        showingCreateVectorStore = true
-                    }
-                    .foregroundColor(.accentColor)
-                    .accessibilityConfiguration(
-                        hint: AccessibilityUtils.Hint.createVectorStore,
-                        identifier: AccessibilityUtils.Identifier.createVectorStoreButton
-                    )
                 }
-                // Files Section
-                Section(header: Text("Uploaded Files")) {
-                    if files.isEmpty && !isLoading {
-                        Text("No files uploaded")
-                            .foregroundColor(.secondary)
-                    } else {
-                        ForEach(files) { file in
-                            FileRow(
-                                file: file,
-                                onDelete: {
-                                    fileToDelete = file
-                                    showingDeleteFileConfirmation = true
-                                },
-                                onAddToVectorStore: { vectorStore in
-                                    Task {
-                                        await addFileToVectorStore(file, vectorStore: vectorStore)
-                                    }
-                                },
-                                vectorStores: vectorStores
-                            )
+            }
+            
+            Section {
+                Button {
+                    showingFilePicker = true
+                } label: {
+                    Label("Upload New File", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .foregroundColor(.accentColor)
+                .font(.headline)
+            }
+        }
+    }
+    
+    // MARK: - Vector Stores Tab
+    
+    private var vectorStoresView: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("Search vector stores...", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
                         }
                     }
-                    
-                    Button("Upload File") {
-                        showingFilePicker = true
+                }
+                
+                if viewModel.activePrompt.enableFileSearch {
+                    Toggle("Show Only Active Stores", isOn: $showOnlyActiveStores)
+                        .font(.caption)
+                }
+            }
+            
+            Section(header: Text("Vector Stores (\(filteredVectorStores.count))")) {
+                if filteredVectorStores.isEmpty {
+                    if isLoading {
+                        ProgressView("Loading vector stores...")
+                    } else if vectorStores.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("No Vector Stores")
+                                .font(.headline)
+                            Text("Create your first vector store to organize files")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                    } else {
+                        Text("No vector stores match your criteria")
+                            .foregroundColor(.secondary)
                     }
-                    .foregroundColor(.accentColor)
-                    .accessibilityConfiguration(
-                        hint: AccessibilityUtils.Hint.uploadFile,
-                        identifier: AccessibilityUtils.Identifier.uploadFileButton
-                    )
+                } else {
+                    ForEach(filteredVectorStores) { store in
+                        ImprovedVectorStoreRow(
+                            store: store,
+                            isSelected: isStoreSelected(store),
+                            multiStoreMode: multiStoreMode && viewModel.activePrompt.enableFileSearch,
+                            onSelect: {
+                                handleStoreSelection(store)
+                            },
+                            onAddFiles: {
+                                targetVectorStoreForUpload = store
+                                showingFilePicker = true
+                            },
+                            onViewDetails: {
+                                selectedVectorStore = store
+                                Task {
+                                    await loadVectorStoreFiles(store.id)
+                                }
+                            },
+                            onEdit: {
+                                vectorStoreToEdit = store
+                                showingEditVectorStore = true
+                            },
+                            onDelete: {
+                                vectorStoreToDelete = store
+                                showingDeleteVectorStoreConfirmation = true
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Section {
+                Button {
+                    showingCreateVectorStore = true
+                } label: {
+                    Label("Create New Vector Store", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .foregroundColor(.accentColor)
+                .font(.headline)
+            }
+        }
+    }
+    
+    // MARK: - Helper Properties
+    
+    private var selectedVectorStoresList: [VectorStore] {
+        if multiStoreMode {
+            return vectorStores.filter { multiSelectVectorStores.contains($0.id) }
+        } else if let selectedId = viewModel.activePrompt.selectedVectorStoreIds {
+            return vectorStores.filter { $0.id == selectedId }
+        }
+        return []
+    }
+    
+    private var filteredFiles: [OpenAIFile] {
+        if searchText.isEmpty {
+            return files
+        }
+        return files.filter { file in
+            file.filename.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    private var filteredVectorStores: [VectorStore] {
+        var result = vectorStores
+        
+        // Apply search filter
+        if !searchText.isEmpty {
+            result = result.filter { store in
+                (store.name ?? "Unnamed").localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        
+        // Apply active filter
+        if showOnlyActiveStores {
+            result = result.filter { isStoreSelected($0) }
+        }
+        
+        return result
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func isStoreSelected(_ store: VectorStore) -> Bool {
+        if multiStoreMode {
+            return multiSelectVectorStores.contains(store.id)
+        } else {
+            return store.id == viewModel.activePrompt.selectedVectorStoreIds
+        }
+    }
+    
+    private func handleStoreSelection(_ store: VectorStore) {
+        guard viewModel.activePrompt.enableFileSearch else { return }
+        
+        if multiStoreMode {
+            if multiSelectVectorStores.contains(store.id) {
+                multiSelectVectorStores.remove(store.id)
+            } else {
+                // Limit to 2 stores maximum
+                if multiSelectVectorStores.count < 2 {
+                    multiSelectVectorStores.insert(store.id)
+                } else {
+                    errorMessage = "Maximum of 2 vector stores can be selected for multi-store search"
+                    return
+                }
+            }
+            showSaveMultiSelect = true
+        } else {
+            viewModel.activePrompt.selectedVectorStoreIds = store.id
+            viewModel.saveActivePrompt()
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Tab Picker
+                Picker("View", selection: $selectedTab) {
+                    ForEach(FileManagerTab.allCases, id: \.self) { tab in
+                        Label(tab.rawValue, systemImage: tab.icon)
+                            .tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding()
+                
+                // Tab Content
+                Group {
+                    switch selectedTab {
+                    case .quickActions:
+                        quickActionsView
+                    case .files:
+                        filesView
+                    case .vectorStores:
+                        vectorStoresView
+                    }
                 }
             }
             .navigationTitle("File Manager")
-            .refreshable {
-                await loadData()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") { dismiss() }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        Task { await loadData() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(isLoading)
+                }
             }
             .task {
-                // Only initialize toggle/selection once per view appearance
+                // Initialize on first appearance
                 if !multiStoreInit {
                     multiStoreInit = true
                     if multiStoreMode {
@@ -174,29 +501,36 @@ struct FileManagerView: View {
                             let ids = Set(savedIds.split(separator: ",").map { String($0) })
                             multiSelectVectorStores = ids
                         }
-                    } else {
-                        multiSelectVectorStores.removeAll()
                     }
                 }
                 await loadData()
             }
             .alert("Error", isPresented: .constant(errorMessage != nil)) {
-                Button("OK") {
-                    errorMessage = nil
-                }
+                Button("OK") { errorMessage = nil }
             } message: {
                 if let error = errorMessage {
                     Text(error)
                 }
             }
-            .fileImporter(
-                isPresented: $showingFilePicker,
-                allowedContentTypes: [.plainText, .pdf, .json, .data],
-                allowsMultipleSelection: false
-            ) { result in
-                Task {
-                    await handleFileSelection(result)
+            .confirmationDialog("Delete File", isPresented: $showingDeleteFileConfirmation, presenting: fileToDelete) { file in
+                Button("Delete", role: .destructive) {
+                    Task { await deleteFile(file) }
                 }
+                Button("Cancel", role: .cancel) {
+                    fileToDelete = nil
+                }
+            } message: { file in
+                Text("Are you sure you want to delete '\(file.filename)'? This action cannot be undone.")
+            }
+            .confirmationDialog("Delete Vector Store", isPresented: $showingDeleteVectorStoreConfirmation, presenting: vectorStoreToDelete) { store in
+                Button("Delete", role: .destructive) {
+                    Task { await deleteVectorStore(store) }
+                }
+                Button("Cancel", role: .cancel) {
+                    vectorStoreToDelete = nil
+                }
+            } message: { store in
+                Text("Are you sure you want to delete '\(store.name ?? "this vector store")'? This action cannot be undone.")
             }
             .sheet(isPresented: $showingCreateVectorStore) {
                 CreateVectorStoreView { name, selectedFileIds, expiresAfterDays in
@@ -233,33 +567,26 @@ struct FileManagerView: View {
                     }
                 )
             }
-            .alert("Confirm Deletion", isPresented: $showingDeleteFileConfirmation) {
-                Button("Delete", role: .destructive) {
-                    if let file = fileToDelete {
-                        Task {
-                            await deleteFile(file)
+            .sheet(isPresented: $showingQuickUpload) {
+                QuickUploadView(
+                    vectorStores: vectorStores,
+                    onUpload: { vectorStore in
+                        targetVectorStoreForUpload = vectorStore
+                        showingQuickUpload = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            showingFilePicker = true
                         }
                     }
-                }
-                Button("Cancel", role: .cancel) {
-                    fileToDelete = nil
-                }
-            } message: {
-                Text("Are you sure you want to delete the file '\(fileToDelete?.filename ?? "this file")'? This action cannot be undone.")
+                )
             }
-            .alert("Confirm Deletion", isPresented: $showingDeleteVectorStoreConfirmation) {
-                Button("Delete", role: .destructive) {
-                    if let store = vectorStoreToDelete {
-                        Task {
-                            await deleteVectorStore(store)
-                        }
-                    }
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: [.pdf, .plainText, .json, .data, .text, .rtf, .spreadsheet, .presentation, .zip, .commaSeparatedText],
+                allowsMultipleSelection: true
+            ) { result in
+                Task {
+                    await handleFileImporterResult(result)
                 }
-                Button("Cancel", role: .cancel) {
-                    vectorStoreToDelete = nil
-                }
-            } message: {
-                Text("Are you sure you want to delete the vector store '\(vectorStoreToDelete?.name ?? "this store")'? This action cannot be undone.")
             }
         }
     }
@@ -294,6 +621,91 @@ struct FileManagerView: View {
     }
     
     // MARK: - File Operations
+    
+    /// Handler for fileImporter with proper security-scoped resource management
+    @MainActor
+    private func handleFileImporterResult(_ result: Result<[URL], Error>) async {
+        switch result {
+        case .success(let urls):
+            errorMessage = nil
+            
+            for url in urls {
+                // Start accessing the security-scoped resource
+                let isAccessing = url.startAccessingSecurityScopedResource()
+                
+                defer {
+                    // Always stop accessing when done
+                    if isAccessing {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                
+                do {
+                    // Read the file data
+                    let fileData = try Data(contentsOf: url)
+                    let filename = url.lastPathComponent
+                    
+                    // Upload the file
+                    let uploadedFile = try await api.uploadFile(fileData: fileData, filename: filename)
+                    
+                    // If we have a target vector store, add the file to it
+                    if let vectorStoreId = targetVectorStoreForUpload?.id {
+                        _ = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                    }
+                } catch {
+                    errorMessage = "Failed to upload '\(url.lastPathComponent)': \(error.localizedDescription)"
+                    break // Stop processing on first error
+                }
+            }
+            
+            // Refresh data after all uploads
+            if let vectorStoreId = targetVectorStoreForUpload?.id {
+                await loadVectorStoreFiles(vectorStoreId)
+            }
+            await loadData()
+            
+            // Clear the target
+            targetVectorStoreForUpload = nil
+            
+        case .failure(let error):
+            errorMessage = "Failed to select files: \(error.localizedDescription)"
+        }
+    }
+    
+    /// New handler for multi-file uploads using DocumentPicker with security-scoped resources
+    @MainActor
+    private func handleMultipleFileUploads() async {
+        guard !selectedFileData.isEmpty else { return }
+        
+        errorMessage = nil
+        
+        do {
+            // Upload all selected files
+            for (index, fileData) in selectedFileData.enumerated() {
+                let filename = selectedFilenames[safe: index] ?? "document_\(index + 1)"
+                let uploadedFile = try await api.uploadFile(fileData: fileData, filename: filename)
+                
+                // If we have a target vector store, add the file to it
+                if let vectorStoreId = targetVectorStoreForUpload?.id {
+                    _ = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                }
+            }
+            
+            // Clear the selections and target
+            selectedFileData.removeAll()
+            selectedFilenames.removeAll()
+            
+            // Refresh data
+            if let vectorStoreId = targetVectorStoreForUpload?.id {
+                await loadVectorStoreFiles(vectorStoreId)
+            }
+            await loadData()
+            
+            targetVectorStoreForUpload = nil
+        } catch {
+            errorMessage = "Failed to upload and process files: \(error.localizedDescription)"
+        }
+    }
     
     @MainActor
     private func handleFileSelection(_ result: Result<[URL], Error>, for vectorStoreId: String? = nil) async {
@@ -406,6 +818,286 @@ struct FileManagerView: View {
 }
 
 // MARK: - Supporting Views
+
+// MARK: - Quick Upload View
+struct QuickUploadView: View {
+    let vectorStores: [VectorStore]
+    let onUpload: (VectorStore) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    
+    private var filteredStores: [VectorStore] {
+        if searchText.isEmpty {
+            return vectorStores
+        }
+        return vectorStores.filter { store in
+            (store.name ?? "Unnamed").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Section {
+                    VStack(spacing: 12) {
+                        Image(systemName: "arrow.up.doc.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.accentColor)
+                        Text("Upload File to Vector Store")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text("Select a vector store to upload your file to")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .listRowBackground(Color.clear)
+                }
+                
+                Section {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Search vector stores...", text: $searchText)
+                    }
+                }
+                
+                Section(header: Text("Select Vector Store")) {
+                    if filteredStores.isEmpty {
+                        Text("No vector stores found")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(filteredStores) { store in
+                            Button {
+                                onUpload(store)
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(store.name ?? "Unnamed Vector Store")
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        Text("\(store.fileCounts.total) files")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Quick Upload")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Improved File Row
+struct ImprovedFileRow: View {
+    let file: OpenAIFile
+    let vectorStores: [VectorStore]
+    let onDelete: () -> Void
+    let onAddToVectorStore: (VectorStore) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(file.filename)
+                        .font(.headline)
+                        .lineLimit(2)
+                    
+                    HStack(spacing: 12) {
+                        Label(formatBytes(file.bytes), systemImage: "doc.fill")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Label(formatDate(file.createdAt), systemImage: "calendar")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                
+                Menu {
+                    Menu("Add to Vector Store") {
+                        ForEach(vectorStores) { store in
+                            Button {
+                                onAddToVectorStore(store)
+                            } label: {
+                                Label(store.name ?? "Unnamed Store", systemImage: "folder")
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .foregroundColor(.accentColor)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func formatDate(_ timestamp: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Improved Vector Store Row
+struct ImprovedVectorStoreRow: View {
+    let store: VectorStore
+    let isSelected: Bool
+    let multiStoreMode: Bool
+    let onSelect: () -> Void
+    let onAddFiles: () -> Void
+    let onViewDetails: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with selection indicator
+            HStack {
+                if isSelected {
+                    Image(systemName: multiStoreMode ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundColor(.green)
+                        .font(.title3)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(store.name ?? "Unnamed Vector Store")
+                        .font(.headline)
+                    
+                    HStack(spacing: 12) {
+                        Label("\(store.fileCounts.total) files", systemImage: "doc.fill")
+                            .font(.caption)
+                        
+                        Label(formatBytes(store.usageBytes), systemImage: "externaldrive")
+                            .font(.caption)
+                        
+                        Text(store.status)
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(statusColor(store.status).opacity(0.2))
+                            .foregroundColor(statusColor(store.status))
+                            .cornerRadius(4)
+                    }
+                    .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Button {
+                    onSelect()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                        .font(.title3)
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                }
+            }
+            
+            // Quick Actions
+            HStack(spacing: 12) {
+                Button {
+                    onAddFiles()
+                } label: {
+                    Label("Add Files", systemImage: "plus.circle")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor.opacity(0.1))
+                        .foregroundColor(.accentColor)
+                        .cornerRadius(8)
+                }
+                
+                Button {
+                    onViewDetails()
+                } label: {
+                    Label("View Files", systemImage: "list.bullet")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(8)
+                }
+                
+                Spacer()
+                
+                Menu {
+                    Button {
+                        onEdit()
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func statusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "completed":
+            return .green
+        case "in_progress":
+            return .orange
+        case "failed":
+            return .red
+        default:
+            return .blue
+        }
+    }
+}
+
+// MARK: - Old Vector Store Row (for backward compatibility)
 
 struct VectorStoreRow: View {
     let store: VectorStore
@@ -864,5 +1556,12 @@ struct CreateVectorStoreView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
+
+// MARK: - Array Extension for Safe Subscripting
+extension Array {
+    subscript(safe index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }

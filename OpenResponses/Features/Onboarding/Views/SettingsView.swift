@@ -920,6 +920,94 @@ extension SettingsView {
                     .disableAutocorrection(true)
             }
             
+            // Advanced File Search Options
+            DisclosureGroup("Advanced Search Options") {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Max Results
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Max Results")
+                                .font(.caption)
+                            Spacer()
+                            Text(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "Default (10)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack {
+                            Button("Clear") {
+                                viewModel.activePrompt.fileSearchMaxResults = nil
+                                viewModel.saveActivePrompt()
+                            }
+                            .font(.caption2)
+                            .buttonStyle(.bordered)
+                            
+                            Slider(
+                                value: Binding(
+                                    get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
+                                    set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
+                                ),
+                                in: 1...50,
+                                step: 1
+                            )
+                            .onChange(of: viewModel.activePrompt.fileSearchMaxResults) { _, _ in
+                                viewModel.saveActivePrompt()
+                            }
+                        }
+                        
+                        Text("Controls how many result chunks are returned (1-50). Lower values save tokens, higher values provide more context.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Ranking Options
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Ranking Algorithm")
+                            .font(.caption)
+                        
+                        Picker("Ranker", selection: $viewModel.activePrompt.fileSearchRanker.bound) {
+                            Text("Auto").tag(Optional<String>.none)
+                            Text("Auto (Explicit)").tag(Optional("auto"))
+                            Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: viewModel.activePrompt.fileSearchRanker) { _, _ in
+                            viewModel.saveActivePrompt()
+                        }
+                    }
+                    
+                    // Score Threshold
+                    if viewModel.activePrompt.fileSearchRanker != nil {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Score Threshold")
+                                    .font(.caption)
+                                Spacer()
+                                Text(viewModel.activePrompt.fileSearchScoreThreshold.map { String(format: "%.2f", $0) } ?? "0.00")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Slider(
+                                value: Binding(
+                                    get: { viewModel.activePrompt.fileSearchScoreThreshold ?? 0.0 },
+                                    set: { viewModel.activePrompt.fileSearchScoreThreshold = $0 }
+                                ),
+                                in: 0...1,
+                                step: 0.05
+                            )
+                            .onChange(of: viewModel.activePrompt.fileSearchScoreThreshold) { _, _ in
+                                viewModel.saveActivePrompt()
+                            }
+                            
+                            Text("Higher threshold filters out low-quality results. 0.0 = all results, 1.0 = only perfect matches.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
             Button(action: { showingFileManager = true }) {
                 Label("Open File Manager", systemImage: "folder.fill")
                     .font(.subheadline)

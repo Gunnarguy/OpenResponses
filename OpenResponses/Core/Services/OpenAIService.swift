@@ -737,7 +737,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 .filter { !$0.isEmpty }
 
             if !vectorStoreIds.isEmpty {
-                tools.append(.fileSearch(vectorStoreIds: vectorStoreIds))
+                // Build ranking options if configured
+                var rankingOptions: RankingOptions? = nil
+                if let ranker = prompt.fileSearchRanker, !ranker.isEmpty,
+                   let threshold = prompt.fileSearchScoreThreshold {
+                    rankingOptions = RankingOptions(ranker: ranker, scoreThreshold: threshold)
+                }
+                
+                tools.append(.fileSearch(
+                    vectorStoreIds: vectorStoreIds,
+                    maxNumResults: prompt.fileSearchMaxResults,
+                    rankingOptions: rankingOptions,
+                    filters: nil // TODO: Add attribute filter support from UI
+                ))
             }
         }
 
@@ -1579,12 +1591,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     ///   - purpose: The purpose of the file (e.g., "assistants", "fine-tune", "vision")
     /// - Returns: The uploaded file information
     func uploadFile(fileData: Data, filename: String, purpose: String = "assistants") async throws -> OpenAIFile {
+        AppLogger.log("📤 Starting file upload: \(filename) (\(formatBytes(fileData.count)))", category: .openAI, level: .info)
+        
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            AppLogger.log("❌ Upload failed: Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
         
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/files")!
+        
+        AppLogger.log("   🌐 Endpoint: POST \(url.absoluteString)", category: .openAI, level: .debug)
+        AppLogger.log("   📋 Purpose: \(purpose)", category: .openAI, level: .debug)
+        AppLogger.log("   📦 Boundary: \(boundary)", category: .openAI, level: .debug)
         
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
@@ -1610,18 +1629,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         request.httpBody = body
         
+        AppLogger.log("   ⏫ Sending \(formatBytes(body.count)) to OpenAI...", category: .openAI, level: .info)
+        
         let (data, response) = try await URLSession.shared.data(for: request)
+        
         guard let httpResponse = response as? HTTPURLResponse else {
+            AppLogger.log("❌ Invalid HTTP response received", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
         
+        AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
+        
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
+                AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
                 print("Error uploading file: \(responseString)")
             }
             let errorMessage: String
             if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
                 errorMessage = errorResponse.error.message
+                AppLogger.log("   ⚠️ Error message: \(errorMessage)", category: .openAI, level: .error)
             } else {
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
@@ -1629,11 +1656,21 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
         
         do {
-            return try JSONDecoder().decode(OpenAIFile.self, from: data)
+            let file = try JSONDecoder().decode(OpenAIFile.self, from: data)
+            AppLogger.log("✅ File uploaded successfully! ID: \(file.id), Size: \(formatBytes(file.bytes))", category: .openAI, level: .info)
+            return file
         } catch {
+            AppLogger.log("❌ Failed to decode file upload response: \(error)", category: .openAI, level: .error)
             print("Decoding error for file upload: \(error)")
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+    
+    /// Helper to format byte counts
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
     }
     
     /// Lists all files uploaded to OpenAI
@@ -1790,37 +1827,59 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.missingAPIKey
         }
         
-        let url = URL(string: "https://api.openai.com/v1/vector_stores")!
+        var allVectorStores: [VectorStore] = []
+        var after: String? = nil
+        var hasMore = true
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        if httpResponse.statusCode != 200 {
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("Error listing vector stores: \(responseString)")
+        // Pagination loop to fetch all vector stores
+        while hasMore {
+            var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
+            var queryItems: [URLQueryItem] = [
+                URLQueryItem(name: "limit", value: "100") // Max allowed by API
+            ]
+            if let after = after {
+                queryItems.append(URLQueryItem(name: "after", value: after))
             }
-            let errorMessage: String
-            if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                errorMessage = errorResponse.error.message
-            } else {
-                errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            urlComponents.queryItems = queryItems
+            
+            guard let url = urlComponents.url else {
+                throw OpenAIServiceError.invalidResponseData
             }
-            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenAIServiceError.invalidResponseData
+            }
+            
+            if httpResponse.statusCode != 200 {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("Error listing vector stores: \(responseString)")
+                }
+                let errorMessage: String
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                    errorMessage = errorResponse.error.message
+                } else {
+                    errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                }
+                throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+            }
+            
+            do {
+                let response = try JSONDecoder().decode(VectorStoreListResponse.self, from: data)
+                allVectorStores.append(contentsOf: response.data)
+                hasMore = response.hasMore
+                after = response.lastId
+            } catch {
+                print("Decoding error for vector store list: \(error)")
+                throw OpenAIServiceError.invalidResponseData
+            }
         }
         
-        do {
-            let response = try JSONDecoder().decode(VectorStoreListResponse.self, from: data)
-            return response.data
-        } catch {
-            print("Decoding error for vector store list: \(error)")
-            throw OpenAIServiceError.invalidResponseData
-        }
+        return allVectorStores
     }
     
     /// Deletes a vector store
@@ -1931,19 +1990,66 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// - Parameters:
     ///   - vectorStoreId: The ID of the vector store
     ///   - fileId: The ID of the file to add
+    ///   - chunkingStrategy: Optional chunking configuration
+    ///   - attributes: Optional file metadata for filtering
     /// - Returns: The vector store file relationship
-    func addFileToVectorStore(vectorStoreId: String, fileId: String) async throws -> VectorStoreFile {
+    func addFileToVectorStore(
+        vectorStoreId: String,
+        fileId: String,
+        chunkingStrategy: ChunkingStrategy? = nil,
+        attributes: [String: String]? = nil
+    ) async throws -> VectorStoreFile {
+        AppLogger.log("🔗 Adding file to vector store", category: .openAI, level: .info)
+        AppLogger.log("   📁 File ID: \(fileId)", category: .openAI, level: .debug)
+        AppLogger.log("   📦 Vector Store ID: \(vectorStoreId)", category: .openAI, level: .debug)
+        
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            AppLogger.log("❌ Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
         
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)/files")!
+        AppLogger.log("   🌐 Endpoint: POST \(url.absoluteString)", category: .openAI, level: .debug)
         
-        let requestObject: [String: Any] = [
+        var requestObject: [String: Any] = [
             "file_id": fileId
         ]
         
+        // Add chunking strategy if provided
+        if let chunkingStrategy = chunkingStrategy {
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            if let chunkData = try? encoder.encode(chunkingStrategy),
+               let chunkDict = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any] {
+                requestObject["chunking_strategy"] = chunkDict
+                AppLogger.log("   ⚙️ Custom chunking strategy applied", category: .openAI, level: .debug)
+                if let chunkType = (chunkDict["type"] as? String) {
+                    AppLogger.log("      Type: \(chunkType)", category: .openAI, level: .debug)
+                }
+                if let staticDict = chunkDict["static"] as? [String: Any] {
+                    if let maxTokens = staticDict["max_chunk_size_tokens"] as? Int {
+                        AppLogger.log("      Max tokens: \(maxTokens)", category: .openAI, level: .debug)
+                    }
+                    if let overlap = staticDict["chunk_overlap_tokens"] as? Int {
+                        AppLogger.log("      Overlap: \(overlap)", category: .openAI, level: .debug)
+                    }
+                }
+            }
+        } else {
+            AppLogger.log("   ⚙️ Using default chunking strategy", category: .openAI, level: .debug)
+        }
+        
+        // Add attributes if provided
+        if let attributes = attributes, !attributes.isEmpty {
+            requestObject["attributes"] = attributes
+            AppLogger.log("   🏷️ File attributes: \(attributes)", category: .openAI, level: .debug)
+        }
+        
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
+        
+        if let prettyJSON = String(data: jsonData, encoding: .utf8) {
+            AppLogger.log("   📤 Request body: \(prettyJSON)", category: .openAI, level: .debug)
+        }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1951,18 +2057,25 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
         
+        AppLogger.log("   ⏫ Sending request to OpenAI...", category: .openAI, level: .info)
+        
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
+            AppLogger.log("❌ Invalid HTTP response", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
         
+        AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
+        
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
+                AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
                 print("Error adding file to vector store: \(responseString)")
             }
             let errorMessage: String
             if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
                 errorMessage = errorResponse.error.message
+                AppLogger.log("   ⚠️ Error message: \(errorMessage)", category: .openAI, level: .error)
             } else {
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
@@ -1970,8 +2083,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
         
         do {
-            return try JSONDecoder().decode(VectorStoreFile.self, from: data)
+            let vectorStoreFile = try JSONDecoder().decode(VectorStoreFile.self, from: data)
+            AppLogger.log("✅ File successfully added to vector store!", category: .openAI, level: .info)
+            AppLogger.log("   📊 Status: \(vectorStoreFile.status)", category: .openAI, level: .debug)
+            AppLogger.log("   📈 Usage bytes: \(vectorStoreFile.usageBytes ?? 0)", category: .openAI, level: .debug)
+            
+            if let responseString = String(data: data, encoding: .utf8) {
+                AppLogger.log("   📥 Full response: \(responseString)", category: .openAI, level: .debug)
+            }
+            
+            return vectorStoreFile
         } catch {
+            AppLogger.log("❌ Failed to decode response: \(error)", category: .openAI, level: .error)
             print("Decoding error for vector store file: \(error)")
             throw OpenAIServiceError.invalidResponseData
         }
