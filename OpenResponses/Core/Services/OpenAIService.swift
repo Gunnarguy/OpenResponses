@@ -1882,6 +1882,60 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return allVectorStores
     }
     
+    /// Lists vector stores with pagination support
+    /// - Parameters:
+    ///   - limit: Number of results to return (max 100)
+    ///   - after: Cursor for pagination
+    /// - Returns: Paginated vector store response
+    func listVectorStoresPaginated(limit: Int = 20, after: String? = nil) async throws -> VectorStoreListResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(min(limit, 100))) // Ensure we don't exceed API limit
+        ]
+        if let after = after {
+            queryItems.append(URLQueryItem(name: "after", value: after))
+        }
+        urlComponents.queryItems = queryItems
+        
+        guard let url = urlComponents.url else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Error listing vector stores: \(responseString)")
+            }
+            let errorMessage: String
+            if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                errorMessage = errorResponse.error.message
+            } else {
+                errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            }
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        do {
+            let response = try JSONDecoder().decode(VectorStoreListResponse.self, from: data)
+            return response
+        } catch {
+            print("Decoding error for vector store list: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
     /// Deletes a vector store
     /// - Parameter vectorStoreId: The ID of the vector store to delete
     func deleteVectorStore(vectorStoreId: String) async throws {
@@ -2086,7 +2140,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             let vectorStoreFile = try JSONDecoder().decode(VectorStoreFile.self, from: data)
             AppLogger.log("✅ File successfully added to vector store!", category: .openAI, level: .info)
             AppLogger.log("   📊 Status: \(vectorStoreFile.status)", category: .openAI, level: .debug)
-            AppLogger.log("   📈 Usage bytes: \(vectorStoreFile.usageBytes ?? 0)", category: .openAI, level: .debug)
+            AppLogger.log("   📈 Usage bytes: \(vectorStoreFile.usageBytes)", category: .openAI, level: .debug)
             
             if let responseString = String(data: data, encoding: .utf8) {
                 AppLogger.log("   📥 Full response: \(responseString)", category: .openAI, level: .debug)

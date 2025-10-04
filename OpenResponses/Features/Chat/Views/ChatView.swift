@@ -10,6 +10,8 @@ struct ChatView: View {
     @State private var showImagePicker: Bool = false // To present the image picker
     @State private var showAttachmentMenu: Bool = false // To show attachment options
     @State private var showVectorStoreUpload: Bool = false // To show vector store upload flow
+    @State private var showFileManager: Bool = false // To show file manager
+    @State private var showActiveVectorStores: Bool = false // To show active vector stores management
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
     @FocusState private var inputFocused: Bool  // Focus state for the input field
     
@@ -76,9 +78,11 @@ struct ChatView: View {
         }
         .confirmationDialog("Add Attachment", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
             Button("📷 Select Images") {
+                guard !showImagePicker else { return }
                 showImagePicker = true
             }
             Button("📁 Select File") {
+                guard !showFilePicker else { return }
                 showFilePicker = true
             }
             Button("Cancel", role: .cancel) { }
@@ -86,11 +90,25 @@ struct ChatView: View {
             Text("Choose the type of content to attach to your message.")
         }
         .sheet(isPresented: $showVectorStoreUpload) {
-            VectorStoreSmartUploadView(onUploadComplete: { successCount, failedCount in
-                if successCount > 0 {
-                    uploadSuccessMessage = "✅ Successfully uploaded \(successCount) file\(successCount == 1 ? "" : "s") to vector store\(failedCount > 0 ? " (\(failedCount) failed)" : "")"
+            VectorStoreSmartUploadView(
+                onUploadComplete: { successCount, failedCount in
+                    if successCount > 0 {
+                        uploadSuccessMessage = "✅ Successfully uploaded \(successCount) file\(successCount == 1 ? "" : "s") to vector store\(failedCount > 0 ? " (\(failedCount) failed)" : "")"
+                    }
+                },
+                onManageVectorStores: {
+                    showVectorStoreUpload = false
+                    showFileManager = true
                 }
-            })
+            )
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showFileManager) {
+            FileManagerView(initialTab: .vectorStores)
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showActiveVectorStores) {
+            ActiveVectorStoresView()
                 .environmentObject(viewModel)
         }
         .alert("Upload Complete", isPresented: .constant(uploadSuccessMessage != nil)) {
@@ -223,7 +241,7 @@ struct ChatView: View {
                     inputFocused = false        // Dismiss keyboard
                 },
                 onAttach: { showAttachmentMenu = true },
-                onVectorStoreUpload: { showVectorStoreUpload = true },
+                onVectorStoreUpload: { showActiveVectorStores = true },
                 vectorStoreCount: viewModel.activePrompt.selectedVectorStoreIds?.split(separator: ",").count ?? 0,
                 fileSearchEnabled: viewModel.activePrompt.enableFileSearch,
                 onImageGenerate: {

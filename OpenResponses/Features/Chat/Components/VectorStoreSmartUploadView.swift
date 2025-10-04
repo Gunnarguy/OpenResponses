@@ -9,6 +9,7 @@ struct VectorStoreSmartUploadView: View {
     
     // Completion callback
     let onUploadComplete: ((Int, Int) -> Void)? // (successCount, failedCount)
+    let onManageVectorStores: (() -> Void)? // Callback to navigate to FileManagerView
     
     // API Service
     private let api = OpenAIService()
@@ -34,8 +35,9 @@ struct VectorStoreSmartUploadView: View {
     @State private var currentFileIndex = 0
     @State private var totalFiles = 0
     
-    init(onUploadComplete: ((Int, Int) -> Void)? = nil) {
+    init(onUploadComplete: ((Int, Int) -> Void)? = nil, onManageVectorStores: (() -> Void)? = nil) {
         self.onUploadComplete = onUploadComplete
+        self.onManageVectorStores = onManageVectorStores
     }
     
     private var currentStoreCount: Int {
@@ -240,8 +242,7 @@ struct VectorStoreSmartUploadView: View {
                 
                 Button {
                     // Navigate to File Manager to select existing stores
-                    dismiss()
-                    // TODO: Could programmatically open Settings > File Manager
+                    onManageVectorStores?()
                 } label: {
                     Label("Select Existing Stores", systemImage: "folder.fill")
                         .foregroundColor(.accentColor)
@@ -274,6 +275,7 @@ struct VectorStoreSmartUploadView: View {
             
             Section("Upload Files") {
                 Button {
+                    guard !isUploading, !showingFilePicker else { return }
                     targetVectorStore = selectedStores.first
                     showingFilePicker = true
                 } label: {
@@ -282,6 +284,7 @@ struct VectorStoreSmartUploadView: View {
                 }
                 .foregroundColor(.accentColor)
                 .font(.headline)
+                .disabled(isUploading || showingFilePicker)
             }
             
             Section("Advanced Options") {
@@ -311,14 +314,14 @@ struct VectorStoreSmartUploadView: View {
             Section("Vector Store Management") {
                 Button {
                     // Navigate to add second store
-                    dismiss()
+                    onManageVectorStores?()
                 } label: {
                     Label("Add 2nd Vector Store", systemImage: "folder.badge.plus")
                 }
                 
                 Button {
                     // Navigate to File Manager
-                    dismiss()
+                    onManageVectorStores?()
                 } label: {
                     Label("Manage Vector Stores", systemImage: "folder.fill")
                 }
@@ -339,6 +342,7 @@ struct VectorStoreSmartUploadView: View {
             Section {
                 ForEach(selectedStores) { store in
                     Button {
+                        guard !isUploading, !showingFilePicker else { return }
                         targetVectorStore = store
                         showingFilePicker = true
                     } label: {
@@ -363,6 +367,7 @@ struct VectorStoreSmartUploadView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .disabled(isUploading || showingFilePicker)
                 }
             }
             
@@ -399,8 +404,18 @@ struct VectorStoreSmartUploadView: View {
         AppLogger.log("📂 Loading vector stores list", category: .fileManager, level: .info)
         isLoading = true
         do {
-            vectorStores = try await api.listVectorStores()
-            AppLogger.log("✅ Successfully loaded \(vectorStores.count) vector stores", category: .fileManager, level: .info)
+            // Load first batch quickly, then load all if needed
+            let firstBatch = try await api.listVectorStoresPaginated(limit: 50, after: nil)
+            vectorStores = firstBatch.data
+            AppLogger.log("✅ Initially loaded \(vectorStores.count) vector stores", category: .fileManager, level: .info)
+            
+            // If there are more, load them in the background
+            if firstBatch.hasMore {
+                AppLogger.log("🔄 Loading remaining vector stores in background...", category: .fileManager, level: .info)
+                let allStores = try await api.listVectorStores()
+                vectorStores = allStores
+                AppLogger.log("✅ Successfully loaded all \(vectorStores.count) vector stores", category: .fileManager, level: .info)
+            }
         } catch {
             AppLogger.log("❌ Failed to load vector stores: \(error.localizedDescription)", category: .fileManager, level: .error)
             errorMessage = "Failed to load vector stores: \(error.localizedDescription)"
@@ -500,7 +515,7 @@ struct VectorStoreSmartUploadView: View {
                     
                     // Add to vector store
                     AppLogger.log("   🔗 Adding file to vector store '\(targetStore.name ?? targetStore.id)'...", category: .openAI, level: .info)
-                    if let strategy = chunkingStrategy {
+                    if chunkingStrategy != nil {
                         AppLogger.log("   ⚙️ Chunking: \(Int(chunkSize)) tokens, \(Int(chunkOverlap)) overlap", category: .openAI, level: .debug)
                     }
                     

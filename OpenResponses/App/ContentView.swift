@@ -10,7 +10,7 @@ struct ContentView: View {
     private let keychainService = KeychainService.shared
 
     init() {
-        _viewModel = StateObject(wrappedValue: ChatViewModel())
+        _viewModel = StateObject(wrappedValue: AppContainer.shared.makeChatViewModel())
     }
 
     var body: some View {
@@ -79,7 +79,7 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(ChatViewModel())
+        .environmentObject(AppContainer.shared.makeChatViewModel())
 }
 
 // MARK: - ShareSheet

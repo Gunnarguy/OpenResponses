@@ -105,7 +105,6 @@ class FileConverterService {
     
     private static func convertUnsupportedFile(url: URL, extension: String) async throws -> ConversionResult {
         let filename = url.lastPathComponent
-        let baseName = url.deletingPathExtension().lastPathComponent
         
         // Try to determine file type from UTType
         let utType = UTType(filenameExtension: `extension`)
@@ -119,13 +118,13 @@ class FileConverterService {
         // Audio files → Placeholder for transcription
         if utType?.conforms(to: .audio) == true {
             AppLogger.log("   🎵 Audio file detected - generating metadata", category: .fileManager, level: .info)
-            return try convertAudioToText(url: url, originalFilename: filename)
+            return try await convertAudioToText(url: url, originalFilename: filename)
         }
         
         // Video files → Placeholder for transcription
         if utType?.conforms(to: .movie) == true {
             AppLogger.log("   🎬 Video file detected - generating metadata", category: .fileManager, level: .info)
-            return try convertVideoToText(url: url, originalFilename: filename)
+            return try await convertVideoToText(url: url, originalFilename: filename)
         }
         
         // Try reading as plain text (works for many formats)
@@ -216,9 +215,9 @@ class FileConverterService {
     }
     
     /// Convert audio file to text (metadata for now, transcription would require Whisper API)
-    private static func convertAudioToText(url: URL, originalFilename: String) throws -> ConversionResult {
+    private static func convertAudioToText(url: URL, originalFilename: String) async throws -> ConversionResult {
         let asset = AVAsset(url: url)
-        let duration = asset.duration.seconds
+        let duration = try await asset.load(.duration).seconds
         
         let metadata = """
         # Original File: \(originalFilename)
@@ -258,10 +257,10 @@ class FileConverterService {
     }
     
     /// Convert video file to text metadata
-    private static func convertVideoToText(url: URL, originalFilename: String) throws -> ConversionResult {
+    private static func convertVideoToText(url: URL, originalFilename: String) async throws -> ConversionResult {
         let asset = AVAsset(url: url)
-        let duration = asset.duration.seconds
-        let tracks = asset.tracks
+        let duration = try await asset.load(.duration).seconds
+        let tracks = try await asset.load(.tracks)
         
         let videoTracks = tracks.filter { $0.mediaType == .video }
         let audioTracks = tracks.filter { $0.mediaType == .audio }

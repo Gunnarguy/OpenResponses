@@ -4,15 +4,19 @@ import UniformTypeIdentifiers
 /// A SwiftUI view that wraps the `UIDocumentPickerViewController` to allow users to select documents.
 /// This struct conforms to `UIViewControllerRepresentable` to bridge the UIKit view controller
 /// into the SwiftUI view hierarchy.
+/// 
+/// **Now enhanced with FileConverterService integration for universal file type support!**
 struct DocumentPicker: UIViewControllerRepresentable {
     /// A binding to an array of `Data` objects, which will be populated with the contents of the selected files.
     @Binding var selectedFileData: [Data]
     /// A binding to an array of `String` objects for the filenames.
     @Binding var selectedFilenames: [String]
+    /// Optional callback for conversion status feedback
+    var onConversionStatus: ((String) -> Void)? = nil
 
     /// Creates the `UIDocumentPickerViewController` instance.
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        // Allow selection of common document types.
+        // Allow ALL content types - FileConverterService will handle validation and conversion
         let supportedTypes: [UTType] = [
             .pdf,
             .text,
@@ -23,7 +27,12 @@ struct DocumentPicker: UIViewControllerRepresentable {
             .json,
             .rtf,
             .spreadsheet,
-            .presentation
+            .presentation,
+            .image,
+            .movie,
+            .audio,
+            .data, // Catch-all for binary files
+            .content // Catch-all for any content
         ]
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: true)
         picker.delegate = context.coordinator
@@ -52,24 +61,68 @@ struct DocumentPicker: UIViewControllerRepresentable {
             parent.selectedFileData.removeAll()
             parent.selectedFilenames.removeAll()
             
-            for url in urls {
-                // Start accessing the security-scoped resource.
-                guard url.startAccessingSecurityScopedResource() else {
-                    print("Failed to start accessing security-scoped resource for \(url.lastPathComponent)")
-                    continue
+            AppLogger.log("📁 User selected \(urls.count) file(s) for chat attachment", category: .fileManager, level: .info)
+            
+            // Process files asynchronously with FileConverterService
+            Task {
+                for (index, url) in urls.enumerated() {
+                    // Start accessing the security-scoped resource
+                    guard url.startAccessingSecurityScopedResource() else {
+                        AppLogger.log("❌ Failed to access security-scoped resource for \(url.lastPathComponent)", category: .fileManager, level: .error)
+                        continue
+                    }
+                    
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    
+                    do {
+                        AppLogger.log("📤 [\(index + 1)/\(urls.count)] Processing: \(url.lastPathComponent)", category: .fileManager, level: .info)
+                        
+                        // Use FileConverterService to validate and convert if needed
+                        let conversionResult = try await FileConverterService.processFile(url: url)
+                        
+                        // Update UI with status
+                        if conversionResult.wasConverted {
+                            let statusMessage = "🔄 Converted \(conversionResult.originalFilename) via \(conversionResult.conversionMethod)"
+                            AppLogger.log("   \(statusMessage)", category: .fileManager, level: .info)
+                            await MainActor.run {
+                                parent.onConversionStatus?(statusMessage)
+                            }
+                        } else {
+                            AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
+                        }
+                        
+                        // Add processed file data
+                        await MainActor.run {
+                            parent.selectedFileData.append(conversionResult.convertedData)
+                            parent.selectedFilenames.append(conversionResult.filename)
+                        }
+                        
+                        AppLogger.log("   ✅ Successfully processed \(conversionResult.filename)", category: .fileManager, level: .info)
+                        
+                    } catch FileConversionError.fileTooLarge(let size, let limit) {
+                        let errorMessage = "❌ \(url.lastPathComponent): File size (\(formatBytes(size))) exceeds limit (\(formatBytes(limit)))"
+                        AppLogger.log(errorMessage, category: .fileManager, level: .error)
+                        await MainActor.run {
+                            parent.onConversionStatus?(errorMessage)
+                        }
+                    } catch {
+                        let errorMessage = "❌ Failed to process \(url.lastPathComponent): \(error.localizedDescription)"
+                        AppLogger.log(errorMessage, category: .fileManager, level: .error)
+                        await MainActor.run {
+                            parent.onConversionStatus?(errorMessage)
+                        }
+                    }
                 }
-
-                do {
-                    let data = try Data(contentsOf: url)
-                    parent.selectedFileData.append(data)
-                    parent.selectedFilenames.append(url.lastPathComponent)
-                } catch {
-                    print("Failed to read data from \(url.lastPathComponent): \(error)")
-                }
-
-                // Stop accessing the security-scoped resource.
-                url.stopAccessingSecurityScopedResource()
+                
+                AppLogger.log("🎉 Completed processing \(urls.count) file(s): \(parent.selectedFileData.count) succeeded", category: .fileManager, level: .info)
             }
+        }
+        
+        /// Helper to format bytes for user-friendly display
+        private func formatBytes(_ bytes: Int64) -> String {
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            return formatter.string(fromByteCount: bytes)
         }
     }
 }
