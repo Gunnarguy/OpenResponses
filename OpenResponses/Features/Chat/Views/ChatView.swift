@@ -11,33 +11,48 @@ struct ChatView: View {
     @State private var showAttachmentMenu: Bool = false // To show attachment options
     @State private var showVectorStoreUpload: Bool = false // To show vector store upload flow
     @State private var showFileManager: Bool = false // To show file manager
-    @State private var showActiveVectorStores: Bool = false // To show active vector stores management
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
     @FocusState private var inputFocused: Bool  // Focus state for the input field
     
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView { mainScrollContent }
-            .safeAreaInset(edge: .bottom) {
-                bottomInset
-            }
-            .onChange(of: viewModel.messages.count) { _, _ in
-                // Scroll to the bottom whenever a new message is added
-                if let lastMessage = viewModel.messages.last {
-                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+        VStack(spacing: 0) {
+            // Playground-style compact status bar
+            ChatStatusBar()
+                .environmentObject(viewModel)
+            
+            // Inline vector store quick toggle (Playground-style)
+            // Always show to allow users to select vector stores
+            VectorStoreQuickToggle()
+                .environmentObject(viewModel)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(uiColor: .systemBackground))
+            Divider()
+            
+            // Main content
+            ScrollViewReader { proxy in
+                ScrollView { mainScrollContent }
+                .safeAreaInset(edge: .bottom) {
+                    bottomInset
                 }
-            }
-            // Also scroll when the last message’s images change, since we add screenshots without changing count
-            .onChange(of: viewModel.messages.last?.images?.count ?? 0) { _, _ in
-                if let lastMessage = viewModel.messages.last {
-                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                .onChange(of: viewModel.messages.count) { _, _ in
+                    // Scroll to the bottom whenever a new message is added
+                    if let lastMessage = viewModel.messages.last {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
                 }
-            }
-            // Scroll smoothly as the streaming assistant message grows in text length
-            .onChange(of: viewModel.messages.last?.text?.count ?? 0) { _, _ in
-                if let last = viewModel.messages.last, last.role == .assistant {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                // Also scroll when the last message's images change, since we add screenshots without changing count
+                .onChange(of: viewModel.messages.last?.images?.count ?? 0) { _, _ in
+                    if let lastMessage = viewModel.messages.last {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+                // Scroll smoothly as the streaming assistant message grows in text length
+                .onChange(of: viewModel.messages.last?.text?.count ?? 0) { _, _ in
+                    if let last = viewModel.messages.last, last.role == .assistant {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -107,10 +122,6 @@ struct ChatView: View {
             FileManagerView(initialTab: .vectorStores)
                 .environmentObject(viewModel)
         }
-        .sheet(isPresented: $showActiveVectorStores) {
-            ActiveVectorStoresView()
-                .environmentObject(viewModel)
-        }
         .alert("Upload Complete", isPresented: .constant(uploadSuccessMessage != nil)) {
             Button("OK") {
                 uploadSuccessMessage = nil
@@ -141,24 +152,21 @@ struct ChatView: View {
     @ViewBuilder
     private var bottomInset: some View {
         VStack(spacing: 0) {
-            statusAndTokensRow
+            activityFeed
             inputArea
         }
     }
 
     @ViewBuilder
-    private var statusAndTokensRow: some View {
-        // Status + cumulative tokens row (always shows tokens; status appears when active)
+    private var activityFeed: some View {
+        // Activity feed with toggle button
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                if viewModel.streamingStatus != .idle && viewModel.streamingStatus != .done {
-                    StreamingStatusView(status: viewModel.streamingStatus)
-                }
-                ConversationTokenCounterView(usage: viewModel.cumulativeTokenUsage)
-                Spacer(minLength: 0)
-                // Toggle to show/hide activity details
+            // Activity toggle button on the right
+            HStack {
+                Spacer()
                 ActivityToggleButton()
             }
+            
             // Inline activity details when enabled
             if activityVisibility.isVisible {
                 ActivityFeedView(lines: viewModel.activityLines)
@@ -171,46 +179,15 @@ struct ChatView: View {
     @ViewBuilder
     private var inputArea: some View {
         VStack(spacing: 0) {
-            selectedAttachmentPreviews
-
-            // Compact tool indicator above input
-            CompactToolIndicator(
-                modelId: viewModel.activePrompt.openAIModel,
-                prompt: viewModel.activePrompt,
-                isStreaming: viewModel.activePrompt.enableStreaming
-            )
-            .padding(.horizontal)
-            .padding(.bottom, 4)
+            // Playground-style attachment pills (replaces old SelectedImagesView/SelectedFilesView)
+            AttachmentPills()
+                .environmentObject(viewModel)
 
             inputRow
 
             imageSuggestions
         }
         .background(.ultraThinMaterial)
-    }
-
-    @ViewBuilder
-    private var selectedAttachmentPreviews: some View {
-        // Selected images preview
-        if !viewModel.pendingImageAttachments.isEmpty {
-            SelectedImagesView(
-                images: $viewModel.pendingImageAttachments,
-                detailLevel: $viewModel.selectedImageDetailLevel,
-                onRemove: { index in
-                    viewModel.removeImageAttachment(at: index)
-                }
-            )
-        }
-
-        // Selected files preview
-        if !viewModel.pendingFileNames.isEmpty {
-            SelectedFilesView(
-                fileNames: viewModel.pendingFileNames,
-                onRemove: { index in
-                    viewModel.removeFileAttachment(at: index)
-                }
-            )
-        }
     }
 
     @ViewBuilder
@@ -241,9 +218,6 @@ struct ChatView: View {
                     inputFocused = false        // Dismiss keyboard
                 },
                 onAttach: { showAttachmentMenu = true },
-                onVectorStoreUpload: { showActiveVectorStores = true },
-                vectorStoreCount: viewModel.activePrompt.selectedVectorStoreIds?.split(separator: ",").count ?? 0,
-                fileSearchEnabled: viewModel.activePrompt.enableFileSearch,
                 onImageGenerate: {
                     // Quick image generation
                     userInput = "Generate an image of "
