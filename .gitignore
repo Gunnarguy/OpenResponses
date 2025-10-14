@@ -112,3 +112,8 @@ AuthKey_*.p8
 !README.md
 !LICENSE.md
 !docs/**/*.md
+
+# Test and utility scripts
+test-*.sh
+setup-*.sh
+deploy-*.sh
