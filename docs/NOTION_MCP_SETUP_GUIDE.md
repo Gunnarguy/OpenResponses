@@ -7,7 +7,9 @@ This guide covers **two methods** for integrating Notion with OpenResponses via 
 ## Method 1: Official Notion-Hosted MCP (Easiest)
 
 ### Overview
-Use Notion's official MCP server hosted at `https://mcp.notion.com/mcp`. This is the simplest method—no Docker, no servers to manage.
+Use Notion's official MCP server hosted at `https://mcp.notion.com/mcp`. This is the simplest method—no Docker, no servers to manage. Notion handles all the infrastructure.
+
+**Important:** The official server uses OAuth authentication. For AI tools that support Notion's OAuth flow (like Claude Desktop), authentication is automatic. For manual connections (like OpenResponses), you'll need to create a Notion integration and use its token.
 
 ### Prerequisites
 - A Notion account

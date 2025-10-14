@@ -927,7 +927,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
                     // Get authorization from keychain or fallback to mcpHeaders
                     var authorization: String? = nil
-                    if let stored = KeychainService.shared.load(forKey: "mcp_auth_\(prompt.mcpServerLabel)"), !stored.isEmpty {
+                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(prompt.mcpServerLabel)"), !stored.isEmpty {
                         authorization = stored
                     } else if !prompt.mcpHeaders.isEmpty {
                         authorization = prompt.mcpHeaders

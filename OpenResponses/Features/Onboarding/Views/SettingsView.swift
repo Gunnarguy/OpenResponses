@@ -955,6 +955,14 @@ extension SettingsView {
                         } else {
                             viewModel.activePrompt.mcpAllowedTools = ""
                         }
+                        
+                        // Load the saved authorization for this server label from keychain
+                        if let savedAuth = KeychainService.shared.load(forKey: "mcp_manual_\(template.label)"), !savedAuth.isEmpty {
+                            viewModel.activePrompt.mcpHeaders = savedAuth
+                        } else {
+                            // Clear authorization field when switching to a new server
+                            viewModel.activePrompt.mcpHeaders = ""
+                        }
                     }) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -1029,6 +1037,18 @@ extension SettingsView {
                 .textFieldStyle(.roundedBorder)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
+                .onChange(of: viewModel.activePrompt.mcpHeaders) { oldValue, newValue in
+                    // Auto-save authorization to secure keychain when it changes
+                    if !viewModel.activePrompt.mcpServerLabel.isEmpty {
+                        if newValue.isEmpty {
+                            // Delete from keychain if cleared
+                            KeychainService.shared.delete(forKey: "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)")
+                        } else {
+                            // Save to keychain
+                            KeychainService.shared.save(value: newValue, forKey: "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)")
+                        }
+                    }
+                }
         }
     }
     

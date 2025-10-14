@@ -197,7 +197,7 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     static let notionOfficial = RemoteMCPServer(
         label: "notion-mcp-official",
         serverURL: "https://mcp.notion.com/mcp",
-        serverDescription: "Official Notion-hosted MCP server. Requires Notion OAuth token. Get yours at: https://www.notion.so/profile/integrations",
+        serverDescription: "Official Notion-hosted MCP server (Streamable HTTP). For manual connection, get your Notion OAuth token and paste it in the Authorization field. Pages must be explicitly shared with your integration.",
         requireApproval: .never,
         allowedTools: nil, // Empty = all tools available
         displayLabel: "Notion MCP (Official)"
