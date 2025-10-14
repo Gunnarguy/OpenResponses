@@ -933,6 +933,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         authorization = prompt.mcpHeaders
                     }
                     
+                    // Ensure "Bearer " prefix for authorization tokens if not already present
+                    // Most MCP servers expect "Bearer <token>" format, but OpenAI sends raw token
+                    if let auth = authorization, !auth.isEmpty {
+                        if !auth.lowercased().hasPrefix("bearer ") {
+                            authorization = "Bearer \(auth)"
+                        }
+                    }
+                    
                     // Parse allowed tools if specified
                     var allowedTools: [String]? = nil
                     if !prompt.mcpAllowedTools.isEmpty {

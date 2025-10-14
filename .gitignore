@@ -107,10 +107,8 @@ AuthKey_*.p8
 # Archive
 *.xcarchive
 
-# Documentation files with secrets
-NOTION_MCP_WORKING_CONFIG.md
-NOTION_MCP_CURRENT_TOKEN.md
-COMPLETE_DOCKER_NGROK_STATUS.md
-INTEGRATION_COMPLETE_SUMMARY.md
-NOTION_INTEGRATION_TESTING.md
-OFFICIAL_NOTION_MCP_UPGRADE.md
+# All markdown documentation files (to prevent accidental secret commits)
+*.md
+!README.md
+!LICENSE.md
+!docs/**/*.md
