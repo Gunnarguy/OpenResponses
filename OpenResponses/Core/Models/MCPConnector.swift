@@ -193,24 +193,24 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
         self.displayLabel = displayLabel
     }
     
-    /// Official Notion MCP server template
+    /// Official Notion MCP server template (hosted by Notion)
     static let notionOfficial = RemoteMCPServer(
         label: "notion-mcp-official",
         serverURL: "https://mcp.notion.com/mcp",
-        serverDescription: "Official Notion MCP server. OAuth via Notion app or manual connection.",
+        serverDescription: "Official Notion-hosted MCP server. Requires Notion OAuth token. Get yours at: https://www.notion.so/profile/integrations",
         requireApproval: .never,
-        allowedTools: ["notion-search", "notion-fetch", "notion-create-pages", "notion-update-page", "notion-move-pages", "notion-duplicate-page", "notion-create-database", "notion-update-database", "notion-create-comment", "notion-get-comments", "notion-get-teams", "notion-get-users", "notion-get-user", "notion-get-self"],
+        allowedTools: nil, // Empty = all tools available
         displayLabel: "Notion MCP (Official)"
     )
     
-    /// Self-hosted Notion MCP template (user's custom ngrok setup)
+    /// Self-hosted Notion MCP template (user's custom Docker + ngrok setup)
     static let notionCustom = RemoteMCPServer(
         label: "notion-mcp-custom",
-        serverURL: "https://0d18538f50e5.ngrok-free.app/mcp",
-        serverDescription: "Self-hosted Notion MCP server via ngrok tunnel.",
+        serverURL: "https://your-ngrok-url.ngrok-free.app/mcp",
+        serverDescription: "Self-hosted Notion MCP server. Runs on Docker with ngrok tunnel. Requires Bearer token from container logs.",
         requireApproval: .never,
-        allowedTools: ["API-get-block-children", "API-get-self", "API-get-user", "API-get-users", "API-post-search", "API-retrieve-a-database", "API-retrieve-a-page", "API-retrieve-a-page-property"],
-        displayLabel: "Notion MCP (Custom - ngrok)"
+        allowedTools: nil, // Empty = all tools available
+        displayLabel: "Notion MCP (Self-Hosted)"
     )
     
     /// Popular MCP server templates for quick setup
