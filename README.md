@@ -275,6 +275,7 @@ For detailed guides on all features, please refer to our comprehensive documenta
 - **`/docs/Images.md`**: A guide to image generation and vision capabilities.
 - **`/docs/Advanced.md`**: A guide to advanced features like streaming, structured outputs, and prompt caching.
 - **`/docs/FILE_MANAGEMENT.md`**: A user guide for file and vector store features.
+- **`/docs/NOTION_MCP_GUIDE.md`**: Complete guide to connecting Notion via Model Context Protocol.
 - **`/API/StreamingEventsAPI.md`**: Complete documentation of all supported streaming events.
 
 ### Dynamic Model Selection
@@ -370,6 +371,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - **`/docs/Advanced.md`**: A guide to advanced features like streaming, structured outputs, and prompt caching.
 - **`/docs/PromptingGuide.md`**: Best practices for writing effective prompts.
 - **`/docs/CASE_STUDY.md`**: A technical deep-dive into the app's architecture and design decisions.
+- **`/docs/NOTION_MCP_GUIDE.md`**: Complete guide to connecting Notion via Model Context Protocol.
 - **`/docs/api/Full_API_Reference.md`**: Field-level API implementation status.
 - **`/docs/PRODUCTION_CHECKLIST.md`**: A comprehensive pre-release validation checklist.
 - **`/docs/FILE_MANAGEMENT.md`**: A user guide for file and vector store features.

@@ -20,6 +20,8 @@ struct SettingsView: View {
     @State private var showingAPIInspector = false
     @State private var showingDebugConsole = false
     @State private var selectedPresetId: UUID?
+    @State private var showingConnectorGallery = false
+    @State private var showingNotionToolSelector = false
     
     // Enhanced UI state management
     @State private var expandedSections: Set<SettingsSection> = [.essentials, .tools]
@@ -85,72 +87,10 @@ struct SettingsView: View {
                     )
                     
                     // Usage Analytics (only show if not searching)
-                    if !isSearching {
-                        UsageAnalyticsCard()
-                    }
+                    bodyUsageAnalytics
                     
                     // Main content cards
-                    VStack(spacing: 20) {
-                        if shouldShowCard("Presets", searchTerms: ["prompt", "template", "library"]) {
-                            presetCard
-                        }
-                        
-                        if shouldShowCard("API Configuration", searchTerms: ["key", "openai", "authentication"]) {
-                            apiConfigurationCard
-                        }
-                        
-                        if shouldShowCard("Model Selection", searchTerms: ["gpt", "claude", "model", "compatibility", "temperature", "reasoning", "parameters"]) {
-                            modelConfigurationCard
-                        }
-                        
-                        if shouldShowCard("Tools", searchTerms: ["file", "search", "computer", "code", "interpreter"]) {
-                            toolsCard
-                        }
-                        
-                        if showingAdvanced {
-                            if shouldShowCard("Advanced Configuration", searchTerms: ["parameters", "tokens", "json", "schema", "truncation", "tool choice"]) {
-                                // Advanced Settings Card
-                                SettingsCard(
-                                    title: "Advanced Configuration", 
-                                    icon: "slider.horizontal.3",
-                                    color: .purple
-                                ) {
-                                    advancedConfigurationCard
-                                }
-                            }
-                            
-                            if shouldShowCard("Developer Tools", searchTerms: ["debug", "console", "reset", "logs"]) {
-                                // Debug Card
-                                SettingsCard(
-                                    title: "Developer Tools",
-                                    icon: "hammer.fill",
-                                    color: .red
-                                ) {
-                                    debugCard
-                                }
-                            }
-                        }
-                        
-                        // Show message if no results found
-                        if isSearching && !searchText.isEmpty && !hasVisibleCards {
-                            VStack(spacing: 16) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.secondary)
-                                
-                                Text("No settings found")
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                
-                                Text("Try searching for 'API', 'model', 'tools', or 'advanced'")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.vertical, 40)
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
+                    bodyMainContent
                     
                     // Toggle advanced settings
                     AdvancedToggleButton(showingAdvanced: $showingAdvanced)
@@ -192,6 +132,92 @@ struct SettingsView: View {
                 applyPreset(preset)
                 showingQuickPresets = false
             }
+        }
+        .sheet(isPresented: $showingConnectorGallery) {
+            MCPConnectorGalleryView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingNotionToolSelector) {
+            NotionToolSelectorView(selectedTools: $viewModel.activePrompt.mcpAllowedTools)
+        }
+    }
+    
+    // MARK: - Body Components
+    
+    @ViewBuilder
+    private var bodyUsageAnalytics: some View {
+        if !isSearching {
+            UsageAnalyticsCard()
+        }
+    }
+    
+    @ViewBuilder
+    private var bodyMainContent: some View {
+        VStack(spacing: 20) {
+            if shouldShowCard("Presets", searchTerms: ["prompt", "template", "library"]) {
+                presetCard
+            }
+            
+            if shouldShowCard("API Configuration", searchTerms: ["key", "openai", "authentication"]) {
+                apiConfigurationCard
+            }
+            
+            if shouldShowCard("Model Selection", searchTerms: ["gpt", "claude", "model", "compatibility", "temperature", "reasoning", "parameters"]) {
+                modelConfigurationCard
+            }
+            
+            if shouldShowCard("Tools", searchTerms: ["file", "search", "computer", "code", "interpreter"]) {
+                toolsCard
+            }
+            
+            bodyAdvancedSections
+            bodyNoResultsMessage
+        }
+    }
+    
+    @ViewBuilder
+    private var bodyAdvancedSections: some View {
+        if showingAdvanced {
+            if shouldShowCard("Advanced Configuration", searchTerms: ["parameters", "tokens", "json", "schema", "truncation", "tool choice"]) {
+                SettingsCard(
+                    title: "Advanced Configuration", 
+                    icon: "slider.horizontal.3",
+                    color: .purple
+                ) {
+                    advancedConfigurationCard
+                }
+            }
+            
+            if shouldShowCard("Developer Tools", searchTerms: ["debug", "console", "reset", "logs"]) {
+                SettingsCard(
+                    title: "Developer Tools",
+                    icon: "hammer.fill",
+                    color: .red
+                ) {
+                    debugCard
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var bodyNoResultsMessage: some View {
+        if isSearching && !searchText.isEmpty && !hasVisibleCards {
+            VStack(spacing: 16) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 48))
+                    .foregroundColor(.secondary)
+                
+                Text("No settings found")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("Try searching for 'API', 'model', 'tools', or 'advanced'")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, 40)
+            .frame(maxWidth: .infinity)
         }
     }
 }
@@ -312,390 +338,171 @@ extension SettingsView {
     private var presetCard: some View {
         SettingsCard(title: "Preset Library", icon: "book.fill", color: .green) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Load saved configurations or create new presets")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Picker("Load Preset", selection: $selectedPresetId) {
-                    Text("Current Settings").tag(nil as UUID?)
-                        .foregroundColor(.primary)
-                    
-                    if !promptLibrary.prompts.isEmpty {
-                        Divider()
-                        ForEach(promptLibrary.prompts) { prompt in
-                            Label(prompt.name, systemImage: "bookmark.fill")
-                                .tag(prompt.id as UUID?)
-                        }
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: selectedPresetId) { _, newValue in
-                    if let preset = promptLibrary.prompts.first(where: { $0.id == newValue }) {
-                        applyPreset(preset)
-                    }
-                }
-                
-                Button(action: { showingPromptLibrary = true }) {
-                    Label("Manage Presets", systemImage: "slider.horizontal.3")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.green)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
+                presetDescription
+                presetPicker
+                presetManageButton
             }
         }
+    }
+    
+    // MARK: - Preset Card Components
+    
+    private var presetDescription: some View {
+        Text("Load saved configurations or create new presets")
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+    }
+    
+    private var presetPicker: some View {
+        Picker("Load Preset", selection: $selectedPresetId) {
+            Text("Current Settings").tag(nil as UUID?)
+                .foregroundColor(.primary)
+            
+            presetPickerDividerAndItems
+        }
+        .pickerStyle(.menu)
+        .onChange(of: selectedPresetId) { _, newValue in
+            if let preset = promptLibrary.prompts.first(where: { $0.id == newValue }) {
+                applyPreset(preset)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var presetPickerDividerAndItems: some View {
+        if !promptLibrary.prompts.isEmpty {
+            Divider()
+            ForEach(promptLibrary.prompts) { prompt in
+                Label(prompt.name, systemImage: "bookmark.fill")
+                    .tag(prompt.id as UUID?)
+            }
+        }
+    }
+    
+    private var presetManageButton: some View {
+        Button(action: { showingPromptLibrary = true }) {
+            Label("Manage Presets", systemImage: "slider.horizontal.3")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.green)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
     
     /// Enhanced API configuration card
     private var apiConfigurationCard: some View {
         SettingsCard(title: "API Configuration", icon: "key.fill", color: .blue) {
             VStack(alignment: .leading, spacing: 16) {
-                // API Key Section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("OpenAI API Key")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        HelpButton(text: "Enter your OpenAI API key (starts with 'sk-'). You can find this in your OpenAI dashboard under API Keys. Keep it secure and never share it publicly.")
-                        
-                        Spacer()
-                        
-                        Image(systemName: keyValidationStatus.icon)
-                            .foregroundColor(keyValidationStatus.color)
-                            .font(.caption)
-                            .rotationEffect(.degrees(keyValidationStatus == .validating ? 360 : 0))
-                            .animation(.linear(duration: 1.0).repeatForever(autoreverses: false), value: keyValidationStatus == .validating)
-                            .symbolEffect(.pulse, isActive: keyValidationStatus == .validating)
-                    }
-                    
-                    HStack {
-                        SecureField("Enter your API key (sk-...)", text: $apiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
-                        
-                        if !apiKey.isEmpty {
-                            Button(action: { apiKey = "" }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    
-                    if keyValidationStatus == .invalid {
-                        Text("API key should start with 'sk-'")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-                }
-                
+                apiKeySection
                 Divider()
-                
-                // Published Prompt Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle(isOn: $viewModel.activePrompt.enablePublishedPrompt) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Use Published Prompt")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            Text("Override settings with an OpenAI Playground prompt")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .tint(.blue)
+                publishedPromptSection
+            }
+        }
+    }
+    
+    // MARK: - API Configuration Card Components
+    
+    private var apiKeySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            apiKeyHeader
+            apiKeyInputField
+            apiKeyValidationError
+        }
+    }
+    
+    @ViewBuilder
+    private var apiKeyValidationError: some View {
+        if keyValidationStatus == .invalid {
+            Text("API key should start with 'sk-'")
+                .font(.caption)
+                .foregroundColor(.red)
+        }
+    }
+    
+    private var apiKeyHeader: some View {
+        HStack {
+            Text("OpenAI API Key")
+                .font(.subheadline)
+                .fontWeight(.medium)
+            
+            HelpButton(text: "Enter your OpenAI API key (starts with 'sk-'). You can find this in your OpenAI dashboard under API Keys. Keep it secure and never share it publicly.")
+            
+            Spacer()
+            
+            apiKeyStatusIcon
+        }
+    }
+    
+    private var apiKeyStatusIcon: some View {
+        Image(systemName: keyValidationStatus.icon)
+            .foregroundColor(keyValidationStatus.color)
+            .font(.caption)
+            .rotationEffect(.degrees(keyValidationStatus == .validating ? 360 : 0))
+            .animation(.linear(duration: 1.0).repeatForever(autoreverses: false), value: keyValidationStatus == .validating)
+            .symbolEffect(.pulse, isActive: keyValidationStatus == .validating)
+    }
+    
+    private var apiKeyInputField: some View {
+        HStack {
+            SecureField("Enter your API key (sk-...)", text: $apiKey)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            
+            apiKeyClearButton
+        }
+    }
+    
+    @ViewBuilder
+    private var apiKeyClearButton: some View {
+        if !apiKey.isEmpty {
+            Button(action: { apiKey = "" }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    private var publishedPromptSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $viewModel.activePrompt.enablePublishedPrompt) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Use Published Prompt")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                     
-                    if viewModel.activePrompt.enablePublishedPrompt {
-                        TextField("Published Prompt ID", text: $viewModel.activePrompt.publishedPromptId)
-                            .textFieldStyle(.roundedBorder)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
+                    Text("Override settings with an OpenAI Playground prompt")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
+            .tint(.blue)
+            
+            publishedPromptIdField
+        }
+    }
+    
+    @ViewBuilder
+    private var publishedPromptIdField: some View {
+        if viewModel.activePrompt.enablePublishedPrompt {
+            TextField("Published Prompt ID", text: $viewModel.activePrompt.publishedPromptId)
+                .textFieldStyle(.roundedBorder)
+                .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
     
     /// Modern model configuration card
     private var modelConfigurationCard: some View {
         SettingsCard(title: "Model Configuration", icon: "cpu.fill", color: .purple) {
-            VStack(alignment: .leading, spacing: 20) {
-                // Model Selection
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("AI Model")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    DynamicModelSelector(
-                        selectedModel: $viewModel.activePrompt.openAIModel,
-                        openAIService: AppContainer.shared.openAIService
-                    )
-                    .onChange(of: viewModel.activePrompt.openAIModel) { _, newModel in
-                        // Auto-enable computer use for computer-use-preview model
-                        if newModel == "computer-use-preview" {
-                            viewModel.activePrompt.enableComputerUse = true
-                        }
-                        viewModel.saveActivePrompt()
-                    }
-                    
-                    // Model info and reset
-                    HStack {
-                        Text("Current: \(viewModel.activePrompt.openAIModel)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Button("Reset to Default") {
-                            viewModel.activePrompt.openAIModel = "gpt-4o"
-                            // Disable computer use for non-computer models
-                            viewModel.activePrompt.enableComputerUse = false
-                            viewModel.saveActivePrompt()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    }
-                }
-                
-                Divider()
-                
-                // System Instructions
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("System Instructions")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text("Guide the assistant's behavior and personality")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    TextEditor(text: $viewModel.activePrompt.systemInstructions)
-                        .frame(minHeight: 80)
-                        .padding(.horizontal, 8)
-                        .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.2))
-                        )
-                    
-                    if viewModel.activePrompt.systemInstructions.isEmpty {
-                        Text("e.g., 'You are a helpful and knowledgeable assistant.'")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .italic()
-                    }
-                }
-                
-                // Developer Instructions
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Developer Instructions")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text("Hidden instructions with higher priority")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    TextEditor(text: $viewModel.activePrompt.developerInstructions)
-                        .frame(minHeight: 60)
-                        .padding(.horizontal, 8)
-                        .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.2))
-                        )
-                }
-                
-                Divider()
-                
-                // Model Parameters
-                modelParametersSection
-                
-                // Response Settings
-                responseSettingsSection
-            }
-        }
-    }
-    
-    /// Model parameters section - groups temperature, reasoning, and other model-specific settings
-    private var modelParametersSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Model Parameters")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            
-            // Temperature (for compatible models) - moved here from Advanced Configuration
-            if ModelCompatibilityService.shared.isParameterSupported("temperature", for: viewModel.activePrompt.openAIModel) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Temperature")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Text("\(viewModel.activePrompt.temperature, specifier: "%.2f")")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .monospacedDigit()
-                    }
-                    
-                    Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.01)
-                        .tint(.purple)
-                        .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                    
-                    Text("Controls creativity vs. focus (0.0-2.0)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    
-                    // Quick preset buttons for common temperature values
-                    HStack(spacing: 8) {
-                        Button("Focused (0.2)") {
-                            viewModel.activePrompt.temperature = 0.2
-                            viewModel.saveActivePrompt()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .tint(.blue)
-                        
-                        Button("Balanced (0.7)") {
-                            viewModel.activePrompt.temperature = 0.7
-                            viewModel.saveActivePrompt()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .tint(.green)
-                        
-                        Button("Creative (1.2)") {
-                            viewModel.activePrompt.temperature = 1.2
-                            viewModel.saveActivePrompt()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .tint(.orange)
-                    }
-                    .font(.caption2)
-                }
-            }
-            
-            // Reasoning Effort (for compatible models) - grouped with temperature
-            if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Reasoning Effort")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Image(systemName: "brain.head.profile")
-                            .font(.caption)
-                            .foregroundColor(.purple)
-                    }
-                    
-                    Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
-                        Text("Low").tag("low")
-                        Text("Medium").tag("medium")
-                        Text("High").tag("high")
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                    
-                    Text("How much the model should think before responding")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                
-                if !viewModel.activePrompt.reasoningSummary.isEmpty || ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: viewModel.activePrompt.openAIModel) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Reasoning Summary")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Optional reasoning approach guide", text: $viewModel.activePrompt.reasoningSummary)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                        
-                        Text("Guide how the model should approach complex problems")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            
-            // Top P - another core model parameter that belongs with temp/reasoning
-            if ModelCompatibilityService.shared.isParameterSupported("top_p", for: viewModel.activePrompt.openAIModel) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Top P (Nucleus Sampling)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Spacer()
-                        
-                        Text("\(viewModel.activePrompt.topP, specifier: "%.2f")")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                            .monospacedDigit()
-                    }
-                    
-                    Slider(value: $viewModel.activePrompt.topP, in: 0...1, step: 0.01)
-                        .tint(.purple)
-                        .disabled(viewModel.activePrompt.enablePublishedPrompt)
-                    
-                    Text("Alternative to temperature - controls token selection diversity")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-    }
-    
-    /// Response settings section
-    private var responseSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Response Settings")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            
-            Toggle(isOn: $viewModel.activePrompt.enableStreaming) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Enable Streaming")
-                        .font(.subheadline)
-                    
-                    Text("Real-time response generation")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .tint(.purple)
-            .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Max Output Tokens")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    Text("\(viewModel.activePrompt.maxOutputTokens)")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                }
-                
-                Stepper("", value: $viewModel.activePrompt.maxOutputTokens, in: 0...32768, step: 64)
-                    .labelsHidden()
-                    .disabled(viewModel.activePrompt.enablePublishedPrompt)
-            }
+            ModelConfigurationView(
+                activePrompt: $viewModel.activePrompt,
+                openAIService: AppContainer.shared.openAIService,
+                onSave: { viewModel.saveActivePrompt() }
+            )
         }
     }
     
@@ -708,20 +515,7 @@ extension SettingsView {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
-                // Computer Use Tool - only show for computer-use-preview model
-                if viewModel.activePrompt.openAIModel == "computer-use-preview" {
-                    ToolToggleCard(
-                        title: "Computer Use",
-                        description: "Navigate and interact with websites (auto-enabled for this model)",
-                        icon: "display",
-                        color: .red,
-                        isEnabled: .constant(true), // Always enabled for computer-use-preview
-                        isSupported: true,
-                        isDisabled: true // Make it read-only since it's required for this model
-                    ) {
-                        computerUseConfiguration
-                    }
-                }
+                toolsCardComputerUseSection
                 
                 // Web Search Tool
                 ToolToggleCard(
@@ -775,6 +569,19 @@ extension SettingsView {
                     fileSearchConfiguration
                 }
                 
+                // MCP Tool
+                ToolToggleCard(
+                    title: "MCP Servers",
+                    description: "Connect to external tools via Model Context Protocol",
+                    icon: "externaldrive.connected.to.line.below",
+                    color: .cyan,
+                    isEnabled: $viewModel.activePrompt.enableMCPTool,
+                    isSupported: true,
+                    isDisabled: viewModel.activePrompt.enablePublishedPrompt
+                ) {
+                    mcpConfiguration
+                }
+                
                 // Custom Function Tool
                 ToolToggleCard(
                     title: "Custom Function Tool",
@@ -794,6 +601,26 @@ extension SettingsView {
                     prompt: viewModel.activePrompt,
                     isStreaming: viewModel.activePrompt.enableStreaming
                 )
+            }
+        }
+    }
+    
+    // MARK: - Tools Card Components
+    
+    @ViewBuilder
+    private var toolsCardComputerUseSection: some View {
+        // Computer Use Tool - only show for computer-use-preview model
+        if viewModel.activePrompt.openAIModel == "computer-use-preview" {
+            ToolToggleCard(
+                title: "Computer Use",
+                description: "Navigate and interact with websites (auto-enabled for this model)",
+                icon: "display",
+                color: .red,
+                isEnabled: .constant(true), // Always enabled for computer-use-preview
+                isSupported: true,
+                isDisabled: true // Make it read-only since it's required for this model
+            ) {
+                computerUseConfiguration
             }
         }
     }
@@ -909,115 +736,102 @@ extension SettingsView {
     /// File Search configuration
     private var fileSearchConfiguration: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Vector Store IDs (comma-separated)")
+            fileSearchVectorStoreField
+            fileSearchAdvancedOptions
+            fileSearchOpenManagerButton
+        }
+    }
+    
+    // MARK: - File Search Configuration Components
+    
+    private var fileSearchVectorStoreField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Vector Store IDs (comma-separated)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            TextField("vs_123, vs_456", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+        }
+    }
+    
+    private var fileSearchAdvancedOptions: some View {
+        DisclosureGroup("Advanced Search Options") {
+            Text("Max Results: \(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "10")")
+                .font(.caption)
+            
+            Slider(
+                value: Binding(
+                    get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
+                    set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
+                ),
+                in: 1...50,
+                step: 1
+            )
+            
+            Text("Ranking: \(viewModel.activePrompt.fileSearchRanker ?? "Auto")")
+                .font(.caption)
+                .padding(.top, 8)
+            
+            Picker("Ranker", selection: $viewModel.activePrompt.fileSearchRanker.bound) {
+                Text("Auto").tag(Optional<String>.none)
+                Text("Auto (Explicit)").tag(Optional("auto"))
+                Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+    
+    private var fileSearchMaxResultsControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Max Results")
+                    .font(.caption)
+                Spacer()
+                Text(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "Default (10)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
-                TextField("vs_123, vs_456", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
             }
             
-            // Advanced File Search Options
-            DisclosureGroup("Advanced Search Options") {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Max Results
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Max Results")
-                                .font(.caption)
-                            Spacer()
-                            Text(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "Default (10)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        HStack {
-                            Button("Clear") {
-                                viewModel.activePrompt.fileSearchMaxResults = nil
-                                viewModel.saveActivePrompt()
-                            }
-                            .font(.caption2)
-                            .buttonStyle(.bordered)
-                            
-                            Slider(
-                                value: Binding(
-                                    get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
-                                    set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
-                                ),
-                                in: 1...50,
-                                step: 1
-                            )
-                            .onChange(of: viewModel.activePrompt.fileSearchMaxResults) { _, _ in
-                                viewModel.saveActivePrompt()
-                            }
-                        }
-                        
-                        Text("Controls how many result chunks are returned (1-50). Lower values save tokens, higher values provide more context.")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    // Ranking Options
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Ranking Algorithm")
-                            .font(.caption)
-                        
-                        Picker("Ranker", selection: $viewModel.activePrompt.fileSearchRanker.bound) {
-                            Text("Auto").tag(Optional<String>.none)
-                            Text("Auto (Explicit)").tag(Optional("auto"))
-                            Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: viewModel.activePrompt.fileSearchRanker) { _, _ in
-                            viewModel.saveActivePrompt()
-                        }
-                    }
-                    
-                    // Score Threshold
-                    if viewModel.activePrompt.fileSearchRanker != nil {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Score Threshold")
-                                    .font(.caption)
-                                Spacer()
-                                Text(viewModel.activePrompt.fileSearchScoreThreshold.map { String(format: "%.2f", $0) } ?? "0.00")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Slider(
-                                value: Binding(
-                                    get: { viewModel.activePrompt.fileSearchScoreThreshold ?? 0.0 },
-                                    set: { viewModel.activePrompt.fileSearchScoreThreshold = $0 }
-                                ),
-                                in: 0...1,
-                                step: 0.05
-                            )
-                            .onChange(of: viewModel.activePrompt.fileSearchScoreThreshold) { _, _ in
-                                viewModel.saveActivePrompt()
-                            }
-                            
-                            Text("Higher threshold filters out low-quality results. 0.0 = all results, 1.0 = only perfect matches.")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+            HStack {
+                Button("Clear") {
+                    viewModel.activePrompt.fileSearchMaxResults = nil
+                    viewModel.saveActivePrompt()
+                }
+                .font(.caption2)
+                .buttonStyle(.bordered)
+                
+                Slider(
+                    value: Binding(
+                        get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
+                        set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
+                    ),
+                    in: 1...50,
+                    step: 1
+                )
+                .onChange(of: viewModel.activePrompt.fileSearchMaxResults) { _, _ in
+                    viewModel.saveActivePrompt()
                 }
             }
             
-            Button(action: { showingFileManager = true }) {
-                Label("Open File Manager", systemImage: "folder.fill")
-                    .font(.subheadline)
-                    .foregroundColor(.indigo)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
+            Text("Controls how many result chunks are returned (1-50). Lower values save tokens, higher values provide more context.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
+    }
+    
+    private var fileSearchOpenManagerButton: some View {
+        Button(action: { showingFileManager = true }) {
+            Label("Open File Manager", systemImage: "folder.fill")
+                .font(.subheadline)
+                .foregroundColor(.indigo)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
     
     /// Custom Tool configuration
@@ -1062,6 +876,236 @@ extension SettingsView {
                     .padding(.horizontal, 8)
                     .background(.background, in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+            }
+        }
+    }
+    
+    /// MCP (Model Context Protocol) configuration
+    private var mcpConfiguration: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            mcpEasySetupSection
+            Divider()
+            mcpAdvancedSetupSection
+        }
+    }
+    
+    // MARK: - MCP Configuration Components
+    
+    private var mcpEasySetupSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Easy Setup: Connect Apps")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    
+                    Text("One-tap connections to popular services")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Button {
+                    showingConnectorGallery = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "link.circle.fill")
+                        Text("Connect Apps")
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        LinearGradient(
+                            colors: [.cyan, .blue],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+                }
+            }
+            .padding(12)
+            .background(Color.cyan.opacity(0.1))
+            .cornerRadius(8)
+        }
+    }
+    
+    private var mcpAdvancedSetupSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Advanced: Custom MCP Server")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            
+            // Quick Templates
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Quick Start Templates")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                ForEach(RemoteMCPServer.templates, id: \.id) { template in
+                    Button(action: {
+                        viewModel.activePrompt.mcpServerLabel = template.label
+                        viewModel.activePrompt.mcpServerURL = template.serverURL
+                        viewModel.activePrompt.mcpRequireApproval = template.requireApproval == .never ? "never" : "always"
+                        if let tools = template.allowedTools {
+                            viewModel.activePrompt.mcpAllowedTools = tools.joined(separator: ", ")
+                        } else {
+                            viewModel.activePrompt.mcpAllowedTools = ""
+                        }
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(template.uiLabel)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                if let description = template.serverDescription {
+                                    Text(description)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundColor(.blue)
+                        }
+                        .padding(10)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            
+            Divider()
+                .padding(.vertical, 4)
+            
+            Text("Or Configure Manually")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            mcpServerLabelField
+            mcpServerURLField
+            mcpAuthorizationField
+            mcpApprovalModePicker
+            mcpAllowedToolsField
+        }
+    }
+    
+    private var mcpServerLabelField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Server Label")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            TextField("My Custom Server", text: $viewModel.activePrompt.mcpServerLabel)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+        }
+    }
+    
+    private var mcpServerURLField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Server URL")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            TextField("https://your-mcp-server.com", text: $viewModel.activePrompt.mcpServerURL)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .keyboardType(.URL)
+        }
+    }
+    
+    private var mcpAuthorizationField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Authorization (optional)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            SecureField("Bearer token or API key", text: $viewModel.activePrompt.mcpHeaders)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+        }
+    }
+    
+    private var mcpApprovalModePicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Approval Mode")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Picker("Require Approval", selection: $viewModel.activePrompt.mcpRequireApproval) {
+                Text("Always Require").tag("always")
+                Text("Never Require").tag("never")
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+    
+    private var mcpAllowedToolsField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Allowed Tools")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                // Smart tool selector button - shows for any configured MCP server
+                if !viewModel.activePrompt.mcpServerLabel.isEmpty || !viewModel.activePrompt.mcpServerURL.isEmpty {
+                    Button {
+                        showingNotionToolSelector = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "slider.horizontal.3")
+                            Text("Pick Tools")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.cyan.opacity(0.1))
+                        .foregroundColor(.cyan)
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            
+            TextField("Leave empty for all, or: tool1, tool2, tool3", text: $viewModel.activePrompt.mcpAllowedTools)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            
+            if viewModel.activePrompt.mcpAllowedTools.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("All tools enabled")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                        Text("May cause context length issues with many tools")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } else {
+                let toolCount = viewModel.activePrompt.mcpAllowedTools.split(separator: ",").count
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(toolCount) tools selected")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                        Text("Context window optimized ✨")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
     }
@@ -1248,172 +1292,234 @@ extension SettingsView {
     /// Advanced configuration card with comprehensive API parameters
     private var advancedConfigurationCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Section(header: Text("Advanced Parameters").font(.headline)) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
-                        Text("Auto").tag("auto")
-                        Text("Required").tag("required") 
-                        Text("None").tag("none")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Picker("Truncation Strategy", selection: $viewModel.activePrompt.truncationStrategy) {
-                        Text("Disabled").tag("disabled")
-                        Text("Auto").tag("auto")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
-                        Text("Auto").tag("auto")
-                        Text("Default").tag("default")
-                    }
-                    .pickerStyle(.segmented)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
-                            .disabled(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true)
-                        if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .help("Not supported by reasoning models")
-                        }
-                    }
-                    
-                    Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls == 0 ? "Unlimited" : String(viewModel.activePrompt.maxToolCalls))", value: $viewModel.activePrompt.maxToolCalls, in: 0...50)
-                    
-                    TextField("User Identifier (optional)", text: $viewModel.activePrompt.userIdentifier)
-                        .textFieldStyle(.roundedBorder)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Metadata (JSON)")
-                    TextEditor(text: $viewModel.activePrompt.metadata.bound)
-                        .frame(minHeight: 60)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                    Text("Custom metadata as JSON object")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Section(header: Text("Structured Output").font(.headline)) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker("Text Format", selection: $viewModel.activePrompt.textFormatType) {
-                        Text("Text").tag("text")
-                        Text("JSON Schema").tag("json_schema")
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if viewModel.activePrompt.textFormatType == "json_schema" {
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Schema Name", text: $viewModel.activePrompt.jsonSchemaName)
-                                .textFieldStyle(.roundedBorder)
-                                .textInputAutocapitalization(.never)
-                                .disableAutocorrection(true)
-                            
-                            TextField("Schema Description (optional)", text: $viewModel.activePrompt.jsonSchemaDescription)
-                                .textFieldStyle(.roundedBorder)
-                            
-                            Toggle("Strict Mode", isOn: $viewModel.activePrompt.jsonSchemaStrict)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("JSON Schema")
-                                TextEditor(text: $viewModel.activePrompt.jsonSchemaContent)
-                                    .frame(minHeight: 120)
-                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                                Text("Define the structure of the expected JSON response")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-            }
-            
-            Section(header: Text("Response Includes").font(.headline)) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Select which extra data to include in API responses")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 4)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
-                        Text("Not currently returned by the API; kept for future compatibility.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)  
-                    Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
-                    Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
-                    Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
-                    
-                    HStack {
-                        Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
-                            .disabled(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true)
-                        if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .help("Not supported by reasoning models")
-                        }
-                    }
-                    
-                    HStack {
-                        Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
-                            .disabled(!(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true))
-                        if !(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .help("Only supported on reasoning-capable models (e.g., o-series)")
-                        }
-                    }
-                }
-            }
-            
-            Section(header: Text("Web Search Location").font(.headline)) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Customize location-based search results")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 4)
-                    
-                    TextField("City", text: $viewModel.activePrompt.userLocationCity.bound)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    TextField("Country", text: $viewModel.activePrompt.userLocationCountry.bound)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    TextField("Region/State", text: $viewModel.activePrompt.userLocationRegion.bound)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    TextField("Timezone", text: $viewModel.activePrompt.userLocationTimezone.bound)
-                        .textFieldStyle(.roundedBorder)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    
-                    HStack {
-                        Button("Auto-fill Timezone") {
-                            viewModel.activePrompt.userLocationTimezone = TimeZone.current.identifier
-                        }
-                        .foregroundColor(.accentColor)
-                        
-                        Spacer()
-                        
-                        if let timezone = viewModel.activePrompt.userLocationTimezone, !timezone.isEmpty {
-                            Text("Current: \(timezone)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
+            advancedParametersSection
+            structuredOutputSection
+            responseIncludesSection
+            webSearchLocationSection
         }
         .disabled(viewModel.activePrompt.enablePublishedPrompt)
+    }
+    
+    // MARK: - Advanced Configuration Components
+    
+    private var advancedParametersSection: some View {
+        Section(header: Text("Advanced Parameters").font(.headline)) {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
+                    Text("Auto").tag("auto")
+                    Text("Required").tag("required") 
+                    Text("None").tag("none")
+                }
+                .pickerStyle(.segmented)
+                
+                Picker("Truncation Strategy", selection: $viewModel.activePrompt.truncationStrategy) {
+                    Text("Disabled").tag("disabled")
+                    Text("Auto").tag("auto")
+                }
+                .pickerStyle(.segmented)
+                
+                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
+                    Text("Auto").tag("auto")
+                    Text("Default").tag("default")
+                }
+                .pickerStyle(.segmented)
+            }
+            
+            advancedParametersSteppers
+            advancedParametersMetadata
+        }
+    }
+    
+    private var advancedParametersSteppers: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Stepper("Top Logprobs: \(viewModel.activePrompt.topLogprobs)", value: $viewModel.activePrompt.topLogprobs, in: 0...20)
+                    .disabled(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true)
+                advancedParametersReasoningIcon
+            }
+            
+            Stepper("Max Tool Calls: \(viewModel.activePrompt.maxToolCalls == 0 ? "Unlimited" : String(viewModel.activePrompt.maxToolCalls))", value: $viewModel.activePrompt.maxToolCalls, in: 0...50)
+            
+            TextField("User Identifier (optional)", text: $viewModel.activePrompt.userIdentifier)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+        }
+    }
+    
+    @ViewBuilder
+    private var advancedParametersReasoningIcon: some View {
+        if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
+            Image(systemName: "info.circle.fill")
+                .foregroundColor(.blue)
+                .help("Not supported by reasoning models")
+        }
+    }
+    
+    private var advancedParametersMetadata: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Metadata (JSON)")
+            TextEditor(text: $viewModel.activePrompt.metadata.bound)
+                .frame(minHeight: 60)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+            Text("Custom metadata as JSON object")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private var structuredOutputSection: some View {
+        Section(header: Text("Structured Output").font(.headline)) {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Text Format", selection: $viewModel.activePrompt.textFormatType) {
+                    Text("Text").tag("text")
+                    Text("JSON Schema").tag("json_schema")
+                }
+                .pickerStyle(.segmented)
+                
+                structuredOutputJsonSchemaSection
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var structuredOutputJsonSchemaSection: some View {
+        if viewModel.activePrompt.textFormatType == "json_schema" {
+            jsonSchemaFields
+        }
+    }
+    
+    private var jsonSchemaFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Schema Name", text: $viewModel.activePrompt.jsonSchemaName)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            
+            TextField("Schema Description (optional)", text: $viewModel.activePrompt.jsonSchemaDescription)
+                .textFieldStyle(.roundedBorder)
+            
+            Toggle("Strict Mode", isOn: $viewModel.activePrompt.jsonSchemaStrict)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("JSON Schema")
+                TextEditor(text: $viewModel.activePrompt.jsonSchemaContent)
+                    .frame(minHeight: 120)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+                Text("Define the structure of the expected JSON response")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.top, 4)
+    }
+    
+    private var responseIncludesSection: some View {
+        Section(header: Text("Response Includes").font(.headline)) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Select which extra data to include in API responses")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+                
+                responseIncludesToggles
+            }
+        }
+    }
+    
+    private var responseIncludesToggles: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Include Code Interpreter Outputs", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                Text("Not currently returned by the API; kept for future compatibility.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)  
+            Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+            Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
+            Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
+            
+            responseIncludesOutputLogprobs
+            responseIncludesReasoningContent
+        }
+    }
+    
+    @ViewBuilder
+    private var responseIncludesOutputLogprobs: some View {
+        HStack {
+            Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
+                .disabled(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true)
+            if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(.blue)
+                    .help("Not supported by reasoning models")
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var responseIncludesReasoningContent: some View {
+        HStack {
+            Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+                .disabled(!(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true))
+            if !(ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(.blue)
+                    .help("Only supported on reasoning-capable models (e.g., o-series)")
+            }
+        }
+    }
+    
+    private var webSearchLocationSection: some View {
+        Section(header: Text("Web Search Location").font(.headline)) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Customize location-based search results")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+                
+                webSearchLocationFields
+            }
+        }
+    }
+    
+    private var webSearchLocationFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("City", text: $viewModel.activePrompt.userLocationCity.bound)
+                .textFieldStyle(.roundedBorder)
+            
+            TextField("Country", text: $viewModel.activePrompt.userLocationCountry.bound)
+                .textFieldStyle(.roundedBorder)
+            
+            TextField("Region/State", text: $viewModel.activePrompt.userLocationRegion.bound)
+                .textFieldStyle(.roundedBorder)
+            
+            TextField("Timezone", text: $viewModel.activePrompt.userLocationTimezone.bound)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            
+            HStack {
+                Button("Auto-fill Timezone") {
+                    viewModel.activePrompt.userLocationTimezone = TimeZone.current.identifier
+                }
+                .foregroundColor(.accentColor)
+                
+                Spacer()
+                
+                webSearchLocationCurrentTimezone
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var webSearchLocationCurrentTimezone: some View {
+        if let timezone = viewModel.activePrompt.userLocationTimezone, !timezone.isEmpty {
+            Text("Current: \(timezone)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
     
     /// Debug configuration card with developer tools

@@ -96,13 +96,13 @@ struct ChatView: View {
                 guard !showImagePicker else { return }
                 showImagePicker = true
             }
-            Button("📁 Select File") {
+            Button("📁 Select Files") {
                 guard !showFilePicker else { return }
                 showFilePicker = true
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Choose the type of content to attach to your message.")
+            Text("Choose the type of content to attach to your message. You can select multiple files at once.")
         }
         .sheet(isPresented: $showVectorStoreUpload) {
             VectorStoreSmartUploadView(
@@ -113,7 +113,11 @@ struct ChatView: View {
                 },
                 onManageVectorStores: {
                     showVectorStoreUpload = false
-                    showFileManager = true
+                    // Small delay to allow smooth sheet transition
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(400))
+                        showFileManager = true
+                    }
                 }
             )
                 .environmentObject(viewModel)
@@ -282,9 +286,14 @@ struct ChatView: View {
         LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(viewModel.messages) { message in
                 let isCurrentStreamingAssistant: Bool = viewModel.isStreamingAssistantMessage(message)
-                MessageBubbleView(message: message, onDelete: {
-                    viewModel.deleteMessage(message)
-                }, isStreaming: isCurrentStreamingAssistant)
+                MessageBubbleView(
+                    message: message,
+                    onDelete: {
+                        viewModel.deleteMessage(message)
+                    },
+                    isStreaming: isCurrentStreamingAssistant,
+                    viewModel: viewModel
+                )
                 .id(message.id)  // Mark each message for scroll reference
             }
         }

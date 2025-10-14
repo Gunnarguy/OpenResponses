@@ -10,6 +10,7 @@ protocol OpenAIServiceProtocol {
         attachments: [[String: Any]]?,
         fileData: [Data]?,
         fileNames: [String]?,
+        fileIds: [String]?,
     imageAttachments: [InputImage]?,
         previousResponseId: String?
     ) async throws -> OpenAIResponse
@@ -21,6 +22,7 @@ protocol OpenAIServiceProtocol {
         attachments: [[String: Any]]?,
         fileData: [Data]?,
         fileNames: [String]?,
+        fileIds: [String]?,
     imageAttachments: [InputImage]?,
         previousResponseId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
@@ -99,6 +101,22 @@ protocol OpenAIServiceProtocol {
         model: String,
         previousResponseId: String?
     ) async throws -> OpenAIResponse
+    
+    /// Sends an MCP approval response to continue execution after user authorization.
+    func sendMCPApprovalResponse(
+        approvalResponse: [String: Any],
+        model: String,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse
+    
+    /// Streams an MCP approval response to continue execution after user authorization.
+    func streamMCPApprovalResponse(
+        approvalResponse: [String: Any],
+        model: String,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error>
     
     /// Fetches image data from the API.
     func fetchImageData(for imageContent: ContentItem) async throws -> Data
@@ -225,7 +243,17 @@ enum OpenAIServiceError: Error {
             return "Invalid response data received from the server."
         case .invalidRequest(let message):
             return "Invalid request: \(message)"
-        case .networkError:
+        case .networkError(let error):
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .networkConnectionLost:
+                    return "Network connection lost during upload. Please check your internet connection and try again."
+                case .timedOut:
+                    return "Request timed out. Please check your connection or try again."
+                default:
+                    return "Network error: \(urlError.localizedDescription)"
+                }
+            }
             return "Network error occurred. Please check your internet connection."
         case .decodingError:
             return "Error parsing the response from OpenAI."

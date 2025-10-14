@@ -43,6 +43,14 @@ extension ChatViewModel {
             handleOutputItemAddedChunk(chunk, messageId: messageId)
         case "response.output_item.completed":
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
+        case "response.mcp_list_tools.added":
+            handleMCPListToolsChunk(chunk, messageId: messageId)
+        case "response.mcp_call.added":
+            handleMCPCallAddedChunk(chunk, messageId: messageId)
+        case "response.mcp_call.done":
+            handleMCPCallDoneChunk(chunk, messageId: messageId)
+        case "response.mcp_approval_request.added":
+            handleMCPApprovalRequestChunk(chunk, messageId: messageId)
         default:
             break
         }
@@ -117,10 +125,40 @@ extension ChatViewModel {
 
     /// Handles streaming error events. Attempts a retry before surfacing the issue to the user.
     private func handleStreamingErrorChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        let errorMessage = chunk.response?.error?.message ?? "An unknown error occurred during streaming"
-        let errorCode = chunk.response?.error?.code ?? "unknown"
-    AppLogger.log("🚨 [Streaming Error] Code: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
-    AppLogger.log("🔍 [Error Context] Event type: \(chunk.type), Response ID: \(chunk.response?.id ?? "none")", category: .openAI, level: .info)
+        // Check for standalone error event (e.g., context_length_exceeded)
+        let errorMessage: String
+        let errorCode: String
+        
+        if let errorInfo = chunk.errorInfo {
+            // Standalone error event with errorInfo
+            errorMessage = errorInfo.message
+            errorCode = errorInfo.code ?? "unknown"
+        } else if let responseError = chunk.response?.error {
+            // Error nested in response object
+            errorMessage = responseError.message
+            errorCode = responseError.code ?? "unknown"
+        } else {
+            // Fallback
+            errorMessage = "An unknown error occurred during streaming"
+            errorCode = "unknown"
+        }
+        
+        AppLogger.log("🚨 [Streaming Error] Code: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
+        AppLogger.log("🔍 [Error Context] Event type: \(chunk.type), Response ID: \(chunk.response?.id ?? "none")", category: .openAI, level: .info)
+
+        // Special handling for context_length_exceeded
+        if errorCode == "context_length_exceeded" {
+            AppLogger.log("💡 [Context Length] Conversation history too large - offering to start fresh", category: .openAI, level: .info)
+            messages.append(ChatMessage(
+                role: .system, 
+                text: "⚠️ Context Window Exceeded\n\nYour conversation history is too large. To continue:\n• Clear conversation history (Chat menu → Clear History)\n• Or start a new conversation"
+            ))
+            isStreaming = false
+            streamingStatus = .idle
+            streamingMessageId = nil
+            isAwaitingComputerOutput = false
+            return
+        }
 
         if attemptStreamingRetry(for: messageId, reason: errorMessage) {
             return
@@ -334,5 +372,112 @@ extension ChatViewModel {
         if let item = chunk.item {
             handleCompletedStreamingItem(item, for: messageId)
         }
+    }
+    
+    // MARK: - MCP Event Handlers
+    
+    /// Handles MCP list_tools events that report available tools from the remote server.
+    private func handleMCPListToolsChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let serverLabel = chunk.serverLabel else {
+            AppLogger.log("⚠️ [MCP] list_tools event missing server_label", category: .openAI, level: .warning)
+            return
+        }
+        
+        let toolCount = chunk.tools?.count ?? 0
+        AppLogger.log("🔧 [MCP] Server '\(serverLabel)' listed \(toolCount) available tools", category: .openAI, level: .info)
+        
+        // Store tools in registry for future reference
+        if let tools = chunk.tools {
+            mcpToolRegistry[serverLabel] = tools
+            
+            // Log each tool for debugging
+            for tool in tools {
+                if let name = tool["name"]?.value as? String {
+                    let description = (tool["description"]?.value as? String) ?? "No description"
+                    AppLogger.log("  - \(name): \(description)", category: .openAI, level: .debug)
+                }
+            }
+        }
+        
+        logActivity("MCP: \(serverLabel) has \(toolCount) tools available")
+        trackToolUsage(for: messageId, tool: "mcp")
+    }
+    
+    /// Handles MCP call events when the assistant invokes an MCP tool.
+    private func handleMCPCallAddedChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let toolName = chunk.name, let serverLabel = chunk.serverLabel else {
+            AppLogger.log("⚠️ [MCP] call event missing name or server_label", category: .openAI, level: .warning)
+            return
+        }
+        
+        AppLogger.log("🔧 [MCP] Calling tool '\(toolName)' on server '\(serverLabel)'", category: .openAI, level: .info)
+        
+        // Log arguments if present
+        if let arguments = chunk.arguments {
+            AppLogger.log("  Arguments: \(arguments)", category: .openAI, level: .debug)
+        }
+        
+        logActivity("MCP: Calling \(toolName) on \(serverLabel)…")
+        streamingStatus = .runningTool(toolName)
+        trackToolUsage(for: messageId, tool: "mcp")
+    }
+    
+    /// Handles MCP call completion events with output or errors.
+    private func handleMCPCallDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let toolName = chunk.name, let serverLabel = chunk.serverLabel else {
+            AppLogger.log("⚠️ [MCP] call.done event missing name or server_label", category: .openAI, level: .warning)
+            return
+        }
+        
+        if let error = chunk.error {
+            AppLogger.log("❌ [MCP] Tool '\(toolName)' on '\(serverLabel)' failed: \(error)", category: .openAI, level: .error)
+            logActivity("MCP: \(toolName) failed - \(error)")
+            
+            // Optionally append error message to chat
+            let errorMsg = ChatMessage(role: .system, text: "⚠️ MCP tool '\(toolName)' on server '\(serverLabel)' failed: \(error)")
+            messages.append(errorMsg)
+        } else if let output = chunk.output {
+            AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed", category: .openAI, level: .info)
+            AppLogger.log("  Output: \(output)", category: .openAI, level: .debug)
+            logActivity("MCP: \(toolName) completed")
+        } else {
+            AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed (no output)", category: .openAI, level: .info)
+            logActivity("MCP: \(toolName) completed")
+        }
+    }
+    
+    /// Handles MCP approval request events when user authorization is needed.
+    private func handleMCPApprovalRequestChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let approvalRequestId = chunk.approvalRequestId,
+              let toolName = chunk.name,
+              let serverLabel = chunk.serverLabel else {
+            AppLogger.log("⚠️ [MCP] approval_request event missing required fields", category: .openAI, level: .warning)
+            return
+        }
+        
+        let arguments = chunk.arguments ?? "{}"
+        
+        AppLogger.log("🔒 [MCP] Approval requested for tool '\(toolName)' on server '\(serverLabel)' (id: \(approvalRequestId))", category: .openAI, level: .info)
+        AppLogger.log("  Arguments: \(arguments)", category: .openAI, level: .debug)
+        
+        // Create approval request object
+        let approvalRequest = MCPApprovalRequest(
+            id: approvalRequestId,
+            toolName: toolName,
+            serverLabel: serverLabel,
+            arguments: arguments,
+            status: .pending,
+            reason: nil
+        )
+        
+        // Add to current message
+        if let index = messages.firstIndex(where: { $0.id == messageId }) {
+            if messages[index].mcpApprovalRequests == nil {
+                messages[index].mcpApprovalRequests = []
+            }
+            messages[index].mcpApprovalRequests?.append(approvalRequest)
+        }
+        
+        logActivity("MCP: Approval needed for \(toolName)")
     }
 }

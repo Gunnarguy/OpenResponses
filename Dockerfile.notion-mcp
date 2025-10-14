@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Clone and setup Notion MCP server
+RUN apk add --no-cache git && \
+    git clone --depth 1 https://github.com/modelcontextprotocol/servers.git && \
+    cd servers/src/notion && \
+    npm install && \
+    mv * /app/ && \
+    cd /app && \
+    rm -rf /app/servers
+
+EXPOSE 8080
+
+ENV PORT=8080
+
+CMD ["npm", "start"]

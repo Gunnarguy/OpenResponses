@@ -45,6 +45,10 @@ struct Prompt: Codable, Identifiable, Equatable {
     var mcpRequireApproval: String
     var mcpAllowedTools: String
     
+    // MARK: - MCP Connector Support
+    var mcpConnectorId: String? // e.g., "connector_dropbox", "connector_gmail"
+    var mcpIsConnector: Bool // True if using a connector, false if using a remote server
+    
     // MARK: - Secure MCP Auth Helper
     /// Gets the MCP headers, preferring secure keychain storage over the mcpHeaders string
     var secureMCPHeaders: [String: String] {
@@ -157,6 +161,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold
     case enableComputerUse
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
+    case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
@@ -201,6 +206,8 @@ struct Prompt: Codable, Identifiable, Equatable {
             mcpHeaders: "",
             mcpRequireApproval: "prompt",
             mcpAllowedTools: "",
+            mcpConnectorId: nil,
+            mcpIsConnector: false,
             customToolName: "custom_tool_placeholder",
             customToolDescription: "A placeholder for a custom tool.",
             customToolParametersJSON: "{\n  \"type\": \"object\",\n  \"properties\": {},\n  \"additionalProperties\": true\n}",
@@ -217,7 +224,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             serviceTier: "auto",
             topLogprobs: 0,
             topP: 1.0,
-            truncationStrategy: "disabled",
+            truncationStrategy: "auto", // Changed from "disabled" - enables automatic context management
             userIdentifier: "",
             textFormatType: "text",
             jsonSchemaName: "",

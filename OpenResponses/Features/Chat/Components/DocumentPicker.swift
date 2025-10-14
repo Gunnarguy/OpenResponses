@@ -66,16 +66,62 @@ struct DocumentPicker: UIViewControllerRepresentable {
             // Process files asynchronously with FileConverterService
             Task {
                 for (index, url) in urls.enumerated() {
-                    // Start accessing the security-scoped resource
-                    guard url.startAccessingSecurityScopedResource() else {
-                        AppLogger.log("❌ Failed to access security-scoped resource for \(url.lastPathComponent)", category: .fileManager, level: .error)
+                    // Since we use asCopy: true, try direct access first
+                    // If that fails, try with security-scoped access
+                    var needsSecurityScope = false
+                    var fileData: Data?
+                    
+                    // Attempt 1: Direct access (works for copied files)
+                    do {
+                        fileData = try Data(contentsOf: url)
+                        AppLogger.log("✅ Direct file access successful for \(url.lastPathComponent)", category: .fileManager, level: .info)
+                    } catch {
+                        // Attempt 2: Security-scoped access
+                        needsSecurityScope = true
+                        AppLogger.log("ℹ️ Direct access failed, trying security-scoped access for \(url.lastPathComponent)", category: .fileManager, level: .info)
+                    }
+                    
+                    // If direct access failed, try security-scoped
+                    if needsSecurityScope {
+                        guard url.startAccessingSecurityScopedResource() else {
+                            let errorMessage = "❌ Failed to access \(url.lastPathComponent) - File permissions denied"
+                            AppLogger.log("❌ Security-scoped resource access denied for \(url.lastPathComponent)", category: .fileManager, level: .error)
+                            AppLogger.log("   URL: \(url.path)", category: .fileManager, level: .error)
+                            AppLogger.log("   URL isFileURL: \(url.isFileURL)", category: .fileManager, level: .error)
+                            await MainActor.run {
+                                parent.onConversionStatus?(errorMessage)
+                            }
+                            continue
+                        }
+                        
+                        defer { url.stopAccessingSecurityScopedResource() }
+                        
+                        // Try reading after security scope granted
+                        do {
+                            fileData = try Data(contentsOf: url)
+                            AppLogger.log("✅ Security-scoped access successful for \(url.lastPathComponent)", category: .fileManager, level: .info)
+                        } catch {
+                            let errorMessage = "❌ Failed to read \(url.lastPathComponent): \(error.localizedDescription)"
+                            AppLogger.log("❌ Failed to read file even with security scope: \(error)", category: .fileManager, level: .error)
+                            await MainActor.run {
+                                parent.onConversionStatus?(errorMessage)
+                            }
+                            continue
+                        }
+                    }
+                    
+                    // If we got here, we have the file data
+                    guard let data = fileData else {
+                        let errorMessage = "❌ Failed to load \(url.lastPathComponent)"
+                        AppLogger.log("❌ File data is nil for \(url.lastPathComponent)", category: .fileManager, level: .error)
+                        await MainActor.run {
+                            parent.onConversionStatus?(errorMessage)
+                        }
                         continue
                     }
                     
-                    defer { url.stopAccessingSecurityScopedResource() }
-                    
                     do {
-                        AppLogger.log("📤 [\(index + 1)/\(urls.count)] Processing: \(url.lastPathComponent)", category: .fileManager, level: .info)
+                        AppLogger.log("📤 [\(index + 1)/\(urls.count)] Processing: \(url.lastPathComponent) (\(data.count) bytes)", category: .fileManager, level: .info)
                         
                         // Use FileConverterService to validate and convert if needed
                         let conversionResult = try await FileConverterService.processFile(url: url)
@@ -115,6 +161,20 @@ struct DocumentPicker: UIViewControllerRepresentable {
                 }
                 
                 AppLogger.log("🎉 Completed processing \(urls.count) file(s): \(parent.selectedFileData.count) succeeded", category: .fileManager, level: .info)
+                
+                // Show completion message
+                if parent.selectedFileData.count > 0 {
+                    let successMessage = "✅ Successfully attached \(parent.selectedFileData.count) file\(parent.selectedFileData.count == 1 ? "" : "s")"
+                    await MainActor.run {
+                        parent.onConversionStatus?(successMessage)
+                    }
+                } else if urls.count > 0 {
+                    // All files failed
+                    let failureMessage = "❌ Failed to attach \(urls.count) file\(urls.count == 1 ? "" : "s") - Check file permissions and try again"
+                    await MainActor.run {
+                        parent.onConversionStatus?(failureMessage)
+                    }
+                }
             }
         }
         

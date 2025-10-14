@@ -36,6 +36,10 @@ class ChatViewModel: ObservableObject {
     /// Cache for processed artifacts to avoid duplicate processing
     var processedAnnotations: Set<String> = []
     
+    /// MCP tool registry: stores discovered tools per server for UI display and instruction generation
+    /// Key: server label, Value: array of tool schemas
+    @Published var mcpToolRegistry: [String: [[String: AnyCodable]]] = [:]
+    
     // MARK: - Private Properties
     let api: OpenAIServiceProtocol
     private let computerService: ComputerService
@@ -57,6 +61,9 @@ class ChatViewModel: ObservableObject {
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
+    
+    // Last response token usage for status bar display
+    @Published var lastTokenUsage: TokenUsage? = nil
     
     /// Compact activity feed to surface what's happening under the hood during streaming.
     /// Keep short, user-friendly messages. Updated when status changes or tools run.
@@ -370,6 +377,18 @@ class ChatViewModel: ObservableObject {
         agg.total = totalSum == 0 ? nil : totalSum
         agg.estimatedOutput = estOut == 0 ? nil : estOut
         cumulativeTokenUsage = agg
+        
+        // Update last token usage from most recent assistant message
+        if let lastAssistantMessage = messages.last(where: { $0.role == .assistant }),
+           let usage = lastAssistantMessage.tokenUsage,
+           let total = usage.total {
+            lastTokenUsage = TokenUsage(
+                estimatedOutput: usage.estimatedOutput,
+                input: usage.input,
+                output: usage.output,
+                total: total
+            )
+        }
     }
 
     // Removed detection UI and related method
@@ -504,6 +523,86 @@ class ChatViewModel: ObservableObject {
     streamingTask = Task {
             await MainActor.run { self.streamingStatus = .connecting }
             do {
+                // Handle file attachments with intelligent conversion to PDF
+                var uploadedFileIds: [String] = []
+                
+                if !pendingFileData.isEmpty && !pendingFileNames.isEmpty {
+                    AppLogger.log("📤 Processing \(pendingFileData.count) file(s) before sending message", category: .openAI, level: .info)
+                    
+                    for (index, data) in pendingFileData.enumerated() {
+                        guard index < pendingFileNames.count else { break }
+                        
+                        let filename = pendingFileNames[index]
+                        let fileExtension = (filename as NSString).pathExtension.lowercased()
+                        
+                        var dataToUpload = data
+                        var filenameToUpload = filename
+                        var conversionMethod = "none"
+                        
+                        // Check if file needs conversion to PDF for Responses API compatibility
+                        if fileExtension != "pdf" {
+                            // For text-based files, convert to PDF
+                            if fileExtension == "txt" || fileExtension == "md" {
+                                if let textContent = String(data: data, encoding: .utf8) {
+                                    do {
+                                        let conversionResult = try FileConverterService.convertTextToPDF(
+                                            content: textContent,
+                                            originalFilename: filename
+                                        )
+                                        dataToUpload = conversionResult.convertedData
+                                        filenameToUpload = conversionResult.filename
+                                        conversionMethod = "text→PDF"
+                                        AppLogger.log("✅ Converted \(filename) to PDF (\(dataToUpload.count) bytes)", category: .openAI, level: .info)
+                                    } catch {
+                                        AppLogger.log("⚠️ Failed to convert \(filename) to PDF: \(error)", category: .openAI, level: .warning)
+                                        await MainActor.run {
+                                            self.errorMessage = "Failed to convert \(filename) to PDF. Try uploading to File Manager for vector search instead."
+                                        }
+                                        continue
+                                    }
+                                } else {
+                                    AppLogger.log("⚠️ Could not decode text file \(filename)", category: .openAI, level: .warning)
+                                    await MainActor.run {
+                                        self.errorMessage = "Could not read text file \(filename)"
+                                    }
+                                    continue
+                                }
+                            } else {
+                                // Unsupported file type for direct attachment
+                                AppLogger.log("⚠️ Unsupported file type for direct attachment: \(filename) (.\(fileExtension))", category: .openAI, level: .warning)
+                                await MainActor.run {
+                                    self.errorMessage = "Only PDF and text files are supported for direct attachment. Please use the File Manager to upload \(filename) to a vector store for file search."
+                                }
+                                continue
+                            }
+                        }
+                        
+                        // Upload to Files API
+                        do {
+                            let uploadedFile = try await api.uploadFile(
+                                fileData: dataToUpload,
+                                filename: filenameToUpload,
+                                purpose: "assistants"
+                            )
+                            uploadedFileIds.append(uploadedFile.id)
+                            
+                            if conversionMethod != "none" {
+                                AppLogger.log("✅ Uploaded converted file \(filenameToUpload) -> \(uploadedFile.id) (\(conversionMethod))", category: .openAI, level: .info)
+                                await MainActor.run {
+                                    self.logActivity("📄 Converted \(filename) to PDF for API compatibility")
+                                }
+                            } else {
+                                AppLogger.log("✅ Uploaded \(filenameToUpload) -> \(uploadedFile.id)", category: .openAI, level: .info)
+                            }
+                        } catch {
+                            AppLogger.log("❌ Failed to upload \(filenameToUpload): \(error)", category: .openAI, level: .error)
+                            await MainActor.run {
+                                self.errorMessage = "Failed to upload file \(filenameToUpload): \(error.localizedDescription)"
+                            }
+                        }
+                    }
+                }
+                
                 // If previous responses are awaiting computer_call_output, resolve them all first.
                 // Only do this when the computer tool is both enabled and supported for the current model/streaming mode.
                 if self.activePrompt.enableComputerUse {
@@ -519,8 +618,17 @@ class ChatViewModel: ObservableObject {
                     }
                 }
                 if streamingEnabled {
-                    // Use streaming API
-                    let stream = api.streamChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    // Use streaming API with uploaded file IDs
+                    let stream = api.streamChatRequest(
+                        userMessage: finalUserText, 
+                        prompt: activePrompt, 
+                        attachments: attachments, 
+                        fileData: nil,  // Files are now uploaded and converted
+                        fileNames: nil, 
+                        fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
+                        imageAttachments: imageAttachments, 
+                        previousResponseId: lastResponseId
+                    )
                     
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
@@ -536,8 +644,17 @@ class ChatViewModel: ObservableObject {
                         }
                     }
                 } else {
-                    // Use non-streaming API
-                    let response = try await api.sendChatRequest(userMessage: finalUserText, prompt: activePrompt, attachments: attachments, fileData: pendingFileData, fileNames: pendingFileNames, imageAttachments: imageAttachments, previousResponseId: lastResponseId)
+                    // Use non-streaming API with uploaded file IDs
+                    let response = try await api.sendChatRequest(
+                        userMessage: finalUserText, 
+                        prompt: activePrompt, 
+                        attachments: attachments, 
+                        fileData: nil,  // Files are now uploaded and converted
+                        fileNames: nil, 
+                        fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
+                        imageAttachments: imageAttachments, 
+                        previousResponseId: lastResponseId
+                    )
                     
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
@@ -968,6 +1085,82 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    /// Handles MCP approval request by sending mcp_approval_response to API
+    func respondToMCPApproval(approvalRequestId: String, approve: Bool, reason: String?, messageId: UUID) {
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
+            AppLogger.log("⚠️ [MCP] Could not find message for approval response", category: .openAI, level: .warning)
+            return
+        }
+        
+        // Update the approval status in the message
+        if var approvalRequests = messages[messageIndex].mcpApprovalRequests,
+           let approvalIndex = approvalRequests.firstIndex(where: { $0.id == approvalRequestId }) {
+            approvalRequests[approvalIndex].status = approve ? .approved : .rejected
+            approvalRequests[approvalIndex].reason = reason
+            messages[messageIndex].mcpApprovalRequests = approvalRequests
+        }
+        
+        // Log the decision
+        AppLogger.log("🔒 [MCP] User \(approve ? "approved" : "rejected") approval request \(approvalRequestId)", category: .openAI, level: .info)
+        if let reason = reason {
+            AppLogger.log("  Reason: \(reason)", category: .openAI, level: .debug)
+        }
+        
+        logActivity("MCP: \(approve ? "Approved" : "Rejected") tool call")
+        
+        // Send the approval response to the API
+        Task {
+            do {
+                streamingStatus = .connecting
+                isStreaming = true
+                
+                // Build approval response input
+                let approvalResponse: [String: Any] = [
+                    "type": "mcp_approval_response",
+                    "approval_request_id": approvalRequestId,
+                    "approve": approve,
+                    "reason": reason ?? ""
+                ]
+                
+                // Send the response using previous_response_id to continue the conversation
+                if activePrompt.enableStreaming {
+                    // Streaming mode
+                    let stream = api.streamMCPApprovalResponse(
+                        approvalResponse: approvalResponse,
+                        model: activePrompt.openAIModel,
+                        previousResponseId: lastResponseId,
+                        prompt: activePrompt
+                    )
+                    
+                    for try await event in stream {
+                        await MainActor.run {
+                            self.handleStreamChunk(event, for: messageId)
+                        }
+                    }
+                } else {
+                    // Non-streaming mode
+                    let response = try await api.sendMCPApprovalResponse(
+                        approvalResponse: approvalResponse,
+                        model: activePrompt.openAIModel,
+                        previousResponseId: lastResponseId,
+                        prompt: activePrompt
+                    )
+                    
+                    await MainActor.run {
+                        self.handleNonStreamingResponse(response, for: messageId)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.handleError(error)
+                    self.logActivity("Error sending approval response")
+                    self.streamingStatus = .idle
+                    self.isStreaming = false
+                }
+            }
+        }
+    }
+    
     /// Determines the current model to use from UserDefaults (or default).
     func currentModel() -> String {
         return activePrompt.openAIModel
@@ -1000,18 +1193,31 @@ class ChatViewModel: ObservableObject {
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
             self.activePrompt = decoded
             
+            var needsSave = false
+            
             // Migration: Enable computer use by default for existing prompts
             if !self.activePrompt.enableComputerUse {
                 print("Migrating existing prompt to enable computer use by default")
                 self.activePrompt.enableComputerUse = true
-                saveActivePrompt() // Save the migrated prompt
+                needsSave = true
+            }
+            
+            // Migration: Update truncation from "disabled" to "auto" for better context management
+            if self.activePrompt.truncationStrategy == "disabled" {
+                print("Migrating truncation strategy from 'disabled' to 'auto'")
+                self.activePrompt.truncationStrategy = "auto"
+                needsSave = true
             }
             
             // Validate the model name - if it's a UUID or invalid, reset to default
             if isInvalidModelName(decoded.openAIModel) {
                 print("Invalid model name detected: \(decoded.openAIModel), resetting to default")
                 self.activePrompt.openAIModel = "gpt-4o"
-                saveActivePrompt() // Save the corrected prompt
+                needsSave = true
+            }
+            
+            if needsSave {
+                saveActivePrompt() // Save all migrations at once
             }
             
             print("Active prompt loaded.")
@@ -1173,6 +1379,7 @@ class ChatViewModel: ObservableObject {
                     attachments: ctx.attachments,
                     fileData: nil,
                     fileNames: nil,
+                    fileIds: nil,
                     imageAttachments: ctx.imageAttachments,
                     previousResponseId: ctx.basePreviousResponseId
                 )
@@ -2283,6 +2490,39 @@ class ChatViewModel: ObservableObject {
             // When artifacts are being processed from code interpreter
             streamingStatus = .processingArtifacts
             logActivity("Processing generated files…")
+        case "response.mcp_list_tools.added":
+            if let serverLabel = item?.serverLabel {
+                streamingStatus = .runningTool("MCP: \(serverLabel)")
+                logActivity("🔧 MCP: Listing tools from \(serverLabel)")
+            } else {
+                streamingStatus = .runningTool("MCP")
+                logActivity("🔧 MCP: Listing available tools")
+            }
+        case "response.mcp_call.added":
+            if let toolName = item?.name, let serverLabel = item?.serverLabel {
+                streamingStatus = .runningTool("MCP: \(toolName)")
+                logActivity("🔧 MCP: Calling \(toolName) on \(serverLabel)")
+            } else if let toolName = item?.name {
+                streamingStatus = .runningTool("MCP: \(toolName)")
+                logActivity("🔧 MCP: Calling \(toolName)")
+            } else {
+                streamingStatus = .runningTool("MCP")
+                logActivity("🔧 MCP: Running tool")
+            }
+        case "response.mcp_call.done":
+            if let toolName = item?.name {
+                logActivity("✅ MCP: \(toolName) completed")
+            } else {
+                logActivity("✅ MCP: Tool completed")
+            }
+        case "response.mcp_approval_request.added":
+            if let toolName = item?.name, let serverLabel = item?.serverLabel {
+                streamingStatus = .runningTool("MCP: Awaiting approval")
+                logActivity("🔒 MCP: \(toolName) on \(serverLabel) requires approval")
+            } else {
+                streamingStatus = .runningTool("MCP: Awaiting approval")
+                logActivity("🔒 MCP: Approval required")
+            }
         case "response.done", "response.completed":
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle

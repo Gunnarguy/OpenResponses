@@ -63,6 +63,18 @@ struct FileManagerView: View {
     @State private var showingDeleteFileConfirmation = false
     @State private var showingDeleteVectorStoreConfirmation = false
     
+    // Upload feedback state
+    @State private var uploadSuccessMessage: String?
+    @State private var showingUploadSuccess = false
+    
+    // Upload summary state
+    @State private var uploadSummary: UploadSummary?
+    @State private var showingUploadSummary = false
+    
+    // Real-time upload progress tracking
+    @State private var isUploading = false
+    @State private var currentUploadProgress: [UploadProgressItem] = []
+    
     // Refresh debouncing
     @State private var pendingRefreshTask: Task<Void, Never>?
     
@@ -76,12 +88,12 @@ struct FileManagerView: View {
         showingFilePicker || showingCreateVectorStore || showingEditVectorStore || 
         showingQuickUpload || selectedVectorStore != nil || vectorStoreToEdit != nil ||
         showingDeleteFileConfirmation || showingDeleteVectorStoreConfirmation || 
-        isPresentationLocked || (errorMessage != nil)
+        showingUploadSummary || isPresentationLocked || (errorMessage != nil)
     }
     
     /// Safely presents the file picker with debouncing
     @MainActor
-    private func presentFilePicker(for vectorStore: VectorStore? = nil) {
+    private func presentFilePicker(for vectorStore: VectorStore? = nil, needsDelay: Bool = false) {
         // Check current state BEFORE making any changes
         let currentlyPresented = showingFilePicker || showingCreateVectorStore || showingEditVectorStore || 
                                 showingQuickUpload || selectedVectorStore != nil || vectorStoreToEdit != nil
@@ -94,28 +106,30 @@ struct FileManagerView: View {
         // Lock presentations immediately to prevent race conditions
         isPresentationLocked = true
         
-        AppLogger.log("📂 Preparing to present file picker for vector store: \(vectorStore?.name ?? "none")", category: .fileManager, level: .info)
+        AppLogger.log("📂 Preparing to present file picker for vector store: \(vectorStore?.name ?? "none") (needsDelay: \(needsDelay))", category: .fileManager, level: .info)
         
-        // Set target immediately but delay the actual presentation
+        // Set target immediately
         targetVectorStoreForUpload = vectorStore
         
         Task { @MainActor in
-            // Wait for any existing presentations to fully dismiss
-            try? await Task.sleep(for: .milliseconds(500))
+            // Only delay if transitioning from another sheet
+            if needsDelay {
+                try? await Task.sleep(for: .milliseconds(300)) // Reduced from 500ms
+            }
             
-            // Double-check state after delay
+            // Double-check state
             guard !showingFilePicker && !showingCreateVectorStore && !showingEditVectorStore && 
                   !showingQuickUpload && selectedVectorStore == nil && vectorStoreToEdit == nil else {
-                AppLogger.log("⚠️ Cannot present file picker after delay - another sheet became active", category: .fileManager, level: .warning)
+                AppLogger.log("⚠️ Cannot present file picker - another sheet became active", category: .fileManager, level: .warning)
                 isPresentationLocked = false
                 return
             }
             
-            AppLogger.log("📂 Actually presenting file picker now", category: .fileManager, level: .info)
+            AppLogger.log("📂 Presenting file picker now", category: .fileManager, level: .info)
             showingFilePicker = true
             
-            // Extended unlock time to prevent rapid successive presentations
-            try? await Task.sleep(for: .milliseconds(2000))
+            // Reduced lock time
+            try? await Task.sleep(for: .milliseconds(800)) // Reduced from 2000ms
             isPresentationLocked = false
             AppLogger.log("🔓 Presentation lock released", category: .fileManager, level: .debug)
         }
@@ -517,6 +531,13 @@ struct FileManagerView: View {
         return result
     }
     
+    // Check if any vector stores have files that are processing
+    private var hasProcessingFiles: Bool {
+        return vectorStores.contains { store in
+            store.status == "in_progress" || store.fileCounts.inProgress > 0
+        }
+    }
+    
     // MARK: - Helper Methods
     
     private func isStoreSelected(_ store: VectorStore) -> Bool {
@@ -561,6 +582,42 @@ struct FileManagerView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding()
+                
+                // Processing indicator banner
+                if hasProcessingFiles {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Files Processing")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Tap refresh to check status")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            Task { await loadData() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                Text("Refresh")
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 
                 // Tab Content
                 Group {
@@ -692,21 +749,28 @@ struct FileManagerView: View {
         .sheet(isPresented: $showingQuickUpload) {
             QuickUploadView(
                 vectorStores: vectorStores,
+                isPresented: $showingQuickUpload,
                 onUpload: { vectorStore in
                     targetVectorStoreForUpload = vectorStore
-                    // Use onChange to sequence the presentation properly
+                    // Don't dismiss here - let parent handle it
                 }
             )
         }
+        .sheet(isPresented: $showingUploadSummary) {
+            if let summary = uploadSummary {
+                UploadSummaryView(summary: summary)
+            }
+        }
+        .overlay {
+            if isUploading {
+                UploadProgressOverlay(progressItems: currentUploadProgress)
+            }
+        }
         .onChange(of: showingQuickUpload) { _, newValue in
             if !newValue, let targetStore = targetVectorStoreForUpload {
-                Task { @MainActor in
-                    // Wait for QuickUpload sheet to fully dismiss
-                    try? await Task.sleep(for: .milliseconds(600))
-                    
-                    AppLogger.log("📤 QuickUpload dismissed, proceeding with file picker", category: .fileManager, level: .info)
-                    presentFilePicker(for: targetStore)
-                }
+                // QuickUpload dismissed, present file picker with minimal delay
+                AppLogger.log("📤 QuickUpload dismissed, proceeding with file picker", category: .fileManager, level: .info)
+                presentFilePicker(for: targetStore, needsDelay: true)
             }
         }
         .fileImporter(
@@ -744,6 +808,35 @@ struct FileManagerView: View {
                     targetVectorStoreForUpload = pendingStore
                     showingFilePicker = true
                 }
+            }
+        }
+        .overlay(alignment: .top) {
+            // Upload success toast
+            if showingUploadSuccess {
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Upload Complete")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            if let message = uploadSuccessMessage {
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding()
+                    .background(.regularMaterial)
+                    .cornerRadius(12)
+                    .shadow(radius: 4)
+                    .padding()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(), value: showingUploadSuccess)
             }
         }
     }
@@ -830,7 +923,8 @@ struct FileManagerView: View {
     }
     
     /// Polls for file processing completion and refreshes the UI when done
-    private func pollForFileCompletion(vectorStoreId: String, fileId: String, maxAttempts: Int = 30, interval: TimeInterval = 2.0) async {
+    @MainActor
+    private func pollForFileCompletion(vectorStoreId: String, fileId: String, progressIndex: Int, maxAttempts: Int = 30, interval: TimeInterval = 2.0) async {
         var attempts = 0
         
         while attempts < maxAttempts {
@@ -847,24 +941,52 @@ struct FileManagerView: View {
                     
                     if file.status == "completed" {
                         AppLogger.log("✅ File processing completed! Refreshing UI...", category: .fileManager, level: .info)
-                        _ = await MainActor.run {
-                            Task {
-                                await loadVectorStoreFiles(vectorStoreId)
-                            }
+                        
+                        // Update progress overlay to show completion (only if using progress tracking)
+                        if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
+                            currentUploadProgress[progressIndex].status = .completed
+                            currentUploadProgress[progressIndex].statusMessage = "Complete!"
+                            currentUploadProgress[progressIndex].progress = 1.0
                         }
+                        
+                        await loadVectorStoreFiles(vectorStoreId)
+                        await loadData() // Also refresh the main file list
                         return
                     } else if file.status == "failed" {
                         AppLogger.log("❌ File processing failed: \(file.lastError?.message ?? "Unknown error")", category: .fileManager, level: .error)
+                        
+                        // Update progress overlay to show failure (only if using progress tracking)
+                        if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
+                            currentUploadProgress[progressIndex].status = .failed
+                            currentUploadProgress[progressIndex].statusMessage = "Processing failed"
+                            currentUploadProgress[progressIndex].progress = 0.0
+                        }
+                        
+                        await loadVectorStoreFiles(vectorStoreId)
+                        await loadData()
                         return
                     }
                     // Continue polling if status is still "in_progress"
+                } else {
+                    AppLogger.log("⚠️ File \(fileId) not found in vector store during polling", category: .fileManager, level: .warning)
                 }
             } catch {
                 AppLogger.log("⚠️ Polling attempt \(attempts) failed: \(error.localizedDescription)", category: .fileManager, level: .warning)
             }
         }
         
-        AppLogger.log("⏰ Polling timed out after \(maxAttempts) attempts. File may still be processing.", category: .fileManager, level: .warning)
+        AppLogger.log("⏰ Polling timed out after \(maxAttempts) attempts. Refreshing UI anyway...", category: .fileManager, level: .warning)
+        
+        // Update progress overlay on timeout - mark as completed so overlay can close (only if using progress tracking)
+        if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
+            currentUploadProgress[progressIndex].status = .completed
+            currentUploadProgress[progressIndex].statusMessage = "Processing (check status)"
+            currentUploadProgress[progressIndex].progress = 1.0
+        }
+        
+        // Refresh UI even on timeout so user can see current state
+        await loadVectorStoreFiles(vectorStoreId)
+        await loadData()
     }
     
     // MARK: - File Operations
@@ -876,7 +998,22 @@ struct FileManagerView: View {
         case .success(let urls):
             errorMessage = nil
             
-            for url in urls {
+            // Initialize real-time progress tracking
+            isUploading = true
+            currentUploadProgress = urls.map { url in
+                UploadProgressItem(
+                    filename: url.lastPathComponent,
+                    status: .pending,
+                    statusMessage: "Waiting...",
+                    progress: 0.0
+                )
+            }
+            
+            // Track upload results for summary
+            var uploadResults: [UploadResult] = []
+            let startTime = Date()
+            
+            for (index, url) in urls.enumerated() {
                 // Start accessing the security-scoped resource
                 let isAccessing = url.startAccessingSecurityScopedResource()
                 
@@ -890,9 +1027,16 @@ struct FileManagerView: View {
                 do {
                     AppLogger.log("📤 Processing file for upload: \(url.lastPathComponent)", category: .fileManager, level: .info)
                     
+                    // Update progress: Converting
+                    currentUploadProgress[index].status = .converting
+                    currentUploadProgress[index].statusMessage = "Validating & converting..."
+                    currentUploadProgress[index].progress = 0.2
+                    
                     // IMPORTANT: Use FileConverterService for validation and conversion
-                    AppLogger.log("   🔍 Validating and converting file...", category: .fileManager, level: .info)
-                    let conversionResult = try await FileConverterService.processFile(url: url)
+                    // If uploading to a vector store, use stricter validation
+                    let isForVectorStore = targetVectorStoreForUpload != nil
+                    AppLogger.log("   🔍 Validating and converting file (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
+                    let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
                     
                     let fileData = conversionResult.convertedData
                     let filename = conversionResult.filename
@@ -900,38 +1044,124 @@ struct FileManagerView: View {
                     if conversionResult.wasConverted {
                         AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(filename)", category: .fileManager, level: .info)
                         AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
+                        currentUploadProgress[index].statusMessage = "Converted via \(conversionResult.conversionMethod)"
                     } else {
                         AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
+                        currentUploadProgress[index].statusMessage = "Validated"
                     }
+                    currentUploadProgress[index].progress = 0.4
+                    
+                    // Update progress: Uploading
+                    currentUploadProgress[index].status = .uploading
+                    currentUploadProgress[index].statusMessage = "Uploading to OpenAI..."
+                    currentUploadProgress[index].progress = 0.5
                     
                     // Upload the file (possibly converted)
                     AppLogger.log("   ☁️ Uploading to OpenAI...", category: .fileManager, level: .info)
                     let uploadedFile = try await api.uploadFile(fileData: fileData, filename: filename)
                     AppLogger.log("   ✅ Upload complete! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
                     
+                    currentUploadProgress[index].statusMessage = "Uploaded!"
+                    currentUploadProgress[index].progress = 0.7
+                    
+                    var vectorStoreStatus: String?
+                    var vectorStoreFile: VectorStoreFile?
+                    
                     // If we have a target vector store, add the file to it
                     if let vectorStoreId = targetVectorStoreForUpload?.id {
+                        // Update progress: Adding to vector store
+                        currentUploadProgress[index].status = .addingToVectorStore
+                        currentUploadProgress[index].statusMessage = "Adding to vector store..."
+                        currentUploadProgress[index].progress = 0.8
+                        
                         AppLogger.log("   🔗 Adding file to vector store...", category: .fileManager, level: .info)
-                        let vectorStoreFile = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
-                        AppLogger.log("   ✅ File added to vector store (Status: \(vectorStoreFile.status))", category: .fileManager, level: .info)
+                        vectorStoreFile = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                        AppLogger.log("   ✅ File added to vector store (Status: \(vectorStoreFile!.status))", category: .fileManager, level: .info)
+                        
+                        vectorStoreStatus = vectorStoreFile?.status
                         
                         // If the file is still processing, start polling for completion
-                        if vectorStoreFile.status == "in_progress" {
+                        if vectorStoreFile?.status == "in_progress" {
+                            currentUploadProgress[index].status = .processing
+                            currentUploadProgress[index].statusMessage = "Processing chunks..."
+                            currentUploadProgress[index].progress = 0.9
+                            
                             AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
                             Task {
-                                await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                                await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
                             }
+                        } else {
+                            currentUploadProgress[index].status = .completed
+                            currentUploadProgress[index].statusMessage = "Complete!"
+                            currentUploadProgress[index].progress = 1.0
                         }
+                    } else {
+                        currentUploadProgress[index].status = .completed
+                        currentUploadProgress[index].statusMessage = "Complete!"
+                        currentUploadProgress[index].progress = 1.0
                     }
+                    
+                    // Record successful upload with comprehensive metadata
+                    uploadResults.append(UploadResult(
+                        originalFilename: conversionResult.originalFilename,
+                        finalFilename: filename,
+                        fileId: uploadedFile.id,
+                        fileSize: fileData.count,
+                        wasConverted: conversionResult.wasConverted,
+                        conversionMethod: conversionResult.conversionMethod,
+                        vectorStoreStatus: vectorStoreStatus,
+                        success: true,
+                        errorMessage: nil,
+                        chunkCount: nil, // Note: chunk count is not available per-file, only at vector store level
+                        usageBytes: vectorStoreFile?.usageBytes,
+                        chunkingStrategy: vectorStoreFile?.chunkingStrategy,
+                        lastErrorCode: vectorStoreFile?.lastError?.code,
+                        lastErrorMessage: vectorStoreFile?.lastError?.message
+                    ))
                     
                     AppLogger.log("🎉 Successfully processed: \(conversionResult.originalFilename)", category: .fileManager, level: .info)
                     
                 } catch {
                     AppLogger.log("❌ Failed to process '\(url.lastPathComponent)': \(error.localizedDescription)", category: .fileManager, level: .error)
-                    errorMessage = "Failed to upload '\(url.lastPathComponent)': \(error.localizedDescription)"
+                    
+                    // Update progress: Failed
+                    currentUploadProgress[index].status = .failed
+                    currentUploadProgress[index].statusMessage = "Failed"
+                    currentUploadProgress[index].progress = 0.0
+                    
+                    // Extract user-friendly error message
+                    let errorDescription: String
+                    if let serviceError = error as? OpenAIServiceError {
+                        errorDescription = serviceError.userFriendlyDescription
+                    } else {
+                        errorDescription = error.localizedDescription
+                    }
+                    
+                    // Record failed upload
+                    uploadResults.append(UploadResult(
+                        originalFilename: url.lastPathComponent,
+                        finalFilename: url.lastPathComponent,
+                        fileId: "",
+                        fileSize: 0,
+                        wasConverted: false,
+                        conversionMethod: "",
+                        vectorStoreStatus: nil,
+                        success: false,
+                        errorMessage: errorDescription,
+                        chunkCount: nil,
+                        usageBytes: nil,
+                        chunkingStrategy: nil,
+                        lastErrorCode: nil,
+                        lastErrorMessage: nil
+                    ))
+                    
+                    errorMessage = "Failed to upload '\(url.lastPathComponent)': \(errorDescription)"
                     break // Stop processing on first error
                 }
             }
+            
+            // Calculate total time
+            let totalTime = Date().timeIntervalSince(startTime)
             
             // Refresh data after all uploads
             if let vectorStoreId = targetVectorStoreForUpload?.id {
@@ -939,31 +1169,64 @@ struct FileManagerView: View {
             }
             await loadData()
             
-            // Smoothly reopen the vector store detail view after uploads
-            if let targetStore = targetVectorStoreForUpload {
-                AppLogger.log("🔄 Reopening vector store detail view after upload", category: .fileManager, level: .info)
+            // Wait for all files to finish processing before showing summary
+            // Check if any files are still processing
+            let hasProcessingFiles = currentUploadProgress.contains { $0.status == .processing }
+            
+            if hasProcessingFiles {
+                // Wait for all processing to complete
+                AppLogger.log("⏳ Waiting for \(currentUploadProgress.filter { $0.status == .processing }.count) file(s) to finish processing...", category: .fileManager, level: .info)
                 
-                // Small delay to ensure data is refreshed
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(200))
-                    
-                    // Find the updated vector store from the refreshed list
-                    if let updatedStore = vectorStores.first(where: { $0.id == targetStore.id }) {
-                        selectedVectorStore = updatedStore
-                    } else {
-                        // Fallback to original if not found in refreshed list
-                        selectedVectorStore = targetStore
-                    }
-                    
-                    // Clear the target after reopening
-                    targetVectorStoreForUpload = nil
+                // Poll until all files are no longer in processing state
+                while currentUploadProgress.contains(where: { $0.status == .processing }) {
+                    try? await Task.sleep(for: .seconds(1))
                 }
-            } else {
-                // Clear the target if no vector store context
-                targetVectorStoreForUpload = nil
+                
+                AppLogger.log("✅ All files completed processing!", category: .fileManager, level: .info)
+                
+                // NOW update the uploadResults with final status from vector store
+                if let vectorStoreId = targetVectorStoreForUpload?.id {
+                    do {
+                        let updatedFiles = try await api.listVectorStoreFiles(vectorStoreId: vectorStoreId)
+                        
+                        // Update each result with the final status
+                        for i in 0..<uploadResults.count {
+                            if let fileId = uploadResults[i].success ? uploadResults[i].fileId : nil,
+                               let updatedFile = updatedFiles.first(where: { $0.id == fileId }) {
+                                uploadResults[i].vectorStoreStatus = updatedFile.status
+                                uploadResults[i].usageBytes = updatedFile.usageBytes
+                                uploadResults[i].chunkingStrategy = updatedFile.chunkingStrategy
+                                uploadResults[i].lastErrorCode = updatedFile.lastError?.code
+                                uploadResults[i].lastErrorMessage = updatedFile.lastError?.message
+                                
+                                AppLogger.log("   📊 Updated \(uploadResults[i].originalFilename): status=\(updatedFile.status)", category: .fileManager, level: .debug)
+                            }
+                        }
+                    } catch {
+                        AppLogger.log("⚠️ Failed to fetch final status: \(error.localizedDescription)", category: .fileManager, level: .warning)
+                    }
+                }
             }
             
+            // Hide progress overlay
+            isUploading = false
+            
+            // Show upload summary
+            let summary = UploadSummary(
+                results: uploadResults,
+                vectorStoreName: targetVectorStoreForUpload?.name,
+                totalTime: totalTime
+            )
+            uploadSummary = summary
+            showingUploadSummary = true
+            
+            // Stay on the main FileManagerView so user can see in_progress status
+            // Clear the target without navigating away
+            AppLogger.log("✅ Upload complete, showing summary and staying on main view", category: .fileManager, level: .info)
+            targetVectorStoreForUpload = nil
+            
         case .failure(let error):
+            isUploading = false // Hide progress on error too
             AppLogger.log("❌ File selection failed: \(error.localizedDescription)", category: .fileManager, level: .error)
             errorMessage = "Failed to select files: \(error.localizedDescription)"
         }
@@ -996,12 +1259,17 @@ struct FileManagerView: View {
                 AppLogger.log("   💾 Wrote to temp file: \(tempURL.lastPathComponent)", category: .fileManager, level: .debug)
                 
                 // Process with FileConverterService
-                AppLogger.log("   🔍 Validating and converting if needed...", category: .fileManager, level: .info)
-                let conversionResult = try await FileConverterService.processFile(url: tempURL)
+                // IMPORTANT: Check if uploading to vector store for proper validation
+                let isForVectorStore = targetVectorStoreForUpload != nil
+                AppLogger.log("   🔍 Validating and converting if needed (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
+                let conversionResult = try await FileConverterService.processFile(url: tempURL, forVectorStore: isForVectorStore)
                 
                 if conversionResult.wasConverted {
                     AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(conversionResult.filename)", category: .fileManager, level: .info)
                     AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
+                    
+                    // Show conversion feedback to user
+                    uploadSuccessMessage = "Converted: \(conversionResult.conversionMethod)"
                 } else {
                     AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
                 }
@@ -1023,6 +1291,16 @@ struct FileManagerView: View {
                 
                 successCount += 1
                 AppLogger.log("🎉 [\(index + 1)/\(totalFiles)] Successfully processed: \(conversionResult.filename)", category: .fileManager, level: .info)
+                
+                // Show success feedback
+                if successCount == totalFiles {
+                    showingUploadSuccess = true
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(3))
+                        showingUploadSuccess = false
+                        uploadSuccessMessage = nil
+                    }
+                }
                 
             } catch {
                 failedCount += 1
@@ -1071,7 +1349,9 @@ struct FileManagerView: View {
                 AppLogger.log("📤 Processing file: \(url.lastPathComponent)", category: .fileManager, level: .info)
                 
                 // Use FileConverterService for validation and conversion
-                let conversionResult = try await FileConverterService.processFile(url: url)
+                // IMPORTANT: Check if uploading to vector store for proper validation
+                let isForVectorStore = vectorStoreId != nil
+                let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
                 
                 if conversionResult.wasConverted {
                     AppLogger.log("   🔄 Converted: \(conversionResult.originalFilename) → \(conversionResult.filename)", category: .fileManager, level: .info)
@@ -1090,7 +1370,8 @@ struct FileManagerView: View {
                     if vectorStoreFile.status == "in_progress" {
                         AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
                         Task {
-                            await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                            // Single file upload doesn't use progress overlay, pass -1 for index
+                            await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: -1)
                         }
                     }
                     
@@ -1229,8 +1510,8 @@ struct FileManagerView: View {
 // MARK: - Quick Upload View
 struct QuickUploadView: View {
     let vectorStores: [VectorStore]
+    @Binding var isPresented: Bool
     let onUpload: (VectorStore) -> Void
-    @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     
     private var filteredStores: [VectorStore] {
@@ -1279,7 +1560,7 @@ struct QuickUploadView: View {
                         ForEach(filteredStores) { store in
                             Button {
                                 onUpload(store)
-                                dismiss()
+                                isPresented = false
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
@@ -1303,7 +1584,7 @@ struct QuickUploadView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { isPresented = false }
                 }
             }
         }
@@ -1316,6 +1597,22 @@ struct ImprovedFileRow: View {
     let vectorStores: [VectorStore]
     let onDelete: () -> Void
     let onAddToVectorStore: (VectorStore) -> Void
+    
+    // Extract OCR metadata from filename patterns
+    // Files converted by FileConverterService have metadata embedded in the filename
+    private var fileMetadata: FileProcessingMetadata? {
+        // Check if this is a converted file (typically ends with _converted.txt or similar)
+        if file.filename.contains("converted") || file.filename.contains("OCR") || file.filename.hasSuffix(".txt") {
+            // For now, we'll show a generic "Converted" badge
+            // In a future enhancement, we could fetch file content to parse metadata
+            return FileProcessingMetadata(
+                isConverted: true,
+                conversionMethod: "Text Extraction",
+                hasOCRIndicators: false
+            )
+        }
+        return nil
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1333,6 +1630,30 @@ struct ImprovedFileRow: View {
                         Label(formatDate(file.createdAt), systemImage: "calendar")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                    }
+                    
+                    // NEW: Show conversion badge if file was processed
+                    if let metadata = fileMetadata {
+                        HStack(spacing: 8) {
+                            Label(metadata.conversionMethod, systemImage: "wand.and.stars")
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(4)
+                            
+                            if metadata.hasOCRIndicators {
+                                Label("OCR Processed", systemImage: "text.viewfinder")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.green.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                        }
+                        .padding(.top, 2)
                     }
                 }
                 Spacer()
@@ -1377,6 +1698,13 @@ struct ImprovedFileRow: View {
         formatter.dateStyle = .short
         return formatter.string(from: date)
     }
+}
+
+// MARK: - File Processing Metadata Helper
+struct FileProcessingMetadata {
+    let isConverted: Bool
+    let conversionMethod: String
+    let hasOCRIndicators: Bool
 }
 
 // MARK: - Improved Vector Store Row
@@ -1832,50 +2160,11 @@ struct VectorStoreDetailView: View {
                         }
                     } else {
                         ForEach(files) { file in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(getFilename(for: file.id))
-                                        .font(.headline)
-                                        .lineLimit(2)
-                                    
-                                    Spacer()
-                                    
-                                    Text(file.status)
-                                        .font(.caption)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(statusColor(file.status))
-                                        .foregroundColor(.white)
-                                        .cornerRadius(6)
-                                }
-                                
-                                HStack(spacing: 12) {
-                                    Label(formatBytes(file.usageBytes), systemImage: "doc.fill")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    
-                                    if let error = file.lastError {
-                                        Label(error.message, systemImage: "exclamationmark.triangle.fill")
-                                            .font(.caption)
-                                            .foregroundColor(.red)
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    onRemoveFile(file.id)
-                                } label: {
-                                    Label("Remove", systemImage: "trash")
-                                }
-                            }
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    onRemoveFile(file.id)
-                                } label: {
-                                    Label("Remove from Vector Store", systemImage: "trash")
-                                }
-                            }
+                            VectorStoreFileRow(
+                                file: file,
+                                filename: getFilename(for: file.id),
+                                onRemove: { onRemoveFile(file.id) }
+                            )
                         }
                     }
                 } header: {
@@ -2327,6 +2616,801 @@ extension Array {
         return indices.contains(index) ? self[index] : nil
     }
 }
+
+// MARK: - Vector Store File Row with OCR Quality Indicators
+struct VectorStoreFileRow: View {
+    let file: VectorStoreFile
+    let filename: String
+    let onRemove: () -> Void
+    
+    // Parse OCR quality from filename or attributes
+    private var processingInfo: FileProcessingInfo? {
+        // Check filename for conversion/OCR indicators
+        let lowerFilename = filename.lowercased()
+        
+        // Detect if file was converted
+        let isConverted = lowerFilename.contains("converted") || lowerFilename.contains("_ocr") || lowerFilename.hasSuffix(".txt")
+        
+        // Check for OCR-specific patterns
+        let hasOCR = lowerFilename.contains("ocr") || lowerFilename.contains("scanned")
+        
+        // Parse quality indicators from attributes if available
+        var quality: OCRQuality? = nil
+        if let attributes = file.attributes {
+            // Check for quality indicators in attributes
+            if let qualityStr = attributes["ocr_quality"] ?? attributes["quality"] {
+                if let percentage = Int(qualityStr.replacingOccurrences(of: "%", with: "")) {
+                    quality = OCRQuality(percentage: percentage)
+                }
+            }
+        }
+        
+        if isConverted || hasOCR || quality != nil {
+            return FileProcessingInfo(
+                isConverted: isConverted,
+                hasOCR: hasOCR,
+                quality: quality
+            )
+        }
+        
+        return nil
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Main file info row
+            HStack {
+                Text(filename)
+                    .font(.headline)
+                    .lineLimit(2)
+                
+                Spacer()
+                
+                // Show processing indicator for in_progress files
+                if file.status == "in_progress" {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Processing...")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                } else {
+                    Text(file.status)
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(statusColor(file.status))
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                }
+            }
+            
+            // File metadata row
+            HStack(spacing: 12) {
+                Label(formatBytes(file.usageBytes), systemImage: "doc.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                if let error = file.lastError {
+                    Label(error.message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .lineLimit(1)
+                }
+            }
+            
+            // NEW: Processing indicators
+            if let info = processingInfo {
+                HStack(spacing: 8) {
+                    if info.isConverted {
+                        Label("Converted", systemImage: "wand.and.stars")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(4)
+                    }
+                    
+                    if info.hasOCR {
+                        Label("OCR Processed", systemImage: "text.viewfinder")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(4)
+                    }
+                    
+                    if let quality = info.quality {
+                        HStack(spacing: 4) {
+                            Text(quality.emoji)
+                            Text("\(quality.percentage)% Quality")
+                        }
+                        .font(.caption2)
+                        .foregroundColor(quality.color)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(quality.color.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                onRemove()
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            Button(role: .destructive) {
+                onRemove()
+            } label: {
+                Label("Remove from Vector Store", systemImage: "trash")
+            }
+        }
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func statusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "completed":
+            return .green
+        case "in_progress":
+            return .orange
+        case "failed":
+            return .red
+        default:
+            return .blue
+        }
+    }
+}
+
+// MARK: - Upload Progress Models
+
+/// Real-time progress tracking for individual file upload
+struct UploadProgressItem: Identifiable {
+    let id = UUID()
+    let filename: String
+    var status: UploadProgressStatus
+    var statusMessage: String
+    var progress: Double // 0.0 to 1.0
+}
+
+enum UploadProgressStatus {
+    case pending
+    case converting
+    case uploading
+    case addingToVectorStore
+    case processing
+    case completed
+    case failed
+    
+    var icon: String {
+        switch self {
+        case .pending: return "clock.fill"
+        case .converting: return "arrow.triangle.2.circlepath"
+        case .uploading: return "arrow.up.circle.fill"
+        case .addingToVectorStore: return "link.circle.fill"
+        case .processing: return "gearshape.fill"
+        case .completed: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .pending: return .secondary
+        case .converting: return .blue
+        case .uploading: return .orange
+        case .addingToVectorStore: return .purple
+        case .processing: return .cyan
+        case .completed: return .green
+        case .failed: return .red
+        }
+    }
+}
+
+// MARK: - Upload Summary Models
+
+/// Result of a single file upload
+struct UploadResult {
+    let originalFilename: String
+    let finalFilename: String
+    let fileId: String
+    let fileSize: Int
+    let wasConverted: Bool
+    let conversionMethod: String
+    var vectorStoreStatus: String? // Mutable - updated after processing
+    let success: Bool
+    let errorMessage: String?
+    
+    // Enhanced vector store metadata (mutable - updated after processing completes)
+    let chunkCount: Int?
+    var usageBytes: Int?
+    var chunkingStrategy: ChunkingStrategy?
+    var lastErrorCode: String?
+    var lastErrorMessage: String?
+}
+
+/// Summary of all uploads in a batch
+struct UploadSummary {
+    let results: [UploadResult]
+    let vectorStoreName: String?
+    let totalTime: TimeInterval
+    
+    var successCount: Int {
+        results.filter { $0.success }.count
+    }
+    
+    var failureCount: Int {
+        results.filter { !$0.success }.count
+    }
+    
+    var totalSize: Int {
+        results.reduce(0) { $0 + $1.fileSize }
+    }
+    
+    var convertedCount: Int {
+        results.filter { $0.wasConverted }.count
+    }
+    
+    var totalVectorStoreUsage: Int? {
+        let usages = results.compactMap { $0.usageBytes }
+        return usages.isEmpty ? nil : usages.reduce(0, +)
+    }
+    
+    var hasVectorStoreData: Bool {
+        results.contains { $0.usageBytes != nil }
+    }
+}
+
+// MARK: - Upload Summary View
+
+/// Beautiful summary view showing upload results
+struct UploadSummaryView: View {
+    let summary: UploadSummary
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header with icon
+                    VStack(spacing: 12) {
+                        Image(systemName: summary.failureCount == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(summary.failureCount == 0 ? .green : .orange)
+                        
+                        Text("Upload Complete")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        if let vectorStore = summary.vectorStoreName {
+                            Text("to \(vectorStore)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.top)
+                    
+                    // Statistics
+                    HStack(spacing: 16) {
+                        UploadStatCard(
+                            icon: "checkmark.circle.fill",
+                            value: "\(summary.successCount)",
+                            label: "Uploaded",
+                            color: .green
+                        )
+                        
+                        if summary.convertedCount > 0 {
+                            UploadStatCard(
+                                icon: "arrow.triangle.2.circlepath",
+                                value: "\(summary.convertedCount)",
+                                label: "Converted",
+                                color: .blue
+                            )
+                        }
+                        
+                        UploadStatCard(
+                            icon: "clock.fill",
+                            value: String(format: "%.1fs", summary.totalTime),
+                            label: "Time",
+                            color: .purple
+                        )
+                        
+                        UploadStatCard(
+                            icon: "doc.fill",
+                            value: formatBytes(summary.totalSize),
+                            label: "Total",
+                            color: .orange
+                        )
+                    }
+                    .padding(.horizontal)
+                    
+                    // Show vector store usage if available
+                    if let totalUsage = summary.totalVectorStoreUsage {
+                        HStack(spacing: 16) {
+                            UploadStatCard(
+                                icon: "externaldrive.fill",
+                                value: formatBytes(totalUsage),
+                                label: "Vector Storage",
+                                color: .indigo
+                            )
+                        }
+                        .padding(.horizontal)
+                    }
+                    
+                    if summary.failureCount > 0 {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("\(summary.failureCount) file(s) failed to upload")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal)
+                    }
+                    
+                    // File list
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Files")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        ForEach(Array(summary.results.enumerated()), id: \.offset) { index, result in
+                            UploadResultRow(result: result)
+                        }
+                    }
+                }
+                .padding(.bottom, 100)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Upload Summary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .memory
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
+
+/// Compact stat card for upload summary
+struct UploadStatCard: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.headline)
+                .fontWeight(.bold)
+            
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(color.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+/// Row showing individual upload result
+struct UploadResultRow: View {
+    let result: UploadResult
+    @State private var isExpanded = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    // Status icon
+                    Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(result.success ? .green : .red)
+                    
+                    // File info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(result.originalFilename)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        
+                        HStack(spacing: 4) {
+                            if result.wasConverted {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption2)
+                                    .foregroundColor(.blue)
+                                Text("Converted")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                Text("•")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            if result.success {
+                                Text(formatBytes(result.fileSize))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                if let status = result.vectorStoreStatus {
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(statusLabel(status))
+                                        .font(.caption)
+                                        .foregroundColor(statusColor(status))
+                                }
+                            } else {
+                                Text("Failed")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Expand indicator
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .padding()
+                .background(Color(.secondarySystemGroupedBackground))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+            
+            // Expanded details
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider()
+                        .padding(.horizontal)
+                    
+                    if result.success {
+                        UploadDetailRow(label: "File ID", value: result.fileId, monospaced: true)
+                        
+                        if result.finalFilename != result.originalFilename {
+                            UploadDetailRow(label: "Final Name", value: result.finalFilename)
+                        }
+                        
+                        if result.wasConverted {
+                            UploadDetailRow(label: "Conversion", value: result.conversionMethod)
+                        }
+                        
+                        if let status = result.vectorStoreStatus {
+                            UploadDetailRow(label: "Vector Store", value: statusLabel(status))
+                        }
+                        
+                        // Show vector store metadata if available
+                        if let usageBytes = result.usageBytes {
+                            UploadDetailRow(label: "Storage Used", value: formatBytes(usageBytes))
+                        }
+                        
+                        if let strategy = result.chunkingStrategy {
+                            if let staticStrategy = strategy.static {
+                                UploadDetailRow(
+                                    label: "Chunking",
+                                    value: "\(staticStrategy.maxChunkSizeTokens) tokens max, \(staticStrategy.chunkOverlapTokens) overlap"
+                                )
+                            } else {
+                                UploadDetailRow(label: "Chunking", value: "Auto (default)")
+                            }
+                        }
+                        
+                        // Show error details if the file failed in vector store processing
+                        if let errorCode = result.lastErrorCode, let errorMsg = result.lastErrorMessage {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Vector Store Error")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.orange)
+                                    
+                                    Text("[\(errorCode)] \(errorMsg)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        
+                    } else if let error = result.errorMessage {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Error")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.red)
+                                
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(Color(.secondarySystemGroupedBackground))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .memory
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func statusLabel(_ status: String) -> String {
+        switch status.lowercased() {
+        case "completed": return "Ready"
+        case "in_progress": return "Processing"
+        case "failed": return "Failed"
+        default: return status
+        }
+    }
+    
+    private func statusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "completed": return .green
+        case "in_progress": return .orange
+        case "failed": return .red
+        default: return .blue
+        }
+    }
+}
+
+/// Detail row in expanded upload result view
+struct UploadDetailRow: View {
+    let label: String
+    let value: String
+    var monospaced: Bool = false
+    
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+            
+            Text(value)
+                .font(monospaced ? .caption.monospaced() : .caption)
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+            
+            Spacer()
+        }
+        .padding(.horizontal)
+    }
+}
+
+// MARK: - Real-time Upload Progress Overlay
+
+/// Live progress overlay showing upload status for each file
+struct UploadProgressOverlay: View {
+    let progressItems: [UploadProgressItem]
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            
+            // Progress card
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Image(systemName: "arrow.up.doc.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Uploading Files")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                        
+                        let completedCount = progressItems.filter { $0.status == .completed }.count
+                        let totalCount = progressItems.count
+                        Text("\(completedCount) of \(totalCount) complete")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                
+                Divider()
+                
+                // Progress list
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(progressItems) { item in
+                            UploadProgressRow(item: item)
+                        }
+                    }
+                    .padding()
+                }
+                .frame(maxHeight: 400)
+                .background(Color(.systemBackground))
+            }
+            .frame(maxWidth: 500)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.3), radius: 20)
+            .padding()
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .animation(.spring(response: 0.4), value: progressItems.map { $0.status })
+    }
+}
+
+/// Individual file progress row
+struct UploadProgressRow: View {
+    let item: UploadProgressItem
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                // Status icon with animation
+                Image(systemName: item.status.icon)
+                    .font(.title3)
+                    .foregroundColor(item.status.color)
+                    .frame(width: 24, height: 24)
+                    .symbolEffect(.pulse, isActive: item.status == .uploading || item.status == .processing || item.status == .converting)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.filename)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    
+                    Text(item.statusMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // Checkmark or spinner
+                if item.status == .completed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.green)
+                        .transition(.scale.combined(with: .opacity))
+                } else if item.status == .failed {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.red)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            
+            // Progress bar
+            if item.status != .completed && item.status != .failed {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Background
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(height: 4)
+                        
+                        // Progress fill
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(item.status.color)
+                            .frame(width: geometry.size.width * item.progress, height: 4)
+                            .animation(.easeInOut(duration: 0.3), value: item.progress)
+                    }
+                }
+                .frame(height: 4)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - File Processing Info Models
+struct FileProcessingInfo {
+    let isConverted: Bool
+    let hasOCR: Bool
+    let quality: OCRQuality?
+}
+
+struct OCRQuality {
+    let percentage: Int
+    
+    var emoji: String {
+        switch percentage {
+        case 80...:
+            return "✅"
+        case 60..<80:
+            return "⚠️"
+        default:
+            return "❌"
+        }
+    }
+    
+    var color: Color {
+        switch percentage {
+        case 80...:
+            return .green
+        case 60..<80:
+            return .orange
+        default:
+            return .red
+        }
+    }
+    
+    var label: String {
+        switch percentage {
+        case 85...:
+            return "Excellent"
+        case 70..<85:
+            return "Good"
+        case 50..<70:
+            return "Fair"
+        default:
+            return "Poor"
+        }
+    }
+}
+
 
 
 

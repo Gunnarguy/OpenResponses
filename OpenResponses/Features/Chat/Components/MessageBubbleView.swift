@@ -4,6 +4,7 @@ struct MessageBubbleView: View {
     let message: ChatMessage
     let onDelete: () -> Void
     var isStreaming: Bool = false
+    var viewModel: ChatViewModel? = nil
     
     @ScaledMetric private var bubblePadding: CGFloat = 12
     @ScaledMetric private var cornerRadius: CGFloat = 16
@@ -52,6 +53,12 @@ struct MessageBubbleView: View {
                     MessageToolIndicator(message: message)
                 }
                 
+                // Playground-style metadata (response_id, token breakdown, file_ids)
+                if message.role == .assistant {
+                    MessageMetadataView(message: message)
+                        .padding(.top, 4)
+                }
+                
                 // Show placeholder text for assistant messages with tools but no text
                 if message.role == .assistant, 
                    (message.text?.isEmpty ?? true),
@@ -75,6 +82,37 @@ struct MessageBubbleView: View {
                 if let artifacts = message.artifacts, !artifacts.isEmpty {
                     ArtifactsView(artifacts: artifacts)
                         .padding(.vertical, 4)
+                }
+                
+                // MCP approval requests
+                if let approvalRequests = message.mcpApprovalRequests, !approvalRequests.isEmpty {
+                    ForEach(approvalRequests) { approval in
+                        MCPApprovalView(
+                            approval: approval,
+                            onApprove: { reason in
+                                // Get viewModel from environment
+                                if let viewModel = viewModel {
+                                    viewModel.respondToMCPApproval(
+                                        approvalRequestId: approval.id,
+                                        approve: true,
+                                        reason: reason,
+                                        messageId: message.id
+                                    )
+                                }
+                            },
+                            onReject: { reason in
+                                if let viewModel = viewModel {
+                                    viewModel.respondToMCPApproval(
+                                        approvalRequestId: approval.id,
+                                        approve: false,
+                                        reason: reason,
+                                        messageId: message.id
+                                    )
+                                }
+                            }
+                        )
+                        .padding(.vertical, 4)
+                    }
                 }
                 
                 // Web content (if any URLs in the message)

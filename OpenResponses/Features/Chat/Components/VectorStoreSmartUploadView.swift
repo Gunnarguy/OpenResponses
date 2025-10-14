@@ -479,10 +479,11 @@ struct VectorStoreSmartUploadView: View {
                 
                 do {
                     // Validate and convert file if necessary
-                    AppLogger.log("   � Validating file: \(url.lastPathComponent)", category: .fileManager, level: .debug)
+                    AppLogger.log("   🔍 Validating file: \(url.lastPathComponent)", category: .fileManager, level: .debug)
                     
                     // Process file through converter (validates size and converts if needed)
-                    let conversionResult = try await FileConverterService.processFile(url: url)
+                    // IMPORTANT: This is for vector store upload, so use stricter validation
+                    let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: true)
                     
                     let fileData = conversionResult.convertedData
                     let filename = conversionResult.filename

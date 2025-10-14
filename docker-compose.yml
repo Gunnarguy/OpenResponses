@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  notion-mcp:
+    image: node:20-alpine
+    container_name: notion-mcp-server
+    working_dir: /app
+    environment:
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./notion-mcp-src:/app
+    command: sh -c "npm install && npm start"
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge

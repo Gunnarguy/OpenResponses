@@ -29,7 +29,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -42,6 +42,7 @@ class OpenAIService: OpenAIServiceProtocol {
             attachments: attachments,
             fileData: fileData,
             fileNames: fileNames,
+            fileIds: fileIds,
             imageAttachments: imageAttachments,
             previousResponseId: previousResponseId,
             stream: false
@@ -159,7 +160,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -175,6 +176,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         attachments: attachments,
                         fileData: fileData,
                         fileNames: fileNames,
+                        fileIds: fileIds,
                         imageAttachments: imageAttachments,
                         previousResponseId: previousResponseId,
                         stream: true
@@ -399,30 +401,75 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             return prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // Non-CUA: if user provided instructions, use them; otherwise a simple default
-        if !prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return prompt.systemInstructions
+        // If user provided custom instructions, use them
+        let userInstructions = prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !userInstructions.isEmpty && userInstructions != "You are a helpful assistant." {
+            return userInstructions
         }
-        return "You are a helpful assistant."
+        
+        // Build dynamic instructions based on enabled tools
+        var instructions: [String] = []
+        
+        // Base instruction
+        instructions.append("You are a helpful assistant.")
+        
+        // Add MCP-specific guidance if MCP is enabled
+        // Note: The model automatically receives tool schemas from OpenAI's framework
+        // We just need to encourage proactive usage
+        if prompt.enableMCPTool {
+            if prompt.mcpIsConnector, let connectorId = prompt.mcpConnectorId {
+                // Connector-specific instructions
+                let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
+                instructions.append("\n\nYou have access to \(connectorName) through an MCP connector. Use the available tools proactively when relevant to help the user.")
+            } else if !prompt.mcpServerLabel.isEmpty {
+                // Remote server instructions - be more directive about search capabilities
+                let searchGuidance: String
+                if prompt.mcpServerLabel.lowercased().contains("notion") {
+                    searchGuidance = "When the user asks about their content, databases, pages, or workspace items, immediately use the search tools to find what they're looking for. Don't ask for IDs or URLs first—search proactively."
+                } else {
+                    searchGuidance = "Use the available tools proactively when relevant to help the user."
+                }
+                instructions.append("\n\nYou have access to an MCP server (\(prompt.mcpServerLabel)). The available tools are automatically provided to you. \(searchGuidance)")
+            }
+        }
+        
+        // Add file search guidance if enabled
+        if prompt.enableFileSearch, let vectorStoreIds = prompt.selectedVectorStoreIds, !vectorStoreIds.isEmpty {
+            instructions.append("\n\nYou have access to file_search to query uploaded documents. Use it when the user's question relates to the available files.")
+        }
+        
+        // Add code interpreter guidance if enabled
+        if prompt.enableCodeInterpreter {
+            instructions.append("\n\nYou can run Python code via code_interpreter for analysis, calculations, and file processing.")
+        }
+        
+        return instructions.joined()
     }
 
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
         var requestObject = baseRequestMetadata(for: prompt, stream: stream)
-        requestObject["input"] = buildInputMessages(
-            for: prompt,
-            userMessage: userMessage,
-            attachments: attachments,
-            fileData: fileData,
-            fileNames: fileNames,
-            imageAttachments: imageAttachments
-        )
+        
+        // If customInput is provided (e.g., for MCP approval response), use it directly
+        if let customInput = customInput {
+            requestObject["input"] = customInput
+        } else {
+            requestObject["input"] = buildInputMessages(
+                for: prompt,
+                userMessage: userMessage ?? "",
+                attachments: attachments,
+                fileData: fileData,
+                fileNames: fileNames,
+                fileIds: fileIds,
+                imageAttachments: imageAttachments
+            )
+        }
 
         let (tools, forceImageToolChoice) = assembleTools(
             for: prompt,
-            userMessage: userMessage,
+            userMessage: userMessage ?? "",
             isStreaming: stream
         )
 
@@ -610,7 +657,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
         
         // Add developer instructions if provided
@@ -626,7 +673,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
         let hasDirectFileData = fileData?.isEmpty == false
-        if hasFileAttachments || hasImageAttachments || hasDirectFileData {
+        let hasUploadedFileIds = fileIds?.isEmpty == false
+        if hasFileAttachments || hasImageAttachments || hasDirectFileData || hasUploadedFileIds {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
             
             // Add file attachments (file_id references)
@@ -644,7 +692,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
             }
             
-            // Add direct file uploads (file_data)
+            // Add uploaded file IDs (from Files API upload)
+            if let fileIds = fileIds, !fileIds.isEmpty {
+                for fileId in fileIds {
+                    let fileContent: [String: Any] = [
+                        "type": "input_file",
+                        "file_id": fileId
+                    ]
+                    contentArray.append(fileContent)
+                }
+            }
+            
+            // Add direct file uploads (file_data) - only for small files
             if let fileData = fileData, let fileNames = fileNames, !fileData.isEmpty, !fileNames.isEmpty {
                 for (index, data) in fileData.enumerated() {
                     guard index < fileNames.count else {
@@ -802,6 +861,106 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: function))
+        }
+        
+        // MCP Tool (Connector or Remote Server)
+        if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
+            // Check if this is a connector (OpenAI-maintained) or remote server (custom)
+            if prompt.mcpIsConnector {
+                // Connector path: requires connector_id and OAuth token from keychain
+                if let connectorId = prompt.mcpConnectorId, !connectorId.isEmpty {
+                    
+                    // BULLETPROOF CHECK: Verify this is a REAL OpenAI connector
+                    let validConnectors = [
+                        "connector_dropbox",
+                        "connector_gmail", 
+                        "connector_googlecalendar",
+                        "connector_googledrive",
+                        "connector_microsoftteams",
+                        "connector_outlookcalendar",
+                        "connector_outlookemail",
+                        "connector_sharepoint"
+                    ]
+                    
+                    if validConnectors.contains(connectorId) {
+                        // Valid connector - proceed with configuration
+                        // Load OAuth token from keychain with pattern: "mcp_connector_{connectorId}"
+                        let authKey = "mcp_connector_\(connectorId)"
+                        let authorization = KeychainService.shared.load(forKey: authKey)
+                        
+                        // Parse allowed tools if specified
+                        var allowedTools: [String]? = nil
+                        if !prompt.mcpAllowedTools.isEmpty {
+                            allowedTools = prompt.mcpAllowedTools
+                                .split(separator: ",")
+                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty }
+                        }
+                        
+                        // Get approval setting (default to "never")
+                        let requireApproval = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval
+                        
+                        // Get connector name from library for logging
+                        let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
+                        
+                        tools.append(.mcp(
+                            serverLabel: connectorName,
+                            serverURL: nil, // Connectors use connector_id, not server_url
+                            connectorId: connectorId,
+                            authorization: authorization,
+                            headers: nil,
+                            requireApproval: requireApproval,
+                            allowedTools: allowedTools,
+                            serverDescription: nil
+                        ))
+                        
+                        AppLogger.log("Added MCP connector: \(connectorName) (id: \(connectorId))", category: .openAI, level: .info)
+                    } else {
+                        // Invalid connector ID - log error and skip
+                        AppLogger.log("⚠️ INVALID CONNECTOR: '\(connectorId)' does not exist in OpenAI's system. Check MCPConnector.swift configuration.", category: .openAI, level: .error)
+                    }
+                } else {
+                    AppLogger.log("MCP connector enabled but missing connector_id", category: .openAI, level: .warning)
+                }
+            } else {
+                // Remote server path: requires server_url and optional auth
+                if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
+                    // Get authorization from keychain or fallback to mcpHeaders
+                    var authorization: String? = nil
+                    if let stored = KeychainService.shared.load(forKey: "mcp_auth_\(prompt.mcpServerLabel)"), !stored.isEmpty {
+                        authorization = stored
+                    } else if !prompt.mcpHeaders.isEmpty {
+                        authorization = prompt.mcpHeaders
+                    }
+                    
+                    // Parse allowed tools if specified
+                    var allowedTools: [String]? = nil
+                    if !prompt.mcpAllowedTools.isEmpty {
+                        allowedTools = prompt.mcpAllowedTools
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                    }
+                    
+                    // Determine the approval requirement (default to "never")
+                    let requireApproval = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval
+                    
+                    tools.append(.mcp(
+                        serverLabel: prompt.mcpServerLabel,
+                        serverURL: prompt.mcpServerURL,
+                        connectorId: nil, // Remote servers don't use connector_id
+                        authorization: authorization,
+                        headers: nil, // Legacy support, prefer authorization field
+                        requireApproval: requireApproval,
+                        allowedTools: allowedTools,
+                        serverDescription: nil
+                    ))
+                    
+                    AppLogger.log("Added MCP remote server: \(prompt.mcpServerLabel) at \(prompt.mcpServerURL)", category: .openAI, level: .info)
+                } else {
+                    AppLogger.log("MCP remote server enabled but missing configuration (label or URL)", category: .openAI, level: .warning)
+                }
+            }
         }
         
         // Ensure deep-research models always include at least one of the required tools
@@ -1127,6 +1286,201 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         } catch {
             print("Function output response decoding error: \(error)")
             throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    /// Sends an MCP approval response back to the API to continue execution after user authorization.
+    /// - Parameters:
+    ///   - approvalResponse: The approval response dictionary with type, approval_request_id, approve, and optional reason.
+    ///   - model: The model name to use.
+    ///   - previousResponseId: The ID of the response that contained the approval request.
+    ///   - prompt: The prompt configuration for tools and settings.
+    /// - Returns: The OpenAIResponse containing the tool execution result.
+    func sendMCPApprovalResponse(
+        approvalResponse: [String: Any],
+        model: String,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        // Build request with approval response as input
+        let requestObject = buildRequestObject(
+            for: prompt,
+            userMessage: nil, // No user message for approval response
+            attachments: nil,
+            fileData: nil,
+            fileNames: nil,
+            fileIds: nil,
+            imageAttachments: nil,
+            previousResponseId: previousResponseId,
+            stream: false,
+            customInput: [approvalResponse] // Pass approval response as input
+        )
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+        
+        var request = URLRequest(url: apiURL)
+        request.timeoutInterval = 120
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        AnalyticsService.shared.logAPIRequest(
+            url: apiURL,
+            method: "POST",
+            headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+            body: jsonData
+        )
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiRequestSent,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses_mcp_approval",
+                AnalyticsParameter.requestMethod: "POST",
+                AnalyticsParameter.requestSize: jsonData.count,
+                AnalyticsParameter.model: model
+            ]
+        )
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        AnalyticsService.shared.logAPIResponse(
+            url: apiURL,
+            statusCode: httpResponse.statusCode,
+            headers: httpResponse.allHeaderFields,
+            body: data
+        )
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            
+            AnalyticsService.shared.trackEvent(
+                name: AnalyticsEvent.networkError,
+                parameters: [
+                    AnalyticsParameter.endpoint: "responses_mcp_approval",
+                    AnalyticsParameter.statusCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorCode: httpResponse.statusCode,
+                    AnalyticsParameter.errorDomain: "OpenAI_MCP_API"
+                ]
+            )
+            
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.apiResponseReceived,
+            parameters: [
+                AnalyticsParameter.endpoint: "responses_mcp_approval",
+                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                AnalyticsParameter.responseSize: data.count,
+                AnalyticsParameter.model: model
+            ]
+        )
+        
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            print("MCP approval response decoding error: \(error)")
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    /// Streams an MCP approval response to continue execution after user authorization.
+    func streamMCPApprovalResponse(
+        approvalResponse: [String: Any],
+        model: String,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+                        continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
+                        return
+                    }
+                    
+                    // Build request with approval response as input
+                    let requestObject = buildRequestObject(
+                        for: prompt,
+                        userMessage: nil,
+                        attachments: nil,
+                        fileData: nil,
+                        fileNames: nil,
+                        fileIds: nil,
+                        imageAttachments: nil,
+                        previousResponseId: previousResponseId,
+                        stream: true,
+                        customInput: [approvalResponse]
+                    )
+                    
+                    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+                    
+                    var request = URLRequest(url: apiURL)
+                    request.timeoutInterval = 120
+                    request.httpMethod = "POST"
+                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = jsonData
+                    
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.apiRequestSent,
+                        parameters: [
+                            AnalyticsParameter.endpoint: "responses_mcp_approval_stream",
+                            AnalyticsParameter.requestMethod: "POST",
+                            AnalyticsParameter.model: model
+                        ]
+                    )
+                    
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: OpenAIServiceError.invalidResponseData)
+                        return
+                    }
+                    
+                    if httpResponse.statusCode != 200 {
+                        var errorData = Data()
+                        for try await byte in bytes {
+                            errorData.append(byte)
+                        }
+                        let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+                        continuation.finish(throwing: OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage))
+                        return
+                    }
+                    
+                    // Parse SSE stream
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("data: ") {
+                            let jsonString = String(line.dropFirst(6))
+                            if jsonString == "[DONE]" {
+                                continuation.finish()
+                                return
+                            }
+                            
+                            if let data = jsonString.data(using: .utf8) {
+                                do {
+                                    let event = try JSONDecoder().decode(StreamingEvent.self, from: data)
+                                    continuation.yield(event)
+                                } catch {
+                                    AppLogger.log("Failed to decode MCP approval streaming event: \(error)", category: .openAI, level: .warning)
+                                }
+                            }
+                        }
+                    }
+                    
+                    continuation.finish()
+                    
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
     }
 
@@ -1470,22 +1824,41 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             default: return prompt.mcpRequireApproval // pass through in case it's already API-compliant
             }
         }()
+        
+        // Sanitize server_label: must start with a letter and contain only letters, digits, '-', '_'
+        // Replace spaces with underscores and filter out invalid characters
+        let sanitizedLabel = prompt.mcpServerLabel
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
+            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
+        
+        // Ensure it starts with a letter (if not, prepend "mcp_")
+        let finalLabel = sanitizedLabel.first?.isLetter == true ? sanitizedLabel : "mcp_\(sanitizedLabel)"
 
         var config: [String: Any] = [
             "type": "mcp",
-            "server_label": prompt.mcpServerLabel,
+            "server_label": finalLabel,
             "server_url": prompt.mcpServerURL,
             "headers": headers,
             "require_approval": requireApprovalValue,
         ]
 
         // Parse allowed tools from comma-separated string
-        let allowed = prompt.mcpAllowedTools
-            .split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if !allowed.isEmpty {
-            config["allowed_tools"] = allowed
+        // If empty, omit allowed_tools to enable ALL tools from the server (ubiquitous access)
+        // If specified, restrict to only those tools (security whitelist)
+        let allowedToolsString = prompt.mcpAllowedTools.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !allowedToolsString.isEmpty {
+            let allowed = allowedToolsString
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !allowed.isEmpty {
+                config["allowed_tools"] = allowed
+                AppLogger.log("MCP: Restricting to \(allowed.count) specific tools", category: .openAI, level: .info)
+            }
+        } else {
+            // Empty = allow ALL tools discovered from server
+            AppLogger.log("MCP: Allowing ALL tools from server (ubiquitous mode)", category: .openAI, level: .info)
         }
 
         return config
@@ -1605,11 +1978,20 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AppLogger.log("   📋 Purpose: \(purpose)", category: .openAI, level: .debug)
         AppLogger.log("   📦 Boundary: \(boundary)", category: .openAI, level: .debug)
         
+        // Create a dedicated URLSession configuration for large uploads
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300 // 5 minutes
+        config.timeoutIntervalForResource = 600 // 10 minutes total
+        config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        let session = URLSession(configuration: config)
+        
         var request = URLRequest(url: url)
-        request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        // Prevent connection reuse that might be causing issues
+        request.setValue("close", forHTTPHeaderField: "Connection")
         
         // Create multipart form data
         var body = Data()
@@ -1631,34 +2013,53 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         AppLogger.log("   ⏫ Sending \(formatBytes(body.count)) to OpenAI...", category: .openAI, level: .info)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            AppLogger.log("❌ Invalid HTTP response received", category: .openAI, level: .error)
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
-        
-        if httpResponse.statusCode != 200 {
-            if let responseString = String(data: data, encoding: .utf8) {
-                AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
-                print("Error uploading file: \(responseString)")
-            }
-            let errorMessage: String
-            if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-                errorMessage = errorResponse.error.message
-                AppLogger.log("   ⚠️ Error message: \(errorMessage)", category: .openAI, level: .error)
-            } else {
-                errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-            }
-            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
-        }
-        
         do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                AppLogger.log("❌ Invalid HTTP response received", category: .openAI, level: .error)
+                throw OpenAIServiceError.invalidResponseData
+            }
+            
+            AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
+            
+            if httpResponse.statusCode != 200 {
+                if let responseString = String(data: data, encoding: .utf8) {
+                    AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
+                    print("Error uploading file: \(responseString)")
+                }
+                let errorMessage: String
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
+                    errorMessage = errorResponse.error.message
+                    AppLogger.log("   ⚠️ Error message: \(errorMessage)", category: .openAI, level: .error)
+                } else {
+                    errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                }
+                throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+            }
+            
             let file = try JSONDecoder().decode(OpenAIFile.self, from: data)
             AppLogger.log("✅ File uploaded successfully! ID: \(file.id), Size: \(formatBytes(file.bytes))", category: .openAI, level: .info)
             return file
+            
+        } catch let urlError as URLError {
+            // Handle network-specific errors with more context
+            let errorDescription: String
+            switch urlError.code {
+            case .networkConnectionLost:
+                errorDescription = "Network connection lost during upload. For large files (18+ MB), try using a physical device instead of Simulator or check your network connection."
+                AppLogger.log("❌ Network connection lost (error -1005) - Large file upload interrupted", category: .openAI, level: .error)
+            case .timedOut:
+                errorDescription = "Upload timed out. The file may be too large or your connection too slow."
+                AppLogger.log("❌ Upload timed out", category: .openAI, level: .error)
+            case .secureConnectionFailed:
+                errorDescription = "SSL/TLS handshake failed. This can happen with Simulator - try a real device."
+                AppLogger.log("❌ Secure connection failed (SSL error)", category: .openAI, level: .error)
+            default:
+                errorDescription = urlError.localizedDescription
+                AppLogger.log("❌ Network error: \(urlError.localizedDescription) (code: \(urlError.code.rawValue))", category: .openAI, level: .error)
+            }
+            throw OpenAIServiceError.fileError(errorDescription)
         } catch {
             AppLogger.log("❌ Failed to decode file upload response: \(error)", category: .openAI, level: .error)
             print("Decoding error for file upload: \(error)")

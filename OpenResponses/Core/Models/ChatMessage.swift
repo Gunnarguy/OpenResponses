@@ -19,12 +19,14 @@ struct ChatMessage: Identifiable, Codable {
     var tokenUsage: TokenUsage?
     /// Code interpreter artifacts (files, logs, data outputs)
     var artifacts: [CodeInterpreterArtifact]?
+    /// MCP approval requests pending user decision
+    var mcpApprovalRequests: [MCPApprovalRequest]?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts
+        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil, artifacts: [CodeInterpreterArtifact]? = nil) {
+    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil, artifacts: [CodeInterpreterArtifact]? = nil, mcpApprovalRequests: [MCPApprovalRequest]? = nil) {
         self.id = id
         self.role = role
         self.text = text
@@ -34,6 +36,7 @@ struct ChatMessage: Identifiable, Codable {
         self.toolsUsed = toolsUsed
         self.tokenUsage = tokenUsage
         self.artifacts = artifacts
+        self.mcpApprovalRequests = mcpApprovalRequests
     }
 
     // MARK: - Codable Conformance
@@ -65,6 +68,7 @@ struct ChatMessage: Identifiable, Codable {
         toolsUsed = try container.decodeIfPresent([String].self, forKey: .toolsUsed)
         tokenUsage = try container.decodeIfPresent(TokenUsage.self, forKey: .tokenUsage)
         artifacts = try container.decodeIfPresent([CodeInterpreterArtifact].self, forKey: .artifacts)
+        mcpApprovalRequests = try container.decodeIfPresent([MCPApprovalRequest].self, forKey: .mcpApprovalRequests)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -91,6 +95,7 @@ struct ChatMessage: Identifiable, Codable {
         try container.encodeIfPresent(toolsUsed, forKey: .toolsUsed)
         try container.encodeIfPresent(tokenUsage, forKey: .tokenUsage)
         try container.encodeIfPresent(artifacts, forKey: .artifacts)
+        try container.encodeIfPresent(mcpApprovalRequests, forKey: .mcpApprovalRequests)
     }
 }
 
@@ -349,6 +354,10 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// - "response.content_part.done" - Content part is complete
     /// - "response.output_text.delta" - Text token added to content
     /// - "response.output_text.done" - Text content is complete
+    /// - "response.mcp_list_tools.added" - MCP server tools list added
+    /// - "response.mcp_call.added" - MCP tool call initiated
+    /// - "response.mcp_call.done" - MCP tool call completed
+    /// - "response.mcp_approval_request.added" - MCP tool call requires approval
     let type: String
     
     /// Sequence number to maintain ordering of events
@@ -356,6 +365,9 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     
     /// Full response object, present in some events like "response.created"
     let response: StreamingResponse?
+    
+    /// Error information for standalone "type":"error" events
+    let errorInfo: StreamingError?
     
     /// Index in the output array where the item belongs
     let outputIndex: Int?
@@ -403,6 +415,28 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// We decode it to improve robustness across event variants.
     let annotation: StreamingAnnotation?
     
+    // MCP-specific fields
+    /// Server label for MCP events
+    let serverLabel: String?
+    
+    /// Tools array for mcp_list_tools events
+    let tools: [[String: AnyCodable]]?
+    
+    /// Tool name for mcp_call and mcp_approval_request events
+    let name: String?
+    
+    /// Arguments for mcp_call and mcp_approval_request events (JSON string)
+    let arguments: String?
+    
+    /// Output from mcp_call events (JSON string)
+    let output: String?
+    
+    /// Error from failed mcp_call events
+    let error: String?
+    
+    /// Approval request ID for mcp_approval_request events
+    let approvalRequestId: String?
+    
     enum CodingKeys: String, CodingKey {
         case type
         case sequenceNumber = "sequence_number"
@@ -424,6 +458,57 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case containerId = "container_id"
         case annotationIndex = "annotation_index"
         case annotation
+        case serverLabel = "server_label"
+        case tools
+        case name
+        case arguments
+        case output
+        case error
+        case approvalRequestId = "approval_request_id"
+    }
+    
+    /// Custom decoder to handle polymorphic error field
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode standard fields
+        type = try container.decode(String.self, forKey: .type)
+        sequenceNumber = try container.decode(Int.self, forKey: .sequenceNumber)
+        response = try container.decodeIfPresent(StreamingResponse.self, forKey: .response)
+        outputIndex = try container.decodeIfPresent(Int.self, forKey: .outputIndex)
+        itemId = try container.decodeIfPresent(String.self, forKey: .itemId)
+        contentIndex = try container.decodeIfPresent(Int.self, forKey: .contentIndex)
+        delta = try container.decodeIfPresent(String.self, forKey: .delta)
+        item = try container.decodeIfPresent(StreamingItem.self, forKey: .item)
+        part = try container.decodeIfPresent(StreamingPart.self, forKey: .part)
+        partialImageB64 = try container.decodeIfPresent(String.self, forKey: .partialImageB64)
+        partialImageIndex = try container.decodeIfPresent(Int.self, forKey: .partialImageIndex)
+        imageB64 = try container.decodeIfPresent(String.self, forKey: .imageB64)
+        dataB64 = try container.decodeIfPresent(String.self, forKey: .dataB64)
+        screenshotB64 = try container.decodeIfPresent(String.self, forKey: .screenshotB64)
+        computerAction = try container.decodeIfPresent(String.self, forKey: .computerAction)
+        fileId = try container.decodeIfPresent(String.self, forKey: .fileId)
+        filename = try container.decodeIfPresent(String.self, forKey: .filename)
+        containerId = try container.decodeIfPresent(String.self, forKey: .containerId)
+        annotationIndex = try container.decodeIfPresent(Int.self, forKey: .annotationIndex)
+        annotation = try container.decodeIfPresent(StreamingAnnotation.self, forKey: .annotation)
+        serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
+        tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        arguments = try container.decodeIfPresent(String.self, forKey: .arguments)
+        output = try container.decodeIfPresent(String.self, forKey: .output)
+        approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
+        
+        // Handle polymorphic error field
+        // Try to decode as StreamingError object first (for standalone error events)
+        if let errorObj = try? container.decodeIfPresent(StreamingError.self, forKey: .error) {
+            errorInfo = errorObj
+            error = nil
+        } else {
+            // Fall back to string (for MCP errors)
+            errorInfo = nil
+            error = try container.decodeIfPresent(String.self, forKey: .error)
+        }
     }
     
     /// Provides a readable description of the event
@@ -449,6 +534,14 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         if let delta = delta {
             let safeText = delta.count > 20 ? "\(delta.prefix(20))..." : delta
             desc += ", delta: \"\(safeText)\""
+        }
+        
+        if let serverLabel = serverLabel {
+            desc += ", serverLabel: \"\(serverLabel)\""
+        }
+        
+        if let name = name {
+            desc += ", name: \"\(name)\""
         }
         
         return desc + ")"
@@ -521,12 +614,24 @@ struct StreamingError: Decodable {
     let message: String
 }
 
-/// Streaming output item (message, reasoning, etc.)
+/// MCP tool call error information
+struct MCPToolError: Decodable {
+    /// Error type (e.g., "http_error", "timeout", etc.)
+    let type: String
+    
+    /// HTTP status code or error code
+    let code: Int?
+    
+    /// Error message
+    let message: String
+}
+
+/// Streaming output item (message, reasoning, tool_call, mcp_list_tools, mcp_call, mcp_approval_request, etc.)
 struct StreamingOutputItem: Decodable, CustomStringConvertible {
     /// Unique identifier for this output item
     let id: String
     
-    /// Type of output: "message", "reasoning", "tool_call", etc.
+    /// Type of output: "message", "reasoning", "tool_call", "mcp_list_tools", "mcp_call", "mcp_approval_request", etc.
     let type: String
     
     /// Status of the item: "in_progress", "completed", etc.
@@ -538,9 +643,49 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
     /// Role for message items: "user", "assistant", etc.
     let role: String?
     
+    // MCP-specific fields
+    /// Server label for MCP items
+    let serverLabel: String?
+    
+    /// Tools array for mcp_list_tools items
+    let tools: [[String: AnyCodable]]?
+    
+    /// Tool name for mcp_call and mcp_approval_request items
+    let name: String?
+    
+    /// Arguments for mcp_call and mcp_approval_request items (JSON string)
+    let arguments: String?
+    
+    /// Output from mcp_call items (JSON string)
+    let output: String?
+    
+    /// Error from failed mcp_call items (structured error object)
+    let error: MCPToolError?
+    
+    /// Approval request ID for linking approval responses
+    let approvalRequestId: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, type, status, content, role
+        case serverLabel = "server_label"
+        case tools
+        case name
+        case arguments
+        case output
+        case error
+        case approvalRequestId = "approval_request_id"
+    }
+    
     /// Provides a readable description of the output item
     var description: String {
-        "StreamingOutputItem(id: \"\(id)\", type: \"\(type)\")"
+        var desc = "StreamingOutputItem(id: \"\(id)\", type: \"\(type)\""
+        if let serverLabel = serverLabel {
+            desc += ", serverLabel: \"\(serverLabel)\""
+        }
+        if let name = name {
+            desc += ", name: \"\(name)\""
+        }
+        return desc + ")"
     }
 }
 
@@ -686,5 +831,21 @@ struct SafetyCheck: Decodable, CustomStringConvertible {
     /// Provides a readable description of the safety check
     var description: String {
         "SafetyCheck(id: \"\(id)\", code: \"\(code)\", message: \"\(message)\")"
+    }
+}
+
+/// Represents an MCP approval request waiting for user decision
+struct MCPApprovalRequest: Identifiable, Codable {
+    let id: String                    // approval_request_id
+    let toolName: String              // name of the tool being called
+    let serverLabel: String           // server label (e.g., "Dropbox", "notion")
+    let arguments: String             // JSON string of arguments
+    var status: ApprovalStatus        // pending, approved, rejected
+    var reason: String?               // Optional reason for decision
+    
+    enum ApprovalStatus: String, Codable {
+        case pending
+        case approved
+        case rejected
     }
 }
