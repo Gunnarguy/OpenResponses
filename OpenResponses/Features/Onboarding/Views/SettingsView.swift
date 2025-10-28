@@ -11,6 +11,220 @@ import Combine
 /// - Organized advanced settings with logical grouping
 /// - Smooth animations and visual transitions
 struct SettingsView: View {
+    /// MCP (Model Context Protocol) configuration
+    private var mcpConfiguration: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            mcpConnectionSummary
+            Divider()
+            mcpActionButtons
+        }
+    }
+    
+    private var mcpConnectionSummary: some View {
+        let prompt = viewModel.activePrompt
+        let label = prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = prompt.mcpServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowedTools = prompt.mcpAllowedTools.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasConnectorConfigured = prompt.enableMCPTool && prompt.mcpIsConnector && prompt.mcpConnectorId?.isEmpty == false
+        let hasRemoteConfigured = prompt.enableMCPTool && !prompt.mcpIsConnector && !label.isEmpty && !url.isEmpty
+        let remoteTokenExists = hasRemoteConfigured ? (KeychainService.shared.load(forKey: "mcp_manual_\(label)") != nil) : false
+
+        return VStack(alignment: .leading, spacing: 12) {
+            if !prompt.enableMCPTool {
+                Text("MCP is currently disabled. Enable the toggle above to link connectors or remote servers.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if hasConnectorConfigured, let connectorId = prompt.mcpConnectorId, let connector = MCPConnector.connector(for: connectorId) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: connector.icon)
+                            .foregroundColor(Color(hex: connector.color))
+                        Text("Connected to \(connector.name)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    Text(connector.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if !allowedTools.isEmpty {
+                        let toolCount = allowedTools.split(separator: ",").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+                        Text("Allowed tools: \(toolCount) (custom whitelist)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Allowed tools: all tools exposed by the connector")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Text("Approval mode: \(prompt.mcpRequireApproval.capitalized)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            } else if hasRemoteConfigured {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "server.rack")
+                            .foregroundColor(.cyan)
+                        Text("Remote server: \(label)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    Text(url)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if !allowedTools.isEmpty {
+                        let toolCount = allowedTools.split(separator: ",").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+                        Text("Allowed tools: \(toolCount) (custom whitelist)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Allowed tools: all tools reported by the server")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Text("Approval mode: \(prompt.mcpRequireApproval.capitalized)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(remoteTokenExists ? "Auth token stored securely in Keychain" : "Auth token missing — open the editor to provide one")
+                        .font(.caption2)
+                        .foregroundColor(remoteTokenExists ? .green : .orange)
+                    if url.lowercased().contains("notion") {
+                        Text("Uses the official Notion MCP server described at modelcontextprotocol.io")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } else {
+                Text("No connector or remote server configured yet. Use the actions below to connect your services.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.cyan.opacity(0.08))
+        .cornerRadius(10)
+    }
+    
+    private var mcpActionButtons: some View {
+        let prompt = viewModel.activePrompt
+        let hasConnectorConfigured = prompt.enableMCPTool && prompt.mcpIsConnector && prompt.mcpConnectorId?.isEmpty == false
+        let hasRemoteConfigured = prompt.enableMCPTool && !prompt.mcpIsConnector && !prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !prompt.mcpServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return VStack(alignment: .leading, spacing: 12) {
+            Button {
+                showingConnectorGallery = true
+            } label: {
+                Label("Open Connector Gallery", systemImage: "link.circle.fill")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.cyan)
+            
+            if hasRemoteConfigured {
+                Button {
+                    presentedRemoteConnector = remoteConnectorForActiveConfig()
+                } label: {
+                    Label("Edit Remote Server", systemImage: "slider.horizontal.3")
+                        .font(.subheadline)
+                }
+                .buttonStyle(.bordered)
+                .tint(.cyan)
+            } else {
+                Menu {
+                    if let notionConnector = notionConnector {
+                        Button("Official Notion Server") {
+                            presentedRemoteConnector = notionConnector
+                        }
+                    }
+                    Button("Custom MCP Server") {
+                        presentedRemoteConnector = customRemoteConnector
+                    }
+                } label: {
+                    Label("Add Remote Server", systemImage: "server.rack")
+                        .font(.subheadline)
+                }
+                .buttonStyle(.bordered)
+                .tint(.cyan)
+            }
+            
+            if hasConnectorConfigured {
+                Button(role: .destructive) {
+                    disconnectMCPConnector()
+                } label: {
+                    Label("Disconnect Connector", systemImage: "trash")
+                }
+            } else if hasRemoteConfigured {
+                Button(role: .destructive) {
+                    disconnectRemoteMCP()
+                } label: {
+                    Label("Disconnect Remote Server", systemImage: "trash")
+                }
+            }
+        }
+    }
+    
+    private func disconnectMCPConnector() {
+        guard let connectorId = viewModel.activePrompt.mcpConnectorId else { return }
+        let keychainKey = "mcp_connector_\(connectorId)"
+        KeychainService.shared.delete(forKey: keychainKey)
+        viewModel.activePrompt.enableMCPTool = false
+        viewModel.activePrompt.mcpConnectorId = nil
+        viewModel.activePrompt.mcpIsConnector = false
+        viewModel.activePrompt.mcpAllowedTools = ""
+        viewModel.activePrompt.mcpRequireApproval = "never"
+        viewModel.activePrompt.mcpServerLabel = ""
+        viewModel.activePrompt.mcpServerURL = ""
+        viewModel.saveActivePrompt()
+        AppLogger.log("🔌 SettingsView disconnected connector: \(connectorId)", category: .general, level: .info)
+    }
+    
+    private func disconnectRemoteMCP() {
+        let label = viewModel.activePrompt.mcpServerLabel
+        if !label.isEmpty {
+            KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
+            KeychainService.shared.delete(forKey: "mcp_auth_\(label)")
+        }
+        viewModel.activePrompt.enableMCPTool = false
+        viewModel.activePrompt.mcpServerLabel = ""
+        viewModel.activePrompt.mcpServerURL = ""
+        viewModel.activePrompt.mcpAllowedTools = ""
+        viewModel.activePrompt.mcpRequireApproval = "never"
+        viewModel.activePrompt.mcpIsConnector = false
+        viewModel.activePrompt.mcpConnectorId = nil
+        viewModel.saveActivePrompt()
+        AppLogger.log("🔌 SettingsView disconnected remote MCP server", category: .general, level: .info)
+    }
+    
+    private func remoteConnectorForActiveConfig() -> MCPConnector {
+        let url = viewModel.activePrompt.mcpServerURL.lowercased()
+        if url.contains("notion"), let notion = notionConnector {
+            return notion
+        }
+        return customRemoteConnector
+    }
+    
+    private var notionConnector: MCPConnector? {
+        MCPConnector.connector(for: "connector_notion")
+    }
+    
+    private var customRemoteConnector: MCPConnector {
+        MCPConnector(
+            id: "remote_custom",
+            name: "Custom MCP Server",
+            description: "Connect to any MCP server by providing its HTTPS endpoint and authorization token.",
+            icon: "server.rack",
+            color: "#0FA3B1",
+            oauthScopes: [],
+            oauthInstructions: "Enter the HTTPS server URL (or local tunnel) and provide the token expected by your MCP deployment.",
+            setupURL: nil,
+            category: .development,
+            popularTools: [],
+            requiresRemoteServer: true
+        )
+    }
+    
+    // MARK: - Properties
+    
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
     
@@ -21,7 +235,7 @@ struct SettingsView: View {
     @State private var showingDebugConsole = false
     @State private var selectedPresetId: UUID?
     @State private var showingConnectorGallery = false
-    @State private var showingNotionToolSelector = false
+    @State private var presentedRemoteConnector: MCPConnector?
     
     // Enhanced UI state management
     @State private var expandedSections: Set<SettingsSection> = [.essentials, .tools]
@@ -33,40 +247,12 @@ struct SettingsView: View {
     @State private var showingQuickPresets = false
     
     @StateObject private var promptLibrary = PromptLibrary()
-
+    
     private var isImageGenerationSupported: Bool {
         ModelCompatibilityService.shared.isToolSupported(.imageGeneration, for: viewModel.activePrompt.openAIModel, isStreaming: viewModel.activePrompt.enableStreaming)
     }
     
-    private func shouldShowCard(_ cardTitle: String, searchTerms: [String] = []) -> Bool {
-        guard isSearching && !searchText.isEmpty else { return true }
-        
-        let searchLower = searchText.lowercased()
-        let titleLower = cardTitle.lowercased()
-        
-        // Check main title
-        if titleLower.contains(searchLower) { return true }
-        
-        // Check additional search terms for this card
-        for term in searchTerms {
-            if term.lowercased().contains(searchLower) { return true }
-        }
-        
-        return false
-    }
-    
-    private var hasVisibleCards: Bool {
-        guard isSearching && !searchText.isEmpty else { return true }
-        
-        return shouldShowCard("Presets", searchTerms: ["prompt", "template", "library"]) ||
-               shouldShowCard("API Configuration", searchTerms: ["key", "openai", "authentication"]) ||
-               shouldShowCard("Model Selection", searchTerms: ["gpt", "claude", "model", "compatibility", "temperature", "reasoning", "parameters"]) ||
-               shouldShowCard("Tools", searchTerms: ["file", "search", "computer", "code", "interpreter"]) ||
-               (showingAdvanced && (
-                   shouldShowCard("Advanced Configuration", searchTerms: ["parameters", "tokens", "json", "schema", "truncation", "tool choice"]) ||
-                   shouldShowCard("Developer Tools", searchTerms: ["debug", "console", "reset", "logs"])
-               ))
-    }
+    // MARK: - Body
     
     var body: some View {
         NavigationView {
@@ -87,10 +273,35 @@ struct SettingsView: View {
                     )
                     
                     // Usage Analytics (only show if not searching)
-                    bodyUsageAnalytics
+                    if !isSearching {
+                        UsageAnalyticsCard()
+                    }
                     
                     // Main content cards
-                    bodyMainContent
+                    VStack(spacing: 20) {
+                        presetCard
+                        apiConfigurationCard
+                        modelConfigurationCard
+                        toolsCard
+                        
+                        if showingAdvanced {
+                            SettingsCard(
+                                title: "Advanced Configuration",
+                                icon: "slider.horizontal.3",
+                                color: .purple
+                            ) {
+                                advancedConfigurationCard
+                            }
+                            
+                            SettingsCard(
+                                title: "Developer Tools",
+                                icon: "hammer.fill",
+                                color: .red
+                            ) {
+                                debugCard
+                            }
+                        }
+                    }
                     
                     // Toggle advanced settings
                     AdvancedToggleButton(showingAdvanced: $showingAdvanced)
@@ -113,7 +324,7 @@ struct SettingsView: View {
         .onChange(of: apiKey) { _, newValue in
             handleAPIKeyChange(newValue)
         }
-        .sheet(isPresented: $showingFileManager) { 
+        .sheet(isPresented: $showingFileManager) {
             FileManagerView()
                 .environmentObject(viewModel)
         }
@@ -127,7 +338,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingAPIInspector) { APIInspectorView() }
         .sheet(isPresented: $showingDebugConsole) { DebugConsoleView() }
-        .sheet(isPresented: $showingQuickPresets) { 
+        .sheet(isPresented: $showingQuickPresets) {
             QuickPresetsView { preset in
                 applyPreset(preset)
                 showingQuickPresets = false
@@ -136,197 +347,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showingConnectorGallery) {
             MCPConnectorGalleryView(viewModel: viewModel)
         }
-        .sheet(isPresented: $showingNotionToolSelector) {
-            NotionToolSelectorView(selectedTools: $viewModel.activePrompt.mcpAllowedTools)
+        .sheet(item: $presentedRemoteConnector) { connector in
+            RemoteServerSetupView(viewModel: viewModel, connector: connector)
         }
-    }
-    
-    // MARK: - Body Components
-    
-    @ViewBuilder
-    private var bodyUsageAnalytics: some View {
-        if !isSearching {
-            UsageAnalyticsCard()
-        }
-    }
-    
-    @ViewBuilder
-    private var bodyMainContent: some View {
-        VStack(spacing: 20) {
-            if shouldShowCard("Presets", searchTerms: ["prompt", "template", "library"]) {
-                presetCard
-            }
-            
-            if shouldShowCard("API Configuration", searchTerms: ["key", "openai", "authentication"]) {
-                apiConfigurationCard
-            }
-            
-            if shouldShowCard("Model Selection", searchTerms: ["gpt", "claude", "model", "compatibility", "temperature", "reasoning", "parameters"]) {
-                modelConfigurationCard
-            }
-            
-            if shouldShowCard("Tools", searchTerms: ["file", "search", "computer", "code", "interpreter"]) {
-                toolsCard
-            }
-            
-            bodyAdvancedSections
-            bodyNoResultsMessage
-        }
-    }
-    
-    @ViewBuilder
-    private var bodyAdvancedSections: some View {
-        if showingAdvanced {
-            if shouldShowCard("Advanced Configuration", searchTerms: ["parameters", "tokens", "json", "schema", "truncation", "tool choice"]) {
-                SettingsCard(
-                    title: "Advanced Configuration", 
-                    icon: "slider.horizontal.3",
-                    color: .purple
-                ) {
-                    advancedConfigurationCard
-                }
-            }
-            
-            if shouldShowCard("Developer Tools", searchTerms: ["debug", "console", "reset", "logs"]) {
-                SettingsCard(
-                    title: "Developer Tools",
-                    icon: "hammer.fill",
-                    color: .red
-                ) {
-                    debugCard
-                }
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var bodyNoResultsMessage: some View {
-        if isSearching && !searchText.isEmpty && !hasVisibleCards {
-            VStack(spacing: 16) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 48))
-                    .foregroundColor(.secondary)
-                
-                Text("No settings found")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text("Try searching for 'API', 'model', 'tools', or 'advanced'")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.vertical, 40)
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
-
-/// Tool toggle card with expandable configuration
-struct ToolToggleCard<Content: View>: View {
-    let title: String
-    let description: String
-    let icon: String
-    let color: Color
-    @Binding var isEnabled: Bool
-    let isSupported: Bool
-    let isDisabled: Bool
-    let content: Content
-    
-    @State private var isExpanded = false
-    
-    init(
-        title: String,
-        description: String,
-        icon: String,
-        color: Color,
-        isEnabled: Binding<Bool>,
-        isSupported: Bool,
-        isDisabled: Bool,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.description = description
-        self.icon = icon
-        self.color = color
-        self._isEnabled = isEnabled
-        self.isSupported = isSupported
-        self.isDisabled = isDisabled
-        self.content = content()
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Main toggle row
-            HStack {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(isEnabled ? color : .secondary)
-                    .frame(width: 30)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    
-                    Text(description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                if !isSupported {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                }
-                
-                Toggle("", isOn: $isEnabled)
-                    .disabled(!isSupported || isDisabled)
-                    .tint(color)
-                    .onChange(of: isEnabled) { _, newValue in
-                        if newValue {
-                            withAnimation(.spring()) {
-                                isExpanded = true
-                            }
-                        }
-                    }
-            }
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if isEnabled && isSupported && !isDisabled {
-                    withAnimation(.spring()) {
-                        isExpanded.toggle()
-                    }
-                }
-            }
-            
-            // Expandable configuration content
-            if isEnabled && isExpanded {
-                Divider()
-                    .padding(.horizontal, -16)
-                
-                content
-                    .padding(.top, 12)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity
-                    ))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isEnabled ? color.opacity(0.05) : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(isEnabled ? color.opacity(0.3) : Color.secondary.opacity(0.2), lineWidth: 1)
-                )
-        )
     }
 }
 
@@ -876,256 +899,6 @@ extension SettingsView {
                     .padding(.horizontal, 8)
                     .background(.background, in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
-            }
-        }
-    }
-    
-    /// MCP (Model Context Protocol) configuration
-    private var mcpConfiguration: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            mcpEasySetupSection
-            Divider()
-            mcpAdvancedSetupSection
-        }
-    }
-    
-    // MARK: - MCP Configuration Components
-    
-    private var mcpEasySetupSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Easy Setup: Connect Apps")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    
-                    Text("One-tap connections to popular services")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                Button {
-                    showingConnectorGallery = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "link.circle.fill")
-                        Text("Connect Apps")
-                    }
-                    .font(.caption)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(
-                        LinearGradient(
-                            colors: [.cyan, .blue],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .foregroundColor(.white)
-                    .clipShape(Capsule())
-                }
-            }
-            .padding(12)
-            .background(Color.cyan.opacity(0.1))
-            .cornerRadius(8)
-        }
-    }
-    
-    private var mcpAdvancedSetupSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Advanced: Custom MCP Server")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            
-            // Quick Templates
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Quick Start Templates")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                ForEach(RemoteMCPServer.templates, id: \.id) { template in
-                    Button(action: {
-                        viewModel.activePrompt.mcpServerLabel = template.label
-                        viewModel.activePrompt.mcpServerURL = template.serverURL
-                        viewModel.activePrompt.mcpRequireApproval = template.requireApproval == .never ? "never" : "always"
-                        if let tools = template.allowedTools {
-                            viewModel.activePrompt.mcpAllowedTools = tools.joined(separator: ", ")
-                        } else {
-                            viewModel.activePrompt.mcpAllowedTools = ""
-                        }
-                        
-                        // Load the saved authorization for this server label from keychain
-                        if let savedAuth = KeychainService.shared.load(forKey: "mcp_manual_\(template.label)"), !savedAuth.isEmpty {
-                            viewModel.activePrompt.mcpHeaders = savedAuth
-                        } else {
-                            // Clear authorization field when switching to a new server
-                            viewModel.activePrompt.mcpHeaders = ""
-                        }
-                    }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(template.uiLabel)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                if let description = template.serverDescription {
-                                    Text(description)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "arrow.down.circle.fill")
-                                .foregroundColor(.blue)
-                        }
-                        .padding(10)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
-                    }
-                }
-            }
-            
-            Divider()
-                .padding(.vertical, 4)
-            
-            Text("Or Configure Manually")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            mcpServerLabelField
-            mcpServerURLField
-            mcpAuthorizationField
-            mcpApprovalModePicker
-            mcpAllowedToolsField
-        }
-    }
-    
-    private var mcpServerLabelField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Server Label")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            TextField("My Custom Server", text: $viewModel.activePrompt.mcpServerLabel)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-        }
-    }
-    
-    private var mcpServerURLField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Server URL")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            TextField("https://your-mcp-server.com", text: $viewModel.activePrompt.mcpServerURL)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .keyboardType(.URL)
-        }
-    }
-    
-    private var mcpAuthorizationField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Authorization (optional)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            SecureField("Bearer token or API key", text: $viewModel.activePrompt.mcpHeaders)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .onChange(of: viewModel.activePrompt.mcpHeaders) { oldValue, newValue in
-                    // Auto-save authorization to secure keychain when it changes
-                    if !viewModel.activePrompt.mcpServerLabel.isEmpty {
-                        if newValue.isEmpty {
-                            // Delete from keychain if cleared
-                            KeychainService.shared.delete(forKey: "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)")
-                        } else {
-                            // Save to keychain
-                            KeychainService.shared.save(value: newValue, forKey: "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)")
-                        }
-                    }
-                }
-        }
-    }
-    
-    private var mcpApprovalModePicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Approval Mode")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Picker("Require Approval", selection: $viewModel.activePrompt.mcpRequireApproval) {
-                Text("Always Require").tag("always")
-                Text("Never Require").tag("never")
-            }
-            .pickerStyle(.segmented)
-        }
-    }
-    
-    private var mcpAllowedToolsField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Allowed Tools")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                // Smart tool selector button - shows for any configured MCP server
-                if !viewModel.activePrompt.mcpServerLabel.isEmpty || !viewModel.activePrompt.mcpServerURL.isEmpty {
-                    Button {
-                        showingNotionToolSelector = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "slider.horizontal.3")
-                            Text("Pick Tools")
-                        }
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.cyan.opacity(0.1))
-                        .foregroundColor(.cyan)
-                        .cornerRadius(6)
-                    }
-                }
-            }
-            
-            TextField("Leave empty for all, or: tool1, tool2, tool3", text: $viewModel.activePrompt.mcpAllowedTools)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-            
-            if viewModel.activePrompt.mcpAllowedTools.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("All tools enabled")
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                        Text("May cause context length issues with many tools")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } else {
-                let toolCount = viewModel.activePrompt.mcpAllowedTools.split(separator: ",").count
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(toolCount) tools selected")
-                            .font(.caption2)
-                            .foregroundColor(.green)
-                        Text("Context window optimized ✨")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
             }
         }
     }
@@ -2521,6 +2294,116 @@ extension SettingsView {
     
     private func applyPreset(_ preset: Prompt) {
         viewModel.activePrompt = preset
+    }
+}
+
+// MARK: - Tool Toggle Card
+
+/// Expandable card for tool configuration with toggle
+struct ToolToggleCard<Content: View>: View {
+    let title: String
+    let description: String
+    let icon: String
+    let color: Color
+    @Binding var isEnabled: Bool
+    let isSupported: Bool
+    let isDisabled: Bool
+    let content: Content
+    
+    @State private var isExpanded = false
+    
+    init(
+        title: String,
+        description: String,
+        icon: String,
+        color: Color,
+        isEnabled: Binding<Bool>,
+        isSupported: Bool,
+        isDisabled: Bool,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.description = description
+        self.icon = icon
+        self.color = color
+        self._isEnabled = isEnabled
+        self.isSupported = isSupported
+        self.isDisabled = isDisabled
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Main toggle row
+            HStack {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(isEnabled ? color : .secondary)
+                    .frame(width: 30)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    Text(description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if !isSupported {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                }
+                
+                Toggle("", isOn: $isEnabled)
+                    .disabled(!isSupported || isDisabled)
+                    .tint(color)
+                    .onChange(of: isEnabled) { _, newValue in
+                        if newValue {
+                            withAnimation(.spring()) {
+                                isExpanded = true
+                            }
+                        }
+                    }
+            }
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isEnabled && isSupported && !isDisabled {
+                    withAnimation(.spring()) {
+                        isExpanded.toggle()
+                    }
+                }
+            }
+            
+            // Expandable configuration content
+            if isEnabled && isExpanded {
+                Divider()
+                    .padding(.horizontal, -16)
+                
+                content
+                    .padding(.top, 12)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity
+                    ))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isEnabled ? color.opacity(0.05) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(isEnabled ? color.opacity(0.3) : Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+        )
     }
 }
 

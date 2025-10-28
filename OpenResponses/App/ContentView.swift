@@ -68,12 +68,16 @@ struct ContentView: View {
             // If onboarding is done but no API key, show settings
             showingSettings = true
         }
+        // Ensure MCP is bootstrapped ubiquitously once a configuration exists
+        MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
     }
     
     private func checkAPIKey() {
         if keychainService.load(forKey: "openAIKey") == nil {
             self.showingSettings = true
         }
+        // Re-apply MCP bootstrap after onboarding or API key updates
+        MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
     }
 }
 

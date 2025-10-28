@@ -58,6 +58,9 @@ class ChatViewModel: ObservableObject {
     let minBufferSizeForFlush: Int = 20
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
     var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
+    /// Tracks the most recent list_tools error per MCP server to avoid spamming identical alerts.
+    /// Accessed from the streaming extension to coordinate surfaced warnings.
+    var lastMCPListToolsError: [String: String] = [:]
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
@@ -426,7 +429,7 @@ class ChatViewModel: ObservableObject {
     
     /// Sends a user message and processes the assistant's response.
     /// This appends the user message to the chat and interacts with the OpenAI service.
-    func sendUserMessage(_ text: String) {
+    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Do not allow sending a new message while a computer-use step is pending.
@@ -438,6 +441,125 @@ class ChatViewModel: ObservableObject {
         
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
+        
+        // MCP Notion preflight gate: require ok=true + token hash match + freshness
+        if activePrompt.enableMCPTool && !bypassMCPGate {
+            let label = activePrompt.mcpServerLabel
+            let url = activePrompt.mcpServerURL
+            let isNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
+            if isNotion {
+                let defaults = UserDefaults.standard
+                let authHeader = activePrompt.secureMCPHeaders["Authorization"]
+                let currentHash = authHeader.map { NotionAuthService.shared.tokenHash(fromAuthorizationValue: $0) }
+                // 24h freshness window
+                let maxAgeSeconds: Double = 86_400
+                let now = Date().timeIntervalSince1970
+
+                // Preflight state
+                let pfOk = defaults.bool(forKey: "mcp_preflight_ok_\(label)")
+                let pfAt = defaults.double(forKey: "mcp_preflight_ok_at_\(label)")
+                let pfFresh = pfAt > 0 && (now - pfAt) < maxAgeSeconds
+                let pfStoredHash = defaults.string(forKey: "mcp_preflight_token_hash_\(label)")
+                let pfHashMatch = (pfStoredHash != nil && currentHash != nil && pfStoredHash == currentHash)
+
+                // Probe state (list_tools health)
+                let prOk = defaults.bool(forKey: "mcp_probe_ok_\(label)")
+                let prAt = defaults.double(forKey: "mcp_probe_ok_at_\(label)")
+                let prFresh = prAt > 0 && (now - prAt) < maxAgeSeconds
+                let prStoredHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
+                let prHashMatch = (prStoredHash != nil && currentHash != nil && prStoredHash == currentHash)
+
+                let preflightSatisfied = pfOk && pfFresh && pfHashMatch
+                let probeSatisfied = prOk && prFresh && prHashMatch
+
+                // 1) If preflight is not satisfied, attempt auto-preflight (existing behavior)
+                if !preflightSatisfied {
+                    AppLogger.log("⛔️ [MCP Gate] Notion preflight not satisfied for '\(label)': ok=\(pfOk), fresh=\(pfFresh), hashMatch=\(pfHashMatch). Attempting auto-preflight…", category: .openAI, level: .warning)
+                    // If we don't even have an Authorization header, we cannot auto-preflight
+                    guard let authHeader = authHeader else {
+                        var guidance = "MCP Notion token needs validation. Open Remote Server Setup → Test Connection (Notion /v1/users/me must return 200). "
+                        guidance += "No Authorization header found in current configuration."
+                        let sys = ChatMessage(role: .system, text: guidance)
+                        messages.append(sys)
+                        return
+                    }
+                    // Try a quick /v1/users/me to validate the current token and persist gating state.
+                    logActivity("Validating Notion token…")
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        let result = await NotionAuthService.shared.preflight(authorizationValue: authHeader)
+                        await MainActor.run {
+                            if result.ok {
+                                let d = UserDefaults.standard
+                                d.set(true, forKey: "mcp_preflight_ok_\(label)")
+                                d.set(Date().timeIntervalSince1970, forKey: "mcp_preflight_ok_at_\(label)")
+                                let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
+                                d.set(authHash, forKey: "mcp_preflight_token_hash_\(label)")
+                                let userDict: [String: String] = [
+                                    "id": result.userId ?? "",
+                                    "name": result.userName ?? ""
+                                ]
+                                if let data = try? JSONSerialization.data(withJSONObject: userDict, options: [.sortedKeys]),
+                                   let str = String(data: data, encoding: .utf8) {
+                                    d.set(str, forKey: "mcp_preflight_user_\(label)")
+                                }
+                                AppLogger.log("✅ [MCP Gate] Auto-preflight succeeded for '\(label)'. Continuing send…", category: .openAI, level: .info)
+                                self.logActivity("Notion token validated")
+                                // Retry sending the original message, bypassing the gate this once.
+                                self.sendUserMessage(trimmed, bypassMCPGate: true)
+                            } else {
+                                AppLogger.log("❌ [MCP Gate] Auto-preflight failed for '\(label)': HTTP \(result.status) — \(result.message)", category: .openAI, level: .error)
+                                let msg = "MCP Notion token unauthorized (HTTP \(result.status)). Re-run Test Connection in Remote Server Setup and ensure your integration has access to at least one page or database. Details: \(result.message.prefix(180))"
+                                let sys = ChatMessage(role: .system, text: msg)
+                                self.messages.append(sys)
+                            }
+                        }
+                    }
+                    return
+                }
+
+                // 2) If preflight is OK but probe is not, attempt an automatic MCP list_tools probe
+                if !probeSatisfied {
+                    AppLogger.log("⛔️ [MCP Gate] Notion probe not satisfied for '\(label)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe…", category: .openAI, level: .warning)
+                    // If we don't even have an Authorization header, block with guidance
+                    guard authHeader != nil else {
+                        var guidance = "MCP Notion tools list needs validation. Open Remote Server Setup → Test MCP Connection (should show tool count). "
+                        guidance += "No Authorization header found in current configuration."
+                        let sys = ChatMessage(role: .system, text: guidance)
+                        messages.append(sys)
+                        return
+                    }
+                    logActivity("Probing Notion MCP tools…")
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        do {
+                            let result = try await self.api.probeMCPListTools(prompt: self.activePrompt)
+                            await MainActor.run {
+                                let d = UserDefaults.standard
+                                d.set(true, forKey: "mcp_probe_ok_\(label)")
+                                d.set(Date().timeIntervalSince1970, forKey: "mcp_probe_ok_at_\(label)")
+                                if let authHeader = authHeader {
+                                    let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
+                                    d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
+                                }
+                                AppLogger.log("✅ [MCP Gate] Probe succeeded for '\(label)': \(result.count) tools. Continuing send…", category: .openAI, level: .info)
+                                self.logActivity("Notion MCP tools validated")
+                                // Retry sending the original message, bypassing the gate this once.
+                                self.sendUserMessage(trimmed, bypassMCPGate: true)
+                            }
+                        } catch {
+                            await MainActor.run {
+                                AppLogger.log("❌ [MCP Gate] Auto-probe failed for '\(label)': \(error.localizedDescription)", category: .openAI, level: .error)
+                                let msg = "MCP Notion tools list failed. Open Remote Server Setup → Test MCP Connection to validate (should show tool count). Details: \(error.localizedDescription.prefix(180))"
+                                let sys = ChatMessage(role: .system, text: msg)
+                                self.messages.append(sys)
+                            }
+                        }
+                    }
+                    return
+                }
+            }
+        }
         
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
@@ -1345,6 +1467,19 @@ class ChatViewModel: ObservableObject {
     func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
         // If any buffered text exists, flush it before deciding eligibility
         flushDeltaBufferIfNeeded(for: messageId)
+        // If Notion MCP preflight was revoked/not OK, skip retry to avoid bypassing the gate
+        if activePrompt.enableMCPTool {
+            let label = activePrompt.mcpServerLabel
+            let url = activePrompt.mcpServerURL
+            let isNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
+            if isNotion {
+                let ok = UserDefaults.standard.bool(forKey: "mcp_preflight_ok_\(label)")
+                if ok == false {
+                    AppLogger.log("[Streaming Retry] Skipping retry because Notion MCP preflight is not OK for '\(label)'", category: .openAI, level: .warning)
+                    return false
+                }
+            }
+        }
         guard var ctx = retryContextByMessageId[messageId], ctx.remainingAttempts > 0 else { return false }
 
         // Only retry if no text has been streamed yet (avoid duplicating partial outputs)
@@ -2490,13 +2625,15 @@ class ChatViewModel: ObservableObject {
             // When artifacts are being processed from code interpreter
             streamingStatus = .processingArtifacts
             logActivity("Processing generated files…")
-        case "response.mcp_list_tools.added":
-            if let serverLabel = item?.serverLabel {
+        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated":
+            let serverLabel = item?.serverLabel ?? "MCP"
+            let status = item?.status?.lowercased()
+            if status == "failed" || item?.error != nil {
+                streamingStatus = .runningTool("MCP error")
+                logActivity("⚠️ MCP: Listing tools failed for \(serverLabel)")
+            } else {
                 streamingStatus = .runningTool("MCP: \(serverLabel)")
                 logActivity("🔧 MCP: Listing tools from \(serverLabel)")
-            } else {
-                streamingStatus = .runningTool("MCP")
-                logActivity("🔧 MCP: Listing available tools")
             }
         case "response.mcp_call.added":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
@@ -2510,10 +2647,13 @@ class ChatViewModel: ObservableObject {
                 logActivity("🔧 MCP: Running tool")
             }
         case "response.mcp_call.done":
-            if let toolName = item?.name {
-                logActivity("✅ MCP: \(toolName) completed")
+            let toolName = item?.name ?? "MCP tool"
+            let status = item?.status?.lowercased()
+            if status == "failed" || item?.error != nil {
+                streamingStatus = .runningTool("MCP error")
+                logActivity("⚠️ MCP: \(toolName) failed")
             } else {
-                logActivity("✅ MCP: Tool completed")
+                logActivity("✅ MCP: \(toolName) completed")
             }
         case "response.mcp_approval_request.added":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {

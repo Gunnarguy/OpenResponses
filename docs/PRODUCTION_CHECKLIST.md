@@ -272,6 +272,7 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [ ] Prompt preset save/load functionality tested thoroughly
 - [ ] Multi-store file search tested with various configurations
 - [ ] MCP Tool integration tested with external servers
+- [ ] Notion official MCP server verified (authorization stored in Keychain, `Notion-Version: 2022-06-28` present, `list_tools` succeeds without 401)
 - [ ] **NEW**: MCP Discovery System tested with built-in server registry
 - [ ] **NEW**: MCP server search and filtering functionality validated
 - [ ] **NEW**: MCP authentication configuration tested for multiple auth types

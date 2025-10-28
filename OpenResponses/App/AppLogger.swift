@@ -15,6 +15,7 @@ enum AppLogger {
         case general = "General"
         case openAI = "OpenAI"  // Dedicated category for OpenAI API
         case streaming = "Streaming" // Dedicated category for streaming events
+        case mcp = "MCP" // Model Context Protocol integrations
     }
     
     /// Log levels for different severity of messages.

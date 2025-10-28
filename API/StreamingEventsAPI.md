@@ -38,7 +38,7 @@ An event that is emitted when a response is created.
 | `response`        | `object`  | The response that was created      |
 | `sequence_number` | `integer` | The sequence number for this event |
 
-#### Response Object Properties:
+#### Response Object Properties
 
 - `id` (string): Unique identifier for this Response
 - `object` (string): Always `"response"`
@@ -355,6 +355,50 @@ Emitted when there is a partial function-call arguments delta.
 #### response.function_call_arguments.done
 
 Emitted when function-call arguments are finalized.
+
+### MCP Events
+
+#### response.mcp_list_tools.added
+
+Emitted when an MCP server reports its available tools.
+
+**Properties:**
+
+| Property          | Type      | Description                                                             |
+| ----------------- | --------- | ----------------------------------------------------------------------- |
+| `type`            | `string`  | Always `"response.mcp_list_tools.added"`                                |
+| `server_label`    | `string`  | Identifier for the MCP server                                           |
+| `item.status`     | `string`  | `"in_progress"`, `"completed"`, or `"failed"`                         |
+| `item.error`      | `object`  | Present when listing tools fails; matches the `MCPToolError` structure  |
+| `tools`           | `array`   | Array of tool descriptors (name, description, input schema, etc.)       |
+| `sequence_number` | `integer` | The sequence number for this event                                      |
+
+#### response.mcp_list_tools.updated
+
+Emitted when the server sends an incremental update to the tool list. The payload mirrors `response.mcp_list_tools.added` and uses the same error semantics. When `item.status` is `"failed"` the client should surface the error so the user can resolve authentication or networking issues.
+
+#### response.mcp_call.added
+
+Emitted when the assistant begins invoking a tool exposed by the MCP server.
+
+**Properties:**
+
+| Property          | Type      | Description                                                  |
+| ----------------- | --------- | ------------------------------------------------------------ |
+| `type`            | `string`  | Always `"response.mcp_call.added"`                           |
+| `server_label`    | `string`  | Identifier for the MCP server                                |
+| `name`            | `string`  | The MCP tool name being invoked                              |
+| `arguments`       | `string`  | JSON-encoded arguments payload                               |
+| `item.status`     | `string`  | `"in_progress"` while the tool is running                    |
+| `sequence_number` | `integer` | The sequence number for this event                           |
+
+#### response.mcp_call.done
+
+Emitted when an MCP tool call completes. For successful executions, the tool output (often JSON) is provided in the `output` field. When the call fails, `item.status` is set to `"failed"` and `item.error` describes the failure (type, code, message). Clients should surface the error text and offer remediation guidance—for example, prompting users to refresh tokens when the server responds with 401/403.
+
+#### response.mcp_approval_request.added
+
+Emitted when the model needs explicit user approval before continuing with an MCP tool call. The event contains the server label, tool name, arguments preview, and a stable approval request identifier that must be passed to the approval/denial endpoint.
 
 ### Image Generation Events
 

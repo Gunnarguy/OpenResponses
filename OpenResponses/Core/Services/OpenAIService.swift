@@ -871,16 +871,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 if let connectorId = prompt.mcpConnectorId, !connectorId.isEmpty {
                     
                     // BULLETPROOF CHECK: Verify this is a REAL OpenAI connector
-                    let validConnectors = [
-                        "connector_dropbox",
-                        "connector_gmail", 
-                        "connector_googlecalendar",
-                        "connector_googledrive",
-                        "connector_microsoftteams",
-                        "connector_outlookcalendar",
-                        "connector_outlookemail",
-                        "connector_sharepoint"
-                    ]
+                    // Derive IDs from MCPConnector.library to avoid drift with hardcoded lists.
+                    let validConnectors = Set(
+                        MCPConnector.library
+                            .filter { $0.requiresRemoteServer == false }
+                            .map { $0.id }
+                    )
                     
                     if validConnectors.contains(connectorId) {
                         // Valid connector - proceed with configuration
@@ -897,8 +893,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                                 .filter { !$0.isEmpty }
                         }
                         
-                        // Get approval setting (default to "never")
-                        let requireApproval = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval
+                        // Get approval setting (default to "never") and normalize for API
+                        let requireApproval = normalizeMCPApproval(prompt.mcpRequireApproval)
                         
                         // Get connector name from library for logging
                         let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
@@ -925,22 +921,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             } else {
                 // Remote server path: requires server_url and optional auth
                 if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
-                    // Get authorization from keychain or fallback to mcpHeaders
-                    var authorization: String? = nil
-                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(prompt.mcpServerLabel)"), !stored.isEmpty {
-                        authorization = stored
-                    } else if !prompt.mcpHeaders.isEmpty {
-                        authorization = prompt.mcpHeaders
-                    }
-                    
-                    // Ensure "Bearer " prefix for authorization tokens if not already present
-                    // Most MCP servers expect "Bearer <token>" format, but OpenAI sends raw token
-                    if let auth = authorization, !auth.isEmpty {
-                        if !auth.lowercased().hasPrefix("bearer ") {
-                            authorization = "Bearer \(auth)"
-                        }
-                    }
-                    
+                    let authResolution = resolveMCPAuthorization(for: prompt)
+
                     // Parse allowed tools if specified
                     var allowedTools: [String]? = nil
                     if !prompt.mcpAllowedTools.isEmpty {
@@ -949,22 +931,29 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
                     }
-                    
-                    // Determine the approval requirement (default to "never")
-                    let requireApproval = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval
-                    
+
+                    // Determine the approval requirement (default to "never") and normalize for API
+                    let requireApproval = normalizeMCPApproval(prompt.mcpRequireApproval)
+                    let serverDescription = descriptionForMCPServer(label: prompt.mcpServerLabel)
+
                     tools.append(.mcp(
                         serverLabel: prompt.mcpServerLabel,
                         serverURL: prompt.mcpServerURL,
                         connectorId: nil, // Remote servers don't use connector_id
-                        authorization: authorization,
-                        headers: nil, // Legacy support, prefer authorization field
+                        authorization: authResolution.authorization,
+                        headers: authResolution.headers,
                         requireApproval: requireApproval,
                         allowedTools: allowedTools,
-                        serverDescription: nil
+                        serverDescription: serverDescription
                     ))
-                    
-                    AppLogger.log("Added MCP remote server: \(prompt.mcpServerLabel) at \(prompt.mcpServerURL)", category: .openAI, level: .info)
+
+                    if let headers = authResolution.headers {
+                        AppLogger.log("Added MCP remote server: \(prompt.mcpServerLabel) with \(headers.count) custom headers", category: .openAI, level: .info)
+                    } else if let authorization = authResolution.authorization {
+                        AppLogger.log("Added MCP remote server: \(prompt.mcpServerLabel) using authorization token (\(authorization.count) chars)", category: .openAI, level: .info)
+                    } else {
+                        AppLogger.log("Added MCP remote server: \(prompt.mcpServerLabel) with no auth (public server)", category: .openAI, level: .info)
+                    }
                 } else {
                     AppLogger.log("MCP remote server enabled but missing configuration (label or URL)", category: .openAI, level: .warning)
                 }
@@ -983,6 +972,134 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         return tools
+    }
+
+    private func resolveMCPAuthorization(for prompt: Prompt) -> (authorization: String?, headers: [String: String]?) {
+        // Determine desired auth header key (default to Authorization) and normalize formatting like sanitizeMCPHeaders()
+        let desiredKeyRaw = prompt.mcpAuthHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let desiredKeyBase = desiredKeyRaw.isEmpty ? "Authorization" : desiredKeyRaw
+        let normalizedDesiredKey = desiredKeyBase.split(separator: "-")
+            .map { part in
+                var lower = part.lowercased()
+                if lower == "id" { lower = "ID" }
+                return lower.prefix(1).uppercased() + lower.dropFirst()
+            }
+            .joined(separator: "-")
+
+        // Prefer structured secure headers so we can support multiple header values.
+        let secureHeaders = prompt.secureMCPHeaders
+        if !secureHeaders.isEmpty {
+            var sanitizedHeaders = sanitizeMCPHeaders(secureHeaders, serverLabel: prompt.mcpServerLabel)
+
+            var topLevelAuth: String? = nil
+        if normalizedDesiredKey == "Authorization" {
+            if let tokenVal = sanitizedHeaders["Authorization"] {
+                topLevelAuth = ensureBearerPrefix(tokenVal)
+                // Always remove Authorization header to avoid API 400:
+                // "Cannot specify both 'authorization' parameter and 'Authorization' header."
+                sanitizedHeaders.removeValue(forKey: "Authorization")
+                if prompt.mcpKeepAuthInHeaders {
+                    AppLogger.log("mcpKeepAuthInHeaders is ON but ignored: using top-level authorization only to satisfy OpenAI API constraints", category: .mcp, level: .warning)
+                }
+            }
+        } else {
+                // Custom header key path: keep auth only in headers under custom key. Remove Authorization if present.
+                if let moved = sanitizedHeaders.removeValue(forKey: "Authorization"), sanitizedHeaders[normalizedDesiredKey] == nil {
+                    sanitizedHeaders[normalizedDesiredKey] = ensureBearerPrefix(moved)
+                }
+                topLevelAuth = nil
+            }
+
+            let headerKeys = sanitizedHeaders.keys.sorted().joined(separator: ", ")
+            AppLogger.log("Resolved MCP auth for '\(prompt.mcpServerLabel)': authHeaderKey=\(normalizedDesiredKey), topLevelAuth=\(topLevelAuth != nil), keepAuthInHeaders=\(prompt.mcpKeepAuthInHeaders), headerKeys=[\(headerKeys)]", category: .openAI, level: .debug)
+            return (topLevelAuth, sanitizedHeaders.isEmpty ? nil : sanitizedHeaders)
+        }
+
+        // Fall back to legacy string-based authorization storage.
+        var legacyAuth: String? = nil
+        if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(prompt.mcpServerLabel)"), !stored.isEmpty {
+            legacyAuth = stored
+        } else if !prompt.mcpHeaders.isEmpty {
+            legacyAuth = prompt.mcpHeaders
+        }
+
+        if let auth = legacyAuth, !auth.isEmpty {
+            if normalizedDesiredKey == "Authorization" {
+                AppLogger.log("Resolved legacy MCP authorization token (top-level) for label \(prompt.mcpServerLabel)", category: .openAI, level: .debug)
+                return (ensureBearerPrefix(auth), nil)
+            } else {
+                // Put legacy auth under the custom header key
+                var headers: [String: String] = [:]
+                headers[normalizedDesiredKey] = ensureBearerPrefix(auth)
+                let sanitized = sanitizeMCPHeaders(headers, serverLabel: prompt.mcpServerLabel)
+                let keys = sanitized.keys.sorted().joined(separator: ", ")
+                AppLogger.log("Resolved legacy MCP authorization token (headers-only: \(normalizedDesiredKey)) for label \(prompt.mcpServerLabel); headerKeys=[\(keys)]", category: .openAI, level: .debug)
+                return (nil, sanitized)
+            }
+        }
+
+        return (nil, nil)
+    }
+
+    private func sanitizeMCPHeaders(_ headers: [String: String], serverLabel: String) -> [String: String] {
+        var sanitized: [String: String] = [:]
+
+        for (key, value) in headers {
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedValue.isEmpty else { continue }
+
+            // Normalize header capitalization to avoid duplicates (e.g., authorization vs Authorization)
+            let normalizedKey = key.split(separator: "-")
+                .map { part in
+                    var lower = part.lowercased()
+                    if lower == "id" { lower = "ID" }
+                    return lower.prefix(1).uppercased() + lower.dropFirst()
+                }
+                .joined(separator: "-")
+            sanitized[normalizedKey] = trimmedValue
+        }
+
+        if let auth = sanitized["Authorization"] {
+            sanitized["Authorization"] = ensureBearerPrefix(auth)
+        }
+
+        // Notion requires a version header; default it when missing.
+        if serverLabel.lowercased().contains("notion"), sanitized["Notion-Version"] == nil {
+            AppLogger.log("Notion MCP configuration missing Notion-Version header; using 2022-06-28", category: .mcp, level: .warning)
+            sanitized["Notion-Version"] = "2022-06-28"
+        }
+
+        return sanitized
+    }
+
+    // Normalize UI/legacy approval strings to API-compliant values.
+    private func normalizeMCPApproval(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch trimmed {
+        case "", "auto", "allow": return "never"
+        case "prompt", "ask", "review", "confirm": return "always"
+        case "always", "never": return trimmed
+        case "deny": return "always"
+        default: return trimmed
+        }
+    }
+
+    private func ensureBearerPrefix(_ token: String) -> String {
+        if token.lowercased().hasPrefix("bearer ") {
+            return token
+        }
+        return "Bearer \(token)"
+    }
+
+    private func descriptionForMCPServer(label: String) -> String? {
+        let normalized = label.lowercased()
+        if normalized.contains("notion") {
+            return "Official Notion MCP server"
+        }
+        if normalized.contains("filesystem") {
+            return "Local filesystem MCP server"
+        }
+        return nil
     }
 
     /// Gathers various API parameters based on model compatibility.
@@ -1492,6 +1609,141 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
     }
 
+    // MARK: - MCP Convenience Calls
+
+    /// Non-streaming: Call a specific MCP tool with arguments, ensuring MCP is enabled and whitelisted to the tool.
+    func callMCP(
+        serverLabel: String,
+        tool: String,
+        argumentsJSON: String,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse {
+        var derived = prompt
+        derived.enableMCPTool = true
+        derived.mcpIsConnector = false
+        derived.mcpServerLabel = serverLabel
+        // Keep server URL/headers from existing prompt (user config) if present
+        derived.mcpAllowedTools = tool // whitelist single tool
+        derived.mcpRequireApproval = normalizeMCPApproval(derived.mcpRequireApproval)
+        // Force the model to actually use a tool this turn
+        derived.toolChoice = "required"
+
+        // Build a minimal directive – models also receive schemas for tools.
+        let directive = "Use the MCP tool '\(tool)' with these arguments: \(argumentsJSON.isEmpty ? "{}" : argumentsJSON)."
+        return try await sendChatRequest(
+            userMessage: directive,
+            prompt: derived,
+            attachments: nil,
+            fileData: nil,
+            fileNames: nil,
+            fileIds: nil,
+            imageAttachments: nil,
+            previousResponseId: nil
+        )
+    }
+
+    /// Streaming: Call a specific MCP tool with arguments, returning streaming events.
+    func callMCP(
+        serverLabel: String,
+        tool: String,
+        argumentsJSON: String,
+        prompt: Prompt,
+        stream: Bool
+    ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        var derived = prompt
+        derived.enableMCPTool = true
+        derived.mcpIsConnector = false
+        derived.mcpServerLabel = serverLabel
+        derived.mcpAllowedTools = tool // whitelist single tool
+        derived.mcpRequireApproval = normalizeMCPApproval(derived.mcpRequireApproval)
+        derived.toolChoice = "required"
+
+        let directive = "Use the MCP tool '\(tool)' with these arguments: \(argumentsJSON.isEmpty ? "{}" : argumentsJSON)."
+        return streamChatRequest(
+            userMessage: directive,
+            prompt: derived,
+            attachments: nil,
+            fileData: nil,
+            fileNames: nil,
+            fileIds: nil,
+            imageAttachments: nil,
+            previousResponseId: nil
+        )
+    }
+    
+    /// Probes MCP list_tools by initiating a lightweight streaming turn and returning the discovered tool count.
+    /// This avoids mutating chat state and completes as soon as the list_tools event arrives or times out.
+    func probeMCPListTools(prompt: Prompt) async throws -> (label: String, count: Int) {
+        var derived = prompt
+        // Ensure MCP is enabled and do not force a particular tool so the platform performs list_tools handshake
+        derived.enableMCPTool = true
+        derived.toolChoice = "auto"
+        
+        // Use a minimal directive; platform should perform list_tools when MCP tool is configured
+        let targetLabel = derived.mcpServerLabel
+        let userMessage = "MCP health probe: list available tools for '\(targetLabel)' and then stop."
+        
+        let stream = streamChatRequest(
+            userMessage: userMessage,
+            prompt: derived,
+            attachments: nil,
+            fileData: nil,
+            fileNames: nil,
+            fileIds: nil,
+            imageAttachments: nil,
+            previousResponseId: nil
+        )
+        
+        var foundLabel = targetLabel
+        var toolsCount: Int?
+        let start = Date()
+        
+        do {
+            for try await event in stream {
+                // Capture label if provided by event
+                if let sl = event.serverLabel ?? event.item?.serverLabel {
+                    foundLabel = sl
+                }
+                // Success path: tools listed
+                if event.type == "response.mcp_list_tools.added" || event.type == "response.mcp_list_tools.updated" {
+                    toolsCount = event.tools?.count ?? 0
+                    break
+                }
+                // Error events surfaced by streaming
+                if event.type == "error" {
+                    let msg = event.error ?? event.errorInfo?.message ?? "Unknown MCP error"
+                    let lower = msg.lowercased()
+                    if lower.contains("401") || lower.contains("unauthorized") {
+                        throw OpenAIServiceError.requestFailed(401, msg)
+                    }
+                    throw OpenAIServiceError.invalidRequest(msg)
+                }
+                if let respErrMsg = event.response?.error?.message {
+                    let lower = respErrMsg.lowercased()
+                    if lower.contains("401") || lower.contains("unauthorized") {
+                        throw OpenAIServiceError.requestFailed(401, respErrMsg)
+                    } else {
+                        throw OpenAIServiceError.invalidRequest(respErrMsg)
+                    }
+                }
+                // Safety timeout
+                if Date().timeIntervalSince(start) > 12 {
+                    break
+                }
+            }
+        } catch {
+            throw error
+        }
+        
+        if let c = toolsCount {
+            AppLogger.log("🧪 MCP probe success: '\(foundLabel)' listed \(c) tools", category: .mcp, level: .info)
+            return (label: foundLabel, count: c)
+        } else {
+            AppLogger.log("🧪 MCP probe did not receive list_tools events for '\(foundLabel)' within timeout", category: .mcp, level: .warning)
+            throw OpenAIServiceError.requestFailed(0, "MCP list_tools did not complete in time")
+        }
+    }
+    
     /// Sends a computer-use call output back to the API to continue an agentic turn.
     /// Per OpenAI's CUA docs, the follow-up should include a single `computer_call_output`
     /// item with a screenshot payload and must keep the computer tool configured.

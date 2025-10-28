@@ -43,7 +43,7 @@ extension ChatViewModel {
             handleOutputItemAddedChunk(chunk, messageId: messageId)
         case "response.output_item.completed":
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
-        case "response.mcp_list_tools.added":
+        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated":
             handleMCPListToolsChunk(chunk, messageId: messageId)
         case "response.mcp_call.added":
             handleMCPCallAddedChunk(chunk, messageId: messageId)
@@ -145,6 +145,27 @@ extension ChatViewModel {
         
         AppLogger.log("🚨 [Streaming Error] Code: \(errorCode) - \(errorMessage)", category: .openAI, level: .error)
         AppLogger.log("🔍 [Error Context] Event type: \(chunk.type), Response ID: \(chunk.response?.id ?? "none")", category: .openAI, level: .info)
+        
+        // Auto-revoke Notion preflight on 401 Unauthorized during MCP operations
+        if errorCode == "http_error" || errorMessage.lowercased().contains("unauthorized") || errorMessage.contains("401") {
+            let label = activePrompt.mcpServerLabel
+            let url = activePrompt.mcpServerURL
+            let isNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
+            if isNotion {
+                revokeNotionPreflight(for: label)
+                let note = ChatMessage(
+                    role: .system,
+                    text: "MCP Notion authorization failed (401). Re-run Test Connection in Remote Server Setup and ensure your integration has access to at least one page or database."
+                )
+                messages.append(note)
+                // Abort streaming immediately after Notion 401; do not attempt retry
+                isStreaming = false
+                streamingStatus = .idle
+                streamingMessageId = nil
+                isAwaitingComputerOutput = false
+                return
+            }
+        }
 
         // Special handling for context_length_exceeded
         if errorCode == "context_length_exceeded" {
@@ -378,11 +399,41 @@ extension ChatViewModel {
     
     /// Handles MCP list_tools events that report available tools from the remote server.
     private func handleMCPListToolsChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        guard let serverLabel = chunk.serverLabel else {
+        guard let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel else {
             AppLogger.log("⚠️ [MCP] list_tools event missing server_label", category: .openAI, level: .warning)
             return
         }
         
+        let status = chunk.item?.status?.lowercased()
+        let structuredError = chunk.item?.error
+        let inlineError = chunk.error
+
+        if status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
+            let errorDescription = describeMCPError(status: status, stringError: inlineError, structuredError: structuredError)
+            AppLogger.log("❌ [MCP] Server '\(serverLabel)' failed to list tools: \(errorDescription)", category: .openAI, level: .error)
+            logActivity("MCP: \(serverLabel) list_tools failed - \(errorDescription)")
+            mcpToolRegistry.removeValue(forKey: serverLabel)
+            
+            // If Notion MCP returned 401/Unauthorized, revoke preflight to force revalidation
+            let lower = errorDescription.lowercased()
+            if lower.contains("401") || lower.contains("unauthorized") {
+                revokeNotionPreflight(for: serverLabel)
+            }
+
+            let signature = "\(status ?? "failed")|\(errorDescription)"
+            if lastMCPListToolsError[serverLabel] != signature {
+                lastMCPListToolsError[serverLabel] = signature
+                var message = "⚠️ MCP server '\(serverLabel)' could not list its tools: \(errorDescription)."
+                if let hint = hintForMCPServer(serverLabel) {
+                    message += " \(hint)"
+                }
+                messages.append(ChatMessage(role: .system, text: message))
+            }
+            return
+        }
+
+        lastMCPListToolsError.removeValue(forKey: serverLabel)
+
         let toolCount = chunk.tools?.count ?? 0
         AppLogger.log("🔧 [MCP] Server '\(serverLabel)' listed \(toolCount) available tools", category: .openAI, level: .info)
         
@@ -429,13 +480,20 @@ extension ChatViewModel {
             return
         }
         
-        if let error = chunk.error {
-            AppLogger.log("❌ [MCP] Tool '\(toolName)' on '\(serverLabel)' failed: \(error)", category: .openAI, level: .error)
-            logActivity("MCP: \(toolName) failed - \(error)")
-            
-            // Optionally append error message to chat
-            let errorMsg = ChatMessage(role: .system, text: "⚠️ MCP tool '\(toolName)' on server '\(serverLabel)' failed: \(error)")
-            messages.append(errorMsg)
+        let status = chunk.item?.status?.lowercased()
+        let structuredError = chunk.item?.error
+        let inlineError = chunk.error
+
+        if status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
+            let errorDescription = describeMCPError(status: status, stringError: inlineError, structuredError: structuredError)
+            AppLogger.log("❌ [MCP] Tool '\(toolName)' on '\(serverLabel)' failed: \(errorDescription)", category: .openAI, level: .error)
+            logActivity("MCP: \(toolName) failed - \(errorDescription)")
+
+            var message = "⚠️ MCP tool '\(toolName)' on server '\(serverLabel)' failed: \(errorDescription)."
+            if let hint = hintForMCPServer(serverLabel) {
+                message += " \(hint)"
+            }
+            messages.append(ChatMessage(role: .system, text: message))
         } else if let output = chunk.output {
             AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed", category: .openAI, level: .info)
             AppLogger.log("  Output: \(output)", category: .openAI, level: .debug)
@@ -479,5 +537,69 @@ extension ChatViewModel {
         }
         
         logActivity("MCP: Approval needed for \(toolName)")
+    }
+}
+
+// MARK: - MCP Error Helpers
+private extension ChatViewModel {
+    /// Clears stored preflight state for a given MCP server label so future sends will revalidate.
+    func revokeNotionPreflight(for label: String) {
+        let d = UserDefaults.standard
+        // Preflight flags
+        d.set(false, forKey: "mcp_preflight_ok_\(label)")
+        d.removeObject(forKey: "mcp_preflight_ok_at_\(label)")
+        d.removeObject(forKey: "mcp_preflight_token_hash_\(label)")
+        d.removeObject(forKey: "mcp_preflight_user_\(label)")
+        // Probe flags (list_tools health)
+        d.set(false, forKey: "mcp_probe_ok_\(label)")
+        d.removeObject(forKey: "mcp_probe_ok_at_\(label)")
+        d.removeObject(forKey: "mcp_probe_token_hash_\(label)")
+        AppLogger.log("🔐 [MCP] Revoked preflight and probe state for '\(label)' due to auth failure", category: .openAI, level: .warning)
+    }
+    /// Builds a readable description for MCP failures, prioritizing structured error data when available.
+    func describeMCPError(status: String?, stringError: String?, structuredError: MCPToolError?) -> String {
+        let trimmedStatus = status?.lowercased() == "failed" ? "failed" : nil
+        var base = stringError?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if let structuredError {
+            let structuredMessage = structuredError.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !structuredMessage.isEmpty {
+                base = structuredMessage
+            }
+            var metadata: [String] = []
+            if let code = structuredError.code {
+                metadata.append("code \(code)")
+            }
+            if !structuredError.type.isEmpty {
+                metadata.append(structuredError.type)
+            }
+            if let trimmedStatus {
+                metadata.append("status \(trimmedStatus)")
+            }
+            if metadata.isEmpty {
+                return base.isEmpty ? "Unknown error" : base
+            } else {
+                let headline = base.isEmpty ? "Unknown error" : base
+                return "\(headline) (\(metadata.joined(separator: ", ")))"
+            }
+        }
+
+        if let trimmedStatus {
+            if base.isEmpty {
+                return "Unknown error (status \(trimmedStatus))"
+            }
+            return "\(base) (status \(trimmedStatus))"
+        }
+
+        return base.isEmpty ? "Unknown error" : base
+    }
+
+    /// Provides human guidance for well-known MCP servers when authentication issues are detected.
+    func hintForMCPServer(_ serverLabel: String) -> String? {
+        let normalized = serverLabel.lowercased()
+        if normalized.contains("notion") {
+            return "Verify that your Notion integration token is current and the relevant pages/databases are shared with the integration."
+        }
+        return nil
     }
 }

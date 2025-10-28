@@ -55,7 +55,7 @@ Generate comprehensive briefs and track progress across marketing channels.
 The official Notion MCP server is hosted at:
 
 ```
-https://api.notion.com/mcp/v1
+https://mcp.notion.com/mcp
 ```
 
 For the latest server URL and configuration, check:
@@ -266,7 +266,7 @@ Or simply disable the MCP tool in OpenResponses Settings.
 - Server is temporarily unavailable
 
 **Solutions:**
-- Verify the server URL is correct: `https://api.notion.com/mcp/v1`
+- Verify the server URL is correct: `https://mcp.notion.com/mcp`
 - Check your internet connection
 - Try again in a few minutes
 

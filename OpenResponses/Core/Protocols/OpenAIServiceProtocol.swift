@@ -118,6 +118,28 @@ protocol OpenAIServiceProtocol {
         prompt: Prompt
     ) -> AsyncThrowingStream<StreamingEvent, Error>
     
+    // MARK: - MCP convenience calls
+    /// Non-streaming: Call a specific MCP tool with arguments, ensuring MCP is enabled and whitelisted to the tool.
+    func callMCP(
+        serverLabel: String,
+        tool: String,
+        argumentsJSON: String,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse
+
+    /// Streaming: Call a specific MCP tool with arguments, returning streaming events.
+    func callMCP(
+        serverLabel: String,
+        tool: String,
+        argumentsJSON: String,
+        prompt: Prompt,
+        stream: Bool
+    ) -> AsyncThrowingStream<StreamingEvent, Error>
+    
+    /// Probes MCP server by initiating list_tools handshake and returns tool count for the active MCP server.
+    /// Throws if the handshake fails or tools cannot be listed.
+    func probeMCPListTools(prompt: Prompt) async throws -> (label: String, count: Int)
+    
     /// Fetches image data from the API.
     func fetchImageData(for imageContent: ContentItem) async throws -> Data
 

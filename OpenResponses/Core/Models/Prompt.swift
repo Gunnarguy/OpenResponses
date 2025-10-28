@@ -44,6 +44,8 @@ struct Prompt: Codable, Identifiable, Equatable {
     var mcpHeaders: String // Will be migrated to keychain storage
     var mcpRequireApproval: String
     var mcpAllowedTools: String
+    var mcpAuthHeaderKey: String // e.g., "Authorization", "X-Auth-Token"
+    var mcpKeepAuthInHeaders: Bool // If true and using Authorization, also send as header in addition to top-level
     
     // MARK: - MCP Connector Support
     var mcpConnectorId: String? // e.g., "connector_dropbox", "connector_gmail"
@@ -160,7 +162,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
     case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold
     case enableComputerUse
-    case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools
+    case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools, mcpAuthHeaderKey, mcpKeepAuthInHeaders
     case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
@@ -206,6 +208,8 @@ struct Prompt: Codable, Identifiable, Equatable {
             mcpHeaders: "",
             mcpRequireApproval: "prompt",
             mcpAllowedTools: "",
+            mcpAuthHeaderKey: "Authorization",
+            mcpKeepAuthInHeaders: false,
             mcpConnectorId: nil,
             mcpIsConnector: false,
             customToolName: "custom_tool_placeholder",

@@ -759,9 +759,12 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     // Fields for MCP approval request items
     /// Server label for MCP approval requests
     let serverLabel: String?
+
+    /// Structured error payload when a tool call fails (e.g., MCP call.done with status=failed)
+    let error: MCPToolError?
     
     enum CodingKeys: String, CodingKey {
-        case id, type, status, content, role, name, arguments, action
+        case id, type, status, content, role, name, arguments, action, error
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
         case serverLabel = "server_label"

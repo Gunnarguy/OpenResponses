@@ -14,7 +14,18 @@ The AI will naturally understand and execute these using the Notion MCP server!
 
 1. A Notion account with workspace access
 2. A Notion integration token (we'll get this below)
-3. A way to host the Notion MCP server publicly (Railway recommended - free tier works!)
+3. *(Optional, self-hosting only)* A way to host the Notion MCP server publicly (Railway recommended - free tier works!)
+
+## ✅ Recommended: Use the Official Notion Connector (No Server Hosting)
+
+1. **Create a Notion integration token** (follow Part 1 below).
+2. **Share** any pages or databases with that integration so it can access your workspace content.
+3. **Open OpenResponses** → `Settings` → `Tools` → tap **Connect Apps** and choose **Notion**.
+4. **Paste your integration token** into the OAuth field and decide whether you want the assistant to request approval before each action.
+5. *(Optional)* Tap **Choose Notion tools** to open the in-app selector. You can enable everything for full create/search/update/delete support, or pick a subset to reduce context usage.
+6. Start a chat and ask the assistant to search, create, update, or delete Notion content—no MCP server deployment required.
+
+> Prefer running your own MCP server? Continue with Part 2 for self-hosted options.
 
 ## 🚀 Step-by-Step Setup
 
@@ -41,7 +52,7 @@ The AI will naturally understand and execute these using the Notion MCP server!
    - Select your integration
    - Repeat for all pages/databases you want to use
 
-### Part 2: Deploy the Notion MCP Server
+### Part 2: Deploy the Notion MCP Server (Optional)
 
 #### Option A: Railway (Recommended - Easiest)
 
@@ -145,7 +156,7 @@ docker run -d -p 8080:8080 \
 
 1. **Start a New Conversation**
    - Go back to the chat view
-   - Make sure your prompt has the Notion connector configured
+   - Make sure your active prompt shows the "notion-mcp-official" remote server with the URL `https://mcp.notion.com/mcp`
 
 2. **Test with Simple Commands**
    ```
@@ -169,8 +180,8 @@ docker run -d -p 8080:8080 \
 ## 🔍 Troubleshooting
 
 ### "Connector with ID 'connector_notion' not found"
-- This means you're still using the connector mode instead of remote server mode
-- Solution: Delete the Notion configuration and re-add it using the remote server setup
+- This means the request tried to use the hosted-connector path (which is not yet available for Notion)
+- Solution: Delete the Notion configuration and re-add it using the remote server setup. The gallery auto-fills the official endpoint described at <https://modelcontextprotocol.io/docs/getting-started/intro>.
 
 ### "Connection failed" or timeout errors
 - Check that your server is running: Visit your server URL in a browser

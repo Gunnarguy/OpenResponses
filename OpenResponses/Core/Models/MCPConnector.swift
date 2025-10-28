@@ -139,10 +139,37 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             category: .collaboration,
             popularTools: ["search", "fetch", "get_chat_members"],
             requiresRemoteServer: false
-        )
+        ),
         
-        // Note: Notion is available as a Remote MCP Server (not a connector)
-        // Use RemoteMCPServer.notionOfficial template for quick Notion setup
+        // Productivity
+        MCPConnector(
+            id: "connector_notion",
+            name: "Notion",
+            description: "Connect to the official Notion-hosted MCP server for read/write access to your workspace.",
+            icon: "square.grid.2x2.fill",
+            color: "#000000",
+            oauthScopes: [
+                "pages.read",
+                "pages.write",
+                "databases.read",
+                "databases.write",
+                "comments.read",
+                "comments.write"
+            ],
+            oauthInstructions: "Create a Notion internal integration, enable the workspace access you need, then paste the secret token below. The app will route requests to Notion's official MCP server per https://modelcontextprotocol.io/docs/getting-started/intro.",
+            setupURL: "https://www.notion.so/profile/integrations",
+            category: .productivity,
+            popularTools: [
+                "API-post-search",
+                "API-retrieve-a-page",
+                "API-post-page",
+                "API-post-database-query",
+                "API-delete-a-block"
+            ],
+            requiresRemoteServer: true
+        )
+
+        // Advanced users can still self-host using RemoteMCPServer templates (e.g., .notionCustom)
     ]
     
     /// Get connector by ID
@@ -212,18 +239,20 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
         allowedTools: nil, // Empty = all tools available
         displayLabel: "Notion MCP (Self-Hosted)"
     )
+
+    /// GCP-hosted Notion MCP template (your Cloud Run deployment)
+    static let notionGCloud = RemoteMCPServer(
+        label: "notion-gcloud",
+        serverURL: "https://notion-mcp-service-3w5iesbyaa-wn.a.run.app/mcp",
+        serverDescription: "Your GCP-hosted Notion MCP server (Cloud Run).",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Notion MCP (GCP)"
+    )
     
-    /// Popular MCP server templates for quick setup
+    /// Popular MCP server templates for quick setup (single supported method)
     static let templates: [RemoteMCPServer] = [
-        .notionOfficial,
-        .notionCustom,
-        RemoteMCPServer(
-            label: "Custom MCP Server",
-            serverURL: "https://your-server.com/mcp",
-            serverDescription: "Your own MCP server",
-            requireApproval: .always,
-            allowedTools: nil
-        )
+        .notionOfficial
     ]
 }
 

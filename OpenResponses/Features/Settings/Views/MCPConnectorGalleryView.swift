@@ -130,7 +130,7 @@ struct MCPConnectorGalleryView: View {
             GridItem(.flexible())
         ], spacing: 16) {
             ForEach(filteredConnectors) { connector in
-                ConnectorCard(connector: connector) {
+                ConnectorCard(connector: connector, viewModel: viewModel) {
                     selectedConnector = connector
                     // Show different setup flow based on connector type
                     if connector.requiresRemoteServer {
@@ -156,14 +156,20 @@ struct MCPConnectorGalleryView: View {
 /// Individual connector card in the gallery
 private struct ConnectorCard: View {
     let connector: MCPConnector
+    let viewModel: ChatViewModel
     let action: () -> Void
     
     // Check if this connector is currently configured
     private var isConnected: Bool {
         if connector.requiresRemoteServer {
-            // For remote servers, check if there's a stored auth token
-            let authKey = "mcp_auth_\(connector.name)"
-            return KeychainService.shared.load(forKey: authKey) != nil
+            let prompt = viewModel.activePrompt
+            guard prompt.enableMCPTool, !prompt.mcpIsConnector, !prompt.mcpServerURL.isEmpty else {
+                return false
+            }
+            if connector.id == "connector_notion" {
+                return prompt.mcpServerURL.lowercased().contains("notion")
+            }
+            return true
         } else {
             // For connectors, check the connector-specific keychain key
             let keychainKey = "mcp_connector_\(connector.id)"
@@ -287,10 +293,21 @@ private struct ConnectorCard: View {
     
     private func disconnectConnector() {
         if connector.requiresRemoteServer {
-            // Remove remote server auth token
-            let authKey = "mcp_auth_\(connector.name)"
-            KeychainService.shared.delete(forKey: authKey)
-            AppLogger.log("🔌 Disconnected remote server: \(connector.name)", category: .general, level: .info)
+            // Clear active prompt configuration if it matches this connector
+            if !viewModel.activePrompt.mcpIsConnector,
+               !viewModel.activePrompt.mcpServerLabel.isEmpty {
+                let manualKey = "mcp_manual_\(viewModel.activePrompt.mcpServerLabel)"
+                KeychainService.shared.delete(forKey: manualKey)
+                let legacyKey = "mcp_auth_\(connector.name)"
+                KeychainService.shared.delete(forKey: legacyKey)
+                viewModel.activePrompt.enableMCPTool = false
+                viewModel.activePrompt.mcpServerLabel = ""
+                viewModel.activePrompt.mcpServerURL = ""
+                viewModel.activePrompt.mcpAllowedTools = ""
+                viewModel.activePrompt.mcpRequireApproval = "never"
+                viewModel.saveActivePrompt()
+            }
+            AppLogger.log("🔌 Disconnected remote MCP configuration for \(connector.name)", category: .general, level: .info)
         } else {
             // Remove connector OAuth token
             let keychainKey = "mcp_connector_\(connector.id)"
@@ -331,10 +348,17 @@ struct ConnectorSetupView: View {
     @State private var requireApproval = true
     @State private var allowedToolsText = ""
     @State private var showingSuccess = false
-    @State private var currentStep = 0
+    @State private var showingNotionToolSelector = false
     
     private var isValid: Bool {
         !oauthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    private var allowedToolList: [String] {
+        allowedToolsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
     
     var body: some View {
@@ -453,6 +477,49 @@ struct ConnectorSetupView: View {
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
                         
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Allowed Tools (Optional)")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.secondary)
+                            if connector.id == "connector_notion" {
+                                Button {
+                                    showingNotionToolSelector = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.caption)
+                                        Text("Choose Notion tools")
+                                            .font(.caption)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.cyan.opacity(0.15))
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(.borderless)
+                                Text("Fine-tune the Notion APIs the assistant can call to stay within your workspace limits.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            TextField("tool_one, tool_two", text: $allowedToolsText)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                            if !allowedToolList.isEmpty {
+                                Text("\(allowedToolList.count) tools selected")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            } else {
+                                Text("Leave blank to allow every tool exposed by the connector.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Popular Tools")
                                 .font(.caption)
@@ -493,6 +560,9 @@ struct ConnectorSetupView: View {
                     .fontWeight(.semibold)
                 }
             }
+            .onAppear {
+                loadExistingConfiguration()
+            }
             .alert("Connected!", isPresented: $showingSuccess) {
                 Button("Done") {
                     onComplete()
@@ -500,26 +570,23 @@ struct ConnectorSetupView: View {
             } message: {
                 Text("\(connector.name) is now connected and ready to use!")
             }
+            .sheet(isPresented: $showingNotionToolSelector) {
+                NotionToolSelectorView(selectedTools: $allowedToolsText)
+            }
         }
     }
     
     private func saveConnector() {
-        // BULLETPROOF CHECK: Prevent non-existent connectors from being configured
-        let validConnectorIDs = [
-            "connector_dropbox",
-            "connector_gmail",
-            "connector_googlecalendar",
-            "connector_googledrive",
-            "connector_microsoftteams",
-            "connector_outlookcalendar",
-            "connector_outlookemail",
-            "connector_sharepoint"
-        ]
+        // Confirm the connector exists and does not require remote hosting
+        guard let catalogConnector = MCPConnector.connector(for: connector.id) else {
+            AppLogger.log("⚠️ Attempted to configure unknown connector id: \(connector.id)", category: .general, level: .error)
+            onComplete()
+            return
+        }
         
-        guard validConnectorIDs.contains(connector.id) else {
-            // This connector requires remote server setup, not connector setup
-            AppLogger.log("⚠️ Attempted to configure '\(connector.name)' as connector, but it requires remote server setup", category: .general, level: .error)
-            onComplete() // Close this view - user needs to use remote server setup instead
+        guard catalogConnector.requiresRemoteServer == false else {
+            AppLogger.log("⚠️ Attempted to configure '\(connector.name)' via connector flow, but it requires remote server setup", category: .general, level: .warning)
+            onComplete()
             return
         }
         
@@ -537,19 +604,36 @@ struct ConnectorSetupView: View {
         viewModel.activePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
         
         // Set allowed tools if specified
-        if !allowedToolsText.isEmpty {
-            viewModel.activePrompt.mcpAllowedTools = allowedToolsText
+        if !allowedToolList.isEmpty {
+            let sanitizedAllowedTools = allowedToolList.joined(separator: ", ")
+            viewModel.activePrompt.mcpAllowedTools = sanitizedAllowedTools
+            allowedToolsText = sanitizedAllowedTools
         } else {
             viewModel.activePrompt.mcpAllowedTools = ""
+            allowedToolsText = ""
         }
         
         // Clear any remote server config to avoid confusion
         viewModel.activePrompt.mcpServerURL = ""
+        viewModel.saveActivePrompt()
         
         // Show success
         showingSuccess = true
         
         AppLogger.log("✅ Connected to \(connector.name) connector (id: \(connector.id))", category: .openAI, level: .info)
+    }
+
+    private func loadExistingConfiguration() {
+        guard viewModel.activePrompt.mcpIsConnector,
+              viewModel.activePrompt.mcpConnectorId == connector.id else {
+            return
+        }
+        let keychainKey = "mcp_connector_\(connector.id)"
+        if let existingToken = KeychainService.shared.load(forKey: keychainKey) {
+            oauthToken = existingToken
+        }
+        requireApproval = viewModel.activePrompt.mcpRequireApproval != "never"
+        allowedToolsText = viewModel.activePrompt.mcpAllowedTools.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
