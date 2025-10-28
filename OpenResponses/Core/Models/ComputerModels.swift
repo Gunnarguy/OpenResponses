@@ -57,7 +57,11 @@ struct ComputerAction: Decodable {
         // The parameters can be a mix of types, so we decode them into [String: AnyCodable]
         // and then extract the underlying `Any` value.
         if let params = try? container.decode([String: AnyCodable].self, forKey: .parameters) {
-            parameters = params.mapValues { $0.value }
+            parameters = params.reduce(into: [String: Any]()) { result, entry in
+                if let value = entry.value.value {
+                    result[entry.key] = value
+                }
+            }
         } else {
             parameters = [:]
         }

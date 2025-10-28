@@ -144,6 +144,19 @@ struct OutputItem: Decodable {
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        summary = try container.decodeIfPresent([SummaryItem].self, forKey: .summary)
+        content = try container.decodeIfPresent([ContentItem].self, forKey: .content)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
+        callId = try container.decodeIfPresent(String.self, forKey: .callId)
+        action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
+        pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
+    }
 }
 
 struct SummaryItem: Decodable {
@@ -493,10 +506,10 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         annotationIndex = try container.decodeIfPresent(Int.self, forKey: .annotationIndex)
         annotation = try container.decodeIfPresent(StreamingAnnotation.self, forKey: .annotation)
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
-        tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
-        name = try container.decodeIfPresent(String.self, forKey: .name)
-        arguments = try container.decodeIfPresent(String.self, forKey: .arguments)
-        output = try container.decodeIfPresent(String.self, forKey: .output)
+    tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
+    name = try container.decodeIfPresent(String.self, forKey: .name)
+    arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
+    output = try container.decodeStringOrJSONStringIfPresent(forKey: .output)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
         
         // Handle polymorphic error field
@@ -675,6 +688,22 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         case error
         case approvalRequestId = "approval_request_id"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        content = try container.decodeIfPresent([StreamingContentItem].self, forKey: .content)
+        role = try container.decodeIfPresent(String.self, forKey: .role)
+        serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
+        tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
+        output = try container.decodeStringOrJSONStringIfPresent(forKey: .output)
+        error = try container.decodeIfPresent(MCPToolError.self, forKey: .error)
+        approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
+    }
     
     /// Provides a readable description of the output item
     var description: String {
@@ -759,7 +788,10 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     // Fields for MCP approval request items
     /// Server label for MCP approval requests
     let serverLabel: String?
-
+    
+    /// Approval request ID for MCP approval request items
+    let approvalRequestId: String?
+    
     /// Structured error payload when a tool call fails (e.g., MCP call.done with status=failed)
     let error: MCPToolError?
     
@@ -768,6 +800,24 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
         case serverLabel = "server_label"
+        case approvalRequestId = "approval_request_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        content = try container.decodeIfPresent([StreamingContentItem].self, forKey: .content)
+        role = try container.decodeIfPresent(String.self, forKey: .role)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
+        action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
+        error = try container.decodeIfPresent(MCPToolError.self, forKey: .error)
+        callId = try container.decodeIfPresent(String.self, forKey: .callId)
+        pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
+        serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
+        approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
     }
     
     /// Provides a readable description of the item

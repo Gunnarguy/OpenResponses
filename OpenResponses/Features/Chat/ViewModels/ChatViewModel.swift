@@ -1853,7 +1853,11 @@ class ChatViewModel: ObservableObject {
             return nil
         }
         
-        let actionDict = actionData.mapValues { $0.value }
+        let actionDict = actionData.reduce(into: [String: Any]()) { result, entry in
+            if let value = entry.value.value {
+                result[entry.key] = value
+            }
+        }
         
         guard let actionType = actionDict["type"] as? String else {
             return nil

@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 // MARK: - APICapabilities
 
@@ -370,28 +371,41 @@ public enum APICapabilities {
     }
 }
 
-/// A type-erased wrapper to allow encoding/decoding of `[String: Any]`.
+/// A type-erased wrapper to allow encoding/decoding of JSON values, including `null`.
 public struct AnyCodable: Codable, Hashable {
-    public let value: Any
+    public let value: Any?
 
-    public init(_ value: Any) {
+    public init(_ value: Any?) {
         self.value = value
     }
 
     public func hash(into hasher: inout Hasher) {
-        if let val = value as? AnyHashable {
-            hasher.combine(val)
+        switch value {
+        case let hashable as AnyHashable:
+            hasher.combine(hashable)
+        case nil:
+            hasher.combine("nil")
+        default:
+            hasher.combine(String(describing: value))
         }
     }
 
     public static func == (lhs: AnyCodable, rhs: AnyCodable) -> Bool {
-        // This is a simplified equality check. A robust implementation would be more complex.
-        return (lhs.value as? AnyHashable) == (rhs.value as? AnyHashable)
+        switch (lhs.value, rhs.value) {
+        case (nil, nil):
+            return true
+        case let (lhsHashable as AnyHashable, rhsHashable as AnyHashable):
+            return lhsHashable == rhsHashable
+        default:
+            return false
+        }
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let intVal = try? container.decode(Int.self) {
+        if container.decodeNil() {
+            value = nil
+        } else if let intVal = try? container.decode(Int.self) {
             value = intVal
         } else if let stringVal = try? container.decode(String.self) {
             value = stringVal
@@ -402,29 +416,153 @@ public struct AnyCodable: Codable, Hashable {
         } else if let arrayVal = try? container.decode([AnyCodable].self) {
             value = arrayVal.map { $0.value }
         } else if let dictVal = try? container.decode([String: AnyCodable].self) {
-            value = dictVal.mapValues { $0.value }
+            value = dictVal.reduce(into: [String: Any?]()) { result, element in
+                result[element.key] = element.value.value
+            }
         } else {
-            throw DecodingError.typeMismatch(AnyCodable.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported type"))
+            throw DecodingError.typeMismatch(
+                AnyCodable.self,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Unsupported type"
+                )
+            )
         }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        if let val = value as? Int {
+        switch value {
+        case nil:
+            try container.encodeNil()
+        case let val as Int:
             try container.encode(val)
-        } else if let val = value as? String {
+        case let val as String:
             try container.encode(val)
-        } else if let val = value as? Bool {
+        case let val as Bool:
             try container.encode(val)
-        } else if let val = value as? Double {
+        case let val as Double:
             try container.encode(val)
-        } else if let val = value as? [Any] {
+        case let val as [AnyCodable]:
+            try container.encode(val)
+        case let val as [Any?]:
             try container.encode(val.map { AnyCodable($0) })
-        } else if let val = value as? [String: Any] {
-            try container.encode(val.mapValues { AnyCodable($0) })
-        } else {
-            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: encoder.codingPath, debugDescription: "Unsupported type"))
+        case let val as [Any]:
+            try container.encode(val.map { AnyCodable($0) })
+        case let val as [String: AnyCodable]:
+            try container.encode(val)
+        case let val as [String: Any?]:
+            let converted = val.reduce(into: [String: AnyCodable]()) { result, element in
+                result[element.key] = AnyCodable(element.value)
+            }
+            try container.encode(converted)
+        case let val as [String: Any]:
+            let converted = val.mapValues { AnyCodable($0) }
+            try container.encode(converted)
+        default:
+            throw EncodingError.invalidValue(
+                value as Any,
+                EncodingError.Context(
+                    codingPath: encoder.codingPath,
+                    debugDescription: "Unsupported type"
+                )
+            )
         }
+    }
+
+    /// Returns a JSON string representation of the wrapped value when possible.
+    /// Falls back to a descriptive string as a last resort to avoid hiding diagnostics.
+    public func jsonString(prettyPrinted: Bool = false) -> String? {
+        guard let unwrapped = value else { return "null" }
+
+        if let string = unwrapped as? String {
+            return string
+        }
+
+        if let boolValue = unwrapped as? Bool {
+            return boolValue ? "true" : "false"
+        }
+
+        if let number = unwrapped as? NSNumber {
+            // NSNumber can represent both numeric values and booleans. The boolean case is handled above.
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return number.boolValue ? "true" : "false"
+            }
+            return number.stringValue
+        }
+
+        let wrapped = AnyCodable.makeJSONRepresentable(from: unwrapped)
+
+        if JSONSerialization.isValidJSONObject(wrapped) {
+            let options: JSONSerialization.WritingOptions = prettyPrinted ? [.prettyPrinted, .sortedKeys] : []
+            if let data = try? JSONSerialization.data(withJSONObject: wrapped, options: options),
+               let jsonString = String(data: data, encoding: .utf8) {
+                return jsonString
+            }
+        }
+
+        return String(describing: unwrapped)
+    }
+
+    /// Converts a value into something `JSONSerialization` accepts, preserving nulls.
+    private static func makeJSONRepresentable(from value: Any) -> Any {
+        switch value {
+        case let codable as AnyCodable:
+            return makeJSONRepresentable(from: codable.value as Any)
+        case let array as [AnyCodable]:
+            return array.map { makeJSONRepresentable(from: $0.value as Any) }
+        case let array as [Any?]:
+            return array.map { element -> Any in
+                guard let element else { return NSNull() }
+                return makeJSONRepresentable(from: element)
+            }
+        case let array as [Any]:
+            return array.map { makeJSONRepresentable(from: $0) }
+        case let dict as [String: AnyCodable]:
+            return dict.reduce(into: [String: Any]()) { result, element in
+                result[element.key] = makeJSONRepresentable(from: element.value.value as Any)
+            }
+        case let dict as [String: Any?]:
+            return dict.reduce(into: [String: Any]()) { result, element in
+                if let value = element.value {
+                    result[element.key] = makeJSONRepresentable(from: value)
+                } else {
+                    result[element.key] = NSNull()
+                }
+            }
+        case let dict as [String: Any]:
+            return dict.reduce(into: [String: Any]()) { result, element in
+                result[element.key] = makeJSONRepresentable(from: element.value)
+            }
+        case is NSNull:
+            return value
+        default:
+            return value
+        }
+    }
+}
+
+// MARK: - Decoding helpers
+
+extension KeyedDecodingContainer {
+    /// Attempts to decode either a plain string or a JSON payload represented as a dictionary/array.
+    /// Returns the payload serialized as a compact JSON string when necessary.
+    func decodeStringOrJSONStringIfPresent(forKey key: Key) throws -> String? {
+        guard contains(key) else { return nil }
+
+        if try decodeNil(forKey: key) {
+            return nil
+        }
+
+        if let stringValue = try? decode(String.self, forKey: key) {
+            return stringValue
+        }
+
+        if let anyValue = try? decode(AnyCodable.self, forKey: key) {
+            return anyValue.jsonString(prettyPrinted: false)
+        }
+
+        return nil
     }
 }
 
