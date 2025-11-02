@@ -863,6 +863,150 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             tools.append(.function(function: function))
         }
         
+        // Add Notion tools if API key exists
+        if let notionApiKey = KeychainService.shared.load(forKey: "notionApiKey"), !notionApiKey.isEmpty {
+            // Search tool
+            let searchNotionFunc = APICapabilities.Function(
+                name: "searchNotion",
+                description: "Search for pages or databases in Notion workspace.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "query": [
+                            "type": "string",
+                            "description": "The search term to find pages or databases."
+                        ],
+                        "filter_type": [
+                            "type": "string",
+                            "description": "Optional filter: 'page' or 'database' or 'data_source'. Omit to search all."
+                        ]
+                    ],
+                    "required": ["query"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: searchNotionFunc))
+            
+            // Get database tool (returns data_sources)
+            let getDatabaseFunc = APICapabilities.Function(
+                name: "getNotionDatabase",
+                description: "Retrieves a Notion database by ID, returning its data sources (tables).",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "database_id": [
+                            "type": "string",
+                            "description": "The ID of the database to retrieve."
+                        ]
+                    ],
+                    "required": ["database_id"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: getDatabaseFunc))
+            
+            // Get data source tool (returns schema/properties)
+            let getDataSourceFunc = APICapabilities.Function(
+                name: "getNotionDataSource",
+                description: "Retrieves a Notion data source (table) by ID, returning its schema and properties.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "data_source_id": [
+                            "type": "string",
+                            "description": "The ID of the data source to retrieve."
+                        ]
+                    ],
+                    "required": ["data_source_id"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: getDataSourceFunc))
+            
+            // Create page tool
+            let createPageFunc = APICapabilities.Function(
+                name: "createNotionPage",
+                description: "Creates a new page in a Notion data source (table). The properties must match the data source schema.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "data_source_id": [
+                            "type": "string",
+                            "description": "The ID of the data source to create the page in (optional if database_id is provided)."
+                        ],
+                        "database_id": [
+                            "type": "string",
+                            "description": "The ID of the database (will auto-resolve to a data source if only one exists)."
+                        ],
+                        "data_source_name": [
+                            "type": "string",
+                            "description": "Optional name to disambiguate if multiple data sources exist."
+                        ],
+                        "properties": [
+                            "type": "object",
+                            "description": "Page properties matching the data source schema (e.g., title, rich_text, number, etc.)."
+                        ],
+                        "children": [
+                            "type": "array",
+                            "description": "Optional array of block objects to include as page content.",
+                            "items": ["type": "object"]
+                        ]
+                    ]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: createPageFunc))
+            
+            // Update page tool
+            let updatePageFunc = APICapabilities.Function(
+                name: "updateNotionPage",
+                description: "Updates an existing Notion page's properties or archives it.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "page_id": [
+                            "type": "string",
+                            "description": "The ID of the page to update."
+                        ],
+                        "properties": [
+                            "type": "object",
+                            "description": "Page properties to update."
+                        ],
+                        "archived": [
+                            "type": "boolean",
+                            "description": "Set to true to archive (delete) the page."
+                        ]
+                    ],
+                    "required": ["page_id"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: updatePageFunc))
+            
+            // Append blocks tool
+            let appendBlocksFunc = APICapabilities.Function(
+                name: "appendNotionBlocks",
+                description: "Appends block content to an existing Notion page or block.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "page_id": [
+                            "type": "string",
+                            "description": "The ID of the page or block to append to."
+                        ],
+                        "blocks": [
+                            "type": "array",
+                            "description": "Array of block objects to append.",
+                            "items": ["type": "object"]
+                        ]
+                    ],
+                    "required": ["page_id", "blocks"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: appendBlocksFunc))
+        }
+        
         // MCP Tool (Connector or Remote Server)
         if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
             // Check if this is a connector (OpenAI-maintained) or remote server (custom)
@@ -986,31 +1130,68 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             .joined(separator: "-")
 
+        // Identify official Notion HTTP MCP host
+        let isNotionHost = prompt.mcpServerURL.lowercased().contains("mcp.notion.com") || prompt.mcpServerLabel.lowercased().contains("notion")
+        let sessionId = getOrCreateMCPSessionId(label: prompt.mcpServerLabel.isEmpty ? "default" : prompt.mcpServerLabel)
+
         // Prefer structured secure headers so we can support multiple header values.
         let secureHeaders = prompt.secureMCPHeaders
         if !secureHeaders.isEmpty {
             var sanitizedHeaders = sanitizeMCPHeaders(secureHeaders, serverLabel: prompt.mcpServerLabel)
 
+            // Always attach a session header for HTTP transport
+            sanitizedHeaders["mcp-session-id"] = sessionId
+
             var topLevelAuth: String? = nil
-        if normalizedDesiredKey == "Authorization" {
-            if let tokenVal = sanitizedHeaders["Authorization"] {
-                topLevelAuth = ensureBearerPrefix(tokenVal)
-                // Always remove Authorization header to avoid API 400:
-                // "Cannot specify both 'authorization' parameter and 'Authorization' header."
-                sanitizedHeaders.removeValue(forKey: "Authorization")
-                if prompt.mcpKeepAuthInHeaders {
-                    AppLogger.log("mcpKeepAuthInHeaders is ON but ignored: using top-level authorization only to satisfy OpenAI API constraints", category: .mcp, level: .warning)
+
+            if normalizedDesiredKey == "Authorization" {
+                if let tokenVal = sanitizedHeaders["Authorization"] {
+                    let tokenClean = ensureBearerPrefix(tokenVal)
+
+                    if isNotionHost {
+                        // Official Notion MCP requires top-level authorization only. Remove Authorization header and use top-level.
+                        sanitizedHeaders.removeValue(forKey: "Authorization")
+                        topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
+                        AppLogger.log("Using top-level Authorization for official Notion MCP (no Authorization header).", category: .mcp, level: .info)
+                    } else {
+                        // Non-Notion servers:
+                        if prompt.mcpKeepAuthInHeaders {
+                            // Keep in headers only
+                            sanitizedHeaders["Authorization"] = tokenClean
+                            topLevelAuth = nil
+                        } else {
+                            // Use top-level to avoid API 400s; keep headers for session id
+                            topLevelAuth = tokenClean
+                            sanitizedHeaders.removeValue(forKey: "Authorization")
+                        }
+                    }
                 }
-            }
-        } else {
-                // Custom header key path: keep auth only in headers under custom key. Remove Authorization if present.
-                if let moved = sanitizedHeaders.removeValue(forKey: "Authorization"), sanitizedHeaders[normalizedDesiredKey] == nil {
-                    sanitizedHeaders[normalizedDesiredKey] = ensureBearerPrefix(moved)
+                } else {
+                    // Custom header key path
+                    if isNotionHost {
+                        // Official Notion MCP: move any provided token to top-level authorization, no auth headers
+                        if let moved = sanitizedHeaders.removeValue(forKey: "Authorization") {
+                            let tokenClean = ensureBearerPrefix(moved)
+                            topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
+                        } else if let val = sanitizedHeaders.removeValue(forKey: normalizedDesiredKey) {
+                            let tokenClean = ensureBearerPrefix(val)
+                            topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
+                        } else {
+                            topLevelAuth = nil
+                        }
+                    } else {
+                        if let moved = sanitizedHeaders.removeValue(forKey: "Authorization"), sanitizedHeaders[normalizedDesiredKey] == nil {
+                            let tokenClean = ensureBearerPrefix(moved)
+                            sanitizedHeaders[normalizedDesiredKey] = tokenClean
+                        }
+                        topLevelAuth = nil
+                    }
                 }
-                topLevelAuth = nil
-            }
 
             let headerKeys = sanitizedHeaders.keys.sorted().joined(separator: ", ")
+            if isNotionHost && topLevelAuth != nil {
+                AppLogger.log("Using top-level raw token (no Bearer) for official Notion MCP.", category: .mcp, level: .info)
+            }
             AppLogger.log("Resolved MCP auth for '\(prompt.mcpServerLabel)': authHeaderKey=\(normalizedDesiredKey), topLevelAuth=\(topLevelAuth != nil), keepAuthInHeaders=\(prompt.mcpKeepAuthInHeaders), headerKeys=[\(headerKeys)]", category: .openAI, level: .debug)
             return (topLevelAuth, sanitizedHeaders.isEmpty ? nil : sanitizedHeaders)
         }
@@ -1024,21 +1205,42 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         if let auth = legacyAuth, !auth.isEmpty {
+            // Attach a session header even for legacy path
+            var baseHeaders: [String: String] = ["mcp-session-id": sessionId]
+
             if normalizedDesiredKey == "Authorization" {
-                AppLogger.log("Resolved legacy MCP authorization token (top-level) for label \(prompt.mcpServerLabel)", category: .openAI, level: .debug)
-                return (ensureBearerPrefix(auth), nil)
+                let tokenClean = ensureBearerPrefix(auth)
+                if isNotionHost {
+                    // Official Notion MCP requires top-level authorization only (no Authorization header)
+                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                    AppLogger.log("Resolved legacy MCP token for Notion official; using top-level authorization (no Authorization header).", category: .openAI, level: .debug)
+                    return (NotionAuthService.shared.stripBearer(tokenClean), sanitized)
+                } else {
+                    // Non-Notion: use top-level auth and keep session header in headers
+                    AppLogger.log("Resolved legacy MCP authorization token (top-level) for label \(prompt.mcpServerLabel)", category: .openAI, level: .debug)
+                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                    return (NotionAuthService.shared.stripBearer(tokenClean), sanitized)
+                }
             } else {
-                // Put legacy auth under the custom header key
-                var headers: [String: String] = [:]
-                headers[normalizedDesiredKey] = ensureBearerPrefix(auth)
-                let sanitized = sanitizeMCPHeaders(headers, serverLabel: prompt.mcpServerLabel)
-                let keys = sanitized.keys.sorted().joined(separator: ", ")
-                AppLogger.log("Resolved legacy MCP authorization token (headers-only: \(normalizedDesiredKey)) for label \(prompt.mcpServerLabel); headerKeys=[\(keys)]", category: .openAI, level: .debug)
-                return (nil, sanitized)
+                // Legacy auth with custom header key
+                let tokenClean = ensureBearerPrefix(auth)
+                if isNotionHost {
+                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                    AppLogger.log("Resolved legacy MCP token (custom key) for Notion official; using top-level authorization.", category: .openAI, level: .debug)
+                    return (tokenClean, sanitized)
+                } else {
+                    baseHeaders[normalizedDesiredKey] = tokenClean
+                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                    let keys = sanitized.keys.sorted().joined(separator: ", ")
+                    AppLogger.log("Resolved legacy MCP authorization token (headers-only: \(normalizedDesiredKey)) for label \(prompt.mcpServerLabel); headerKeys=[\(keys)]", category: .openAI, level: .debug)
+                    return (nil, sanitized)
+                }
             }
         }
 
-        return (nil, nil)
+        // No auth; still add session header so servers can correlate sessions
+        let headersOnly = ["mcp-session-id": sessionId]
+        return (nil, headersOnly)
     }
 
     private func sanitizeMCPHeaders(_ headers: [String: String], serverLabel: String) -> [String: String] {
@@ -1063,13 +1265,33 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             sanitized["Authorization"] = ensureBearerPrefix(auth)
         }
 
-        // Notion requires a version header; default it when missing.
-        if serverLabel.lowercased().contains("notion"), sanitized["Notion-Version"] == nil {
-            AppLogger.log("Notion MCP configuration missing Notion-Version header; using 2022-06-28", category: .mcp, level: .warning)
-            sanitized["Notion-Version"] = "2022-06-28"
-        }
+        // Do not inject Notion-Version into MCP HTTP headers by default.
+        // The Notion-Version header applies to Notion REST API calls we make directly (handled in NotionProvider).
+        // Remote MCP servers should manage their own upstream headers as needed.
 
         return sanitized
+    }
+
+    // Generates or returns a stable MCP session id for the given server label.
+    private func getOrCreateMCPSessionId(label: String) -> String {
+        let key = "mcp_session_id_\(label)"
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+
+    // Heuristic: detect Notion Integration secrets (ntn_... or secret_...) even if prefixed with Bearer
+    private func looksLikeNotionIntegrationToken(_ value: String) -> Bool {
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = cleaned.lowercased()
+        if lower.hasPrefix("bearer ") {
+            let raw = String(lower.dropFirst(7))
+            return raw.hasPrefix("ntn_") || raw.hasPrefix("secret_")
+        }
+        return lower.hasPrefix("ntn_") || lower.hasPrefix("secret_")
     }
 
     // Normalize UI/legacy approval strings to API-compliant values.
@@ -1304,8 +1526,23 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     ///   - model: The model name to use.
     ///   - previousResponseId: The ID of the response that contained the function call.
     /// - Returns: The final `OpenAIResponse` from the assistant.
-    func sendFunctionOutput(call: OutputItem, output: String, model: String, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendFunctionOutput(
+        call: OutputItem,
+        output: String,
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse {
+        AppLogger.log("🔄 [sendFunctionOutput] Starting...", category: .openAI, level: .info)
+        AppLogger.log("🔄 [sendFunctionOutput] Function: \(call.name ?? "unknown")", category: .openAI, level: .info)
+        AppLogger.log("🔄 [sendFunctionOutput] Call ID: \(call.callId ?? "unknown")", category: .openAI, level: .info)
+        AppLogger.log("🔄 [sendFunctionOutput] Output length: \(output.count) chars", category: .openAI, level: .info)
+        AppLogger.log("🔄 [sendFunctionOutput] Model: \(model)", category: .openAI, level: .info)
+        AppLogger.log("🔄 [sendFunctionOutput] Previous Response ID: \(previousResponseId ?? "none")", category: .openAI, level: .info)
+        
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            AppLogger.log("❌ [sendFunctionOutput] Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
         
@@ -1317,6 +1554,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "call_id": call.callId ?? ""
         ]
         
+        AppLogger.log("📤 [sendFunctionOutput] Function call message created", category: .openAI, level: .info)
+        
         // The result from our local execution
         let functionOutputMessage: [String: Any] = [
             "type": "function_call_output",
@@ -1324,8 +1563,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "output": output
         ]
         
+        AppLogger.log("📤 [sendFunctionOutput] Function output message created", category: .openAI, level: .info)
+        
         // We need to send back the function call and our output
-        let inputMessages = [functionCallMessage, functionOutputMessage]
+        // NOTE: Do NOT replay reasoning items here - they belong to the previous turn
+        // and the API expects reasoning to be followed by its corresponding message/output.
+        // When sending function outputs, we only need the function_call and function_call_output.
+        var inputMessages: [[String: Any]] = []
+
+        inputMessages.append(functionCallMessage)
+        inputMessages.append(functionOutputMessage)
         
         var requestObject: [String: Any] = [
             "model": model,
@@ -1335,12 +1582,28 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
+            AppLogger.log("📤 [sendFunctionOutput] Including previous_response_id: \(prevId)", category: .openAI, level: .info)
         }
         
-        // We don't need to resend tools or other complex parameters,
-        // as we are continuing a specific tool-use turn.
+        // Include tools so the model knows what's available for follow-up
+        AppLogger.log("🔧 [sendFunctionOutput] Building tools array...", category: .openAI, level: .info)
+        let tools = buildTools(for: prompt, userMessage: "", isStreaming: false)
+        AppLogger.log("🔧 [sendFunctionOutput] Built \(tools.count) tools", category: .openAI, level: .info)
+        
+        if !tools.isEmpty {
+            do {
+                let toolsData = try JSONEncoder().encode(tools)
+                if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
+                    requestObject["tools"] = toolsArray
+                    AppLogger.log("✅ [sendFunctionOutput] Added tools array to request", category: .openAI, level: .info)
+                }
+            } catch {
+                AppLogger.log("❌ [sendFunctionOutput] Failed to encode tools: \(error)", category: .openAI, level: .error)
+            }
+        }
         
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+        AppLogger.log("📤 [sendFunctionOutput] Request body size: \(jsonData.count) bytes", category: .openAI, level: .info)
         
         // Don't print raw JSON here; centralized logging below will handle sanitization/omission
         
@@ -1367,10 +1630,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         )
         
         let (data, response) = try await URLSession.shared.data(for: request)
+        
+        AppLogger.log("📥 [sendFunctionOutput] Received response", category: .openAI, level: .info)
+        
         guard let httpResponse = response as? HTTPURLResponse else {
+            AppLogger.log("❌ [sendFunctionOutput] Invalid response type", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
         
+        AppLogger.log("📥 [sendFunctionOutput] HTTP Status: \(httpResponse.statusCode)", category: .openAI, level: .info)
+        AppLogger.log("📥 [sendFunctionOutput] Response size: \(data.count) bytes", category: .openAI, level: .info)
         
         // Log the response
         AnalyticsService.shared.logAPIResponse(
@@ -1382,6 +1651,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            AppLogger.log("❌ [sendFunctionOutput] Error response: \(errorMessage)", category: .openAI, level: .error)
             
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
@@ -1396,6 +1666,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
         
+        AppLogger.log("✅ [sendFunctionOutput] Success response (200)", category: .openAI, level: .info)
+        
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -1407,9 +1679,28 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         )
         
         do {
-            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+            AppLogger.log("🔄 [sendFunctionOutput] Decoding OpenAIResponse...", category: .openAI, level: .info)
+            let decodedResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+            AppLogger.log("✅ [sendFunctionOutput] Successfully decoded response", category: .openAI, level: .info)
+            AppLogger.log("✅ [sendFunctionOutput] Response ID: \(decodedResponse.id)", category: .openAI, level: .info)
+            AppLogger.log("✅ [sendFunctionOutput] Output items: \(decodedResponse.output.count)", category: .openAI, level: .info)
+            
+            for (index, item) in decodedResponse.output.enumerated() {
+                AppLogger.log("📋 [sendFunctionOutput] Output[\(index)]: type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
+                if let content = item.content {
+                    AppLogger.log("📋 [sendFunctionOutput] Output[\(index)] content parts: \(content.count)", category: .openAI, level: .info)
+                    for (cIdx, c) in content.enumerated() {
+                        AppLogger.log("📋 [sendFunctionOutput] Content[\(cIdx)]: type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                    }
+                }
+            }
+            
+            return decodedResponse
         } catch {
-            print("Function output response decoding error: \(error)")
+            AppLogger.log("❌ [sendFunctionOutput] Decoding error: \(error)", category: .openAI, level: .error)
+            if let jsonString = String(data: data, encoding: .utf8) {
+                AppLogger.log("📋 [sendFunctionOutput] Raw response: \(jsonString.prefix(500))", category: .openAI, level: .error)
+            }
             throw OpenAIServiceError.invalidResponseData
         }
     }
