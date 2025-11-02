@@ -44,7 +44,9 @@ protocol OpenAIServiceProtocol {
         call: OutputItem,
         output: String,
         model: String,
-        previousResponseId: String?
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        prompt: Prompt
     ) async throws -> OpenAIResponse
 
     /// Sends computer-use call output back to the API.

@@ -68,7 +68,7 @@ struct ChatStatusBar: View {
                 .environmentObject(viewModel)
         }
         .sheet(isPresented: $showingSettings) {
-            PlaygroundSettingsPanel()
+            SettingsHomeView()
                 .environmentObject(viewModel)
         }
     }

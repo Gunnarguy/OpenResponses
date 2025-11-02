@@ -62,7 +62,7 @@ enum AppLogger {
     
     /// Store recent log messages to detect duplicates
     private static var recentLogMessages = [String: Date]()
-    private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs", attributes: .concurrent)
+    private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
     
     /// Time window in seconds to consider logs as duplicates
     private static let duplicateWindowSeconds: TimeInterval = 1.0
@@ -74,6 +74,14 @@ enum AppLogger {
     static var minimizeOpenAILogBodies: Bool = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies") {
         didSet {
             log("Minimize API Log Bodies set to: \(minimizeOpenAILogBodies)", category: .openAI, level: .info)
+        }
+    }
+    
+    /// Controls debug-level logging for MCP category (redacted + deduped).
+    static var verboseMCPLogging: Bool = UserDefaults.standard.bool(forKey: "verboseMCPLogging") {
+        didSet {
+            UserDefaults.standard.set(verboseMCPLogging, forKey: "verboseMCPLogging")
+            log("Verbose MCP Logging set to: \(verboseMCPLogging)", category: .mcp, level: .info)
         }
     }
 
@@ -184,6 +192,31 @@ enum AppLogger {
     ) {
         let fileName = (file as NSString).lastPathComponent
         let logMessage = "[\(category.rawValue)] \(fileName):\(line) \(function) - \(message)"
+        
+        // Gate debug-level MCP logs behind a runtime toggle to avoid noisy output
+        if category == .mcp && level == .debug && !verboseMCPLogging {
+            return
+        }
+        
+        // Always de-duplicate MCP logs for 60 seconds to prevent spammy repeats
+        if category == .mcp {
+            let now = Date()
+            var shouldSkipMCP = false
+            recentLogMessagesQueue.sync {
+                // Clean up old entries within a 60s window
+                recentLogMessages = recentLogMessages.filter { _, timestamp in
+                    now.timeIntervalSince(timestamp) < 60.0
+                }
+                if recentLogMessages[logMessage] != nil {
+                    shouldSkipMCP = true
+                } else {
+                    recentLogMessages[logMessage] = now
+                }
+            }
+            if shouldSkipMCP {
+                return
+            }
+        }
         
         // Check for duplicate logs if feature is enabled
         if !allowDuplicateLogs {

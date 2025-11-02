@@ -65,7 +65,7 @@ This method requires **two different tokens**:
 
 #### Token 1: Notion API Token
 - **Purpose:** Container authenticates to Notion's API
-- **Location:** Docker environment variable `NOTION_TOKEN`
+- **Location:** Docker environment variable `NOTION_API_KEY`
 - **Format:** `ntn_xxxxx` (OAuth) or `secret_xxxxx` (Internal Integration)
 - **Get it from:** https://www.notion.so/profile/integrations
 - **Used by:** The MCP server container to access your Notion workspace
@@ -105,7 +105,7 @@ Require Approval: never
 docker run -d \
   --name notion-mcp \
   -p 8080:3000 \
-  -e NOTION_TOKEN=<YOUR_NOTION_TOKEN> \
+  -e NOTION_API_KEY=<YOUR_NOTION_TOKEN> \
   mcp/notion \
   notion-mcp-server --transport http --port 3000
 

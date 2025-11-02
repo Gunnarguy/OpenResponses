@@ -142,34 +142,9 @@ struct MCPConnector: Identifiable, Codable, Hashable {
         ),
         
         // Productivity
-        MCPConnector(
-            id: "connector_notion",
-            name: "Notion",
-            description: "Connect to the official Notion-hosted MCP server for read/write access to your workspace.",
-            icon: "square.grid.2x2.fill",
-            color: "#000000",
-            oauthScopes: [
-                "pages.read",
-                "pages.write",
-                "databases.read",
-                "databases.write",
-                "comments.read",
-                "comments.write"
-            ],
-            oauthInstructions: "Create a Notion internal integration, enable the workspace access you need, then paste the secret token below. The app will route requests to Notion's official MCP server per https://modelcontextprotocol.io/docs/getting-started/intro.",
-            setupURL: "https://www.notion.so/profile/integrations",
-            category: .productivity,
-            popularTools: [
-                "API-post-search",
-                "API-retrieve-a-page",
-                "API-post-page",
-                "API-post-database-query",
-                "API-delete-a-block"
-            ],
-            requiresRemoteServer: true
-        )
-
-        // Advanced users can still self-host using RemoteMCPServer templates (e.g., .notionCustom)
+        // REMOVED: Notion MCP connector (broken - use Direct Notion Integration instead)
+        // The connector_notion entry has been removed because mcp.notion.com requires OAuth tokens
+        // not integration tokens. Use Settings → MCP → Direct Notion Integration for working access.
     ]
     
     /// Get connector by ID

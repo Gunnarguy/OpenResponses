@@ -43,12 +43,16 @@ extension ChatViewModel {
             handleOutputItemAddedChunk(chunk, messageId: messageId)
         case "response.output_item.completed":
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
-        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated":
+        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             handleMCPListToolsChunk(chunk, messageId: messageId)
-        case "response.mcp_call.added":
+        case "response.mcp_call.added", "response.mcp_call.in_progress":
             handleMCPCallAddedChunk(chunk, messageId: messageId)
-        case "response.mcp_call.done":
+        case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             handleMCPCallDoneChunk(chunk, messageId: messageId)
+        case "response.mcp_call_arguments.delta":
+            handleMCPArgumentsDeltaChunk(chunk, messageId: messageId)
+        case "response.mcp_call_arguments.done":
+            handleMCPArgumentsDoneChunk(chunk, messageId: messageId)
         case "response.mcp_approval_request.added":
             handleMCPApprovalRequestChunk(chunk, messageId: messageId)
         default:
@@ -268,7 +272,31 @@ extension ChatViewModel {
 
     /// Finalizes the response once the stream signals completion.
     func handleResponseCompletion(_ chunk: StreamingEvent, messageId: UUID) {
-        AppLogger.log("Streaming response completed for message: \(messageId)", category: .streaming, level: .info)
+        AppLogger.log("🎬 [Streaming] Response completed for message: \(messageId)", category: .streaming, level: .info)
+        if let responseId = chunk.response?.id {
+            AppLogger.log("🎬 [Streaming] Final response ID: \(responseId)", category: .streaming, level: .info)
+            if let response = chunk.response {
+                _ = storeReasoningItems(from: response)
+            }
+        } else {
+            AppLogger.log("🎬 [Streaming] No response ID on completion chunk", category: .streaming, level: .debug)
+        }
+        if let outputItems = chunk.response?.output {
+            AppLogger.log("📦 [Streaming] Completion contains \(outputItems.count) output items", category: .streaming, level: .info)
+            for (index, item) in outputItems.enumerated() {
+                AppLogger.log("📦 [Streaming] Output[\(index)] id=\(item.id), type=\(item.type), status=\(item.status ?? "none"), role=\(item.role ?? "none")", category: .streaming, level: .info)
+                if let content = item.content, !content.isEmpty {
+                    AppLogger.log("📄 [Streaming] Output[\(index)] has \(content.count) content parts", category: .streaming, level: .info)
+                    for (cIndex, part) in content.enumerated() {
+                        AppLogger.log("📄 [Streaming] Content[\(cIndex)] type=\(part.type), text=\(part.text?.prefix(120) ?? "<none>")", category: .streaming, level: .info)
+                    }
+                } else {
+                    AppLogger.log("📄 [Streaming] Output[\(index)] has no content array", category: .streaming, level: .debug)
+                }
+            }
+        } else {
+            AppLogger.log("📦 [Streaming] Completion chunk has no output items", category: .streaming, level: .debug)
+        }
         clearPendingFileAttachments()
         flushDeltaBufferIfNeeded(for: messageId)
 
@@ -288,9 +316,13 @@ extension ChatViewModel {
             let existing = updated[msgIndex].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if existing.isEmpty {
                 if let synthesized = buildTextFromOutput(chunk.response?.output) {
+                    AppLogger.log("📝 [Streaming] Synthesized text of length \(synthesized.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = synthesized
                 } else if let mcpText = buildTextFromMCPItems(chunk.response?.output) {
+                    AppLogger.log("📝 [Streaming] Synthesized MCP text of length \(mcpText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = mcpText
+                } else {
+                    AppLogger.log("⚠️ [Streaming] Unable to synthesize text from completion output", category: .streaming, level: .warning)
                 }
             }
             messages = updated
@@ -306,8 +338,15 @@ extension ChatViewModel {
             AppLogger.log("Stream completed; continuing with computer use", category: .streaming, level: .debug)
         }
 
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
-              let text = messages[msgIndex].text, !text.isEmpty else { return }
+                guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+                let finalText = messages[msgIndex].text ?? ""
+                AppLogger.log("💬 [Streaming] Final message text length: \(finalText.count)", category: .streaming, level: .info)
+                AppLogger.log("💬 [Streaming] Final message text preview: \(finalText.prefix(200))", category: .streaming, level: .info)
+
+                guard !finalText.isEmpty else { return }
+
+                let text = finalText
 
         let detectedURLs = URLDetector.extractRenderableURLs(from: text)
         if !detectedURLs.isEmpty {
@@ -475,6 +514,14 @@ extension ChatViewModel {
         if let arguments = chunk.arguments {
             AppLogger.log("  Arguments: \(arguments)", category: .openAI, level: .debug)
         }
+
+        if let itemId = chunk.itemId ?? chunk.item?.id {
+            if let initial = chunk.arguments, !initial.isEmpty {
+                mcpArgumentBuffers[itemId] = initial
+            } else {
+                mcpArgumentBuffers[itemId] = ""
+            }
+        }
         
         logActivity("MCP: Calling \(toolName) on \(serverLabel)…")
         streamingStatus = .runningTool(toolName)
@@ -517,6 +564,51 @@ extension ChatViewModel {
         } else {
             AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed (no output)", category: .openAI, level: .info)
             logActivity("MCP: \(toolName) completed")
+        }
+
+        if let argumentKey = chunk.item?.id ?? chunk.itemId {
+            mcpArgumentBuffers.removeValue(forKey: argumentKey)
+        }
+    }
+    
+    /// Buffers streaming MCP argument deltas for debugging and summaries.
+    private func handleMCPArgumentsDeltaChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId ?? chunk.item?.id else { return }
+        let fragment = chunk.argumentsDelta ?? chunk.arguments ?? chunk.delta
+        guard let fragment, !fragment.isEmpty else { return }
+
+        let existing = mcpArgumentBuffers[itemId] ?? ""
+        mcpArgumentBuffers[itemId] = existing + fragment
+
+        let previewLimit = 160
+        let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
+        AppLogger.log("🔧 [MCP] Arguments delta for item \(itemId): \(preview)", category: .openAI, level: .debug)
+
+        if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
+            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)…")
+        }
+    }
+
+    /// Finalizes streaming MCP arguments and logs the aggregated payload.
+    private func handleMCPArgumentsDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId ?? chunk.item?.id else { return }
+        defer { mcpArgumentBuffers.removeValue(forKey: itemId) }
+
+        let aggregate = chunk.arguments ?? chunk.item?.arguments ?? mcpArgumentBuffers[itemId]
+        guard let aggregate, !aggregate.isEmpty else { return }
+
+        if let pretty = prettyPrintArguments(aggregate) {
+            AppLogger.log("🔧 [MCP] Arguments finalized for item \(itemId):\n\(pretty)", category: .openAI, level: .debug)
+        } else {
+            let previewLimit = 200
+            let preview = aggregate.count > previewLimit ? String(aggregate.prefix(previewLimit)) + "…" : aggregate
+            AppLogger.log("🔧 [MCP] Arguments finalized for item \(itemId): \(preview)", category: .openAI, level: .debug)
+        }
+
+        if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
+            logActivity("MCP: Arguments ready for \(toolName) on \(serverLabel)")
+        } else {
+            logActivity("MCP: Arguments ready")
         }
     }
     
@@ -578,16 +670,20 @@ private extension ChatViewModel {
     func buildTextFromOutput(_ output: [StreamingOutputItem]?) -> String? {
         guard let output else { return nil }
         var segments: [String] = []
+        AppLogger.log("🧱 [Streaming] buildTextFromOutput scanning \(output.count) items", category: .streaming, level: .debug)
         for item in output where item.type == "message" {
             guard let content = item.content else { continue }
+            AppLogger.log("🧱 [Streaming] Found message item id=\(item.id) with \(content.count) content blocks", category: .streaming, level: .debug)
             for block in content {
                 if let text = block.text, !text.isEmpty {
+                    AppLogger.log("🧱 [Streaming] Appending block text len=\(text.count)", category: .streaming, level: .debug)
                     segments.append(text)
                 }
             }
         }
         let combined = segments.joined()
         let trimmed = combined.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppLogger.log("🧱 [Streaming] Combined text len=\(combined.count) trimmed len=\(trimmed.count)", category: .streaming, level: .debug)
         return trimmed.isEmpty ? nil : trimmed
     }
 

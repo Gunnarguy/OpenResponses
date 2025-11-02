@@ -256,7 +256,6 @@ struct ModelConfigurationView: View {
             
             Picker("Text Format", selection: $activePrompt.textFormatType) {
                 Text("Text").tag("text")
-                Text("JSON Object").tag("json_object")
                 Text("JSON Schema").tag("json_schema")
             }
             .pickerStyle(.segmented)

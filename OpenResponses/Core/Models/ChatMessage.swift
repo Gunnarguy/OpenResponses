@@ -159,6 +159,20 @@ struct OutputItem: Decodable {
     }
 }
 
+extension OutputItem {
+    init(streamingItem: StreamingItem) {
+        self.id = streamingItem.id
+        self.type = streamingItem.type
+        self.summary = nil
+        self.content = nil
+        self.name = streamingItem.name
+        self.arguments = streamingItem.arguments
+        self.callId = streamingItem.callId
+        self.action = streamingItem.action
+        self.pendingSafetyChecks = streamingItem.pendingSafetyChecks
+    }
+}
+
 struct SummaryItem: Decodable {
     let type: String              // Summary type (e.g., "summary_text")
     let text: String
@@ -441,6 +455,9 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// Arguments for mcp_call and mcp_approval_request events (JSON string)
     let arguments: String?
     
+    /// Streaming delta payload for MCP arguments (JSON string fragment)
+    let argumentsDelta: String?
+    
     /// Output from mcp_call events (JSON string)
     let output: String?
     
@@ -475,6 +492,7 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case tools
         case name
         case arguments
+        case argumentsDelta = "arguments_delta"
         case output
         case error
         case approvalRequestId = "approval_request_id"
@@ -506,10 +524,11 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         annotationIndex = try container.decodeIfPresent(Int.self, forKey: .annotationIndex)
         annotation = try container.decodeIfPresent(StreamingAnnotation.self, forKey: .annotation)
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
-    tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
-    name = try container.decodeIfPresent(String.self, forKey: .name)
-    arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
-    output = try container.decodeStringOrJSONStringIfPresent(forKey: .output)
+        tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
+        argumentsDelta = try container.decodeStringOrJSONStringIfPresent(forKey: .argumentsDelta)
+        output = try container.decodeStringOrJSONStringIfPresent(forKey: .output)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
         
         // Handle polymorphic error field
@@ -652,6 +671,9 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
     
     /// Array of content items (text, images, etc.)
     let content: [StreamingContentItem]?
+
+    /// Summary blocks included with reasoning items
+    let summary: [SummaryItem]?
     
     /// Role for message items: "user", "assistant", etc.
     let role: String?
@@ -687,6 +709,7 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         case output
         case error
         case approvalRequestId = "approval_request_id"
+        case summary
     }
 
     init(from decoder: Decoder) throws {
@@ -695,6 +718,7 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         type = try container.decode(String.self, forKey: .type)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         content = try container.decodeIfPresent([StreamingContentItem].self, forKey: .content)
+        summary = try container.decodeIfPresent([SummaryItem].self, forKey: .summary)
         role = try container.decodeIfPresent(String.self, forKey: .role)
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
         tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)

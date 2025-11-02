@@ -267,12 +267,14 @@ Refer to `ROADMAP.md` for detailed implementation requirements and priority orde
 - [ ] Tested with different user settings
 - [ ] **Streaming Feedback**: Tested blinking cursor, activity feed, and real-time updates across different streaming scenarios (text generation, tool calls, reasoning steps)
 - [ ] **Accessibility**: Verified streaming feedback components work properly with VoiceOver and accessibility technologies
+- [ ] Notion search tool returns compact payloads (<=25 results with summaries) and surfaces truncation warnings when queries are too broad
 - [ ] API Inspector accuracy verified with known requests
 - [ ] Debug Console performance tested with heavy logging
 - [ ] Prompt preset save/load functionality tested thoroughly
 - [ ] Multi-store file search tested with various configurations
 - [ ] MCP Tool integration tested with external servers
-- [ ] Notion official MCP server verified (authorization stored in Keychain, `Notion-Version: 2022-06-28` present, `list_tools` succeeds without 401)
+- [ ] Notion official MCP server verified (authorization stored in Keychain, `Notion-Version: 2025-09-03` present, `list_tools` succeeds without 401)
+- [ ] Notion workspace search succeeds with `data_source` filter (v2025-09-03) and gracefully falls back to legacy `database` search when required
 - [ ] **NEW**: MCP Discovery System tested with built-in server registry
 - [ ] **NEW**: MCP server search and filtering functionality validated
 - [ ] **NEW**: MCP authentication configuration tested for multiple auth types

@@ -312,7 +312,7 @@ class ModelCompatibilityService {
         ),
         "gpt-5": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp], // Added .mcp support
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp, .computer], // Added .computer and .mcp support
             // Note: temperature and top_p are not supported for gpt-5 per API; use reasoning_effort instead
             parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
@@ -320,7 +320,7 @@ class ModelCompatibilityService {
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .disabled // Disabled until OpenAI supports computer use with gpt-5
+                computer: .disabled // Computer use NOT supported by gpt-5 (per API error)
             ),
             category: .latest,
             supportsReasoningEffort: true,
