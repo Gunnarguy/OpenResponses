@@ -363,7 +363,15 @@ struct ConnectorSetupView: View {
     @State private var showingSuccess = false
     
     private var isValid: Bool {
-        !oauthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let trimmed = oauthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        
+        // Reject authorization codes (they start with "4/0")
+        if trimmed.hasPrefix("4/0") {
+            return false
+        }
+        
+        return true
     }
     
     private var allowedToolList: [String] {
@@ -412,11 +420,31 @@ struct ConnectorSetupView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
+                        // Link to OAuth Playground for easy testing
+                        Link(destination: URL(string: "https://developers.google.com/oauthplayground/")!) {
+                            HStack {
+                                Image(systemName: "play.circle.fill")
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Google OAuth 2.0 Playground")
+                                        .fontWeight(.medium)
+                                    Text("Get a test access token quickly")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.forward.square")
+                            }
+                            .padding()
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(12)
+                        }
+                        
                         if let setupURL = connector.setupURL {
                             Link(destination: URL(string: setupURL)!) {
                                 HStack {
                                     Image(systemName: "arrow.up.forward.square")
-                                    Text("Open OAuth Setup")
+                                    Text("Production OAuth Setup")
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                 }
@@ -452,19 +480,69 @@ struct ConnectorSetupView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         StepHeader(number: 2, title: "Enter Access Token", isCompleted: isValid)
                         
-                        SecureField("Paste your OAuth token here", text: $oauthToken)
+                        // Critical warning about token type
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("IMPORTANT: You need an ACCESS TOKEN, not an authorization code")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            Text("• Access tokens start with 'ya29.' for Google services")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• Authorization codes (starting with '4/0') will NOT work")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• Use Google OAuth Playground to get a test access token")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                        
+                        SecureField("Paste your OAuth ACCESS TOKEN here (ya29...)", text: $oauthToken)
                             .textFieldStyle(.roundedBorder)
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
                         
                         if !oauthToken.isEmpty {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Token entered")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
+                            let tokenPrefix = String(oauthToken.prefix(4))
+                            if tokenPrefix == "4/0A" || tokenPrefix == "4/0_" {
+                                HStack {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("This looks like an authorization CODE")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.red)
+                                        Text("You need to exchange it for an access token first")
+                                            .font(.caption2)
+                                            .foregroundColor(.red)
+                                    }
+                                }
+                            } else if oauthToken.hasPrefix("ya29.") {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Valid Google access token format")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                            } else {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Token entered")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
                             }
                         }
                     }

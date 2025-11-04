@@ -1997,8 +1997,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
                 // Success path: tools listed
                 if event.type == "response.mcp_list_tools.added" || event.type == "response.mcp_list_tools.updated" {
-                    toolsCount = event.tools?.count ?? 0
-                    break
+                    if let tools = event.tools ?? event.item?.tools {
+                        toolsCount = tools.count
+                        break
+                    }
                 }
                 // Error events surfaced by streaming
                 if event.type == "error" {

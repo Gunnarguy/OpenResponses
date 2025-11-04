@@ -107,6 +107,48 @@ final class StreamingEventDecodingTests: XCTestCase {
     XCTAssertEqual(items["type"] as? String, "string")
   }
 
+    func testStreamingEventDecodesMCPListToolsFromEmbeddedItem() throws {
+        let json = """
+        {
+          "type": "response.mcp_list_tools.added",
+          "sequence_number": 2,
+          "server_label": "Gmail",
+          "item": {
+            "id": "mcpl_embedded",
+            "type": "mcp_list_tools",
+            "server_label": "Gmail",
+            "tools": [
+              {
+                "name": "search_emails",
+                "description": "Search mail by query.",
+                "input_schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": { "type": "string" }
+                  }
+                }
+              }
+            ]
+          }
+        }
+        """
+
+        let data = Data(json.utf8)
+        let event = try JSONDecoder().decode(StreamingEvent.self, from: data)
+
+        XCTAssertEqual(event.type, "response.mcp_list_tools.added")
+        XCTAssertNil(event.tools)
+
+        guard let item = event.item else {
+            XCTFail("Expected embedded streaming item")
+            return
+        }
+
+        XCTAssertEqual(item.serverLabel, "Gmail")
+        XCTAssertEqual(item.tools?.count, 1)
+        XCTAssertEqual(item.tools?.first?["name"]?.value as? String, "search_emails")
+    }
+
   func testStreamingEventDecodesApprovalRequestArgumentsObject() throws {
     let json = """
     {
@@ -168,4 +210,80 @@ final class StreamingEventDecodingTests: XCTestCase {
     XCTAssertEqual(itemArgs["query"] as? String, "from:boss@example.com")
     XCTAssertEqual(itemArgs["max_results"] as? Int, 5)
     }
+
+    func testApprovalSummaryBuildsFromCompletionOutput() throws {
+        let json = """
+        {
+          "type": "response.completed",
+          "sequence_number": 7,
+          "response": {
+            "id": "resp_approval",
+            "object": "response",
+            "created_at": 1761675071,
+            "status": "completed",
+            "background": false,
+            "error": null,
+            "output": [
+              {
+                "id": "mcpr_approve_1",
+                "type": "mcp_approval_request",
+                "server_label": "Gmail",
+                "name": "list_messages",
+                "arguments": {
+                  "query": "from:boss@example.com",
+                  "max_results": 5
+                },
+                "approval_request_id": "mcpr_approve_1"
+              }
+            ]
+          }
+        }
+        """
+
+        let data = Data(json.utf8)
+        let event = try JSONDecoder().decode(StreamingEvent.self, from: data)
+
+        XCTAssertEqual(event.type, "response.completed")
+        XCTAssertEqual(event.sequenceNumber, 7)
+
+        let viewModel = ChatViewModel()
+        let requests = viewModel.extractApprovalRequests(from: event.response?.output)
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.toolName, "list_messages")
+        XCTAssertEqual(requests.first?.serverLabel, "Gmail")
+
+        let summary = viewModel.buildTextFromApprovalRequests(requests)
+        XCTAssertNotNil(summary)
+        XCTAssertTrue(summary?.contains("Approval required") == true)
+        XCTAssertTrue(summary?.contains("list_messages") == true)
+        XCTAssertTrue(summary?.contains("Gmail") == true)
+        XCTAssertTrue(summary?.contains("query") == true)
+    }
+
+  func testApprovalResponsePayloadOmitsReasonWhenApproving() {
+    let viewModel = ChatViewModel()
+    let payload = viewModel.buildMCPApprovalResponsePayload(
+      approvalRequestId: "mcpr_approve",
+      approve: true,
+      reason: "Looks good"
+    )
+
+    XCTAssertEqual(payload["type"] as? String, "mcp_approval_response")
+    XCTAssertEqual(payload["approval_request_id"] as? String, "mcpr_approve")
+    XCTAssertEqual(payload["approve"] as? Bool, true)
+    XCTAssertNil(payload["reason"])
+  }
+
+  func testApprovalResponsePayloadIncludesReasonWhenRejecting() {
+    let viewModel = ChatViewModel()
+    let payload = viewModel.buildMCPApprovalResponsePayload(
+      approvalRequestId: "mcpr_reject",
+      approve: false,
+      reason: "Insufficient scope"
+    )
+
+    XCTAssertEqual(payload["type"] as? String, "mcp_approval_response")
+    XCTAssertEqual(payload["approve"] as? Bool, false)
+    XCTAssertEqual(payload["reason"] as? String, "Insufficient scope")
+  }
 }

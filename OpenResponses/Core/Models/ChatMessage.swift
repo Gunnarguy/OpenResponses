@@ -812,6 +812,9 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     // Fields for MCP approval request items
     /// Server label for MCP approval requests
     let serverLabel: String?
+
+    /// Tools array for `mcp_list_tools` streaming items
+    let tools: [[String: AnyCodable]]?
     
     /// Approval request ID for MCP approval request items
     let approvalRequestId: String?
@@ -820,7 +823,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     let error: MCPToolError?
     
     enum CodingKeys: String, CodingKey {
-        case id, type, status, content, role, name, arguments, action, error
+        case id, type, status, content, role, name, arguments, action, error, tools
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
         case serverLabel = "server_label"
@@ -841,6 +844,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         callId = try container.decodeIfPresent(String.self, forKey: .callId)
         pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
+        tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
     }
     

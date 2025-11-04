@@ -13,6 +13,8 @@ struct SettingsHomeView: View {
     @State private var showingNotionQuickConnect = false
     @State private var showingFileManager = false
     @State private var showingPromptLibrary = false
+    @State private var showingMCPGallery = false
+    @State private var showingRemoteMCPSheet = false
 
     var body: some View {
         NavigationView {
@@ -35,6 +37,10 @@ struct SettingsHomeView: View {
                         showingNotionQuickConnect: $showingNotionQuickConnect,
                         showingFileManager: $showingFileManager,
                         showingPromptLibrary: $showingPromptLibrary
+                    )
+                    case .mcp: MCPTab(
+                        showingConnectorGallery: $showingMCPGallery,
+                        showingRemoteSetup: $showingRemoteMCPSheet
                     )
                     case .advanced: AdvancedTab()
                     }
@@ -71,19 +77,27 @@ struct SettingsHomeView: View {
                 createPromptFromCurrentSettings: { viewModel.activePrompt }
             )
         }
+        .sheet(isPresented: $showingMCPGallery) {
+            MCPConnectorGalleryView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingRemoteMCPSheet) {
+            RemoteMCPSetupSheet()
+                .environmentObject(viewModel)
+        }
     }
 }
 
 // MARK: - Tabs
 
 private enum SettingsTab: CaseIterable {
-    case general, model, tools, advanced
+    case general, model, tools, mcp, advanced
 
     var title: String {
         switch self {
         case .general:  return "General"
         case .model:    return "Model"
         case .tools:    return "Tools"
+        case .mcp:      return "MCP"
         case .advanced: return "Advanced"
         }
     }
@@ -479,6 +493,431 @@ private struct AdvancedTab: View {
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
             }
+        }
+    }
+}
+
+
+// MARK: - MCP
+
+private struct MCPTab: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+    @Binding var showingConnectorGallery: Bool
+    @Binding var showingRemoteSetup: Bool
+
+    @State private var isTesting = false
+    @State private var diagStatus: String?
+    @State private var showClearConfirm = false
+
+    private var prompt: Prompt { viewModel.activePrompt }
+    private var headerKey: String {
+        normalizedHeaderKey(prompt.mcpAuthHeaderKey)
+    }
+    private var remoteConfigured: Bool {
+        !prompt.mcpIsConnector &&
+        !prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !prompt.mcpServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private var connectorConfigured: Bool {
+        prompt.mcpIsConnector && (prompt.mcpConnectorId ?? "").isEmpty == false
+    }
+    private var hasConfiguration: Bool { remoteConfigured || connectorConfigured }
+    private var mcpEnabled: Bool { prompt.enableMCPTool }
+
+    var body: some View {
+        Form {
+            Section(header: Label("Status", systemImage: "power")) {
+                Toggle(isOn: Binding(
+                    get: { viewModel.activePrompt.enableMCPTool },
+                    set: { newValue in
+                        var updated = viewModel.activePrompt
+                        updated.enableMCPTool = newValue
+                        viewModel.activePrompt = updated
+                        viewModel.saveActivePrompt()
+                    }
+                )) {
+                    Text("Enable MCP Tools")
+                }
+                .toggleStyle(.switch)
+
+                Text(mcpEnabled ? "Tool calls will use the configured MCP connector." : "Keep the configuration, but skip MCP tool calls until you re-enable this switch.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Label("Current Configuration", systemImage: "bolt.shield")) {
+                if remoteConfigured {
+                    remoteStatusCard
+                } else if connectorConfigured {
+                    connectorStatusCard
+                } else {
+                    Text("No MCP configuration is active. Use the actions below to connect a connector or remote server.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if remoteConfigured {
+                Section(header: Label("Diagnostics", systemImage: "waveform.and.magnifyingglass")) {
+                    if isTesting {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text("Testing…")
+                        }
+                    } else {
+                        Button {
+                            testMCPConnection()
+                        } label: {
+                            Label("Test MCP Connection", systemImage: "checkmark.seal")
+                        }
+                    }
+
+                    if let diagStatus {
+                        Text(diagStatus)
+                            .font(.caption)
+                            .foregroundColor(diagStatus.contains("OK") ? .green : .orange)
+                    }
+                }
+            }
+
+            Section(header: Label("Manage", systemImage: "slider.horizontal.3")) {
+                Button {
+                    showingConnectorGallery = true
+                } label: {
+                    Label("Browse Connector Gallery", systemImage: "square.grid.2x2.fill")
+                }
+
+                Button {
+                    showingRemoteSetup = true
+                } label: {
+                    Label("Configure Remote Server", systemImage: "server.rack")
+                }
+
+                if hasConfiguration {
+                    Button(role: .destructive) {
+                        showClearConfirm = true
+                    } label: {
+                        Label("Remove MCP Configuration", systemImage: "trash")
+                    }
+                }
+            }
+
+            if let guidance = notionGuidance {
+                Section {
+                    Text(guidance)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    .onAppear { diagStatus = nil }
+    .onChange(of: prompt.mcpServerLabel) { _, _ in diagStatus = nil }
+        .alert("Remove MCP Configuration?", isPresented: $showClearConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                clearMCPConfiguration()
+            }
+        } message: {
+            Text("This clears connector tokens, remote headers, and diagnostics.")
+        }
+    }
+
+    private var remoteStatusCard: some View {
+        let label = prompt.mcpServerLabel
+        let url = prompt.mcpServerURL
+        let defaults = UserDefaults.standard
+        let probeOk = defaults.bool(forKey: "mcp_probe_ok_\(label)")
+        let probeTimestamp = defaults.double(forKey: "mcp_probe_ok_at_\(label)")
+        let toolCount = optionalInt(forKey: "mcp_probe_tool_count_\(label)")
+        let storedHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
+        let currentHash = currentTokenHash(for: label, headerKey: headerKey, prompt: prompt)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label).font(.headline)
+                Text(url).font(.caption).foregroundColor(.secondary)
+            }
+
+            StatusRow(title: "Enabled", value: mcpEnabled ? "On" : "Off", systemImage: "power")
+            StatusRow(title: "Mode", value: "Remote server", systemImage: "network")
+            StatusRow(title: "Approval", value: approvalDescription(prompt.mcpRequireApproval), systemImage: "checkmark.shield")
+            StatusRow(title: "Allowed Tools", value: allowedToolsDescription(prompt.mcpAllowedTools), systemImage: "hammer")
+            StatusRow(title: "Token", value: remoteTokenStatus(label: label), systemImage: "key.fill")
+
+            StatusRow(title: "Last Probe", value: probeSummary(ok: probeOk, timestamp: probeTimestamp), systemImage: "waveform")
+            if let toolCount {
+                StatusRow(title: "Tool Count", value: "\(toolCount)", systemImage: "list.bullet")
+            }
+            StatusRow(title: "Token Hash", value: hashStatusText(storedHash: storedHash, currentHash: currentHash), systemImage: "fingerprint")
+
+            if let diagStatus {
+                Divider()
+                Text(diagStatus)
+                    .font(.caption)
+                    .foregroundColor(diagStatus.contains("OK") ? .green : .orange)
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+    }
+
+    private var connectorStatusCard: some View {
+        guard let connectorId = prompt.mcpConnectorId,
+              let connector = MCPConnector.connector(for: connectorId) else {
+            return AnyView(Text("Configured connector is no longer available.")
+                .font(.caption)
+                .foregroundColor(.secondary))
+        }
+
+        let tokenKey = "mcp_connector_\(connectorId)"
+        let tokenStored = KeychainService.shared.load(forKey: tokenKey)?.isEmpty == false
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(connector.name).font(.headline)
+                    Text(connector.description).font(.caption).foregroundColor(.secondary)
+                }
+
+                StatusRow(title: "Mode", value: "Connector", systemImage: "link")
+                StatusRow(title: "Connector ID", value: connectorId, systemImage: "number")
+                StatusRow(title: "Approval", value: approvalDescription(prompt.mcpRequireApproval), systemImage: "checkmark.shield")
+                StatusRow(title: "Allowed Tools", value: allowedToolsDescription(prompt.mcpAllowedTools), systemImage: "hammer")
+                StatusRow(title: "Token", value: tokenStored ? "Stored in Keychain" : "Missing", systemImage: "key.fill")
+                StatusRow(title: "Enabled", value: mcpEnabled ? "On" : "Off", systemImage: "power")
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+        )
+    }
+
+    private var notionGuidance: String? {
+        guard remoteConfigured else { return nil }
+        let lowerURL = prompt.mcpServerURL.lowercased()
+        let lowerLabel = prompt.mcpServerLabel.lowercased()
+        let raw = rawTokenForGuidance(label: prompt.mcpServerLabel, prompt: prompt)
+        let looksIntegration = raw.map(tokenLooksLikeNotionIntegration) ?? false
+
+        if lowerURL.contains("mcp.notion.com") {
+            if looksIntegration {
+                return "Official Notion MCP detected. Your integration token will be sent as top-level authorization (no Authorization header)."
+            }
+            return "Official Notion MCP requires your Notion Integration token (ntn_/secret_) pasted into the remote setup."
+        }
+
+        if lowerURL.contains("notion") || lowerLabel.contains("notion") {
+            if looksIntegration {
+                return "Self-hosted Notion MCP is using an integration token. Replace it with the Bearer token printed by your server."
+            }
+            return "Self-hosted Notion MCP servers require the Bearer token emitted by your container logs."
+        }
+
+        return nil
+    }
+
+    private func testMCPConnection() {
+        guard remoteConfigured else { return }
+        isTesting = true
+        diagStatus = nil
+        let currentPrompt = viewModel.activePrompt
+        Task {
+            do {
+                let result = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: currentPrompt)
+                await MainActor.run {
+                    persistProbeSuccess(label: result.label, count: result.count, prompt: currentPrompt)
+                    diagStatus = "MCP list_tools OK (\(result.label)): \(result.count) tools"
+                    isTesting = false
+                }
+            } catch {
+                await MainActor.run {
+                    diagStatus = friendlyProbeError(error)
+                    isTesting = false
+                }
+            }
+        }
+    }
+
+    private func clearMCPConfiguration() {
+        var prompt = viewModel.activePrompt
+        let oldLabel = prompt.mcpServerLabel
+        let oldConnector = prompt.mcpConnectorId
+
+        if let oldConnector {
+            KeychainService.shared.delete(forKey: "mcp_connector_\(oldConnector)")
+        }
+        if !oldLabel.isEmpty {
+            KeychainService.shared.delete(forKey: "mcp_manual_\(oldLabel)")
+        }
+
+        prompt.enableMCPTool = false
+        prompt.mcpIsConnector = false
+        prompt.mcpConnectorId = nil
+        prompt.mcpServerLabel = ""
+        prompt.mcpServerURL = ""
+        prompt.mcpAllowedTools = ""
+        prompt.mcpRequireApproval = "never"
+        prompt.mcpHeaders = ""
+        prompt.mcpAuthHeaderKey = "Authorization"
+        prompt.mcpKeepAuthInHeaders = false
+
+        viewModel.activePrompt = prompt
+        viewModel.saveActivePrompt()
+        viewModel.lastMCPServerLabel = nil
+
+        if !oldLabel.isEmpty {
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: "mcp_probe_ok_\(oldLabel)")
+            defaults.removeObject(forKey: "mcp_probe_ok_at_\(oldLabel)")
+            defaults.removeObject(forKey: "mcp_probe_token_hash_\(oldLabel)")
+            defaults.removeObject(forKey: "mcp_probe_tool_count_\(oldLabel)")
+        }
+
+        diagStatus = nil
+    }
+
+    private func approvalDescription(_ raw: String) -> String {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "always": return "Always require approval"
+        case "never": return "Never require approval"
+        case "prompt", "ask", "review": return "Always require approval"
+        case "auto", "": return "Never require approval"
+        default: return normalized.capitalized
+        }
+    }
+
+    private func allowedToolsDescription(_ raw: String) -> String {
+        let parts = raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if parts.isEmpty { return "All tools" }
+        if parts.count <= 3 { return parts.joined(separator: ", ") }
+        return "\(parts.count) tools whitelisted"
+    }
+
+    private func remoteTokenStatus(label: String) -> String {
+        if label.isEmpty { return "Missing" }
+        if !prompt.secureMCPHeaders.isEmpty { return "Stored in Keychain" }
+        if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty {
+            return "Stored in Keychain"
+        }
+        return "Missing"
+    }
+
+    private func probeSummary(ok: Bool, timestamp: Double) -> String {
+        guard timestamp > 0 else { return ok ? "Recorded" : "Never" }
+        let formatter = RelativeDateTimeFormatter()
+        let date = Date(timeIntervalSince1970: timestamp)
+        let relative = formatter.localizedString(for: date, relativeTo: Date())
+        return ok ? "Pass · \(relative)" : "Fail · \(relative)"
+    }
+
+    private func hashStatusText(storedHash: String?, currentHash: String?) -> String {
+        switch (storedHash, currentHash) {
+        case let (stored?, current?):
+            return stored == current ? "Matches last probe" : "Token changed since probe"
+        case (nil, _):
+            return "Run diagnostics to record"
+        case (_, nil):
+            return "Token missing"
+        }
+    }
+
+    private func optionalInt(forKey key: String) -> Int? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: key) != nil else { return nil }
+        return defaults.integer(forKey: key)
+    }
+
+    private func normalizedHeaderKey(_ raw: String) -> String {
+        let base = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = base.isEmpty ? "Authorization" : base
+        return key.split(separator: "-").map { part -> String in
+            var lower = part.lowercased()
+            if lower == "id" { lower = "ID" }
+            return lower.prefix(1).uppercased() + lower.dropFirst()
+        }.joined(separator: "-")
+    }
+
+    private func currentTokenHash(for label: String, headerKey: String, prompt: Prompt) -> String? {
+        let headers = prompt.secureMCPHeaders
+        if let headerValue = headers[headerKey] ?? headers["Authorization"], !headerValue.isEmpty {
+            return NotionAuthService.shared.tokenHash(fromAuthorizationValue: headerValue)
+        }
+        guard let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty else {
+            return nil
+        }
+        if let data = stored.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+           let headerValue = obj[headerKey] ?? obj["Authorization"] {
+            return NotionAuthService.shared.tokenHash(fromAuthorizationValue: headerValue)
+        }
+        return NotionAuthService.shared.tokenHash(fromAuthorizationValue: stored)
+    }
+
+    private func rawTokenForGuidance(label: String, prompt: Prompt) -> String? {
+        let headers = prompt.secureMCPHeaders
+        if let headerValue = headers[headerKey] ?? headers["Authorization"], !headerValue.isEmpty {
+            return headerValue
+        }
+        guard let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty else {
+            return nil
+        }
+        if let data = stored.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+            return obj[headerKey] ?? obj["Authorization"]
+        }
+        return stored
+    }
+
+    private func tokenLooksLikeNotionIntegration(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("bearer ") {
+            let core = String(lower.dropFirst(7))
+            return core.hasPrefix("ntn_") || core.hasPrefix("secret_")
+        }
+        return lower.hasPrefix("ntn_") || lower.hasPrefix("secret_")
+    }
+
+    private func persistProbeSuccess(label: String, count: Int, prompt: Prompt) {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: "mcp_probe_ok_\(label)")
+        defaults.set(Date().timeIntervalSince1970, forKey: "mcp_probe_ok_at_\(label)")
+        if let hash = currentTokenHash(for: label, headerKey: headerKey, prompt: prompt) {
+            defaults.set(hash, forKey: "mcp_probe_token_hash_\(label)")
+        }
+        defaults.set(count, forKey: "mcp_probe_tool_count_\(label)")
+    }
+
+    private func friendlyProbeError(_ error: Error) -> String {
+        let message = error.localizedDescription
+        let lower = message.lowercased()
+        if lower.contains("401") || lower.contains("unauthorized") {
+            return "Probe failed: Unauthorized (401). Check the token."
+        }
+        if lower.contains("timeout") || lower.contains("timed out") {
+            return "Probe failed: Connection timed out. Verify the URL is reachable."
+        }
+        return "Probe failed: \(message)"
+    }
+}
+
+private struct StatusRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.body)
+                .multilineTextAlignment(.trailing)
         }
     }
 }

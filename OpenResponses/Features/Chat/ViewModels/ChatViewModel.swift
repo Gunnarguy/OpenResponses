@@ -63,6 +63,10 @@ class ChatViewModel: ObservableObject {
     /// Tracks the most recent list_tools error per MCP server to avoid spamming identical alerts.
     /// Accessed from the streaming extension to coordinate surfaced warnings.
     var lastMCPListToolsError: [String: String] = [:]
+    /// Remembers the last server label we successfully resolved so events missing this field can reuse it.
+    var lastMCPServerLabel: String?
+    /// Records MCP tool warnings surfaced to the user to avoid spamming duplicate alerts.
+    var surfacedMCPToolWarnings: Set<String> = []
     /// Prevents duplicate execution of the same function call when streaming emits multiple completion events.
     private var pendingFunctionCallIds: Set<String> = []
     private var completedFunctionCallIds: Set<String> = []
@@ -566,9 +570,10 @@ class ChatViewModel: ObservableObject {
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
-    // Determine streaming mode up front for logging and flow control
-    let streamingEnabled = activePrompt.enableStreaming
-    // Keep recent activity so users can see context; do not clear here to avoid flashing.
+        surfacedMCPToolWarnings.removeAll()
+        // Determine streaming mode up front for logging and flow control
+        let streamingEnabled = activePrompt.enableStreaming
+        // Keep recent activity so users can see context; do not clear here to avoid flashing.
         logActivity("Connecting to OpenAI…")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
         
@@ -1135,11 +1140,12 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("⏳ [Function Call] Call \(callIdentifier) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
             return
         }
-    pendingFunctionCallIds.insert(callIdentifier)
-    defer { pendingFunctionCallIds.remove(callIdentifier) }
+        pendingFunctionCallIds.insert(callIdentifier)
+        defer { pendingFunctionCallIds.remove(callIdentifier) }
 
         AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
-        AppLogger.log("🔧 [Function Call] Call ID: \(call.id ?? "none")", category: .ui, level: .info)
+        let callIdForLog = call.id.isEmpty ? callIdentifier : call.id
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
         let output: String
@@ -1550,46 +1556,57 @@ class ChatViewModel: ObservableObject {
             return
         }
         
+        let trimmedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // Update the approval status in the message
         if var approvalRequests = messages[messageIndex].mcpApprovalRequests,
            let approvalIndex = approvalRequests.firstIndex(where: { $0.id == approvalRequestId }) {
             approvalRequests[approvalIndex].status = approve ? .approved : .rejected
-            approvalRequests[approvalIndex].reason = reason
+            if let trimmedReason, !trimmedReason.isEmpty, !approve {
+                approvalRequests[approvalIndex].reason = trimmedReason
+            } else {
+                approvalRequests[approvalIndex].reason = nil
+            }
             messages[messageIndex].mcpApprovalRequests = approvalRequests
         }
         
         // Log the decision
         AppLogger.log("🔒 [MCP] User \(approve ? "approved" : "rejected") approval request \(approvalRequestId)", category: .openAI, level: .info)
-        if let reason = reason {
-            AppLogger.log("  Reason: \(reason)", category: .openAI, level: .debug)
+        if let trimmedReason, !trimmedReason.isEmpty, !approve {
+            AppLogger.log("  Reason: \(trimmedReason)", category: .openAI, level: .debug)
         }
         
         logActivity("MCP: \(approve ? "Approved" : "Rejected") tool call")
         
         // Send the approval response to the API
-        Task {
+        streamingTask?.cancel()
+        streamingMessageId = messageId // Ensure approval stream updates the originating message
+
+        streamingTask = Task { [weak self] in
+            guard let self else { return }
+            await MainActor.run {
+                self.streamingStatus = .connecting
+                self.isStreaming = true
+            }
+
             do {
-                streamingStatus = .connecting
-                isStreaming = true
-                
                 // Build approval response input
-                let approvalResponse: [String: Any] = [
-                    "type": "mcp_approval_response",
-                    "approval_request_id": approvalRequestId,
-                    "approve": approve,
-                    "reason": reason ?? ""
-                ]
-                
+                let approvalResponse = self.buildMCPApprovalResponsePayload(
+                    approvalRequestId: approvalRequestId,
+                    approve: approve,
+                    reason: trimmedReason
+                )
+
                 // Send the response using previous_response_id to continue the conversation
-                if activePrompt.enableStreaming {
+                if self.activePrompt.enableStreaming {
                     // Streaming mode
-                    let stream = api.streamMCPApprovalResponse(
+                    let stream = self.api.streamMCPApprovalResponse(
                         approvalResponse: approvalResponse,
-                        model: activePrompt.openAIModel,
-                        previousResponseId: lastResponseId,
-                        prompt: activePrompt
+                        model: self.activePrompt.openAIModel,
+                        previousResponseId: self.lastResponseId,
+                        prompt: self.activePrompt
                     )
-                    
+
                     for try await event in stream {
                         await MainActor.run {
                             self.handleStreamChunk(event, for: messageId)
@@ -1597,13 +1614,13 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Non-streaming mode
-                    let response = try await api.sendMCPApprovalResponse(
+                    let response = try await self.api.sendMCPApprovalResponse(
                         approvalResponse: approvalResponse,
-                        model: activePrompt.openAIModel,
-                        previousResponseId: lastResponseId,
-                        prompt: activePrompt
+                        model: self.activePrompt.openAIModel,
+                        previousResponseId: self.lastResponseId,
+                        prompt: self.activePrompt
                     )
-                    
+
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: messageId)
                     }
@@ -1614,9 +1631,24 @@ class ChatViewModel: ObservableObject {
                     self.logActivity("Error sending approval response")
                     self.streamingStatus = .idle
                     self.isStreaming = false
+                    self.streamingMessageId = nil
                 }
             }
         }
+    }
+
+    func buildMCPApprovalResponsePayload(approvalRequestId: String, approve: Bool, reason: String?) -> [String: Any] {
+        var payload: [String: Any] = [
+            "type": "mcp_approval_response",
+            "approval_request_id": approvalRequestId,
+            "approve": approve
+        ]
+
+        if let reason, !reason.isEmpty, !approve {
+            payload["reason"] = reason
+        }
+
+        return payload
     }
     
     /// Determines the current model to use from UserDefaults (or default).
@@ -2611,7 +2643,7 @@ class ChatViewModel: ObservableObject {
     /// the full response if images are returned as image_url/image_file content.
     func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
         // Ensure the message still exists before proceeding
-        guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
 
         if item.type == "function_call" {
             let status = item.status?.lowercased() ?? "unknown"
@@ -2639,24 +2671,68 @@ class ChatViewModel: ObservableObject {
 
         // Handle MCP tool completion
         if item.type == "mcp_call" {
-            if let toolName = item.name, let serverLabel = item.serverLabel {
-                AppLogger.log("✅ [MCP] Tool call completed: \(toolName) on server \(serverLabel)", category: .openAI, level: .info)
-                
-                // Add a subtle completion indicator to the message if it exists
-                if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
-                    // Check if we already have tool tracking for this message
-                    var updatedMessages = messages
-                    if updatedMessages[msgIndex].toolsUsed == nil {
-                        updatedMessages[msgIndex].toolsUsed = []
-                    }
-                    if !updatedMessages[msgIndex].toolsUsed!.contains("mcp") {
-                        updatedMessages[msgIndex].toolsUsed!.append("mcp")
-                        messages = updatedMessages
-                        AppLogger.log("🔧 [MCP Tool Tracking] Added MCP tool to message \(messageId)", category: .openAI, level: .debug)
-                    }
-                }
+            let status = item.status?.lowercased()
+            let resolved = resolveServerLabel(
+                serverLabel: item.serverLabel,
+                itemServerLabel: item.serverLabel,
+                fallbackId: item.id
+            )
+            if resolved.usedFallback {
+                AppLogger.log("ℹ️ [MCP] call completion missing server_label; using '\(resolved.label)'", category: .openAI, level: .debug)
+            }
+            let serverLabel = resolved.label
+            lastMCPServerLabel = serverLabel
+            let displayName: String
+            if let toolName = item.name?.trimmingCharacters(in: .whitespacesAndNewlines), !toolName.isEmpty {
+                displayName = toolName
             } else {
-                AppLogger.log("✅ [MCP] Tool call completed for item \(item.id)", category: .openAI, level: .info)
+                let suffix = String(item.id.prefix(6))
+                displayName = "MCP tool \(suffix)"
+            }
+
+            if status == "failed" {
+                let errorDescription = describeMCPError(status: status, stringError: nil, structuredError: item.error)
+                AppLogger.log("❌ [MCP] Tool call failed: \(displayName) on server \(serverLabel) - \(errorDescription)", category: .openAI, level: .error)
+                logActivity("MCP: \(displayName) failed - \(errorDescription)")
+
+                var updatedMessages = messages
+                let failureText = renderMCPFailureText(
+                    serverLabel: serverLabel,
+                    toolName: displayName,
+                    errorDescription: errorDescription,
+                    rawArguments: item.arguments
+                )
+                let existing = updatedMessages[messageIndex].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                updatedMessages[messageIndex].text = existing.isEmpty ? failureText : "\(existing)\n\n\(failureText)"
+                if updatedMessages[messageIndex].toolsUsed == nil {
+                    updatedMessages[messageIndex].toolsUsed = []
+                }
+                if !updatedMessages[messageIndex].toolsUsed!.contains("mcp") {
+                    updatedMessages[messageIndex].toolsUsed!.append("mcp")
+                }
+                messages = updatedMessages
+                return
+            }
+
+            if status == "completed" || status == "done" {
+                AppLogger.log("✅ [MCP] Tool call completed: \(displayName) on server \(serverLabel)", category: .openAI, level: .info)
+            } else {
+                AppLogger.log("ℹ️ [MCP] Tool call status '\(status ?? "unknown")' for item \(item.id) on server \(serverLabel)", category: .openAI, level: .debug)
+            }
+
+            var updatedMessages = messages
+            var mutated = false
+            if updatedMessages[messageIndex].toolsUsed == nil {
+                updatedMessages[messageIndex].toolsUsed = []
+                mutated = true
+            }
+            if updatedMessages[messageIndex].toolsUsed?.contains("mcp") == false {
+                updatedMessages[messageIndex].toolsUsed?.append("mcp")
+                AppLogger.log("🔧 [MCP Tool Tracking] Added MCP tool to message \(messageId)", category: .openAI, level: .debug)
+                mutated = true
+            }
+            if mutated {
+                messages = updatedMessages
             }
         }
         
@@ -2848,6 +2924,7 @@ class ChatViewModel: ObservableObject {
         deltaBuffers.removeAll()
         deltaFlushWorkItems.values.forEach { $0.cancel() }
         deltaFlushWorkItems.removeAll()
+        surfacedMCPToolWarnings.removeAll()
         
         updateActiveConversation(conversation)
     }
