@@ -76,6 +76,10 @@ public enum APICapabilities {
         
         private enum CodingKeys: String, CodingKey {
             case type
+            case name
+            case description
+            case parameters
+            case strict
             case function
             case container
             case model
@@ -201,7 +205,12 @@ public enum APICapabilities {
                 try container.encode(outputFormat, forKey: .outputFormat)
             case .function(let function):
                 try container.encode("function", forKey: .type)
-                try container.encode(function, forKey: .function)
+                try container.encode(function.name, forKey: .name)
+                try container.encode(function.description, forKey: .description)
+                try container.encode(function.parameters, forKey: .parameters)
+                if let strict = function.strict {
+                    try container.encode(strict, forKey: .strict)
+                }
             case .computer(let environment, let displayWidth, let displayHeight):
                 try container.encode("computer_use_preview", forKey: .type)
                 if let environment = environment {
@@ -367,6 +376,19 @@ public enum APICapabilities {
 
         public init(_ value: [String: Any]) {
             self.value = value.mapValues { AnyCodable($0) }
+        }
+        
+        // Custom encoding to encode the dictionary directly without the "value" wrapper
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        }
+        
+        // Custom decoding to decode the dictionary directly
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let dict = try container.decode([String: AnyCodable].self)
+            self.value = dict
         }
     }
 }

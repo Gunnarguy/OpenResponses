@@ -56,6 +56,8 @@ Available connectors include:
 - Google Calendar: `connector_googlecalendar`
 - And more.
 
+In the app, go to **Settings → MCP** to manage these integrations. The new **Enable MCP Tools** switch lets you temporarily suspend MCP tool calls without deleting stored credentials or configuration. Re-enable the toggle when you want the model to resume calling the connector or remote server.
+
 ---
 
 ## Prompt Caching
@@ -64,9 +66,9 @@ Prompt caching reduces latency and cost by caching the results of frequently use
 
 ### How it Works
 
-1.  **Cache Routing:** Requests are routed to a server based on a hash of the prompt's initial prefix.
-2.  **Cache Lookup:** The system checks if the prefix exists in the cache.
-3.  **Cache Hit/Miss:** If a match is found (hit), the cached result is used, saving time and cost. If not (miss), the full prompt is processed and the prefix is cached for future use.
+1. **Cache Routing:** Requests are routed to a server based on a hash of the prompt's initial prefix.
+2. **Cache Lookup:** The system checks if the prefix exists in the cache.
+3. **Cache Hit/Miss:** If a match is found (hit), the cached result is used, saving time and cost. If not (miss), the full prompt is processed and the prefix is cached for future use.
 
 To optimize for caching, place static content (instructions, examples) at the beginning of your prompt and dynamic content (user input) at the end.
 

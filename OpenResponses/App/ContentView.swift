@@ -46,7 +46,7 @@ struct ContentView: View {
             OnboardingView(isPresented: $showingOnboarding)
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView()
+            SettingsHomeView()
         }
         .sheet(isPresented: $showingConversationList) {
             ConversationListView(isPresented: $showingConversationList)

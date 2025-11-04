@@ -66,9 +66,9 @@ struct MCPConnectorGalleryView: View {
             }
             .sheet(isPresented: $showingRemoteServerSetup) {
                 if let connector = selectedConnector {
-                    RemoteServerSetupView(
-                        viewModel: viewModel,
-                        connector: connector
+                    RemoteServerSetupSheet(
+                        connector: connector,
+                        viewModel: viewModel
                     )
                 } else {
                     EmptyView()
@@ -86,6 +86,12 @@ struct MCPConnectorGalleryView: View {
             Text("Give AI access to your favorite services. All connections are secure and you control what data is shared.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+
+            // Note about Direct Notion Integration
+            Text("For Notion: Use 'Direct Notion Integration' in Settings → MCP tab (recommended path)")
+                .font(.caption)
+                .foregroundColor(.orange)
+                .padding(.top, 4)
         }
         .padding(.horizontal)
     }
@@ -131,6 +137,13 @@ struct MCPConnectorGalleryView: View {
         ], spacing: 16) {
             ForEach(filteredConnectors) { connector in
                 ConnectorCard(connector: connector, viewModel: viewModel) {
+                    // SAFETY: Block Notion MCP setup - redirect to Direct Integration
+                    if connector.id == "connector_notion" {
+                        // This should never happen since connector_notion is removed from library,
+                        // but adding as a safety guard.
+                        return
+                    }
+                    
                     selectedConnector = connector
                     // Show different setup flow based on connector type
                     if connector.requiresRemoteServer {
@@ -348,10 +361,17 @@ struct ConnectorSetupView: View {
     @State private var requireApproval = true
     @State private var allowedToolsText = ""
     @State private var showingSuccess = false
-    @State private var showingNotionToolSelector = false
     
     private var isValid: Bool {
-        !oauthToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let trimmed = oauthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        
+        // Reject authorization codes (they start with "4/0")
+        if trimmed.hasPrefix("4/0") {
+            return false
+        }
+        
+        return true
     }
     
     private var allowedToolList: [String] {
@@ -400,11 +420,31 @@ struct ConnectorSetupView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         
+                        // Link to OAuth Playground for easy testing
+                        Link(destination: URL(string: "https://developers.google.com/oauthplayground/")!) {
+                            HStack {
+                                Image(systemName: "play.circle.fill")
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Google OAuth 2.0 Playground")
+                                        .fontWeight(.medium)
+                                    Text("Get a test access token quickly")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.forward.square")
+                            }
+                            .padding()
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(12)
+                        }
+                        
                         if let setupURL = connector.setupURL {
                             Link(destination: URL(string: setupURL)!) {
                                 HStack {
                                     Image(systemName: "arrow.up.forward.square")
-                                    Text("Open OAuth Setup")
+                                    Text("Production OAuth Setup")
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                 }
@@ -440,19 +480,69 @@ struct ConnectorSetupView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         StepHeader(number: 2, title: "Enter Access Token", isCompleted: isValid)
                         
-                        SecureField("Paste your OAuth token here", text: $oauthToken)
+                        // Critical warning about token type
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("IMPORTANT: You need an ACCESS TOKEN, not an authorization code")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            Text("• Access tokens start with 'ya29.' for Google services")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• Authorization codes (starting with '4/0') will NOT work")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text("• Use Google OAuth Playground to get a test access token")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                        
+                        SecureField("Paste your OAuth ACCESS TOKEN here (ya29...)", text: $oauthToken)
                             .textFieldStyle(.roundedBorder)
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
                         
                         if !oauthToken.isEmpty {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Token entered")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
+                            let tokenPrefix = String(oauthToken.prefix(4))
+                            if tokenPrefix == "4/0A" || tokenPrefix == "4/0_" {
+                                HStack {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("This looks like an authorization CODE")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.red)
+                                        Text("You need to exchange it for an access token first")
+                                            .font(.caption2)
+                                            .foregroundColor(.red)
+                                    }
+                                }
+                            } else if oauthToken.hasPrefix("ya29.") {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Valid Google access token format")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                            } else {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Token entered")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
                             }
                         }
                     }
@@ -482,26 +572,6 @@ struct ConnectorSetupView: View {
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
-                            if connector.id == "connector_notion" {
-                                Button {
-                                    showingNotionToolSelector = true
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "slider.horizontal.3")
-                                            .font(.caption)
-                                        Text("Choose Notion tools")
-                                            .font(.caption)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.cyan.opacity(0.15))
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(.borderless)
-                                Text("Fine-tune the Notion APIs the assistant can call to stay within your workspace limits.")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
                             TextField("tool_one, tool_two", text: $allowedToolsText)
                                 .textFieldStyle(.roundedBorder)
                                 .textInputAutocapitalization(.never)
@@ -570,9 +640,6 @@ struct ConnectorSetupView: View {
             } message: {
                 Text("\(connector.name) is now connected and ready to use!")
             }
-            .sheet(isPresented: $showingNotionToolSelector) {
-                NotionToolSelectorView(selectedTools: $allowedToolsText)
-            }
         }
     }
     
@@ -637,6 +704,271 @@ struct ConnectorSetupView: View {
     }
 }
 
+private struct RemoteServerSetupSheet: View {
+    let connector: MCPConnector
+    @ObservedObject var viewModel: ChatViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var label: String = ""
+    @State private var url: String = ""
+    @State private var token: String = ""
+    @State private var requireApproval: Bool = true
+    @State private var allowedToolsText: String = ""
+    @State private var isTesting: Bool = false
+    @State private var diagStatus: String?
+
+    private var allowedToolList: [String] {
+        allowedToolsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var tokenLooksLikeIntegration: Bool {
+        let t = token.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.hasPrefix("ntn_") || t.hasPrefix("secret_") || t.hasPrefix("bearer ntn_") || t.hasPrefix("bearer secret_")
+    }
+    private var isNotionOfficialURL: Bool {
+        url.lowercased().contains("mcp.notion.com")
+    }
+
+    private var isValid: Bool {
+        let base = !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                   !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                   !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if connector.id == "connector_notion" {
+            // For official Notion MCP allow integration tokens; for self-hosted require server-issued token
+            if isNotionOfficialURL {
+                return base
+            } else {
+                return base && !tokenLooksLikeIntegration
+            }
+        }
+        return base
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Server")) {
+                    TextField("Label", text: $label)
+                    TextField("Server URL (https://...)", text: $url)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                }
+
+                Section(header: Text("Authorization")) {
+                    SecureField("Access Token", text: $token)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+
+                    // Guidance for Notion MCP
+                    if connector.id == "connector_notion" {
+                        if isNotionOfficialURL {
+                            if tokenLooksLikeIntegration {
+                                Text("Detected a Notion integration token — correct for the official Notion MCP.")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            } else if !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("For the official Notion MCP, use your Notion Integration token (ntn_/secret_). The app will send it as top‑level authorization.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Official Notion MCP (mcp.notion.com): paste your Notion Integration token (ntn_/secret_).")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            if tokenLooksLikeIntegration {
+                                Text("This looks like a Notion integration token. For self‑hosted servers, use the server‑issued Bearer token from your container logs instead.")
+                                    .font(.caption2)
+                                    .foregroundColor(.red)
+                            } else {
+                                Text("Self‑hosted Notion MCP: use the server‑issued Bearer token printed by your container.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
+                    Toggle("Require Approval", isOn: $requireApproval)
+                }
+
+                Section(header: Text("Allowed Tools (optional)")) {
+                    TextField("tool_one, tool_two", text: $allowedToolsText)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                    if !allowedToolList.isEmpty {
+                        Text("\(allowedToolList.count) tools selected")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Leave blank to allow all tools reported by the server")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if connector.id == "connector_notion" {
+                    Section(footer: Text(isNotionOfficialURL
+                                         ? "Official Notion MCP (mcp.notion.com): paste your Notion Integration token (ntn_/secret_) and the app will send it as top‑level authorization."
+                                         : "Self‑hosted Notion MCP: use the server‑issued Bearer token printed in your container logs (do not paste the integration token here).")) {
+                        EmptyView()
+                    }
+                }
+
+                Section(header: Text("Diagnostics")) {
+                    if isTesting {
+                        HStack {
+                            ProgressView()
+                            Text("Testing…")
+                        }
+                    } else {
+                        Button {
+                            Task {
+                                isTesting = true
+                                diagStatus = nil
+
+                                // Persist auth for probe
+                                let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
+                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(token)
+                                if isNotionOfficialURL {
+                                    // Official Notion MCP: save raw token for top-level auth (no Authorization header)
+                                    KeychainService.shared.save(value: normalizedAuth, forKey: "mcp_manual_\(label)")
+                                } else {
+                                    // Self-hosted: store as Authorization header JSON
+                                    let headers = [headerKey: normalizedAuth]
+                                    if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
+                                       let str = String(data: data, encoding: .utf8) {
+                                        KeychainService.shared.save(value: str, forKey: "mcp_manual_\(label)")
+                                    }
+                                }
+
+                                // Build derived prompt for probe (without mutating current prompt)
+                                var probePrompt = viewModel.activePrompt
+                                probePrompt.enableMCPTool = true
+                                probePrompt.mcpIsConnector = false
+                                probePrompt.mcpServerLabel = label
+                                probePrompt.mcpServerURL = url
+                                probePrompt.mcpAllowedTools = allowedToolList.joined(separator: ", ")
+                                probePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
+
+                                do {
+                                    let (lbl, count) = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: probePrompt)
+                                    diagStatus = "MCP list_tools OK (\(lbl)): \(count) tools"
+                                } catch {
+                                    diagStatus = "Probe failed: \(error.localizedDescription)"
+                                }
+
+                                isTesting = false
+                            }
+                        } label: {
+                            Label("Test MCP Connection", systemImage: "checkmark.seal")
+                        }
+                        .disabled(!isValid)
+                    }
+
+                    if let diagStatus = diagStatus {
+                        Text(diagStatus)
+                            .font(.caption)
+                            .foregroundColor(diagStatus.contains("OK") ? .green : .orange)
+                    }
+                }
+            }
+            .navigationTitle("Setup \(connector.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") { save() }
+                        .disabled(!isValid)
+                        .fontWeight(.semibold)
+                }
+            }
+            .onAppear { preload() }
+        }
+    }
+
+    private func preload() {
+        // Prefill sensible defaults
+        if label.isEmpty { label = connector.name }
+        // Quick Notion defaults
+        if connector.id == "connector_notion", url.isEmpty {
+            url = "https://mcp.notion.com/mcp"
+        }
+        // If a remote is already configured, preload it
+        let p = viewModel.activePrompt
+        if p.enableMCPTool && !p.mcpIsConnector && !p.mcpServerLabel.isEmpty {
+            label = p.mcpServerLabel
+            url = p.mcpServerURL
+            allowedToolsText = p.mcpAllowedTools
+            requireApproval = p.mcpRequireApproval != "never"
+            if let existing = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), token.isEmpty {
+                // If the stored value is a JSON header dict, extract Authorization; otherwise treat as raw token.
+                if let data = existing.data(using: .utf8),
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                    let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
+                    let headerVal = obj[headerKey] ?? obj["Authorization"] ?? ""
+                    token = NotionAuthService.shared.stripBearer(headerVal)
+                } else {
+                    token = existing
+                }
+            }
+        }
+    }
+
+    private func save() {
+        let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowed = allowedToolList.joined(separator: ", ")
+        let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
+        let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(cleanToken)
+        let isNotionOfficial = cleanURL.lowercased().contains("mcp.notion.com")
+
+        // Update active prompt to a remote MCP configuration
+        viewModel.activePrompt.enableMCPTool = true
+        viewModel.activePrompt.mcpIsConnector = false
+        viewModel.activePrompt.mcpConnectorId = nil
+        viewModel.activePrompt.mcpServerLabel = cleanLabel
+        viewModel.activePrompt.mcpServerURL = cleanURL
+        viewModel.activePrompt.mcpAllowedTools = allowed
+        viewModel.activePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
+
+        var headers = viewModel.activePrompt.secureMCPHeaders
+
+        if isNotionOfficial {
+            // Official Notion MCP: use TOP-LEVEL raw token only, no Authorization header
+            headers.removeValue(forKey: headerKey)
+            headers.removeValue(forKey: "Authorization")
+            viewModel.activePrompt.secureMCPHeaders = headers
+
+            // Persist raw token for top-level auth (strip any Bearer)
+            let rawTopLevel = NotionAuthService.shared.stripBearer(normalizedAuth)
+            KeychainService.shared.save(value: rawTopLevel, forKey: "mcp_manual_\(cleanLabel)")
+            AppLogger.log("🔐 Saved top-level token for official Notion MCP (no Authorization header).", category: .mcp, level: .info)
+        } else {
+            // Self-hosted: store Authorization header JSON and keep in headers
+            let headersDict = [headerKey: normalizedAuth]
+            if let data = try? JSONSerialization.data(withJSONObject: headersDict, options: [.sortedKeys]),
+               let str = String(data: data, encoding: .utf8) {
+                KeychainService.shared.save(value: str, forKey: "mcp_manual_\(cleanLabel)")
+            } else {
+                KeychainService.shared.save(value: "{\"\(headerKey)\":\"\(normalizedAuth)\"}", forKey: "mcp_manual_\(cleanLabel)")
+            }
+            headers[headerKey] = normalizedAuth
+            viewModel.activePrompt.secureMCPHeaders = headers
+            AppLogger.log("🔐 Saved Authorization header for self-hosted MCP.", category: .mcp, level: .info)
+        }
+
+        viewModel.saveActivePrompt()
+        AppLogger.log("✅ Configured remote MCP server '\(cleanLabel)' (official=\(isNotionOfficial))", category: .mcp, level: .info)
+        dismiss()
+    }
+}
+ 
 /// Step header for setup flow
 private struct StepHeader: View {
     let number: Int

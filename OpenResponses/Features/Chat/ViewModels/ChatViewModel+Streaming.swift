@@ -43,12 +43,16 @@ extension ChatViewModel {
             handleOutputItemAddedChunk(chunk, messageId: messageId)
         case "response.output_item.completed":
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
-        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated":
+        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             handleMCPListToolsChunk(chunk, messageId: messageId)
-        case "response.mcp_call.added":
+        case "response.mcp_call.added", "response.mcp_call.in_progress":
             handleMCPCallAddedChunk(chunk, messageId: messageId)
-        case "response.mcp_call.done":
+        case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             handleMCPCallDoneChunk(chunk, messageId: messageId)
+        case "response.mcp_call_arguments.delta":
+            handleMCPArgumentsDeltaChunk(chunk, messageId: messageId)
+        case "response.mcp_call_arguments.done":
+            handleMCPArgumentsDoneChunk(chunk, messageId: messageId)
         case "response.mcp_approval_request.added":
             handleMCPApprovalRequestChunk(chunk, messageId: messageId)
         default:
@@ -268,7 +272,31 @@ extension ChatViewModel {
 
     /// Finalizes the response once the stream signals completion.
     func handleResponseCompletion(_ chunk: StreamingEvent, messageId: UUID) {
-        AppLogger.log("Streaming response completed for message: \(messageId)", category: .streaming, level: .info)
+        AppLogger.log("🎬 [Streaming] Response completed for message: \(messageId)", category: .streaming, level: .info)
+        if let responseId = chunk.response?.id {
+            AppLogger.log("🎬 [Streaming] Final response ID: \(responseId)", category: .streaming, level: .info)
+            if let response = chunk.response {
+                _ = storeReasoningItems(from: response)
+            }
+        } else {
+            AppLogger.log("🎬 [Streaming] No response ID on completion chunk", category: .streaming, level: .debug)
+        }
+        if let outputItems = chunk.response?.output {
+            AppLogger.log("📦 [Streaming] Completion contains \(outputItems.count) output items", category: .streaming, level: .info)
+            for (index, item) in outputItems.enumerated() {
+                AppLogger.log("📦 [Streaming] Output[\(index)] id=\(item.id), type=\(item.type), status=\(item.status ?? "none"), role=\(item.role ?? "none")", category: .streaming, level: .info)
+                if let content = item.content, !content.isEmpty {
+                    AppLogger.log("📄 [Streaming] Output[\(index)] has \(content.count) content parts", category: .streaming, level: .info)
+                    for (cIndex, part) in content.enumerated() {
+                        AppLogger.log("📄 [Streaming] Content[\(cIndex)] type=\(part.type), text=\(part.text?.prefix(120) ?? "<none>")", category: .streaming, level: .info)
+                    }
+                } else {
+                    AppLogger.log("📄 [Streaming] Output[\(index)] has no content array", category: .streaming, level: .debug)
+                }
+            }
+        } else {
+            AppLogger.log("📦 [Streaming] Completion chunk has no output items", category: .streaming, level: .debug)
+        }
         clearPendingFileAttachments()
         flushDeltaBufferIfNeeded(for: messageId)
 
@@ -285,12 +313,33 @@ extension ChatViewModel {
                 usage.estimatedOutput = ChatViewModel.estimateTokens(for: finalText)
             }
             updated[msgIndex].tokenUsage = usage
+
+            let approvalRequestsFromCompletion = extractApprovalRequests(from: chunk.response?.output)
+            if !approvalRequestsFromCompletion.isEmpty {
+                if updated[msgIndex].mcpApprovalRequests == nil { updated[msgIndex].mcpApprovalRequests = [] }
+                let existingIds = Set(updated[msgIndex].mcpApprovalRequests!.map { $0.id })
+                for request in approvalRequestsFromCompletion where !existingIds.contains(request.id) {
+                    updated[msgIndex].mcpApprovalRequests?.append(request)
+                }
+                if updated[msgIndex].toolsUsed == nil { updated[msgIndex].toolsUsed = [] }
+                if !updated[msgIndex].toolsUsed!.contains("mcp") {
+                    updated[msgIndex].toolsUsed!.append("mcp")
+                }
+            }
+
             let existing = updated[msgIndex].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if existing.isEmpty {
                 if let synthesized = buildTextFromOutput(chunk.response?.output) {
+                    AppLogger.log("📝 [Streaming] Synthesized text of length \(synthesized.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = synthesized
                 } else if let mcpText = buildTextFromMCPItems(chunk.response?.output) {
+                    AppLogger.log("📝 [Streaming] Synthesized MCP text of length \(mcpText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = mcpText
+                } else if let approvalText = buildTextFromApprovalRequests(approvalRequestsFromCompletion) {
+                    AppLogger.log("📝 [Streaming] Synthesized approval text of length \(approvalText.count)", category: .streaming, level: .info)
+                    updated[msgIndex].text = approvalText
+                } else {
+                    AppLogger.log("⚠️ [Streaming] Unable to synthesize text from completion output", category: .streaming, level: .warning)
                 }
             }
             messages = updated
@@ -306,8 +355,15 @@ extension ChatViewModel {
             AppLogger.log("Stream completed; continuing with computer use", category: .streaming, level: .debug)
         }
 
-        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }),
-              let text = messages[msgIndex].text, !text.isEmpty else { return }
+        guard let msgIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        let finalText = messages[msgIndex].text ?? ""
+        AppLogger.log("💬 [Streaming] Final message text length: \(finalText.count)", category: .streaming, level: .info)
+        AppLogger.log("💬 [Streaming] Final message text preview: \(finalText.prefix(200))", category: .streaming, level: .info)
+
+        guard !finalText.isEmpty else { return }
+
+        let text = finalText
 
         let detectedURLs = URLDetector.extractRenderableURLs(from: text)
         if !detectedURLs.isEmpty {
@@ -403,31 +459,38 @@ extension ChatViewModel {
         }
     }
     
-    // MARK: - MCP Event Handlers
-    
-    /// Handles MCP list_tools events that report available tools from the remote server.
+    /// Handles MCP list_tools events, which report available tools from the remote server.
+    /// This function is critical for registering which tools the model is allowed to call.
     private func handleMCPListToolsChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        guard let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel else {
-            AppLogger.log("⚠️ [MCP] list_tools event missing server_label", category: .openAI, level: .warning)
-            return
+        let resolved = resolveServerLabel(
+            serverLabel: chunk.serverLabel,
+            itemServerLabel: chunk.item?.serverLabel,
+            fallbackId: chunk.item?.id
+        )
+        if resolved.usedFallback {
+            AppLogger.log("list_tools event missing server_label; using fallback '\(resolved.label)'", category: .mcp, level: .debug)
         }
+        let serverLabel = resolved.label
+        lastMCPServerLabel = serverLabel
         
         let status = chunk.item?.status?.lowercased()
         let structuredError = chunk.item?.error
         let inlineError = chunk.error
 
+        // Handle cases where the list_tools call itself fails.
         if status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
             let errorDescription = describeMCPError(status: status, stringError: inlineError, structuredError: structuredError)
-            AppLogger.log("❌ [MCP] Server '\(serverLabel)' failed to list tools: \(errorDescription)", category: .openAI, level: .error)
+            AppLogger.log("Server '\(serverLabel)' failed to list tools: \(errorDescription)", category: .mcp, level: .error)
             logActivity("MCP: \(serverLabel) list_tools failed - \(errorDescription)")
             mcpToolRegistry.removeValue(forKey: serverLabel)
             
-            // If Notion MCP returned 401/Unauthorized, revoke preflight to force revalidation
+            // If Notion MCP returned 401/Unauthorized, revoke preflight to force revalidation.
             let lower = errorDescription.lowercased()
             if lower.contains("401") || lower.contains("unauthorized") {
                 revokeNotionPreflight(for: serverLabel)
             }
 
+            // Avoid spamming the user with identical errors.
             let signature = "\(status ?? "failed")|\(errorDescription)"
             if lastMCPListToolsError[serverLabel] != signature {
                 lastMCPListToolsError[serverLabel] = signature
@@ -442,18 +505,28 @@ extension ChatViewModel {
 
         lastMCPListToolsError.removeValue(forKey: serverLabel)
 
-        let toolCount = chunk.tools?.count ?? 0
-        AppLogger.log("🔧 [MCP] Server '\(serverLabel)' listed \(toolCount) available tools", category: .openAI, level: .info)
+        let discoveredTools = chunk.tools ?? chunk.item?.tools
+        let toolCount = discoveredTools?.count ?? 0
+        AppLogger.log("Server '\(serverLabel)' listed \(toolCount) available tools.", category: .mcp, level: .info)
         
-        // Store tools in registry for future reference
-        if let tools = chunk.tools {
+        // If the server explicitly reports zero tools, inform the user and prevent subsequent calls.
+        if toolCount == 0 {
+            let message = "⚠️ MCP server '\(serverLabel)' reported it has no available tools. The integration may be misconfigured or lack permissions."
+            if mcpToolRegistry[serverLabel] != nil || lastMCPListToolsError[serverLabel] == nil {
+                messages.append(ChatMessage(role: .system, text: message))
+                lastMCPListToolsError[serverLabel] = "no-tools-listed" // Prevents repeated messages.
+            }
+        }
+        
+        // Store tools in the registry for future reference.
+        if let tools = discoveredTools {
             mcpToolRegistry[serverLabel] = tools
             
-            // Log each tool for debugging
+            // Log each tool for debugging.
             for tool in tools {
                 if let name = tool["name"]?.value as? String {
                     let description = (tool["description"]?.value as? String) ?? "No description"
-                    AppLogger.log("  - \(name): \(description)", category: .openAI, level: .debug)
+                    AppLogger.log("  - Registered Tool: \(name): \(description)", category: .mcp, level: .debug)
                 }
             }
         }
@@ -462,18 +535,37 @@ extension ChatViewModel {
         trackToolUsage(for: messageId, tool: "mcp")
     }
     
-    /// Handles MCP call events when the assistant invokes an MCP tool.
+    /// Handles the start of an MCP tool call invocation from the assistant.
     private func handleMCPCallAddedChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        guard let toolName = chunk.name, let serverLabel = chunk.serverLabel else {
-            AppLogger.log("⚠️ [MCP] call event missing name or server_label", category: .openAI, level: .warning)
+        guard let toolName = chunk.name ?? chunk.item?.name else {
+            AppLogger.log("MCP call event is missing the tool name. This is a stream anomaly.", category: .mcp, level: .warning)
             return
         }
+        let resolved = resolveServerLabel(
+            serverLabel: chunk.serverLabel,
+            itemServerLabel: chunk.item?.serverLabel,
+            fallbackId: chunk.item?.id ?? chunk.itemId
+        )
+        if resolved.usedFallback {
+            AppLogger.log("MCP call event missing server_label; using fallback '\(resolved.label)'", category: .mcp, level: .debug)
+        }
+        let serverLabel = resolved.label
+        lastMCPServerLabel = serverLabel
         
-        AppLogger.log("🔧 [MCP] Calling tool '\(toolName)' on server '\(serverLabel)'", category: .openAI, level: .info)
+        AppLogger.log("Calling tool '\(toolName)' on server '\(serverLabel)'.", category: .mcp, level: .info)
         
-        // Log arguments if present
+        // Log arguments if present in the initial chunk.
         if let arguments = chunk.arguments {
-            AppLogger.log("  Arguments: \(arguments)", category: .openAI, level: .debug)
+            AppLogger.log("  Initial arguments: \(arguments)", category: .mcp, level: .debug)
+        }
+
+        // Initialize buffer for streaming arguments.
+        if let itemId = chunk.itemId ?? chunk.item?.id {
+            if let initial = chunk.arguments, !initial.isEmpty {
+                mcpArgumentBuffers[itemId] = initial
+            } else {
+                mcpArgumentBuffers[itemId] = ""
+            }
         }
         
         logActivity("MCP: Calling \(toolName) on \(serverLabel)…")
@@ -481,32 +573,56 @@ extension ChatViewModel {
         trackToolUsage(for: messageId, tool: "mcp")
     }
     
-    /// Handles MCP call completion events with output or errors.
+    /// Handles the completion of an MCP tool call, processing its output or error.
     private func handleMCPCallDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        guard let toolName = chunk.name, let serverLabel = chunk.serverLabel else {
-            AppLogger.log("⚠️ [MCP] call.done event missing name or server_label", category: .openAI, level: .warning)
+        guard let toolName = chunk.name ?? chunk.item?.name else {
+            AppLogger.log("MCP call.done event is missing the tool name. This is a stream anomaly.", category: .mcp, level: .warning)
             return
         }
+        let resolved = resolveServerLabel(
+            serverLabel: chunk.serverLabel,
+            itemServerLabel: chunk.item?.serverLabel,
+            fallbackId: chunk.item?.id ?? chunk.itemId
+        )
+        if resolved.usedFallback {
+            AppLogger.log("MCP call.done event missing server_label; using fallback '\(resolved.label)'", category: .mcp, level: .debug)
+        }
+        let serverLabel = resolved.label
+        lastMCPServerLabel = serverLabel
         
         let status = chunk.item?.status?.lowercased()
         let structuredError = chunk.item?.error
         let inlineError = chunk.error
 
+        // Handle failed tool calls.
         if status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
             let errorDescription = describeMCPError(status: status, stringError: inlineError, structuredError: structuredError)
-            AppLogger.log("❌ [MCP] Tool '\(toolName)' on '\(serverLabel)' failed: \(errorDescription)", category: .openAI, level: .error)
+            AppLogger.log("Tool '\(toolName)' on '\(serverLabel)' failed: \(errorDescription)", category: .mcp, level: .error)
             logActivity("MCP: \(toolName) failed - \(errorDescription)")
 
             var message = "⚠️ MCP tool '\(toolName)' on server '\(serverLabel)' failed: \(errorDescription)."
             if let hint = hintForMCPServer(serverLabel) {
                 message += " \(hint)"
             }
-            messages.append(ChatMessage(role: .system, text: message))
+
+            let callIdentifier = chunk.item?.id ?? chunk.itemId ?? "\(serverLabel)|\(toolName)"
+            let normalizedError = errorDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawArguments = (chunk.item?.arguments ?? chunk.arguments)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let argumentSignature = rawArguments.count > 512 ? String(rawArguments.prefix(512)) : rawArguments
+            let warningKey = "\(callIdentifier)|\(normalizedError)|\(argumentSignature)"
+            let inserted = surfacedMCPToolWarnings.insert(warningKey).inserted
+            if inserted {
+                messages.append(ChatMessage(role: .system, text: message))
+            } else {
+                AppLogger.log("Skipping duplicate MCP failure warning for '\(toolName)' on '\(serverLabel)'", category: .mcp, level: .debug)
+            }
+        // Handle successful tool calls.
         } else if let output = chunk.output {
-            AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed", category: .openAI, level: .info)
-            AppLogger.log("  Output: \(output)", category: .openAI, level: .debug)
+            AppLogger.log("Tool '\(toolName)' on '\(serverLabel)' completed successfully.", category: .mcp, level: .info)
+            AppLogger.log("  Output: \(output)", category: .mcp, level: .debug)
             logActivity("MCP: \(toolName) completed")
 
+            // Render the output into the chat message.
             if let index = messages.firstIndex(where: { $0.id == messageId }) {
                 var updated = messages
                 let textBlock = renderMCPOutputText(serverLabel: serverLabel, toolName: toolName, rawOutput: output)
@@ -515,29 +631,86 @@ extension ChatViewModel {
                 messages = updated
             }
         } else {
-            AppLogger.log("✅ [MCP] Tool '\(toolName)' on '\(serverLabel)' completed (no output)", category: .openAI, level: .info)
+            AppLogger.log("Tool '\(toolName)' on '\(serverLabel)' completed with no output.", category: .mcp, level: .info)
             logActivity("MCP: \(toolName) completed")
+        }
+
+        // Clean up argument buffer for this tool call.
+        if let argumentKey = chunk.item?.id ?? chunk.itemId {
+            mcpArgumentBuffers.removeValue(forKey: argumentKey)
         }
     }
     
-    /// Handles MCP approval request events when user authorization is needed.
+    /// Buffers streaming MCP argument deltas for debugging and eventual display.
+    private func handleMCPArgumentsDeltaChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId ?? chunk.item?.id else { return }
+        let fragment = chunk.argumentsDelta ?? chunk.arguments ?? chunk.delta
+        guard let fragment, !fragment.isEmpty else { return }
+
+        // Append the new fragment to the buffer for this item.
+        let existing = mcpArgumentBuffers[itemId] ?? ""
+        mcpArgumentBuffers[itemId] = existing + fragment
+
+        let previewLimit = 160
+        let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
+        AppLogger.log("MCP arguments delta for item \(itemId): \(preview)", category: .mcp, level: .debug)
+
+        if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
+            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)…")
+        }
+    }
+
+    /// Finalizes streaming MCP arguments and logs the complete payload for debugging.
+    private func handleMCPArgumentsDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId ?? chunk.item?.id else { return }
+        defer { mcpArgumentBuffers.removeValue(forKey: itemId) }
+
+        let aggregate = chunk.arguments ?? chunk.item?.arguments ?? mcpArgumentBuffers[itemId]
+        guard let aggregate, !aggregate.isEmpty else { return }
+
+        // Log the finalized arguments, pretty-printed if possible.
+        if let pretty = prettyPrintArguments(aggregate) {
+            AppLogger.log("MCP arguments finalized for item \(itemId):\n\(pretty)", category: .mcp, level: .debug)
+        } else {
+            let previewLimit = 200
+            let preview = aggregate.count > previewLimit ? String(aggregate.prefix(previewLimit)) + "…" : aggregate
+            AppLogger.log("MCP arguments finalized for item \(itemId): \(preview)", category: .mcp, level: .debug)
+        }
+
+        if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
+            logActivity("MCP: Arguments ready for \(toolName) on \(serverLabel)")
+        } else {
+            logActivity("MCP: Arguments ready")
+        }
+    }
+    
+    /// Handles MCP approval request events when user authorization is needed for a tool call.
     private func handleMCPApprovalRequestChunk(_ chunk: StreamingEvent, messageId: UUID) {
-        // Prefer top-level fields, but fall back to item payload (some streams only include fields on item)
+        // Prefer top-level fields, but fall back to item payload, as stream structure can vary.
         let approvalRequestId = chunk.approvalRequestId ?? chunk.item?.approvalRequestId
         let toolName = chunk.name ?? chunk.item?.name
-        let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel
         
-        guard let approvalRequestId, let toolName, let serverLabel else {
-            AppLogger.log("⚠️ [MCP] approval_request event missing required fields", category: .openAI, level: .warning)
+        guard let approvalRequestId, let toolName else {
+            AppLogger.log("MCP approval_request event is missing required fields (ID or tool name).", category: .mcp, level: .warning)
             return
         }
+        let resolved = resolveServerLabel(
+            serverLabel: chunk.serverLabel,
+            itemServerLabel: chunk.item?.serverLabel,
+            fallbackId: chunk.item?.id ?? approvalRequestId
+        )
+        if resolved.usedFallback {
+            AppLogger.log("MCP approval_request missing server_label; using fallback '\(resolved.label)'", category: .mcp, level: .debug)
+        }
+        let serverLabel = resolved.label
+        lastMCPServerLabel = serverLabel
         
         let arguments = chunk.arguments ?? chunk.item?.arguments ?? "{}"
         
-        AppLogger.log("🔒 [MCP] Approval requested for tool '\(toolName)' on server '\(serverLabel)' (id: \(approvalRequestId))", category: .openAI, level: .info)
-        AppLogger.log("  Arguments: \(arguments)", category: .openAI, level: .debug)
+        AppLogger.log("Approval requested for tool '\(toolName)' on server '\(serverLabel)' (id: \(approvalRequestId)).", category: .mcp, level: .info)
+        AppLogger.log("  Arguments: \(arguments)", category: .mcp, level: .debug)
         
-        // Create approval request object
+        // Create the approval request object to be stored with the message.
         let approvalRequest = MCPApprovalRequest(
             id: approvalRequestId,
             toolName: toolName,
@@ -547,19 +720,21 @@ extension ChatViewModel {
             reason: nil
         )
         
-        // Add to current message
+        // Add the request to the current message to render the approval UI.
         if let index = messages.firstIndex(where: { $0.id == messageId }) {
             var updated = messages
             if updated[index].mcpApprovalRequests == nil {
                 updated[index].mcpApprovalRequests = []
             }
             updated[index].mcpApprovalRequests?.append(approvalRequest)
-            // Mark MCP tool used for clearer UI hint if no text is set yet
+            
+            // Mark that an MCP tool was used for clearer UI hints.
             if updated[index].toolsUsed == nil { updated[index].toolsUsed = [] }
             if !updated[index].toolsUsed!.contains("mcp") {
                 updated[index].toolsUsed!.append("mcp")
             }
 
+            // If no other text has been generated, inject a summary of the approval request.
             if shouldInjectApprovalSummary(for: updated[index]) {
                 let summary = makeApprovalSummary(toolName: toolName, serverLabel: serverLabel, rawArguments: arguments)
                 updated[index].text = summary
@@ -572,41 +747,49 @@ extension ChatViewModel {
     }
 }
 
-// MARK: - MCP Error Helpers
-private extension ChatViewModel {
-    /// Synthesizes text content from final streaming output when no deltas were received.
+// MARK: - MCP UI and Error Formatting Helpers
+extension ChatViewModel {
+    /// Synthesizes a user-facing message from final streaming output items when no assistant text delta was received.
+    /// This is a fallback for tool-only responses.
     func buildTextFromOutput(_ output: [StreamingOutputItem]?) -> String? {
         guard let output else { return nil }
         var segments: [String] = []
+        AppLogger.log("buildTextFromOutput scanning \(output.count) items", category: .streaming, level: .debug)
         for item in output where item.type == "message" {
             guard let content = item.content else { continue }
+            AppLogger.log("Found message item id=\(item.id) with \(content.count) content blocks", category: .streaming, level: .debug)
             for block in content {
                 if let text = block.text, !text.isEmpty {
+                    AppLogger.log("Appending block text len=\(text.count)", category: .streaming, level: .debug)
                     segments.append(text)
                 }
             }
         }
         let combined = segments.joined()
         let trimmed = combined.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppLogger.log("Combined text len=\(combined.count), trimmed len=\(trimmed.count)", category: .streaming, level: .debug)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Determines whether we should synthesize user-facing copy for an approval-only response.
+    /// Determines whether to synthesize user-facing copy for an approval-only response.
+    /// This prevents overwriting a message that already has content.
     func shouldInjectApprovalSummary(for message: ChatMessage) -> Bool {
         let existing = message.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return existing.isEmpty
     }
 
-    /// Generates concise copy that explains the pending approval request.
+    /// Generates a concise, human-readable summary explaining a pending approval request.
     func makeApprovalSummary(toolName: String, serverLabel: String, rawArguments: String) -> String {
-        var parts: [String] = ["Approval required to run \(toolName) on \(serverLabel)."]
+        var parts: [String] = ["Approval required to run **\(toolName)** on **\(serverLabel)**."]
         if let prettyArgs = prettyPrintArguments(rawArguments) {
-            parts.append("Arguments:\n\(prettyArgs)")
+            parts.append("Arguments:\n```json\n\(prettyArgs)\n```")
         }
         return parts.joined(separator: "\n\n")
     }
 
-    /// Attempts to pretty-print the JSON payload for approval arguments for easier human review.
+    /// Attempts to pretty-print a JSON string for easier human review.
+    /// - Parameter json: The raw JSON string from the tool call.
+    /// - Returns: A formatted string or `nil` if parsing fails.
     func prettyPrintArguments(_ json: String) -> String? {
         let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "{}", let data = trimmed.data(using: .utf8) else { return nil }
@@ -614,16 +797,19 @@ private extension ChatViewModel {
         do {
             let object = try JSONSerialization.jsonObject(with: data)
 
+            // Pretty-print dictionaries
             if let dict = object as? [String: Any], !dict.isEmpty {
                 let pretty = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
                 return String(data: pretty, encoding: .utf8)
             }
 
+            // Pretty-print arrays
             if let array = object as? [Any], !array.isEmpty {
                 let pretty = try JSONSerialization.data(withJSONObject: array, options: [.prettyPrinted])
                 return String(data: pretty, encoding: .utf8)
             }
-
+            
+            // Fallback for simple values
             if let value = object as? CustomStringConvertible {
                 return value.description
             }
@@ -634,47 +820,63 @@ private extension ChatViewModel {
         return nil
     }
 
-    /// Renders MCP output into user-visible text by extracting text blocks or pretty-printing JSON.
+    /// Renders the output of a successful MCP tool call into a user-visible text block.
     func renderMCPOutputText(serverLabel: String, toolName: String, rawOutput: String) -> String {
         let trimmed = rawOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // First, try to extract a clean text block from the JSON.
         if let extracted = extractTextFromMCPJSON(trimmed), !extracted.isEmpty {
-            return "MCP result from \(serverLabel) (\(toolName)):\n\n\(extracted)"
+            return "MCP result from **\(serverLabel)** (`\(toolName)`):\n\n\(extracted)"
         }
+        // If not, pretty-print the full JSON output.
         if let pretty = prettyPrintArguments(trimmed) {
-            return "MCP result from \(serverLabel) (\(toolName)):\n\n```json\n\(pretty)\n```"
+            return "MCP result from **\(serverLabel)** (`\(toolName)`):\n\n```json\n\(pretty)\n```"
         }
-        return "MCP result from \(serverLabel) (\(toolName)) (no output)."
+        // Fallback for empty or non-JSON output.
+        return "MCP result from **\(serverLabel)** (`\(toolName)`) completed with no output."
     }
 
-    /// Attempts to extract human-readable text from common MCP JSON output shapes.
+    /// Formats a user-facing error message for a failed MCP tool call.
+    func renderMCPFailureText(serverLabel: String, toolName: String, errorDescription: String, rawArguments: String?) -> String {
+        var segments: [String] = [
+            "⚠️ MCP error from **\(serverLabel)** (`\(toolName)`): \(errorDescription)"
+        ]
+
+        // Include the arguments that led to the failure for debugging.
+        if let rawArguments {
+            let trimmed = rawArguments.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed != "{}" {
+                if let pretty = prettyPrintArguments(trimmed) {
+                    segments.append("Arguments:\n```json\n\(pretty)\n```")
+                } else {
+                    segments.append("Arguments:\n\(trimmed)")
+                }
+            }
+        }
+
+        return segments.joined(separator: "\n\n")
+    }
+
+    /// Attempts to extract human-readable text from common MCP JSON output shapes (e.g., `{"content": [{"type": "text", "text": "..."}]}`).
     func extractTextFromMCPJSON(_ json: String) -> String? {
         guard let data = json.data(using: .utf8) else { return nil }
         do {
             let obj = try JSONSerialization.jsonObject(with: data)
-
             var texts: [String] = []
 
+            // Recursive walker to find all text values.
             func walk(_ value: Any) {
                 if let dict = value as? [String: Any] {
-                    // Collect text blocks from content arrays
-                    if let contentArr = dict["content"] as? [[String: Any]] {
-                        for block in contentArr {
-                            if let type = block["type"] as? String, type == "text",
-                               let t = block["text"] as? String,
-                               !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                texts.append(t)
-                            }
-                        }
-                    }
-                    // Collect standalone "text" keys
+                    // Heuristic: check for a "text" key with a string value.
                     if let t = dict["text"] as? String, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         texts.append(t)
                     }
-                    // Recurse
+                    // Recurse into all dictionary values.
                     for (_, v) in dict {
                         walk(v)
                     }
                 } else if let arr = value as? [Any] {
+                    // Recurse into all array elements.
                     for v in arr { walk(v) }
                 }
             }
@@ -683,44 +885,169 @@ private extension ChatViewModel {
             let joined = texts.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
             return joined.isEmpty ? nil : joined
         } catch {
-            AppLogger.log("Failed to parse MCP output JSON: \(error)", category: .openAI, level: .debug)
+            AppLogger.log("Failed to parse MCP output JSON for text extraction: \(error)", category: .mcp, level: .debug)
             return nil
         }
     }
 
-    /// Builds text from completed MCP items in a final response when no assistant message was emitted.
+    /// Builds a complete, user-facing message from a list of completed MCP tool calls.
+    /// This is a fallback used when the assistant does not generate a summary message of its own.
     func buildTextFromMCPItems(_ items: [StreamingOutputItem]?) -> String? {
         guard let items else { return nil }
         var sections: [String] = []
-        for it in items where it.type == "mcp_call" && ((it.status?.lowercased() == "completed") || (it.status?.lowercased() == "done")) {
-            if let server = it.serverLabel, let name = it.name, let out = it.output,
-               !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                sections.append(renderMCPOutputText(serverLabel: server, toolName: name, rawOutput: out))
+        for it in items where it.type == "mcp_call" {
+            let status = it.status?.lowercased()
+            let resolved = resolveServerLabel(
+                serverLabel: it.serverLabel,
+                itemServerLabel: it.serverLabel,
+                fallbackId: it.id
+            )
+            if resolved.usedFallback {
+                AppLogger.log("buildTextFromMCPItems using fallback label '\(resolved.label)'", category: .mcp, level: .debug)
+            }
+            let server = resolved.label
+            lastMCPServerLabel = server
+            let rawName = it.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = (rawName?.isEmpty == false) ? rawName! : "MCP tool \(String(it.id.prefix(6)))"
+
+            switch status {
+            case "completed", "done":
+                let output = it.output ?? ""
+                sections.append(renderMCPOutputText(serverLabel: server, toolName: name, rawOutput: output))
+            case "failed":
+                let errorDescription = describeMCPError(status: status, stringError: nil, structuredError: it.error)
+                let failureText = renderMCPFailureText(
+                    serverLabel: server,
+                    toolName: name,
+                    errorDescription: errorDescription,
+                    rawArguments: it.arguments
+                )
+                sections.append(failureText)
+            default:
+                continue
             }
         }
         let joined = sections.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return joined.isEmpty ? nil : joined
     }
 
-    /// Clears stored preflight state for a given MCP server label so future sends will revalidate.
+    /// Builds a user-facing message from approval requests that were part of the final completion payload.
+    func buildTextFromApprovalRequests(_ requests: [MCPApprovalRequest]) -> String? {
+        guard !requests.isEmpty else { return nil }
+        let sections = requests.map { request in
+            makeApprovalSummary(
+                toolName: request.toolName,
+                serverLabel: request.serverLabel,
+                rawArguments: request.arguments
+            )
+        }
+        let joined = sections.joined(separator: "\n\n---\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// Extracts `MCPApprovalRequest` objects from the final list of streaming output items.
+    func extractApprovalRequests(from items: [StreamingOutputItem]?) -> [MCPApprovalRequest] {
+        guard let items else { return [] }
+        var collected: [MCPApprovalRequest] = []
+        var seenIds = Set<String>()
+        for item in items where item.type == "mcp_approval_request" {
+            guard let tool = item.name else {
+                AppLogger.log("Approval item in final output is missing tool name.", category: .mcp, level: .debug)
+                continue
+            }
+            let resolved = resolveServerLabel(
+                serverLabel: item.serverLabel,
+                itemServerLabel: item.serverLabel,
+                fallbackId: item.id
+            )
+            if resolved.usedFallback {
+                AppLogger.log("Approval item missing server_label; using fallback '\(resolved.label)'", category: .mcp, level: .debug)
+            }
+            let server = resolved.label
+            lastMCPServerLabel = server
+            let identifier = item.approvalRequestId ?? item.id
+            if seenIds.contains(identifier) { continue }
+            seenIds.insert(identifier)
+            let args = item.arguments ?? "{}"
+            let request = MCPApprovalRequest(
+                id: identifier,
+                toolName: tool,
+                serverLabel: server,
+                arguments: args,
+                status: .pending,
+                reason: nil
+            )
+            collected.append(request)
+        }
+        return collected
+    }
+
+    /// Safely resolves the server label for an MCP event, using fallbacks if the primary label is missing.
+    /// This is crucial for maintaining context when stream events omit metadata.
+    func resolveServerLabel(serverLabel: String?, itemServerLabel: String?, fallbackId: String?) -> (label: String, usedFallback: Bool) {
+        // 1. Prefer the direct `server_label` on the event itself.
+        if let direct = trimmedIfNotEmpty(serverLabel) {
+            return (direct, false)
+        }
+        // 2. Fall back to the label on the nested `item` object.
+        if let alternate = trimmedIfNotEmpty(itemServerLabel) {
+            return (alternate, false)
+        }
+        // 3. Use the last seen MCP server label in this streaming session.
+        if let cached = trimmedIfNotEmpty(lastMCPServerLabel) {
+            return (cached, true)
+        }
+        // 4. Use the server label from the active prompt settings.
+        if let promptLabel = trimmedIfNotEmpty(activePrompt.mcpServerLabel) {
+            return (promptLabel, true)
+        }
+        // 5. If it's a known connector, use its name.
+        if activePrompt.mcpIsConnector, let connectorId = activePrompt.mcpConnectorId,
+           let connector = MCPConnector.connector(for: connectorId) {
+            return (connector.name, true)
+        }
+        // 6. As a last resort, create a label from the item's ID.
+        if let fallbackId, !fallbackId.isEmpty {
+            let suffix = String(fallbackId.prefix(6))
+            return ("MCP \(suffix)", true)
+        }
+        // 7. Absolute fallback.
+        return ("MCP Server", true)
+    }
+
+    /// Helper to check if a string is non-nil, non-empty, and returns it after trimming whitespace.
+    private func trimmedIfNotEmpty(_ value: String?) -> String? {
+        guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    /// Clears stored preflight and probe health state for a given MCP server label.
+    /// This is called after an authentication failure (e.g., 401) to force re-validation on the next request.
     func revokeNotionPreflight(for label: String) {
         let d = UserDefaults.standard
-        // Preflight flags
+        // Preflight flags (for `sendUserMessage` validation)
         d.set(false, forKey: "mcp_preflight_ok_\(label)")
         d.removeObject(forKey: "mcp_preflight_ok_at_\(label)")
         d.removeObject(forKey: "mcp_preflight_token_hash_\(label)")
         d.removeObject(forKey: "mcp_preflight_user_\(label)")
-        // Probe flags (list_tools health)
+        // Probe flags (for `list_tools` health check)
         d.set(false, forKey: "mcp_probe_ok_\(label)")
         d.removeObject(forKey: "mcp_probe_ok_at_\(label)")
         d.removeObject(forKey: "mcp_probe_token_hash_\(label)")
-        AppLogger.log("🔐 [MCP] Revoked preflight and probe state for '\(label)' due to auth failure", category: .openAI, level: .warning)
+        AppLogger.log("Revoked preflight and probe state for '\(label)' due to auth failure.", category: .mcp, level: .warning)
     }
+    
     /// Builds a readable description for MCP failures, prioritizing structured error data when available.
+    /// - Parameters:
+    ///   - status: The `status` field from the event (e.g., "failed").
+    ///   - stringError: A simple error string from the event.
+    ///   - structuredError: A complex `MCPToolError` object.
+    /// - Returns: A formatted, human-readable error string.
     func describeMCPError(status: String?, stringError: String?, structuredError: MCPToolError?) -> String {
         let trimmedStatus = status?.lowercased() == "failed" ? "failed" : nil
         var base = stringError?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
+        // Prioritize the detailed message from the structured error object.
         if let structuredError {
             let structuredMessage = structuredError.message.trimmingCharacters(in: .whitespacesAndNewlines)
             if !structuredMessage.isEmpty {
@@ -736,29 +1063,27 @@ private extension ChatViewModel {
             if let trimmedStatus {
                 metadata.append("status \(trimmedStatus)")
             }
-            if metadata.isEmpty {
-                return base.isEmpty ? "Unknown error" : base
-            } else {
-                let headline = base.isEmpty ? "Unknown error" : base
-                return "\(headline) (\(metadata.joined(separator: ", ")))"
-            }
+            
+            let headline = base.isEmpty ? "Unknown error" : base
+            return metadata.isEmpty ? headline : "\(headline) (\(metadata.joined(separator: ", ")))"
         }
 
+        // Fallback for simpler error shapes.
         if let trimmedStatus {
-            if base.isEmpty {
-                return "Unknown error (status \(trimmedStatus))"
-            }
-            return "\(base) (status \(trimmedStatus))"
+            return base.isEmpty ? "Unknown error (status \(trimmedStatus))" : "\(base) (status \(trimmedStatus))"
         }
 
         return base.isEmpty ? "Unknown error" : base
     }
 
-    /// Provides human guidance for well-known MCP servers when authentication issues are detected.
+    /// Provides helpful, human-readable guidance for well-known MCP servers when authentication issues are detected.
     func hintForMCPServer(_ serverLabel: String) -> String? {
         let normalized = serverLabel.lowercased()
         if normalized.contains("notion") {
-            return "Verify that your Notion integration token is current and the relevant pages/databases are shared with the integration."
+            return "Verify that your Notion integration token is current and that the relevant pages/databases have been shared with the integration."
+        }
+        if normalized.contains("gmail") {
+            return "Try reconnecting your Google account in Settings. The authorization may have expired or been revoked."
         }
         return nil
     }

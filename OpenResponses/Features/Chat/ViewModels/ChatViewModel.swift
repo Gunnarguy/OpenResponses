@@ -56,11 +56,24 @@ class ChatViewModel: ObservableObject {
     private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
     // Minimum buffer size before forcing a flush (characters)
     let minBufferSizeForFlush: Int = 20
+    /// Buffers streaming MCP argument payloads keyed by tool call item ID.
+    var mcpArgumentBuffers: [String: String] = [:]
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
     var containerAnnotationsByMessage: [UUID: [(containerId: String, fileId: String, filename: String?)]] = [:]
     /// Tracks the most recent list_tools error per MCP server to avoid spamming identical alerts.
     /// Accessed from the streaming extension to coordinate surfaced warnings.
     var lastMCPListToolsError: [String: String] = [:]
+    /// Remembers the last server label we successfully resolved so events missing this field can reuse it.
+    var lastMCPServerLabel: String?
+    /// Records MCP tool warnings surfaced to the user to avoid spamming duplicate alerts.
+    var surfacedMCPToolWarnings: Set<String> = []
+    /// Prevents duplicate execution of the same function call when streaming emits multiple completion events.
+    private var pendingFunctionCallIds: Set<String> = []
+    private var completedFunctionCallIds: Set<String> = []
+
+    /// Reasoning items emitted by the last response, keyed by response ID.
+    /// Required for reasoning models (e.g., GPT-5) when echoing tool outputs.
+    private var reasoningBufferByResponseId: [String: [[String: Any]]] = [:]
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
@@ -442,94 +455,80 @@ class ChatViewModel: ObservableObject {
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
         
-        // MCP Notion preflight gate: require ok=true + token hash match + freshness
+        // MCP gate for remote servers: require a successful list_tools probe with fresh token hash
         if activePrompt.enableMCPTool && !bypassMCPGate {
             let label = activePrompt.mcpServerLabel
             let url = activePrompt.mcpServerURL
-            let isNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
-            if isNotion {
+            let isRemote = activePrompt.enableMCPTool && !activePrompt.mcpIsConnector && !label.isEmpty && !url.isEmpty
+            if isRemote {
                 let defaults = UserDefaults.standard
-                let authHeader = activePrompt.secureMCPHeaders["Authorization"]
-                let currentHash = authHeader.map { NotionAuthService.shared.tokenHash(fromAuthorizationValue: $0) }
+                let headers = activePrompt.secureMCPHeaders
+                let desiredKeyRaw = activePrompt.mcpAuthHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                let desiredKey = desiredKeyRaw.isEmpty ? "Authorization" : desiredKeyRaw
+                let authHeader = headers[desiredKey] ?? headers["Authorization"]
+
                 // 24h freshness window
                 let maxAgeSeconds: Double = 86_400
                 let now = Date().timeIntervalSince1970
 
-                // Preflight state
-                let pfOk = defaults.bool(forKey: "mcp_preflight_ok_\(label)")
-                let pfAt = defaults.double(forKey: "mcp_preflight_ok_at_\(label)")
-                let pfFresh = pfAt > 0 && (now - pfAt) < maxAgeSeconds
-                let pfStoredHash = defaults.string(forKey: "mcp_preflight_token_hash_\(label)")
-                let pfHashMatch = (pfStoredHash != nil && currentHash != nil && pfStoredHash == currentHash)
+                // Light Notion guardrail for remote HTTP MCP: integration tokens are invalid here
+                let isNotionOfficial = url.lowercased().contains("mcp.notion.com")
+                let looksLikeNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
+                if looksLikeNotion, let raw = authHeader {
+                    let lower = raw.lowercased()
+                    let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
+                    if tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_") {
+                        if isNotionOfficial {
+                            // Auto-fix: move integration token to top-level and remove Authorization header
+                            var headersFix = activePrompt.secureMCPHeaders
+                            headersFix.removeValue(forKey: desiredKey)
+                            headersFix.removeValue(forKey: "Authorization")
+                            activePrompt.secureMCPHeaders = headersFix
+                            let rawTop = NotionAuthService.shared.stripBearer(raw)
+                            KeychainService.shared.save(value: rawTop, forKey: "mcp_manual_\(label)")
+                            saveActivePrompt()
+                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing…")
+                            messages.append(sys)
+                            // Do not return; proceed
+                        } else {
+                            // Self-hosted with integration token in header: warn but do not block chat
+                            let sys = ChatMessage(role: .system, text: "⚠️ This token looks like a Notion integration token, which is invalid for self‑hosted Notion MCP. Use the server‑issued Bearer token from your container logs. Continuing anyway, but the server may return 401.")
+                            messages.append(sys)
+                            // Do not return; proceed
+                        }
+                    }
+                }
 
                 // Probe state (list_tools health)
                 let prOk = defaults.bool(forKey: "mcp_probe_ok_\(label)")
                 let prAt = defaults.double(forKey: "mcp_probe_ok_at_\(label)")
                 let prFresh = prAt > 0 && (now - prAt) < maxAgeSeconds
+                let currentHash: String? = {
+                    if let authHeader = authHeader {
+                        return NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
+                    }
+                    if isNotionOfficial {
+                        if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty {
+                            return NotionAuthService.shared.tokenHash(fromAuthorizationValue: stored)
+                        }
+                    }
+                    return nil
+                }()
                 let prStoredHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
                 let prHashMatch = (prStoredHash != nil && currentHash != nil && prStoredHash == currentHash)
 
-                let preflightSatisfied = pfOk && pfFresh && pfHashMatch
                 let probeSatisfied = prOk && prFresh && prHashMatch
 
-                // 1) If preflight is not satisfied, attempt auto-preflight (existing behavior)
-                if !preflightSatisfied {
-                    AppLogger.log("⛔️ [MCP Gate] Notion preflight not satisfied for '\(label)': ok=\(pfOk), fresh=\(pfFresh), hashMatch=\(pfHashMatch). Attempting auto-preflight…", category: .openAI, level: .warning)
-                    // If we don't even have an Authorization header, we cannot auto-preflight
-                    guard let authHeader = authHeader else {
-                        var guidance = "MCP Notion token needs validation. Open Remote Server Setup → Test Connection (Notion /v1/users/me must return 200). "
-                        guidance += "No Authorization header found in current configuration."
-                        let sys = ChatMessage(role: .system, text: guidance)
-                        messages.append(sys)
-                        return
-                    }
-                    // Try a quick /v1/users/me to validate the current token and persist gating state.
-                    logActivity("Validating Notion token…")
-                    Task { [weak self] in
-                        guard let self = self else { return }
-                        let result = await NotionAuthService.shared.preflight(authorizationValue: authHeader)
-                        await MainActor.run {
-                            if result.ok {
-                                let d = UserDefaults.standard
-                                d.set(true, forKey: "mcp_preflight_ok_\(label)")
-                                d.set(Date().timeIntervalSince1970, forKey: "mcp_preflight_ok_at_\(label)")
-                                let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
-                                d.set(authHash, forKey: "mcp_preflight_token_hash_\(label)")
-                                let userDict: [String: String] = [
-                                    "id": result.userId ?? "",
-                                    "name": result.userName ?? ""
-                                ]
-                                if let data = try? JSONSerialization.data(withJSONObject: userDict, options: [.sortedKeys]),
-                                   let str = String(data: data, encoding: .utf8) {
-                                    d.set(str, forKey: "mcp_preflight_user_\(label)")
-                                }
-                                AppLogger.log("✅ [MCP Gate] Auto-preflight succeeded for '\(label)'. Continuing send…", category: .openAI, level: .info)
-                                self.logActivity("Notion token validated")
-                                // Retry sending the original message, bypassing the gate this once.
-                                self.sendUserMessage(trimmed, bypassMCPGate: true)
-                            } else {
-                                AppLogger.log("❌ [MCP Gate] Auto-preflight failed for '\(label)': HTTP \(result.status) — \(result.message)", category: .openAI, level: .error)
-                                let msg = "MCP Notion token unauthorized (HTTP \(result.status)). Re-run Test Connection in Remote Server Setup and ensure your integration has access to at least one page or database. Details: \(result.message.prefix(180))"
-                                let sys = ChatMessage(role: .system, text: msg)
-                                self.messages.append(sys)
-                            }
-                        }
-                    }
-                    return
-                }
-
-                // 2) If preflight is OK but probe is not, attempt an automatic MCP list_tools probe
                 if !probeSatisfied {
-                    AppLogger.log("⛔️ [MCP Gate] Notion probe not satisfied for '\(label)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe…", category: .openAI, level: .warning)
-                    // If we don't even have an Authorization header, block with guidance
-                    guard authHeader != nil else {
-                        var guidance = "MCP Notion tools list needs validation. Open Remote Server Setup → Test MCP Connection (should show tool count). "
-                        guidance += "No Authorization header found in current configuration."
+                    let labelForLog = label.isEmpty ? "(unnamed)" : label
+                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe…", category: .openAI, level: .warning)
+                    if authHeader == nil && !isNotionOfficial {
+                        let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
                         let sys = ChatMessage(role: .system, text: guidance)
                         messages.append(sys)
                         return
                     }
-                    logActivity("Probing Notion MCP tools…")
+                    logActivity("Probing MCP tools…")
                     Task { [weak self] in
                         guard let self = self else { return }
                         do {
@@ -541,16 +540,23 @@ class ChatViewModel: ObservableObject {
                                 if let authHeader = authHeader {
                                     let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
                                     d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
+                                } else if isNotionOfficial {
+                                    // Official Notion MCP uses top-level token; persist its hash for future gate checks
+                                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty {
+                                        let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: stored)
+                                        d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
+                                    }
                                 }
-                                AppLogger.log("✅ [MCP Gate] Probe succeeded for '\(label)': \(result.count) tools. Continuing send…", category: .openAI, level: .info)
-                                self.logActivity("Notion MCP tools validated")
+                                d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
+                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send…", category: .openAI, level: .info)
+                                self.logActivity("MCP tools validated (\(result.count))")
                                 // Retry sending the original message, bypassing the gate this once.
                                 self.sendUserMessage(trimmed, bypassMCPGate: true)
                             }
                         } catch {
                             await MainActor.run {
-                                AppLogger.log("❌ [MCP Gate] Auto-probe failed for '\(label)': \(error.localizedDescription)", category: .openAI, level: .error)
-                                let msg = "MCP Notion tools list failed. Open Remote Server Setup → Test MCP Connection to validate (should show tool count). Details: \(error.localizedDescription.prefix(180))"
+                                AppLogger.log("❌ [MCP Gate] MCP probe failed for '\(labelForLog)': \(error.localizedDescription)", category: .openAI, level: .error)
+                                let msg = "MCP tools list failed. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). Details: \(error.localizedDescription.prefix(180))"
                                 let sys = ChatMessage(role: .system, text: msg)
                                 self.messages.append(sys)
                             }
@@ -564,9 +570,10 @@ class ChatViewModel: ObservableObject {
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
-    // Determine streaming mode up front for logging and flow control
-    let streamingEnabled = activePrompt.enableStreaming
-    // Keep recent activity so users can see context; do not clear here to avoid flashing.
+        surfacedMCPToolWarnings.removeAll()
+        // Determine streaming mode up front for logging and flow control
+        let streamingEnabled = activePrompt.enableStreaming
+        // Keep recent activity so users can see context; do not clear here to avoid flashing.
         logActivity("Connecting to OpenAI…")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
         
@@ -1119,33 +1126,368 @@ class ChatViewModel: ObservableObject {
     /// Handles a function call from the API by executing the function and sending the result back.
     private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
         guard let functionName = call.name else {
+            AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
             handleError(OpenAIServiceError.invalidResponseData)
             return
         }
 
-        // Dispatch by function name. Only user-defined custom tools are supported now.
-        let output: String
-        if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
-            output = await executeCustomTool(argumentsJSON: call.arguments)
-        } else {
-            let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
-            await MainActor.run { messages.append(errorMsg) }
+        let callIdentifier = call.callId ?? call.id
+        if completedFunctionCallIds.contains(callIdentifier) {
+            AppLogger.log("♻️ [Function Call] Call \(callIdentifier) already completed; skipping", category: .openAI, level: .info)
             return
+        }
+        if pendingFunctionCallIds.contains(callIdentifier) {
+            AppLogger.log("⏳ [Function Call] Call \(callIdentifier) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
+            return
+        }
+        pendingFunctionCallIds.insert(callIdentifier)
+        defer { pendingFunctionCallIds.remove(callIdentifier) }
+
+        AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
+        let callIdForLog = call.id.isEmpty ? callIdentifier : call.id
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
+        AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
+
+        let output: String
+        switch functionName {
+        case "searchNotion":
+            struct NotionSearchArgs: Decodable {
+                let query: String
+                let filter_type: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for searchNotion."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(NotionSearchArgs.self, from: argsData)
+                let trimmedQuery = decodedArgs.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedFilter = NotionService.shared.normalizeSearchFilter(decodedArgs.filter_type)
+                let maxResults = trimmedQuery.isEmpty ? 12 : 25
+                AppLogger.log("🔍 [searchNotion] Query: \(trimmedQuery), Filter: \(normalizedFilter ?? "none")", category: .network, level: .info)
+                logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"...")
+
+                let searchResult = try await NotionService.shared.search(
+                    query: trimmedQuery,
+                    filterType: normalizedFilter,
+                    pageSize: maxResults
+                )
+
+                let compactResult = NotionService.shared.compactSearchResult(
+                    searchResult,
+                    maxResults: maxResults,
+                    maxProperties: 10,
+                    maxPreviewLength: 160
+                )
+
+                AppLogger.log("✅ [searchNotion] Got compact result, converting to JSON...", category: .network, level: .info)
+                var jsonOutput = try NotionService.shared.prettyJSONString(from: compactResult)
+                let safeLimit = 180_000
+
+                if jsonOutput.count > safeLimit {
+                    AppLogger.log("⚠️ [searchNotion] Result length \(jsonOutput.count) exceeds safe limit; applying truncation", category: .network, level: .warning)
+                    let truncatedPreview = String(jsonOutput.prefix(safeLimit))
+                    let truncatedPayload: [String: Any] = [
+                        "warning": "Notion search result truncated to avoid context overflow. Refine your query to narrow results.",
+                        "truncated": true,
+                        "original_length": jsonOutput.count,
+                        "preview": truncatedPreview
+                    ]
+                    jsonOutput = try NotionService.shared.prettyJSONString(from: truncatedPayload)
+                }
+
+                output = jsonOutput
+                AppLogger.log("✅ [searchNotion] JSON output length: \(output.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [searchNotion] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+            } catch {
+                let errorMsg = "Error processing searchNotion: \(error.localizedDescription)"
+                AppLogger.log("❌ [searchNotion] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+            }
+
+        case "getNotionDatabase":
+            struct NotionGetDbArgs: Decodable {
+                let database_id: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for getNotionDatabase."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(NotionGetDbArgs.self, from: argsData)
+                AppLogger.log("📊 [getNotionDatabase] Database ID: \(decodedArgs.database_id)", category: .network, level: .info)
+                logActivity("📊 Fetching Notion database \(decodedArgs.database_id)...")
+                let dbResult = try await NotionService.shared.getDatabase(databaseId: decodedArgs.database_id)
+                AppLogger.log("✅ [getNotionDatabase] Got result, converting to JSON...", category: .network, level: .info)
+                output = try NotionService.shared.prettyJSONString(from: dbResult)
+                AppLogger.log("✅ [getNotionDatabase] JSON output length: \(output.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [getNotionDatabase] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+            } catch {
+                let errorMsg = "Error processing getNotionDatabase: \(error.localizedDescription)"
+                AppLogger.log("❌ [getNotionDatabase] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+            }
+            
+        case "getNotionDataSource":
+            struct NotionGetDataSourceArgs: Decodable {
+                let data_source_id: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for getNotionDataSource."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(NotionGetDataSourceArgs.self, from: argsData)
+                logActivity("📋 Fetching Notion data source \(decodedArgs.data_source_id)...")
+                let dsResult = try await NotionService.shared.getDataSource(dataSourceId: decodedArgs.data_source_id)
+                output = try NotionService.shared.prettyJSONString(from: dsResult)
+            } catch {
+                output = "Error processing getNotionDataSource: \(error.localizedDescription)"
+            }
+            
+        case "createNotionPage":
+            struct NotionCreatePageArgs: Decodable {
+                let data_source_id: String?
+                let database_id: String?
+                let data_source_name: String?
+                let properties: [String: Any]?
+                let children: [[String: Any]]?
+                
+                init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    data_source_id = try container.decodeIfPresent(String.self, forKey: .data_source_id)
+                    database_id = try container.decodeIfPresent(String.self, forKey: .database_id)
+                    data_source_name = try container.decodeIfPresent(String.self, forKey: .data_source_name)
+                    
+                    // Decode properties and children as raw JSON
+                    if let propsData = try? container.decodeIfPresent(Data.self, forKey: .properties),
+                       let propsJSON = try? JSONSerialization.jsonObject(with: propsData) as? [String: Any] {
+                        properties = propsJSON
+                    } else {
+                        properties = nil
+                    }
+                    
+                    if let childrenData = try? container.decodeIfPresent(Data.self, forKey: .children),
+                       let childrenJSON = try? JSONSerialization.jsonObject(with: childrenData) as? [[String: Any]] {
+                        children = childrenJSON
+                    } else {
+                        children = nil
+                    }
+                }
+                
+                enum CodingKeys: String, CodingKey {
+                    case data_source_id, database_id, data_source_name, properties, children
+                }
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createNotionPage."
+                break
+            }
+            do {
+                // Parse as raw JSON first to handle nested objects
+                guard let argsJSON = try JSONSerialization.jsonObject(with: argsData) as? [String: Any] else {
+                    output = "Error: Invalid JSON format for createNotionPage."
+                    break
+                }
+                
+                let dataSourceId = argsJSON["data_source_id"] as? String
+                let databaseId = argsJSON["database_id"] as? String
+                let dataSourceName = argsJSON["data_source_name"] as? String
+                let properties = argsJSON["properties"] as? [String: Any]
+                let children = argsJSON["children"] as? [[String: Any]]
+                
+                let context = [dataSourceId, databaseId, dataSourceName].compactMap { $0 }.joined(separator: ", ")
+                logActivity("➕ Creating Notion page in [\(context)]...")
+                
+                let pageResult = try await NotionService.shared.createPage(
+                    dataSourceId: dataSourceId,
+                    databaseId: databaseId,
+                    dataSourceName: dataSourceName,
+                    properties: properties,
+                    children: children
+                )
+                output = try NotionService.shared.prettyJSONString(from: pageResult)
+            } catch {
+                output = "Error processing createNotionPage: \(error.localizedDescription)"
+            }
+            
+        case "updateNotionPage":
+            struct NotionUpdatePageArgs: Decodable {
+                let page_id: String
+                let properties: [String: Any]?
+                let archived: Bool?
+                
+                init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    page_id = try container.decode(String.self, forKey: .page_id)
+                    archived = try container.decodeIfPresent(Bool.self, forKey: .archived)
+                    
+                    if let propsData = try? container.decodeIfPresent(Data.self, forKey: .properties),
+                       let propsJSON = try? JSONSerialization.jsonObject(with: propsData) as? [String: Any] {
+                        properties = propsJSON
+                    } else {
+                        properties = nil
+                    }
+                }
+                
+                enum CodingKeys: String, CodingKey {
+                    case page_id, properties, archived
+                }
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for updateNotionPage."
+                break
+            }
+            do {
+                guard let argsJSON = try JSONSerialization.jsonObject(with: argsData) as? [String: Any] else {
+                    output = "Error: Invalid JSON format for updateNotionPage."
+                    break
+                }
+                
+                guard let pageId = argsJSON["page_id"] as? String else {
+                    output = "Error: Missing page_id for updateNotionPage."
+                    break
+                }
+                
+                let properties = argsJSON["properties"] as? [String: Any]
+                let archived = argsJSON["archived"] as? Bool
+                
+                logActivity("✏️ Updating Notion page \(pageId)...")
+                let updateResult = try await NotionService.shared.updatePage(
+                    pageId: pageId,
+                    properties: properties,
+                    archived: archived
+                )
+                output = try NotionService.shared.prettyJSONString(from: updateResult)
+            } catch {
+                output = "Error processing updateNotionPage: \(error.localizedDescription)"
+            }
+            
+        case "appendNotionBlocks":
+            struct NotionAppendBlocksArgs: Decodable {
+                let page_id: String
+                let blocks: [[String: Any]]
+                
+                init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    page_id = try container.decode(String.self, forKey: .page_id)
+                    
+                    if let blocksData = try? container.decode(Data.self, forKey: .blocks),
+                       let blocksJSON = try? JSONSerialization.jsonObject(with: blocksData) as? [[String: Any]] {
+                        blocks = blocksJSON
+                    } else {
+                        blocks = []
+                    }
+                }
+                
+                enum CodingKeys: String, CodingKey {
+                    case page_id, blocks
+                }
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for appendNotionBlocks."
+                break
+            }
+            do {
+                guard let argsJSON = try JSONSerialization.jsonObject(with: argsData) as? [String: Any] else {
+                    output = "Error: Invalid JSON format for appendNotionBlocks."
+                    break
+                }
+                
+                guard let pageId = argsJSON["page_id"] as? String,
+                      let blocks = argsJSON["blocks"] as? [[String: Any]] else {
+                    output = "Error: Missing page_id or blocks for appendNotionBlocks."
+                    break
+                }
+                
+                logActivity("📝 Appending blocks to Notion page \(pageId)...")
+                let appendResult = try await NotionService.shared.appendBlocks(pageId: pageId, blocks: blocks)
+                output = try NotionService.shared.prettyJSONString(from: appendResult)
+            } catch {
+                output = "Error processing appendNotionBlocks: \(error.localizedDescription)"
+            }
+        
+        default:
+            if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
+                output = await executeCustomTool(argumentsJSON: call.arguments)
+            } else {
+                let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
+                await MainActor.run { messages.append(errorMsg) }
+                return
+            }
         }
 
         // Send the result back to the API
+        AppLogger.log("📤 [Function Call] Sending output back to OpenAI API", category: .ui, level: .info)
+        AppLogger.log("📤 [Function Call] Output length: \(output.count) chars", category: .ui, level: .info)
+        AppLogger.log("📤 [Function Call] Output preview: \(String(output.prefix(300)))...", category: .ui, level: .info)
+        
+        let priorResponseId = lastResponseId
+        var reasoningReplay = priorResponseId.flatMap { reasoningBufferByResponseId[$0] }
+        let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
+
+        if supportsReasoning,
+           let responseId = priorResponseId,
+           reasoningPayloadsRequireSummary(reasoningReplay) {
+            AppLogger.log("🧠 [Function Call] Refreshing reasoning payload from response \(responseId)", category: .openAI, level: .info)
+            do {
+                let fetched = try await api.getResponse(responseId: responseId)
+                if let updated = storeReasoningItems(from: fetched) {
+                    reasoningReplay = updated
+                } else {
+                    reasoningReplay = []
+                }
+            } catch {
+                AppLogger.log("⚠️ [Function Call] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
+            }
+        }
+
+        if supportsReasoning,
+           let responseId = priorResponseId {
+            let sanitized = sanitizedReasoningPayloads(reasoningReplay)
+            reasoningReplay = sanitized
+            updateReasoningBuffer(with: sanitized, responseId: responseId)
+        }
+
+        let reasoningItemsForSend = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
+
         do {
+            AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
             let finalResponse = try await api.sendFunctionOutput(
                 call: call,
                 output: output,
                 model: activePrompt.openAIModel,
-                previousResponseId: lastResponseId
+                reasoningItems: reasoningItemsForSend,
+                previousResponseId: lastResponseId,
+                prompt: activePrompt
             )
 
+            AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
+            AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
+            AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
+            completedFunctionCallIds.insert(callIdentifier)
+            
+            for (index, item) in finalResponse.output.enumerated() {
+                AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
+                if let content = item.content {
+                    AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
+                    for (cIndex, c) in content.enumerated() {
+                        AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                    }
+                }
+            }
+
             await MainActor.run {
+                AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
                 self.handleNonStreamingResponse(finalResponse, for: messageId)
+                AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
+            }
+
+            if let key = priorResponseId {
+                reasoningBufferByResponseId.removeValue(forKey: key)
             }
         } catch {
+            AppLogger.log("❌ [Function Call] Error in sendFunctionOutput: \(error)", category: .openAI, level: .error)
             await MainActor.run {
                 self.handleError(error)
             }
@@ -1214,46 +1556,57 @@ class ChatViewModel: ObservableObject {
             return
         }
         
+        let trimmedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // Update the approval status in the message
         if var approvalRequests = messages[messageIndex].mcpApprovalRequests,
            let approvalIndex = approvalRequests.firstIndex(where: { $0.id == approvalRequestId }) {
             approvalRequests[approvalIndex].status = approve ? .approved : .rejected
-            approvalRequests[approvalIndex].reason = reason
+            if let trimmedReason, !trimmedReason.isEmpty, !approve {
+                approvalRequests[approvalIndex].reason = trimmedReason
+            } else {
+                approvalRequests[approvalIndex].reason = nil
+            }
             messages[messageIndex].mcpApprovalRequests = approvalRequests
         }
         
         // Log the decision
         AppLogger.log("🔒 [MCP] User \(approve ? "approved" : "rejected") approval request \(approvalRequestId)", category: .openAI, level: .info)
-        if let reason = reason {
-            AppLogger.log("  Reason: \(reason)", category: .openAI, level: .debug)
+        if let trimmedReason, !trimmedReason.isEmpty, !approve {
+            AppLogger.log("  Reason: \(trimmedReason)", category: .openAI, level: .debug)
         }
         
         logActivity("MCP: \(approve ? "Approved" : "Rejected") tool call")
         
         // Send the approval response to the API
-        Task {
+        streamingTask?.cancel()
+        streamingMessageId = messageId // Ensure approval stream updates the originating message
+
+        streamingTask = Task { [weak self] in
+            guard let self else { return }
+            await MainActor.run {
+                self.streamingStatus = .connecting
+                self.isStreaming = true
+            }
+
             do {
-                streamingStatus = .connecting
-                isStreaming = true
-                
                 // Build approval response input
-                let approvalResponse: [String: Any] = [
-                    "type": "mcp_approval_response",
-                    "approval_request_id": approvalRequestId,
-                    "approve": approve,
-                    "reason": reason ?? ""
-                ]
-                
+                let approvalResponse = self.buildMCPApprovalResponsePayload(
+                    approvalRequestId: approvalRequestId,
+                    approve: approve,
+                    reason: trimmedReason
+                )
+
                 // Send the response using previous_response_id to continue the conversation
-                if activePrompt.enableStreaming {
+                if self.activePrompt.enableStreaming {
                     // Streaming mode
-                    let stream = api.streamMCPApprovalResponse(
+                    let stream = self.api.streamMCPApprovalResponse(
                         approvalResponse: approvalResponse,
-                        model: activePrompt.openAIModel,
-                        previousResponseId: lastResponseId,
-                        prompt: activePrompt
+                        model: self.activePrompt.openAIModel,
+                        previousResponseId: self.lastResponseId,
+                        prompt: self.activePrompt
                     )
-                    
+
                     for try await event in stream {
                         await MainActor.run {
                             self.handleStreamChunk(event, for: messageId)
@@ -1261,13 +1614,13 @@ class ChatViewModel: ObservableObject {
                     }
                 } else {
                     // Non-streaming mode
-                    let response = try await api.sendMCPApprovalResponse(
+                    let response = try await self.api.sendMCPApprovalResponse(
                         approvalResponse: approvalResponse,
-                        model: activePrompt.openAIModel,
-                        previousResponseId: lastResponseId,
-                        prompt: activePrompt
+                        model: self.activePrompt.openAIModel,
+                        previousResponseId: self.lastResponseId,
+                        prompt: self.activePrompt
                     )
-                    
+
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: messageId)
                     }
@@ -1278,9 +1631,24 @@ class ChatViewModel: ObservableObject {
                     self.logActivity("Error sending approval response")
                     self.streamingStatus = .idle
                     self.isStreaming = false
+                    self.streamingMessageId = nil
                 }
             }
         }
+    }
+
+    func buildMCPApprovalResponsePayload(approvalRequestId: String, approve: Bool, reason: String?) -> [String: Any] {
+        var payload: [String: Any] = [
+            "type": "mcp_approval_response",
+            "approval_request_id": approvalRequestId,
+            "approve": approve
+        ]
+
+        if let reason, !reason.isEmpty, !approve {
+            payload["reason"] = reason
+        }
+
+        return payload
     }
     
     /// Determines the current model to use from UserDefaults (or default).
@@ -2274,9 +2642,25 @@ class ChatViewModel: ObservableObject {
     /// We primarily rely on partial_image updates for previews/finals and an existing fallback that fetches
     /// the full response if images are returned as image_url/image_file content.
     func handleCompletedStreamingItem(_ item: StreamingItem, for messageId: UUID) {
-    // Ensure the message still exists before proceeding
-    guard messages.firstIndex(where: { $0.id == messageId }) != nil else { return }
-        
+        // Ensure the message still exists before proceeding
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        if item.type == "function_call" {
+            let status = item.status?.lowercased() ?? "unknown"
+            if status == "in_progress" {
+                AppLogger.log("⏳ [Function Call] Streaming item \(item.id) still in progress (callId=\(item.callId ?? "none"))", category: .openAI, level: .debug)
+                return
+            }
+
+            AppLogger.log("🔔 [Function Call] Streaming item completed: id=\(item.id), callId=\(item.callId ?? "none"), name=\(item.name ?? "<unknown>")", category: .openAI, level: .info)
+            let outputItem = OutputItem(streamingItem: item)
+            Task { [weak self] in
+                guard let self else { return }
+                await self.handleFunctionCall(outputItem, for: messageId)
+            }
+            return
+        }
+
         // Handle image generation completion
         if item.type == "image_generation_call" {
             // Completed event may not carry image bytes. If partials arrived, the last partial is already appended.
@@ -2284,30 +2668,73 @@ class ChatViewModel: ObservableObject {
             // will fetch them. So we only log a lightweight note here.
             AppLogger.log("ℹ️ [Image Generation] Completed event received for item \(item.id). Awaiting any final image_url/image_file in subsequent items, if provided.", category: .openAI, level: .info)
         }
-        
+
         // Handle MCP tool completion
         if item.type == "mcp_call" {
-            if let toolName = item.name, let serverLabel = item.serverLabel {
-                AppLogger.log("✅ [MCP] Tool call completed: \(toolName) on server \(serverLabel)", category: .openAI, level: .info)
-                
-                // Add a subtle completion indicator to the message if it exists
-                if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
-                    // Check if we already have tool tracking for this message
-                    var updatedMessages = messages
-                    if updatedMessages[msgIndex].toolsUsed == nil {
-                        updatedMessages[msgIndex].toolsUsed = []
-                    }
-                    if !updatedMessages[msgIndex].toolsUsed!.contains("mcp") {
-                        updatedMessages[msgIndex].toolsUsed!.append("mcp")
-                        messages = updatedMessages
-                        AppLogger.log("🔧 [MCP Tool Tracking] Added MCP tool to message \(messageId)", category: .openAI, level: .debug)
-                    }
-                }
+            let status = item.status?.lowercased()
+            let resolved = resolveServerLabel(
+                serverLabel: item.serverLabel,
+                itemServerLabel: item.serverLabel,
+                fallbackId: item.id
+            )
+            if resolved.usedFallback {
+                AppLogger.log("ℹ️ [MCP] call completion missing server_label; using '\(resolved.label)'", category: .openAI, level: .debug)
+            }
+            let serverLabel = resolved.label
+            lastMCPServerLabel = serverLabel
+            let displayName: String
+            if let toolName = item.name?.trimmingCharacters(in: .whitespacesAndNewlines), !toolName.isEmpty {
+                displayName = toolName
             } else {
-                AppLogger.log("✅ [MCP] Tool call completed for item \(item.id)", category: .openAI, level: .info)
+                let suffix = String(item.id.prefix(6))
+                displayName = "MCP tool \(suffix)"
+            }
+
+            if status == "failed" {
+                let errorDescription = describeMCPError(status: status, stringError: nil, structuredError: item.error)
+                AppLogger.log("❌ [MCP] Tool call failed: \(displayName) on server \(serverLabel) - \(errorDescription)", category: .openAI, level: .error)
+                logActivity("MCP: \(displayName) failed - \(errorDescription)")
+
+                var updatedMessages = messages
+                let failureText = renderMCPFailureText(
+                    serverLabel: serverLabel,
+                    toolName: displayName,
+                    errorDescription: errorDescription,
+                    rawArguments: item.arguments
+                )
+                let existing = updatedMessages[messageIndex].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                updatedMessages[messageIndex].text = existing.isEmpty ? failureText : "\(existing)\n\n\(failureText)"
+                if updatedMessages[messageIndex].toolsUsed == nil {
+                    updatedMessages[messageIndex].toolsUsed = []
+                }
+                if !updatedMessages[messageIndex].toolsUsed!.contains("mcp") {
+                    updatedMessages[messageIndex].toolsUsed!.append("mcp")
+                }
+                messages = updatedMessages
+                return
+            }
+
+            if status == "completed" || status == "done" {
+                AppLogger.log("✅ [MCP] Tool call completed: \(displayName) on server \(serverLabel)", category: .openAI, level: .info)
+            } else {
+                AppLogger.log("ℹ️ [MCP] Tool call status '\(status ?? "unknown")' for item \(item.id) on server \(serverLabel)", category: .openAI, level: .debug)
+            }
+
+            var updatedMessages = messages
+            var mutated = false
+            if updatedMessages[messageIndex].toolsUsed == nil {
+                updatedMessages[messageIndex].toolsUsed = []
+                mutated = true
+            }
+            if updatedMessages[messageIndex].toolsUsed?.contains("mcp") == false {
+                updatedMessages[messageIndex].toolsUsed?.append("mcp")
+                AppLogger.log("🔧 [MCP Tool Tracking] Added MCP tool to message \(messageId)", category: .openAI, level: .debug)
+                mutated = true
+            }
+            if mutated {
+                messages = updatedMessages
             }
         }
-        
         
         // Note: For other image types like image_file/image_url, they would be handled by the annotation system
         // or the fallback mechanism that fetches the final response
@@ -2497,6 +2924,7 @@ class ChatViewModel: ObservableObject {
         deltaBuffers.removeAll()
         deltaFlushWorkItems.values.forEach { $0.cancel() }
         deltaFlushWorkItems.removeAll()
+        surfacedMCPToolWarnings.removeAll()
         
         updateActiveConversation(conversation)
     }
@@ -2629,7 +3057,7 @@ class ChatViewModel: ObservableObject {
             // When artifacts are being processed from code interpreter
             streamingStatus = .processingArtifacts
             logActivity("Processing generated files…")
-        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated":
+        case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             let serverLabel = item?.serverLabel ?? "MCP"
             let status = item?.status?.lowercased()
             if status == "failed" || item?.error != nil {
@@ -2637,9 +3065,15 @@ class ChatViewModel: ObservableObject {
                 logActivity("⚠️ MCP: Listing tools failed for \(serverLabel)")
             } else {
                 streamingStatus = .runningTool("MCP: \(serverLabel)")
-                logActivity("🔧 MCP: Listing tools from \(serverLabel)")
+                if eventType.hasSuffix("completed") || status == "completed" {
+                    logActivity("✅ MCP: Tools ready from \(serverLabel)")
+                } else if eventType.hasSuffix("in_progress") {
+                    logActivity("🔧 MCP: Listing tools from \(serverLabel)")
+                } else {
+                    logActivity("🔧 MCP: Updating tools from \(serverLabel)")
+                }
             }
-        case "response.mcp_call.added":
+        case "response.mcp_call.added", "response.mcp_call.in_progress":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
                 streamingStatus = .runningTool("MCP: \(toolName)")
                 logActivity("🔧 MCP: Calling \(toolName) on \(serverLabel)")
@@ -2650,14 +3084,27 @@ class ChatViewModel: ObservableObject {
                 streamingStatus = .runningTool("MCP")
                 logActivity("🔧 MCP: Running tool")
             }
-        case "response.mcp_call.done":
+        case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             let toolName = item?.name ?? "MCP tool"
             let status = item?.status?.lowercased()
-            if status == "failed" || item?.error != nil {
+            let isFailureEvent = eventType.hasSuffix("failed")
+            if status == "failed" || item?.error != nil || isFailureEvent {
                 streamingStatus = .runningTool("MCP error")
                 logActivity("⚠️ MCP: \(toolName) failed")
             } else {
                 logActivity("✅ MCP: \(toolName) completed")
+            }
+        case "response.mcp_call_arguments.delta":
+            if let name = item?.name ?? item?.serverLabel {
+                logActivity("🔧 MCP: Preparing arguments for \(name)")
+            } else {
+                logActivity("🔧 MCP: Preparing tool arguments")
+            }
+        case "response.mcp_call_arguments.done":
+            if let name = item?.name ?? item?.serverLabel {
+                logActivity("✅ MCP: Arguments ready for \(name)")
+            } else {
+                logActivity("✅ MCP: Arguments ready")
             }
         case "response.mcp_approval_request.added":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
@@ -2850,6 +3297,139 @@ extension ChatViewModel {
     }
 }
 
+// MARK: - Reasoning Replay Support
+extension ChatViewModel {
+    @discardableResult
+    func storeReasoningItems(from response: OpenAIResponse) -> [[String: Any]]? {
+        let payloads = response.output.compactMap { makeReasoningPayload(from: $0) }
+        updateReasoningBuffer(with: payloads, responseId: response.id)
+        return payloads.isEmpty ? nil : payloads
+    }
+
+    @discardableResult
+    func storeReasoningItems(from response: StreamingResponse) -> [[String: Any]]? {
+        let payloads = (response.output ?? []).compactMap { makeReasoningPayload(from: $0) }
+        updateReasoningBuffer(with: payloads, responseId: response.id)
+        return payloads.isEmpty ? nil : payloads
+    }
+
+    func updateReasoningBuffer(with payloads: [[String: Any]]?, responseId: String) {
+        guard let payloads else {
+            reasoningBufferByResponseId.removeValue(forKey: responseId)
+            AppLogger.log("🧠 [Reasoning] Removed cache entry for response \(responseId)", category: .openAI, level: .debug)
+            return
+        }
+
+        reasoningBufferByResponseId[responseId] = payloads
+        if payloads.isEmpty {
+            AppLogger.log("🧠 [Reasoning] Cached empty reasoning payload for response \(responseId)", category: .openAI, level: .debug)
+        } else {
+            AppLogger.log("🧠 [Reasoning] Cached \(payloads.count) reasoning item(s) for response \(responseId)", category: .openAI, level: .info)
+        }
+    }
+
+    func reasoningPayloadsRequireSummary(_ payloads: [[String: Any]]?) -> Bool {
+        guard let payloads else { return true }
+        guard !payloads.isEmpty else { return false }
+        return payloads.contains { entry in
+            guard (entry["type"] as? String) == "reasoning" else { return false }
+            return entry["summary"] == nil
+        }
+    }
+
+    func sanitizedReasoningPayloads(_ payloads: [[String: Any]]?) -> [[String: Any]]? {
+        guard var payloads = payloads else { return nil }
+        guard !payloads.isEmpty else { return [] }
+        for index in payloads.indices {
+            guard (payloads[index]["type"] as? String) == "reasoning" else { continue }
+            if payloads[index]["summary"] == nil {
+                payloads[index]["summary"] = []
+            }
+        }
+        return payloads
+    }
+
+    func makeReasoningPayload(from item: OutputItem) -> [String: Any]? {
+        guard item.type == "reasoning" else { return nil }
+
+        var dict: [String: Any] = [
+            "type": item.type,
+            "id": item.id
+        ]
+
+        if let content = item.content {
+            let contentPayloads = content.compactMap { makeReasoningContentPayload(from: $0) }
+            if !contentPayloads.isEmpty {
+                dict["content"] = contentPayloads
+            }
+        }
+
+        let summaryPayloads = makeReasoningSummaryPayload(from: item.summary)
+        if !summaryPayloads.isEmpty {
+            dict["summary"] = summaryPayloads
+        }
+
+        return dict
+    }
+
+    func makeReasoningPayload(from item: StreamingOutputItem) -> [String: Any]? {
+        guard item.type == "reasoning" else { return nil }
+
+        var dict: [String: Any] = [
+            "type": item.type,
+            "id": item.id
+        ]
+
+        if let status = item.status { dict["status"] = status }
+        if let role = item.role { dict["role"] = role }
+
+        if let content = item.content {
+            let contentPayloads = content.compactMap { makeReasoningContentPayload(from: $0) }
+            if !contentPayloads.isEmpty {
+                dict["content"] = contentPayloads
+            }
+        }
+
+        let summaryPayloads = makeReasoningSummaryPayload(from: item.summary)
+        if !summaryPayloads.isEmpty {
+            dict["summary"] = summaryPayloads
+        }
+
+        return dict
+    }
+
+    func makeReasoningContentPayload(from content: ContentItem) -> [String: Any]? {
+        var dict: [String: Any] = ["type": content.type]
+
+        if let text = content.text { dict["text"] = text }
+        if let imageURL = content.imageURL?.url {
+            dict["image_url"] = ["url": imageURL]
+        }
+        if let imageFile = content.imageFile?.file_id {
+            dict["image_file"] = ["file_id": imageFile]
+        }
+
+        return dict
+    }
+
+    func makeReasoningContentPayload(from content: StreamingContentItem) -> [String: Any]? {
+        var dict: [String: Any] = ["type": content.type]
+
+        if let text = content.text { dict["text"] = text }
+        if let imageURL = content.imageURL { dict["image_url"] = ["url": imageURL] }
+
+        return dict
+    }
+
+    func makeReasoningSummaryPayload(from summary: [SummaryItem]?) -> [[String: Any]] {
+        guard let summary, !summary.isEmpty else { return [] }
+        return summary.map { [
+            "type": $0.type,
+            "text": $0.text
+        ] }
+    }
+}
+
 // MARK: - Activity Feed Helpers
 extension ChatViewModel {
     /// Append a short, user-friendly line to the activity feed, deduplicated and capped.
@@ -3005,19 +3585,40 @@ extension ChatViewModel {
     /// Handles non-streaming responses from the OpenAI API.
     /// Consolidates text, images, token usage, and triggers follow-up tool workflows.
     private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
-        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        AppLogger.log("🎬 [handleNonStreamingResponse] Starting...", category: .openAI, level: .info)
+        AppLogger.log("🎬 [handleNonStreamingResponse] Response ID: \(response.id)", category: .openAI, level: .info)
+        AppLogger.log("🎬 [handleNonStreamingResponse] Message ID: \(messageId)", category: .openAI, level: .info)
+        
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
+            AppLogger.log("❌ [handleNonStreamingResponse] Could not find message with ID \(messageId)", category: .openAI, level: .error)
+            return
+        }
+        
+        AppLogger.log("✅ [handleNonStreamingResponse] Found message at index \(messageIndex)", category: .openAI, level: .info)
 
         // Persist response ID so the next request can continue the conversation.
         lastResponseId = response.id
         AppLogger.log("Updated lastResponseId to: \(response.id)", category: .openAI, level: .info)
 
-        // If the response is a function call, execute it asynchronously and wait for the follow-up.
-        if let outputItem = response.output.first, outputItem.type == "function_call" {
+        _ = storeReasoningItems(from: response)
+
+        // Determine if response contains a new assistant message before dispatching tool calls again.
+        let hasAssistantMessage = response.output.contains { item in
+            item.type == "message" && (item.content?.contains { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) } ?? false)
+        }
+
+        if !hasAssistantMessage,
+           let functionCallItem = response.output.first(where: { $0.type == "function_call" }) {
+            AppLogger.log("🔧 [handleNonStreamingResponse] No assistant message yet; handling function call \(functionCallItem.name ?? "<unknown>")", category: .openAI, level: .info)
             Task { [weak self] in
                 guard let self = self else { return }
-                await self.handleFunctionCall(outputItem, for: messageId)
+                await self.handleFunctionCall(functionCallItem, for: messageId)
             }
             return
+        } else if hasAssistantMessage {
+            AppLogger.log("✅ [handleNonStreamingResponse] Detected assistant message content; skipping function-call recursion", category: .openAI, level: .info)
+        } else {
+            AppLogger.log("⚠️ [handleNonStreamingResponse] No assistant message or function calls detected", category: .openAI, level: .warning)
         }
 
         var updatedMessage = messages[messageIndex]
@@ -3027,10 +3628,20 @@ extension ChatViewModel {
             .compactMap { $0.content }
             .flatMap { $0 }
 
+        AppLogger.log("📋 [handleNonStreamingResponse] Total content parts: \(allContents.count)", category: .openAI, level: .info)
+        
+        for (index, content) in allContents.enumerated() {
+            AppLogger.log("📋 [handleNonStreamingResponse] Content \(index): type=\(content.type), hasText=\(content.text != nil), textLength=\(content.text?.count ?? 0)", category: .openAI, level: .info)
+        }
+
         if let textContent = allContents.first(where: { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) }) {
             updatedMessage.text = textContent.text ?? ""
+            AppLogger.log("✅ [handleNonStreamingResponse] Set message text from output_text/text: \(updatedMessage.text?.count ?? 0) chars", category: .openAI, level: .info)
         } else if let anyText = allContents.first(where: { $0.text?.isEmpty == false })?.text {
             updatedMessage.text = anyText
+            AppLogger.log("✅ [handleNonStreamingResponse] Set message text from any content: \(updatedMessage.text?.count ?? 0) chars", category: .openAI, level: .info)
+        } else {
+            AppLogger.log("⚠️ [handleNonStreamingResponse] No text content found in response", category: .openAI, level: .warning)
         }
 
         // Retrieve image content bundled in the response.
@@ -3078,7 +3689,9 @@ extension ChatViewModel {
         messages[messageIndex] = updatedMessage
         recomputeCumulativeUsage()
 
-    AppLogger.log("Received non-streaming response: \(updatedMessage.text ?? "<no text>")", category: .openAI, level: .info)
+        AppLogger.log("💬 [handleNonStreamingResponse] Final message text: \(updatedMessage.text ?? "<no text>")", category: .openAI, level: .info)
+        AppLogger.log("💬 [handleNonStreamingResponse] Message text length: \(updatedMessage.text?.count ?? 0) chars", category: .openAI, level: .info)
+        AppLogger.log("💬 [handleNonStreamingResponse] Message updated in array at index \(messageIndex)", category: .openAI, level: .info)
 
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.messageReceived,
@@ -3089,6 +3702,8 @@ extension ChatViewModel {
                 "has_images": updatedMessage.images?.isEmpty == false
             ]
         )
+        
+        AppLogger.log("✅ [handleNonStreamingResponse] Completed successfully", category: .openAI, level: .info)
 
         // Auto-resolve any computer calls that arrive in non-streaming mode to keep chains progressing.
         if activePrompt.enableComputerUse,
