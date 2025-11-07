@@ -37,6 +37,8 @@ struct Prompt: Codable, Identifiable, Equatable {
     var enableMCPTool: Bool
     var enableCustomTool: Bool
     var enableComputerUse: Bool
+    var enableNotionIntegration: Bool = true
+    var enableAppleIntegrations: Bool = true
 
     // MARK: - MCP Tool Parameters
     var mcpServerLabel: String
@@ -162,6 +164,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
     case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold
     case enableComputerUse
+    case enableNotionIntegration, enableAppleIntegrations
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools, mcpAuthHeaderKey, mcpKeepAuthInHeaders
     case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
@@ -202,7 +205,9 @@ struct Prompt: Codable, Identifiable, Equatable {
             fileSearchScoreThreshold: nil,
             enableMCPTool: true,
             enableCustomTool: false,
-            enableComputerUse: true,
+            enableComputerUse: false,
+            enableNotionIntegration: true,
+            enableAppleIntegrations: true,
             mcpServerLabel: "",
             mcpServerURL: "",
             mcpHeaders: "",

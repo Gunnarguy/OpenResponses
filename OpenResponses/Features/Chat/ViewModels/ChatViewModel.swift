@@ -1148,8 +1148,46 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
-        let output: String
-        switch functionName {
+        let notionFunctions: Set<String> = [
+            "searchNotion",
+            "getNotionDatabase",
+            "getNotionDataSource",
+            "createNotionPage",
+            "updateNotionPage",
+            "appendNotionBlocks"
+        ]
+        #if canImport(EventKit)
+        let baseAppleFunctions = [
+            "fetchAppleCalendarEvents",
+            "fetchAppleReminders",
+            "createAppleCalendarEvent",
+            "createAppleReminder"
+        ]
+        #if canImport(Contacts)
+        let appleFunctions = Set(baseAppleFunctions + [
+            "searchAppleContacts",
+            "getAppleContact",
+            "createAppleContact"
+        ])
+        #else
+        let appleFunctions = Set(baseAppleFunctions)
+        #endif
+        #else
+        let appleFunctions = Set<String>()
+        #endif
+
+        // Short-circuit tool calls that were disabled in Settings to avoid side-effects
+        var output: String?
+        if notionFunctions.contains(functionName) && !activePrompt.enableNotionIntegration {
+            AppLogger.log("🔒 [Function Call] Blocked Notion function \(functionName) – integration disabled in settings", category: .ui, level: .info)
+            output = "Error: Notion integration is disabled in Settings."
+        } else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {
+            AppLogger.log("🔒 [Function Call] Blocked Apple system function \(functionName) – integrations disabled in settings", category: .ui, level: .info)
+            output = "Error: Apple system integrations are disabled in Settings."
+        }
+
+        if output == nil {
+            switch functionName {
         case "searchNotion":
             struct NotionSearchArgs: Decodable {
                 let query: String
@@ -1197,8 +1235,8 @@ class ChatViewModel: ObservableObject {
                 }
 
                 output = jsonOutput
-                AppLogger.log("✅ [searchNotion] JSON output length: \(output.count) chars", category: .network, level: .info)
-                AppLogger.log("📋 [searchNotion] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+                AppLogger.log("✅ [searchNotion] JSON output length: \(jsonOutput.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [searchNotion] Output preview: \(String(jsonOutput.prefix(200)))...", category: .network, level: .info)
             } catch {
                 let errorMsg = "Error processing searchNotion: \(error.localizedDescription)"
                 AppLogger.log("❌ [searchNotion] \(errorMsg)", category: .network, level: .error)
@@ -1219,9 +1257,10 @@ class ChatViewModel: ObservableObject {
                 logActivity("📊 Fetching Notion database \(decodedArgs.database_id)...")
                 let dbResult = try await NotionService.shared.getDatabase(databaseId: decodedArgs.database_id)
                 AppLogger.log("✅ [getNotionDatabase] Got result, converting to JSON...", category: .network, level: .info)
-                output = try NotionService.shared.prettyJSONString(from: dbResult)
-                AppLogger.log("✅ [getNotionDatabase] JSON output length: \(output.count) chars", category: .network, level: .info)
-                AppLogger.log("📋 [getNotionDatabase] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+                let dbJSON = try NotionService.shared.prettyJSONString(from: dbResult)
+                output = dbJSON
+                AppLogger.log("✅ [getNotionDatabase] JSON output length: \(dbJSON.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [getNotionDatabase] Output preview: \(String(dbJSON.prefix(200)))...", category: .network, level: .info)
             } catch {
                 let errorMsg = "Error processing getNotionDatabase: \(error.localizedDescription)"
                 AppLogger.log("❌ [getNotionDatabase] \(errorMsg)", category: .network, level: .error)
@@ -1407,6 +1446,272 @@ class ChatViewModel: ObservableObject {
                 output = "Error processing appendNotionBlocks: \(error.localizedDescription)"
             }
         
+        #if canImport(EventKit)
+        case "fetchAppleCalendarEvents":
+            struct FetchCalendarArgs: Decodable {
+                let startDate: String
+                let endDate: String
+                let calendarIdentifiers: [String]?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for fetchAppleCalendarEvents."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(FetchCalendarArgs.self, from: argsData)
+                AppLogger.log("📅 [fetchAppleCalendarEvents] Date range: \(decodedArgs.startDate) to \(decodedArgs.endDate)", category: .network, level: .info)
+                logActivity("📅 Fetching Apple Calendar events...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let events = try await provider.listEvents(
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    calendarIdentifiers: decodedArgs.calendarIdentifiers
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(events)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [fetchAppleCalendarEvents] Found \(events.count) events", category: .network, level: .info)
+                logActivity("✅ Found \(events.count) calendar events")
+            } catch {
+                let errorMsg = "Error fetching Apple Calendar events: \(error.localizedDescription)"
+                AppLogger.log("❌ [fetchAppleCalendarEvents] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Calendar fetch failed")
+            }
+        
+        case "fetchAppleReminders":
+            struct FetchRemindersArgs: Decodable {
+                let startDate: String?
+                let endDate: String?
+                let completed: Bool?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for fetchAppleReminders."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(FetchRemindersArgs.self, from: argsData)
+                AppLogger.log("✅ [fetchAppleReminders] Fetching reminders...", category: .network, level: .info)
+                logActivity("✅ Fetching Apple Reminders...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let reminders = try await provider.listReminders(
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    completed: decodedArgs.completed,
+                    listIdentifiers: nil
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(reminders)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [fetchAppleReminders] Found \(reminders.count) reminders", category: .network, level: .info)
+                logActivity("✅ Found \(reminders.count) reminders")
+            } catch {
+                let errorMsg = "Error fetching Apple Reminders: \(error.localizedDescription)"
+                AppLogger.log("❌ [fetchAppleReminders] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Reminders fetch failed")
+            }
+        
+        case "createAppleCalendarEvent":
+            struct CreateEventArgs: Decodable {
+                let title: String
+                let startDate: String
+                let endDate: String
+                let location: String?
+                let notes: String?
+                let calendarIdentifier: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleCalendarEvent."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateEventArgs.self, from: argsData)
+                AppLogger.log("📅 [createAppleCalendarEvent] Creating event: \(decodedArgs.title)", category: .network, level: .info)
+                logActivity("📅 Creating calendar event: \(decodedArgs.title)...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let event = try await provider.createEvent(
+                    title: decodedArgs.title,
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    location: decodedArgs.location,
+                    notes: decodedArgs.notes,
+                    calendarIdentifier: decodedArgs.calendarIdentifier
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(event)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleCalendarEvent] Created event successfully", category: .network, level: .info)
+                logActivity("✅ Created event: \(decodedArgs.title)")
+            } catch {
+                let errorMsg = "Error creating Apple Calendar event: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleCalendarEvent] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Event creation failed")
+            }
+        
+        case "createAppleReminder":
+            struct CreateReminderArgs: Decodable {
+                let title: String
+                let notes: String?
+                let dueDate: String?
+                let priority: Int?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleReminder."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateReminderArgs.self, from: argsData)
+                AppLogger.log("📝 [createAppleReminder] Creating reminder: \(decodedArgs.title)", category: .network, level: .info)
+                logActivity("📝 Creating Apple Reminder: \(decodedArgs.title)...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let reminder = try await provider.createReminder(
+                    title: decodedArgs.title,
+                    notes: decodedArgs.notes,
+                    dueDateISO8601: decodedArgs.dueDate,
+                    listIdentifier: nil  // TODO: Add priority support
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(reminder)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleReminder] Created reminder successfully", category: .network, level: .info)
+                logActivity("✅ Created reminder: \(decodedArgs.title)")
+            } catch {
+                let errorMsg = "Error creating Apple Reminder: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleReminder] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Reminder creation failed")
+            }
+        
+        case "searchAppleContacts":
+            struct SearchContactsArgs: Decodable {
+                let query: String
+                let limit: Int?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for searchAppleContacts."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(SearchContactsArgs.self, from: argsData)
+                AppLogger.log("📇 [searchAppleContacts] Query: \(decodedArgs.query)", category: .network, level: .info)
+                logActivity("📇 Searching Apple Contacts for '\(decodedArgs.query)'...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contacts = try await provider.searchContacts(
+                    query: decodedArgs.query,
+                    limit: decodedArgs.limit ?? 50
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contacts)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [searchAppleContacts] Found \(contacts.count) contacts", category: .network, level: .info)
+                logActivity("✅ Found \(contacts.count) contacts")
+            } catch {
+                let errorMsg = "Error searching Apple Contacts: \(error.localizedDescription)"
+                AppLogger.log("❌ [searchAppleContacts] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact search failed")
+            }
+        
+        case "getAppleContact":
+            struct GetContactArgs: Decodable {
+                let identifier: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for getAppleContact."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(GetContactArgs.self, from: argsData)
+                AppLogger.log("📇 [getAppleContact] Identifier: \(decodedArgs.identifier)", category: .network, level: .info)
+                logActivity("📇 Fetching contact details...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contact = try await provider.getContact(identifier: decodedArgs.identifier)
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contact)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [getAppleContact] Retrieved contact details", category: .network, level: .info)
+                logActivity("✅ Retrieved contact details")
+            } catch {
+                let errorMsg = "Error getting Apple Contact: \(error.localizedDescription)"
+                AppLogger.log("❌ [getAppleContact] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact fetch failed")
+            }
+        
+        case "createAppleContact":
+            struct CreateContactArgs: Decodable {
+                let givenName: String?
+                let familyName: String?
+                let organizationName: String?
+                let phoneNumber: String?
+                let phoneLabel: String?
+                let emailAddress: String?
+                let emailLabel: String?
+                let note: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleContact."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateContactArgs.self, from: argsData)
+                let contactName = [decodedArgs.givenName, decodedArgs.familyName].compactMap { $0 }.joined(separator: " ")
+                AppLogger.log("📇 [createAppleContact] Creating contact: \(contactName.isEmpty ? "Unknown" : contactName)", category: .network, level: .info)
+                logActivity("📇 Creating Apple Contact: \(contactName.isEmpty ? "Unknown" : contactName)...")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contact = try await provider.createContact(
+                    givenName: decodedArgs.givenName,
+                    familyName: decodedArgs.familyName,
+                    organizationName: decodedArgs.organizationName,
+                    phoneNumber: decodedArgs.phoneNumber,
+                    phoneLabel: decodedArgs.phoneLabel,
+                    emailAddress: decodedArgs.emailAddress,
+                    emailLabel: decodedArgs.emailLabel,
+                    note: decodedArgs.note
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contact)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleContact] Created contact successfully", category: .network, level: .info)
+                logActivity("✅ Created contact")
+            } catch {
+                let errorMsg = "Error creating Apple Contact: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleContact] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact creation failed")
+            }
+        #endif
+        
         default:
             if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
                 output = await executeCustomTool(argumentsJSON: call.arguments)
@@ -1415,6 +1720,12 @@ class ChatViewModel: ObservableObject {
                 await MainActor.run { messages.append(errorMsg) }
                 return
             }
+        }
+        }
+
+        guard let output else {
+            AppLogger.log("❌ [Function Call] No output generated for function \(functionName)", category: .openAI, level: .error)
+            return
         }
 
         // Send the result back to the API
@@ -1451,43 +1762,99 @@ class ChatViewModel: ObservableObject {
 
         let reasoningItemsForSend = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
 
+        let shouldStreamFollowUp = activePrompt.enableStreaming
+        var followUpCompleted = false
         do {
-            AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
-            let finalResponse = try await api.sendFunctionOutput(
-                call: call,
-                output: output,
-                model: activePrompt.openAIModel,
-                reasoningItems: reasoningItemsForSend,
-                previousResponseId: lastResponseId,
-                prompt: activePrompt
-            )
+            if shouldStreamFollowUp {
+                AppLogger.log("📤 [Function Call] Streaming function output to OpenAI", category: .openAI, level: .info)
+                await MainActor.run {
+                    self.streamingMessageId = messageId
+                    self.isStreaming = true
+                    self.streamingStatus = .connecting
+                }
 
-            AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
-            AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
-            AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
-            completedFunctionCallIds.insert(callIdentifier)
-            
-            for (index, item) in finalResponse.output.enumerated() {
-                AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
-                if let content = item.content {
-                    AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
-                    for (cIndex, c) in content.enumerated() {
-                        AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                let stream = api.streamFunctionOutput(
+                    call: call,
+                    output: output,
+                    model: activePrompt.openAIModel,
+                    reasoningItems: reasoningItemsForSend,
+                    previousResponseId: lastResponseId,
+                    prompt: activePrompt
+                )
+
+                var cancelledMidStream = false
+                for try await chunk in stream {
+                    if Task.isCancelled {
+                        cancelledMidStream = true
+                        await MainActor.run {
+                            self.handleError(CancellationError())
+                            self.logActivity("Cancelled")
+                        }
+                        break
+                    }
+                    await MainActor.run {
+                        self.handleStreamChunk(chunk, for: messageId)
                     }
                 }
+
+                if !cancelledMidStream {
+                    followUpCompleted = true
+                    await MainActor.run {
+                        if let finalMessage = self.messages.first(where: { $0.id == messageId }) {
+                            AnalyticsService.shared.trackEvent(
+                                name: AnalyticsEvent.messageReceived,
+                                parameters: [
+                                    AnalyticsParameter.model: self.activePrompt.openAIModel,
+                                    AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                                    AnalyticsParameter.streamingEnabled: true,
+                                    "has_images": finalMessage.images?.isEmpty == false
+                                ]
+                            )
+                        }
+                    }
+                }
+            } else {
+                AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
+                let finalResponse = try await api.sendFunctionOutput(
+                    call: call,
+                    output: output,
+                    model: activePrompt.openAIModel,
+                    reasoningItems: reasoningItemsForSend,
+                    previousResponseId: lastResponseId,
+                    prompt: activePrompt
+                )
+
+                AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
+                AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
+                AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
+
+                for (index, item) in finalResponse.output.enumerated() {
+                    AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
+                    if let content = item.content {
+                        AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
+                        for (cIndex, c) in content.enumerated() {
+                            AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                        }
+                    }
+                }
+
+                await MainActor.run {
+                    AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
+                    self.handleNonStreamingResponse(finalResponse, for: messageId)
+                    AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
+                }
+
+                followUpCompleted = true
             }
 
-            await MainActor.run {
-                AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
-                self.handleNonStreamingResponse(finalResponse, for: messageId)
-                AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
-            }
-
-            if let key = priorResponseId {
-                reasoningBufferByResponseId.removeValue(forKey: key)
+            if followUpCompleted {
+                completedFunctionCallIds.insert(callIdentifier)
+                if let key = priorResponseId {
+                    reasoningBufferByResponseId.removeValue(forKey: key)
+                }
             }
         } catch {
-            AppLogger.log("❌ [Function Call] Error in sendFunctionOutput: \(error)", category: .openAI, level: .error)
+            AppLogger.log("❌ [Function Call] Error while returning function output: \(error)", category: .openAI, level: .error)
             await MainActor.run {
                 self.handleError(error)
             }
@@ -1685,11 +2052,37 @@ class ChatViewModel: ObservableObject {
             
             var needsSave = false
             
-            // Migration: Enable computer use by default for existing prompts
-            if !self.activePrompt.enableComputerUse {
-                print("Migrating existing prompt to enable computer use by default")
-                self.activePrompt.enableComputerUse = true
+            // Ensure computer use stays aligned with model capabilities
+            let compatibilityService = ModelCompatibilityService.shared
+            let supportsComputerUse = compatibilityService.isToolSupported(
+                .computer,
+                for: self.activePrompt.openAIModel,
+                isStreaming: self.activePrompt.enableStreaming
+            )
+
+            if self.activePrompt.enableComputerUse && !supportsComputerUse {
+                AppLogger.log(
+                    "[Settings] Disabling computer use – model \(self.activePrompt.openAIModel) does not support the computer tool",
+                    category: .ui,
+                    level: .info
+                )
+                self.activePrompt.enableComputerUse = false
+                self.activePrompt.ultraStrictComputerUse = false
                 needsSave = true
+            }
+
+            if self.activePrompt.enableNotionIntegration {
+                let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+                if !hasNotionToken {
+                    // Prevent stale toggles when the backing Notion token has been removed
+                    AppLogger.log(
+                        "[Settings] Disabling Notion integration – no token available in keychain",
+                        category: .ui,
+                        level: .info
+                    )
+                    self.activePrompt.enableNotionIntegration = false
+                    needsSave = true
+                }
             }
             
             // Migration: Update truncation from "disabled" to "auto" for better context management
@@ -3045,6 +3438,18 @@ class ChatViewModel: ObservableObject {
                 } else if toolName == "code_interpreter" {
                     streamingStatus = .generatingCode
                     logActivity("Code interpreter started")
+                } else if toolName == "fetchAppleCalendarEvents" {
+                    streamingStatus = .runningTool("Calendar")
+                    logActivity("📅 Fetching Apple Calendar events")
+                } else if toolName == "createAppleCalendarEvent" {
+                    streamingStatus = .runningTool("Calendar")
+                    logActivity("📅 Creating calendar event")
+                } else if toolName == "fetchAppleReminders" {
+                    streamingStatus = .runningTool("Reminders")
+                    logActivity("✅ Fetching Apple Reminders")
+                } else if toolName == "createAppleReminder" {
+                    streamingStatus = .runningTool("Reminders")
+                    logActivity("📝 Creating Apple Reminder")
                 } else {
                     streamingStatus = .runningTool(toolName)
                     logActivity("Running tool: \(toolName)")

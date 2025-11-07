@@ -126,14 +126,26 @@ struct ChatView: View {
             FileManagerView(initialTab: .vectorStores)
                 .environmentObject(viewModel)
         }
-        .alert("Upload Complete", isPresented: .constant(uploadSuccessMessage != nil)) {
+        .alert(
+            "Upload Complete",
+            isPresented: Binding(
+                get: { uploadSuccessMessage != nil },
+                set: { newValue in if !newValue { uploadSuccessMessage = nil } }
+            )
+        ) {
             Button("OK") {
                 uploadSuccessMessage = nil
             }
         } message: {
             Text(uploadSuccessMessage ?? "")
         }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { newValue in if !newValue { viewModel.errorMessage = nil } }
+            ),
+            actions: {
             Button("OK") {
                 viewModel.errorMessage = nil
             }

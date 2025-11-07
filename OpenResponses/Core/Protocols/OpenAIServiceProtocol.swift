@@ -49,6 +49,16 @@ protocol OpenAIServiceProtocol {
         prompt: Prompt
     ) async throws -> OpenAIResponse
 
+    /// Streams function output back to the API and yields streaming events.
+    func streamFunctionOutput(
+        call: OutputItem,
+        output: String,
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error>
+
     /// Sends computer-use call output back to the API.
     /// Use this to continue a computer-use turn by providing observations, screenshots, or status.
     /// - Parameters:

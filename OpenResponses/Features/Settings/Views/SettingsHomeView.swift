@@ -194,6 +194,7 @@ private struct ToolsTab: View {
     @Binding var showingNotionQuickConnect: Bool
     @Binding var showingFileManager: Bool
     @Binding var showingPromptLibrary: Bool
+    @State private var hasNotionIntegrationToken: Bool = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
 
     private var isImageGenerationSupported: Bool {
         ModelCompatibilityService.shared.isToolSupported(
@@ -223,6 +224,13 @@ private struct ToolsTab: View {
             
             // Direct Integrations
             Section(header: Label("Direct Integrations", systemImage: "link")) {
+                Toggle("Enable Notion Integration", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                    .disabled(!hasNotionIntegrationToken)
+                if !hasNotionIntegrationToken {
+                    Text("Connect Notion to enable workspace tools.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 Button {
                     showingNotionQuickConnect = true
                 } label: {
@@ -243,6 +251,20 @@ private struct ToolsTab: View {
                     .padding(.vertical, 4)
                 }
             }
+            
+            #if canImport(EventKit)
+            // Apple System Integrations
+            Section(header: Label("Apple System Integrations", systemImage: "apple.logo")) {
+                Toggle("Enable Apple Integrations", isOn: $viewModel.activePrompt.enableAppleIntegrations)
+                if viewModel.activePrompt.enableAppleIntegrations {
+                    AppleIntegrationsCard()
+                } else {
+                    Text("Allow the assistant to access Calendar, Reminders, and Contacts when needed.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            #endif
             
             // File & Vector Store Management
             Section(header: Label("File Management", systemImage: "doc.fill")) {
@@ -312,7 +334,7 @@ private struct ToolsTab: View {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.orange)
-                        Text("Not supported by current model. Use gpt-5 or computer-use-preview.")
+                        Text("Not supported by current model. Switch to computer-use-preview to enable it.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -419,6 +441,20 @@ private struct ToolsTab: View {
                     }
                 }
             }
+        }
+        .onAppear { refreshNotionTokenStatus() }
+        .onChange(of: showingNotionQuickConnect) { _, isPresented in
+            if !isPresented { refreshNotionTokenStatus() }
+        }
+    }
+
+    private func refreshNotionTokenStatus() {
+        // Keep the toggle in sync with whether a Notion token is currently stored
+        let tokenAvailable = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+        hasNotionIntegrationToken = tokenAvailable
+        if !tokenAvailable && viewModel.activePrompt.enableNotionIntegration {
+            viewModel.activePrompt.enableNotionIntegration = false
+            viewModel.saveActivePrompt()
         }
     }
 }
@@ -921,6 +957,506 @@ private struct StatusRow: View {
         }
     }
 }
+
+#if canImport(EventKit)
+import EventKit
+import Contacts
+
+// MARK: - Apple Integrations Card
+
+private struct AppleIntegrationsCard: View {
+    @State private var calendarAccess: EKAuthorizationStatus = .notDetermined
+    @State private var remindersAccess: EKAuthorizationStatus = .notDetermined
+    @State private var contactsAccess: CNAuthorizationStatus = .notDetermined
+    @State private var isRequesting = false
+    @State private var lastError: String?
+    @State private var showDetails = false
+    @State private var calendarCount: Int?
+    @State private var contactsCount: Int?
+    @State private var reminderListCount: Int?
+    
+    private var isIOS17OrLater: Bool {
+        if #available(iOS 17.0, *) {
+            return true
+        } else {
+            return false
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header with expand/collapse
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Apple System Integration")
+                        .font(.headline)
+                    Text("On-device access to Calendar, Reminders & Contacts")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Button {
+                    withAnimation {
+                        showDetails.toggle()
+                    }
+                } label: {
+                    Image(systemName: showDetails ? "chevron.up.circle.fill" : "info.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.blue)
+                }
+            }
+            
+            // Calendar Section
+            IntegrationRow(
+                icon: "calendar",
+                iconColor: .red,
+                title: "Calendar",
+                subtitle: "Access and manage events",
+                status: calendarAccess,
+                detailCount: calendarCount,
+                detailLabel: "calendars",
+                isRequesting: $isRequesting,
+                showDetails: showDetails,
+                onConnect: requestCalendarAccess
+            )
+            
+            Divider()
+            
+            // Reminders Section
+            IntegrationRow(
+                icon: "checkmark.circle",
+                iconColor: .orange,
+                title: "Reminders",
+                subtitle: "Create and manage tasks",
+                status: remindersAccess,
+                detailCount: reminderListCount,
+                detailLabel: "lists",
+                isRequesting: $isRequesting,
+                showDetails: showDetails,
+                onConnect: requestRemindersAccess
+            )
+            
+            Divider()
+            
+            // Contacts Section
+            ContactsIntegrationRow(
+                contactsAccess: contactsAccess,
+                contactsCount: contactsCount,
+                isRequesting: $isRequesting,
+                showDetails: showDetails,
+                onConnect: requestContactsAccess
+            )
+            
+            // Error Display
+            if let lastError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text(lastError)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 4)
+                .transition(.opacity)
+            }
+            
+            // Behind-the-scenes technical details
+            if showDetails {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                    
+                    Text("🔒 Technical Details")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    IntegrationDetailRow(
+                        label: "iOS Version",
+                        value: isIOS17OrLater ? "iOS 17+ (Full Access API)" : "iOS 16 (Legacy API)"
+                    )
+                    
+                    IntegrationDetailRow(
+                        label: "Privacy Model",
+                        value: "On-device only • Zero cloud sync"
+                    )
+                    
+                    IntegrationDetailRow(
+                        label: "API Frameworks",
+                        value: "EventKit • Contacts"
+                    )
+                    
+                    IntegrationDetailRow(
+                        label: "Integration Type",
+                        value: "Native Apple System • MCP-compatible"
+                    )
+                }
+                .padding(.top, 8)
+                .transition(.opacity)
+            }
+            
+            // Usage guidance
+            Text("💡 Grant access to use these Apple apps directly in your AI conversations. All data stays on your device.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
+        }
+        .padding(.vertical, 4)
+        .onAppear {
+            refreshStatus()
+            loadDetailCounts()
+        }
+    }
+    
+    private func refreshStatus() {
+        calendarAccess = EKEventStore.authorizationStatus(for: .event)
+        remindersAccess = EKEventStore.authorizationStatus(for: .reminder)
+        contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
+    }
+    
+    private func loadDetailCounts() {
+        // Load calendar count
+        if calendarAccess == .fullAccess {
+            Task {
+                let store = EKEventStore()
+                let calendars = store.calendars(for: .event)
+                await MainActor.run {
+                    calendarCount = calendars.count
+                }
+            }
+        }
+        
+        // Load reminder lists count
+        if remindersAccess == .fullAccess {
+            Task {
+                let store = EKEventStore()
+                let lists = store.calendars(for: .reminder)
+                await MainActor.run {
+                    reminderListCount = lists.count
+                }
+            }
+        }
+        
+        // Load contacts count
+        if contactsAccess == .authorized {
+            Task {
+                do {
+                    let contacts = try await AppContainer.shared.appleProvider.getAllContacts(limit: 10000)
+                    await MainActor.run {
+                        contactsCount = contacts.count
+                    }
+                } catch {
+                    // Silently fail - count is optional
+                }
+            }
+        }
+    }
+    
+    private func requestCalendarAccess() {
+        isRequesting = true
+        lastError = nil
+        
+        Task {
+            do {
+                AppLogger.log("📅 [Settings] Requesting Calendar access...", category: .ui, level: .info)
+                try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)
+                await MainActor.run {
+                    refreshStatus()
+                    loadDetailCounts()
+                    isRequesting = false
+                    AppLogger.log("✅ [Settings] Calendar access granted", category: .ui, level: .info)
+                }
+            } catch {
+                await MainActor.run {
+                    lastError = "Calendar access failed: \(error.localizedDescription)"
+                    refreshStatus()
+                    isRequesting = false
+                    AppLogger.log("❌ [Settings] Calendar access failed: \(error)", category: .ui, level: .error)
+                }
+            }
+        }
+    }
+    
+    private func requestRemindersAccess() {
+        isRequesting = true
+        lastError = nil
+        
+        Task {
+            do {
+                AppLogger.log("✅ [Settings] Requesting Reminders access...", category: .ui, level: .info)
+                try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)
+                await MainActor.run {
+                    refreshStatus()
+                    loadDetailCounts()
+                    isRequesting = false
+                    AppLogger.log("✅ [Settings] Reminders access granted", category: .ui, level: .info)
+                }
+            } catch {
+                await MainActor.run {
+                    lastError = "Reminders access failed: \(error.localizedDescription)"
+                    refreshStatus()
+                    isRequesting = false
+                    AppLogger.log("❌ [Settings] Reminders access failed: \(error)", category: .ui, level: .error)
+                }
+            }
+        }
+    }
+    
+    private func requestContactsAccess() {
+        isRequesting = true
+        lastError = nil
+        
+        Task {
+            do {
+                AppLogger.log("📇 [Settings] Requesting Contacts access...", category: .ui, level: .info)
+                try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)
+                await MainActor.run {
+                    refreshStatus()
+                    loadDetailCounts()
+                    isRequesting = false
+                    AppLogger.log("✅ [Settings] Contacts access granted", category: .ui, level: .info)
+                }
+            } catch {
+                await MainActor.run {
+                    lastError = "Contacts access failed: \(error.localizedDescription)"
+                    refreshStatus()
+                    isRequesting = false
+                    AppLogger.log("❌ [Settings] Contacts access failed: \(error)", category: .ui, level: .error)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Helper Views
+
+private struct IntegrationRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+    let status: EKAuthorizationStatus
+    let detailCount: Int?
+    let detailLabel: String
+    @Binding var isRequesting: Bool
+    let showDetails: Bool
+    let onConnect: () -> Void
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(iconColor)
+                .font(.title2)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .fontWeight(.semibold)
+                
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(statusColor(for: status))
+                        .frame(width: 6, height: 6)
+                    
+                    Text(statusText(for: status))
+                        .font(.caption)
+                        .foregroundColor(statusColor(for: status))
+                }
+                
+                if showDetails, let count = detailCount {
+                    Text("\(count) \(detailLabel) accessible")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+            }
+            
+            Spacer()
+            
+            if status == .notDetermined || status == .denied {
+                Button(action: onConnect) {
+                    Text(status == .notDetermined ? "Connect" : "Retry")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                .disabled(isRequesting)
+            } else {
+                if #available(iOS 17.0, *) {
+                    if status == .fullAccess {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title3)
+                    }
+                } else {
+                    if status == .fullAccess || status == .authorized {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title3)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func statusText(for status: EKAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "Not connected"
+        case .restricted:
+            return "Restricted"
+        case .denied:
+            return "Denied - check Settings"
+        case .authorized, .fullAccess:
+            return "Connected"
+        case .writeOnly:
+            return "Write-only"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+    
+    private func statusColor(for status: EKAuthorizationStatus) -> Color {
+        switch status {
+        case .notDetermined:
+            return .secondary
+        case .restricted, .denied:
+            return .red
+        case .authorized, .fullAccess:
+            return .green
+        case .writeOnly:
+            return .orange
+        @unknown default:
+            return .secondary
+        }
+    }
+}
+
+private struct ContactsIntegrationRow: View {
+    let contactsAccess: CNAuthorizationStatus
+    let contactsCount: Int?
+    @Binding var isRequesting: Bool
+    let showDetails: Bool
+    let onConnect: () -> Void
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "person.crop.circle")
+                .foregroundColor(.blue)
+                .font(.title2)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Contacts")
+                    .fontWeight(.semibold)
+                
+                Text("Search and manage contacts")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(contactsStatusColor(for: contactsAccess))
+                        .frame(width: 6, height: 6)
+                    
+                    Text(contactsStatusText(for: contactsAccess))
+                        .font(.caption)
+                        .foregroundColor(contactsStatusColor(for: contactsAccess))
+                }
+                
+                if showDetails, let count = contactsCount {
+                    Text("\(count) contacts accessible")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+            }
+            
+            Spacer()
+            
+            if contactsAccess == .notDetermined || contactsAccess == .denied {
+                Button(action: onConnect) {
+                    Text(contactsAccess == .notDetermined ? "Connect" : "Retry")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                .disabled(isRequesting)
+            } else if contactsAccess == .authorized {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title3)
+            }
+        }
+    }
+    
+    private func contactsStatusText(for status: CNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "Not connected"
+        case .restricted:
+            return "Restricted"
+        case .denied:
+            return "Denied - check Settings"
+        case .authorized:
+            return "Connected"
+        default:
+            if #available(iOS 18.0, *), status == .limited {
+                return "Limited access"
+            }
+            return "Unknown"
+        }
+    }
+    
+    private func contactsStatusColor(for status: CNAuthorizationStatus) -> Color {
+        switch status {
+        case .notDetermined:
+            return .secondary
+        case .restricted, .denied:
+            return .red
+        case .authorized:
+            return .green
+        default:
+            if #available(iOS 18.0, *), status == .limited {
+                return .orange
+            }
+            return .secondary
+        }
+    }
+}
+
+private struct IntegrationDetailRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.caption2)
+                .foregroundColor(.primary)
+                .fontWeight(.medium)
+        }
+    }
+}
+#endif
 
 
 #Preview {

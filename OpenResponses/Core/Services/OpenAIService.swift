@@ -7,6 +7,14 @@ import UIKit
 import AppKit
 #endif
 
+#if canImport(EventKit)
+import EventKit
+#endif
+
+#if canImport(Contacts)
+import Contacts
+#endif
+
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService: OpenAIServiceProtocol {
     private let apiURL = URL(string: "https://api.openai.com/v1/responses")!
@@ -863,8 +871,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             tools.append(.function(function: function))
         }
         
-        // Add Notion tools if API key exists
-        if let notionApiKey = KeychainService.shared.load(forKey: "notionApiKey"), !notionApiKey.isEmpty {
+        // Add Notion tools only when the integration is enabled and a token is present
+        let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+        if prompt.enableNotionIntegration && hasNotionToken {
             // Search tool
             let searchNotionFunc = APICapabilities.Function(
                 name: "searchNotion",
@@ -1005,6 +1014,251 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: appendBlocksFunc))
+        } else {
+            AppLogger.log(
+                "Skipping Notion tools: enabled=\(prompt.enableNotionIntegration), tokenAvailable=\(hasNotionToken)",
+                category: .openAI,
+                level: .info
+            )
+        }
+        
+        // Add Apple Calendar, Reminders, and Contacts only when enabled in the prompt
+        if prompt.enableAppleIntegrations {
+            let calendarStatus = EventKitPermissionManager.shared.authorizationStatus(for: .event)
+            let remindersStatus = EventKitPermissionManager.shared.authorizationStatus(for: .reminder)
+
+            let hasCalendarAccess: Bool
+            let hasRemindersAccess: Bool
+
+            if #available(iOS 17.0, *) {
+                hasCalendarAccess = calendarStatus == .fullAccess
+                hasRemindersAccess = remindersStatus == .fullAccess
+            } else {
+                hasCalendarAccess = calendarStatus == .authorized
+                hasRemindersAccess = remindersStatus == .authorized
+            }
+
+            if hasCalendarAccess {
+                // List calendar events
+                let listEventsFunc = APICapabilities.Function(
+                name: "fetchAppleCalendarEvents",
+                description: "List calendar events from Apple Calendar within a date range. Useful for checking schedules, finding meetings, or viewing upcoming appointments.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "startDate": [
+                            "type": "string",
+                            "description": "Start date in ISO 8601 format (e.g., '2024-01-15T00:00:00Z'). Defaults to now if omitted."
+                        ],
+                        "endDate": [
+                            "type": "string",
+                            "description": "End date in ISO 8601 format (e.g., '2024-01-22T23:59:59Z'). Defaults to 7 days from start if omitted."
+                        ],
+                        "calendarIdentifiers": [
+                            "type": "array",
+                            "description": "Optional array of specific calendar IDs to filter by. Omit to search all calendars.",
+                            "items": ["type": "string"]
+                        ]
+                    ],
+                    "required": []
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: listEventsFunc))
+            
+            // Create calendar event
+            let createEventFunc = APICapabilities.Function(
+                name: "createAppleCalendarEvent",
+                description: "Create a new event in Apple Calendar with title, start/end times, location, and notes.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "title": [
+                            "type": "string",
+                            "description": "Event title or name."
+                        ],
+                        "startDate": [
+                            "type": "string",
+                            "description": "Event start date/time in ISO 8601 format (e.g., '2024-01-15T14:00:00Z')."
+                        ],
+                        "endDate": [
+                            "type": "string",
+                            "description": "Event end date/time in ISO 8601 format (e.g., '2024-01-15T15:00:00Z')."
+                        ],
+                        "location": [
+                            "type": "string",
+                            "description": "Optional event location or address."
+                        ],
+                        "notes": [
+                            "type": "string",
+                            "description": "Optional event notes or description."
+                        ],
+                        "calendarIdentifier": [
+                            "type": "string",
+                            "description": "Optional specific calendar ID. Uses default calendar if omitted."
+                        ]
+                    ],
+                    "required": ["title", "startDate", "endDate"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: createEventFunc))
+            }
+            
+            if hasRemindersAccess {
+                // List reminders
+                let listRemindersFunc = APICapabilities.Function(
+                name: "fetchAppleReminders",
+                description: "List reminders from Apple Reminders app. Can filter by completion status and date range.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "completed": [
+                            "type": "boolean",
+                            "description": "Filter by completion status. True shows completed reminders, false shows incomplete. Omit to show all."
+                        ],
+                        "startDate": [
+                            "type": "string",
+                            "description": "Optional start date for due date filtering in ISO 8601 format."
+                        ],
+                        "endDate": [
+                            "type": "string",
+                            "description": "Optional end date for due date filtering in ISO 8601 format."
+                        ]
+                    ],
+                    "required": []
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: listRemindersFunc))
+            
+            // Create reminder
+            let createReminderFunc = APICapabilities.Function(
+                name: "createAppleReminder",
+                description: "Create a new reminder in Apple Reminders app with title, notes, due date, and priority.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "title": [
+                            "type": "string",
+                            "description": "Reminder title or task name."
+                        ],
+                        "notes": [
+                            "type": "string",
+                            "description": "Optional reminder notes or details."
+                        ],
+                        "dueDate": [
+                            "type": "string",
+                            "description": "Optional due date in ISO 8601 format (e.g., '2024-01-20T09:00:00Z')."
+                        ],
+                        "priority": [
+                            "type": "integer",
+                            "description": "Optional priority level: 1 (high), 5 (medium), 9 (low), 0 (none)."
+                        ]
+                    ],
+                    "required": ["title"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: createReminderFunc))
+            }
+            
+            // Apple Contacts Integration
+            #if canImport(Contacts)
+            let contactsStatus = CNContactStore.authorizationStatus(for: .contacts)
+            let hasContactsAccess = contactsStatus == .authorized
+            
+            if hasContactsAccess {
+                // Search contacts
+                let searchContactsFunc = APICapabilities.Function(
+                name: "searchAppleContacts",
+                description: "Search for contacts in Apple Contacts by name, email, or phone. Returns matching contacts with their basic information.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "query": [
+                            "type": "string",
+                            "description": "Search term to match against contact names (e.g., 'John Smith', 'Acme Corp')."
+                        ],
+                        "limit": [
+                            "type": "integer",
+                            "description": "Maximum number of results to return. Defaults to 50 if omitted.",
+                            "default": 50
+                        ]
+                    ],
+                    "required": ["query"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: searchContactsFunc))
+            
+            // Get contact details
+            let getContactFunc = APICapabilities.Function(
+                name: "getAppleContact",
+                description: "Get detailed information about a specific contact by identifier, including all phone numbers, emails, addresses, and notes.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "identifier": [
+                            "type": "string",
+                            "description": "The unique identifier of the contact to retrieve."
+                        ]
+                    ],
+                    "required": ["identifier"]
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: getContactFunc))
+            
+            // Create contact
+            let createContactFunc = APICapabilities.Function(
+                name: "createAppleContact",
+                description: "Create a new contact in Apple Contacts with name, phone, email, and other details.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "givenName": [
+                            "type": "string",
+                            "description": "First name of the contact."
+                        ],
+                        "familyName": [
+                            "type": "string",
+                            "description": "Last name of the contact."
+                        ],
+                        "organizationName": [
+                            "type": "string",
+                            "description": "Company or organization name."
+                        ],
+                        "phoneNumber": [
+                            "type": "string",
+                            "description": "Primary phone number."
+                        ],
+                        "phoneLabel": [
+                            "type": "string",
+                            "description": "Label for phone number (e.g., 'mobile', 'work', 'home'). Defaults to 'mobile'."
+                        ],
+                        "emailAddress": [
+                            "type": "string",
+                            "description": "Primary email address."
+                        ],
+                        "emailLabel": [
+                            "type": "string",
+                            "description": "Label for email (e.g., 'work', 'home', 'other'). Defaults to 'home'."
+                        ],
+                        "note": [
+                            "type": "string",
+                            "description": "Additional notes or information about the contact."
+                        ]
+                    ],
+                    "required": []
+                ]),
+                strict: false
+            )
+            tools.append(.function(function: createContactFunc))
+            }
+            #endif
+        } else {
+            AppLogger.log("Skipping Apple system tools: integrations disabled in prompt", category: .openAI, level: .info)
         }
         
         // MCP Tool (Connector or Remote Server)
@@ -1546,73 +1800,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.missingAPIKey
         }
         
-        // The original function call from the assistant
-        let functionCallMessage: [String: Any] = [
-            "type": "function_call",
-            "name": call.name ?? "",
-            "arguments": call.arguments ?? "",
-            "call_id": call.callId ?? ""
-        ]
-        
-        AppLogger.log("📤 [sendFunctionOutput] Function call message created", category: .openAI, level: .info)
-        
-        // The result from our local execution
-        let functionOutputMessage: [String: Any] = [
-            "type": "function_call_output",
-            "call_id": call.callId ?? "",
-            "output": output
-        ]
-        
-        AppLogger.log("📤 [sendFunctionOutput] Function output message created", category: .openAI, level: .info)
-        
-        // We need to send back the function call and our output
-        // NOTE: Do NOT replay reasoning items here - they belong to the previous turn
-        // and the API expects reasoning to be followed by its corresponding message/output.
-        // When sending function outputs, we only need the function_call and function_call_output.
-        var inputMessages: [[String: Any]] = []
+        let jsonData = try buildFunctionOutputRequestData(
+            call: call,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            prompt: prompt,
+            stream: false,
+            logPrefix: "sendFunctionOutput"
+        )
 
-        inputMessages.append(functionCallMessage)
-        inputMessages.append(functionOutputMessage)
-        
-        var requestObject: [String: Any] = [
-            "model": model,
-            "store": true,
-            "input": inputMessages
-        ]
-        
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId
-            AppLogger.log("📤 [sendFunctionOutput] Including previous_response_id: \(prevId)", category: .openAI, level: .info)
-        }
-        
-        // Include tools so the model knows what's available for follow-up
-        AppLogger.log("🔧 [sendFunctionOutput] Building tools array...", category: .openAI, level: .info)
-        let tools = buildTools(for: prompt, userMessage: "", isStreaming: false)
-        AppLogger.log("🔧 [sendFunctionOutput] Built \(tools.count) tools", category: .openAI, level: .info)
-        
-        if !tools.isEmpty {
-            do {
-                let toolsData = try JSONEncoder().encode(tools)
-                if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
-                    requestObject["tools"] = toolsArray
-                    AppLogger.log("✅ [sendFunctionOutput] Added tools array to request", category: .openAI, level: .info)
-                }
-            } catch {
-                AppLogger.log("❌ [sendFunctionOutput] Failed to encode tools: \(error)", category: .openAI, level: .error)
-            }
-        }
-        
-        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-        AppLogger.log("📤 [sendFunctionOutput] Request body size: \(jsonData.count) bytes", category: .openAI, level: .info)
-        
-        // Don't print raw JSON here; centralized logging below will handle sanitization/omission
-        
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = jsonData        // Log the function output API request
+        request.httpBody = jsonData
         AnalyticsService.shared.logAPIRequest(
             url: apiURL,
             method: "POST",
@@ -1703,6 +1906,222 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+
+    /// Streams the output of a function call back to the API and yields streaming events.
+    func streamFunctionOutput(
+        call: OutputItem,
+        output: String,
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+                        continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
+                        return
+                    }
+
+                    let jsonData = try self.buildFunctionOutputRequestData(
+                        call: call,
+                        output: output,
+                        model: model,
+                        previousResponseId: previousResponseId,
+                        prompt: prompt,
+                        stream: true,
+                        logPrefix: "streamFunctionOutput"
+                    )
+
+                    var request = URLRequest(url: self.apiURL)
+                    request.timeoutInterval = 120
+                    request.httpMethod = "POST"
+                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = jsonData
+
+                    AnalyticsService.shared.logAPIRequest(
+                        url: self.apiURL,
+                        method: "POST",
+                        headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
+                        body: jsonData
+                    )
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.apiRequestSent,
+                        parameters: [
+                            AnalyticsParameter.endpoint: "responses_function_output_stream",
+                            AnalyticsParameter.requestMethod: "POST",
+                            AnalyticsParameter.requestSize: jsonData.count,
+                            AnalyticsParameter.model: model,
+                            AnalyticsParameter.streamingEnabled: true
+                        ]
+                    )
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: OpenAIServiceError.invalidResponseData)
+                        return
+                    }
+
+                    if httpResponse.statusCode != 200 {
+                        var errorData = Data()
+                        for try await byte in bytes {
+                            errorData.append(byte)
+                        }
+
+                        AnalyticsService.shared.logAPIResponse(
+                            url: self.apiURL,
+                            statusCode: httpResponse.statusCode,
+                            headers: httpResponse.allHeaderFields,
+                            body: errorData
+                        )
+                        AnalyticsService.shared.trackEvent(
+                            name: AnalyticsEvent.networkError,
+                            parameters: [
+                                AnalyticsParameter.endpoint: "responses_function_output_stream",
+                                AnalyticsParameter.statusCode: httpResponse.statusCode,
+                                AnalyticsParameter.errorCode: httpResponse.statusCode,
+                                AnalyticsParameter.errorDomain: "OpenAIStreamingAPI",
+                                AnalyticsParameter.streamingEnabled: true
+                            ]
+                        )
+
+                        let message = String(data: errorData, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                        continuation.finish(throwing: OpenAIServiceError.requestFailed(httpResponse.statusCode, message))
+                        return
+                    }
+
+                    AnalyticsService.shared.trackEvent(
+                        name: AnalyticsEvent.apiResponseReceived,
+                        parameters: [
+                            AnalyticsParameter.endpoint: "responses_function_output_stream",
+                            AnalyticsParameter.statusCode: httpResponse.statusCode,
+                            AnalyticsParameter.streamingEnabled: true,
+                            AnalyticsParameter.model: model
+                        ]
+                    )
+
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("data: ") {
+                            let dataString = String(line.dropFirst(6))
+                            if dataString == "[DONE]" {
+                                AppLogger.log("Stream function output completed with [DONE] marker", category: .streaming, level: .debug)
+                                continuation.finish()
+                                return
+                            }
+
+                            guard let data = dataString.data(using: .utf8) else { continue }
+
+                            do {
+                                let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
+
+                                let milestoneEvents: Set<String> = [
+                                    "response.created",
+                                    "response.completed",
+                                    "response.failed"
+                                ]
+
+                                if milestoneEvents.contains(decodedChunk.type) {
+                                    AnalyticsService.shared.logStreamingEvent(
+                                        eventType: decodedChunk.type,
+                                        data: dataString,
+                                        parsedEvent: decodedChunk
+                                    )
+                                    AnalyticsService.shared.trackEvent(
+                                        name: AnalyticsEvent.streamingEventReceived,
+                                        parameters: [
+                                            AnalyticsParameter.eventType: decodedChunk.type,
+                                            AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
+                                        ]
+                                    )
+                                }
+
+                                continuation.yield(decodedChunk)
+                            } catch {
+                                AppLogger.log(
+                                    "Function output stream decoding error: \(error.localizedDescription)\nData: \(dataString)",
+                                    category: .streaming,
+                                    level: .warning
+                                )
+                                AnalyticsService.shared.logStreamingEvent(
+                                    eventType: "decoding_error",
+                                    data: dataString,
+                                    parsedEvent: ["error": error.localizedDescription]
+                                )
+                            }
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Builds the request payload for sending or streaming function call output.
+    private func buildFunctionOutputRequestData(
+        call: OutputItem,
+        output: String,
+        model: String,
+        previousResponseId: String?,
+        prompt: Prompt,
+        stream: Bool,
+        logPrefix: String
+    ) throws -> Data {
+        let functionCallMessage: [String: Any] = [
+            "type": "function_call",
+            "name": call.name ?? "",
+            "arguments": call.arguments ?? "",
+            "call_id": call.callId ?? ""
+        ]
+        AppLogger.log("📤 [\(logPrefix)] Function call message created", category: .openAI, level: .info)
+
+        let functionOutputMessage: [String: Any] = [
+            "type": "function_call_output",
+            "call_id": call.callId ?? "",
+            "output": output
+        ]
+        AppLogger.log("📤 [\(logPrefix)] Function output message created", category: .openAI, level: .info)
+
+        var requestObject: [String: Any] = [
+            "model": model,
+            "store": true,
+            "input": [functionCallMessage, functionOutputMessage]
+        ]
+
+        if stream {
+            requestObject["stream"] = true
+        }
+
+        if let prevId = previousResponseId, !prevId.isEmpty {
+            requestObject["previous_response_id"] = prevId
+            AppLogger.log("📤 [\(logPrefix)] Including previous_response_id: \(prevId)", category: .openAI, level: .info)
+        }
+
+        AppLogger.log("🔧 [\(logPrefix)] Building tools array...", category: .openAI, level: .info)
+        let tools = buildTools(for: prompt, userMessage: "", isStreaming: stream)
+        AppLogger.log("🔧 [\(logPrefix)] Built \(tools.count) tools", category: .openAI, level: .info)
+
+        if !tools.isEmpty {
+            do {
+                let toolsData = try JSONEncoder().encode(tools)
+                if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
+                    requestObject["tools"] = toolsArray
+                    AppLogger.log("✅ [\(logPrefix)] Added tools array to request", category: .openAI, level: .info)
+                }
+            } catch {
+                AppLogger.log("❌ [\(logPrefix)] Failed to encode tools: \(error)", category: .openAI, level: .error)
+            }
+        }
+
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+        AppLogger.log("📤 [\(logPrefix)] Request body size: \(jsonData.count) bytes", category: .openAI, level: .info)
+        return jsonData
     }
     
     /// Sends an MCP approval response back to the API to continue execution after user authorization.

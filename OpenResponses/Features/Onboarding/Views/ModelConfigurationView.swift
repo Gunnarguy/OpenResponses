@@ -37,9 +37,20 @@ struct ModelConfigurationView: View {
                 openAIService: openAIService
             )
             .onChange(of: activePrompt.openAIModel) { _, newModel in
-                // Auto-enable computer use for computer-use-preview model
-                if newModel == "computer-use-preview" {
+                let compatibilityService = ModelCompatibilityService.shared
+                let supportsComputer = compatibilityService.isToolSupported(
+                    .computer,
+                    for: newModel,
+                    isStreaming: activePrompt.enableStreaming
+                )
+
+                if supportsComputer && newModel == "computer-use-preview" {
+                    // Dedicated model – flip computer use on automatically
                     activePrompt.enableComputerUse = true
+                } else if !supportsComputer && activePrompt.enableComputerUse {
+                    // Selecting a non-computer model should immediately disable the toggle
+                    activePrompt.enableComputerUse = false
+                    activePrompt.ultraStrictComputerUse = false
                 }
                 onSave()
             }

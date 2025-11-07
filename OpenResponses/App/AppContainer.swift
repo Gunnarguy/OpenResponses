@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(EventKit)
+import EventKit
+#endif
+
 /// A container for managing dependencies across the application.
 class AppContainer {
     /// The shared singleton instance of the app container.
@@ -11,6 +15,20 @@ class AppContainer {
     
     /// The service for on-device computer use automation.
     let computerService: ComputerService
+    
+    #if canImport(EventKit)
+    /// Permission manager for Apple Calendar and Reminders access.
+    let eventKitPermissionManager: EventKitPermissionManager
+    
+    /// Repository for Apple Calendar operations.
+    let appleCalendarRepository: AppleCalendarRepository
+    
+    /// Repository for Apple Reminders operations.
+    let appleReminderRepository: AppleReminderRepository
+    
+    /// Tool provider for Apple system integrations.
+    let appleProvider: AppleProvider
+    #endif
 
     /// Initializes the container and sets up the dependencies.
     /// For now, it creates a standard `OpenAIService`. In a testing environment,
@@ -18,6 +36,21 @@ class AppContainer {
     private init() {
         self.openAIService = OpenAIService()
         self.computerService = ComputerService()
+        
+        #if canImport(EventKit)
+        self.eventKitPermissionManager = EventKitPermissionManager.shared
+        self.appleCalendarRepository = AppleCalendarRepository()
+        self.appleReminderRepository = AppleReminderRepository()
+        let contactsPermissionManager = ContactsPermissionManager.shared
+        let contactsRepository = ContactsRepository(permissionManager: contactsPermissionManager)
+        self.appleProvider = AppleProvider(
+            permissionManager: eventKitPermissionManager,
+            calendarRepo: appleCalendarRepository,
+            reminderRepo: appleReminderRepository,
+            contactsPermissionManager: contactsPermissionManager,
+            contactsRepo: contactsRepository
+        )
+        #endif
     }
 
     /// Creates a `ChatViewModel` with its required dependencies.
