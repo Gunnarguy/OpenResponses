@@ -8,7 +8,7 @@
 
 ## Prerequisites
 
-- [ ] Confirm Apple Developer Program enrollment for required entitlements.
+- [x] Confirm Apple Developer Program enrollment for required entitlements.
 - [ ] Review latest App Intents and Model Context Protocol documentation (WWDC25 sessions, developer.apple.com/modelcontextprotocol).
 - [ ] Audit current `AppContainer` services to ensure dependency injection can host Apple-specific services.
 
@@ -16,7 +16,7 @@
 
 - [ ] Catalogue available App Intents for Notes, Reminders, and Calendar (EventKit wrappers, Notes intents beta set).
 - [ ] Document gaps (e.g., missing full Notes read API) and define mitigation strategies (Shortcuts hand-off, local mirroring).
-- [ ] Decide minimum OS requirement and feature gating (iOS 18+, macOS 15+ anticipated).
+- [ ] Decide minimum OS requirement and feature gating (iOS 26+, macOS 26+).
 
 ## Workstream 2 · EventKit Service Layer
 
