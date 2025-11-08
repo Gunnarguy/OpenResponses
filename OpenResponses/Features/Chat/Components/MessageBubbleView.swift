@@ -48,6 +48,12 @@ struct MessageBubbleView: View {
                         .padding(.top, 2)
                 }
                 
+                if message.role == .assistant,
+                   let reasoning = message.reasoning,
+                   !reasoning.isEmpty {
+                    AssistantReasoningView(reasoning: reasoning)
+                }
+
                 // Tool usage indicator for assistant messages
                 if message.role == .assistant {
                     MessageToolIndicator(message: message)
@@ -239,5 +245,66 @@ private struct TypingCursor: View {
             .opacity(visible ? 1 : 0)
             .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: visible)
             .onAppear { visible = true }
+    }
+}
+
+/// Collapsible stack that surfaces reasoning traces from reasoning-capable models.
+private struct AssistantReasoningView: View {
+    let reasoning: [ReasoningTrace]
+    @State private var isExpanded: Bool
+
+    init(reasoning: [ReasoningTrace]) {
+        self.reasoning = reasoning
+        let shouldExpand = reasoning.count <= 2 || reasoning.contains { $0.isSummary }
+        _isExpanded = State(initialValue: shouldExpand)
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(reasoning) { trace in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if trace.isSummary {
+                            Text("Summary")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                        } else if let level = trace.level {
+                            Text("Step \(level)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .textCase(.uppercase)
+                        }
+
+                        Text(trace.text)
+                            .font(.callout)
+                            .foregroundColor(.primary)
+                    }
+                    .padding(10)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "brain")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Assistant Thinking (\(reasoning.count))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(isExpanded ? "Hide" : "Show")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .animation(.easeInOut(duration: 0.15), value: isExpanded)
+        .padding(.top, 2)
     }
 }

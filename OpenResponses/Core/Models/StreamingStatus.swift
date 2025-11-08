@@ -25,35 +25,35 @@ enum StreamingStatus: Equatable {
         case .idle:
             return "Idle"
         case .connecting:
-            return "Connecting to OpenAI..."
+            return "Establishing OpenAI session"
         case .responseCreated:
-            return "Response initiated..."
+            return "Response registered"
         case .thinking:
-            return "Thinking..."
+            return "Analyzing request"
         case .searchingWeb:
-            return "Searching the web..."
+            return "Researching web sources"
         case .generatingCode:
-            return "Executing code..."
+            return "Building code solution"
         case .processingArtifacts:
-            return "📄 Processing generated files..."
+            return "📄 Reviewing generated files"
         case .usingComputer:
-            return "🖥️ Using computer..."
+            return "🖥️ Controlling computer session"
         case .runningTool(let name):
-            return "Running tool: \(name)..."
+            return "Executing tool: \(name)"
         case .generatingImage:
-            return "Creating image..."
+            return "Rendering image"
         case .imageGenerationProgress(let progress):
             return "✨ \(progress)"
         case .imageGenerationCompleting:
-            return "🎨 Finalizing image..."
+            return "🎨 Wrapping up image"
         case .imageReady:
-            return "🖼️ Image ready!"
+            return "🖼️ Image ready"
         case .streamingText:
-            return "Streaming response..."
+            return "Delivering response"
         case .finalizing:
-            return "Finalizing..."
+            return "Finalizing response"
         case .done:
-            return "Done"
+            return "Complete"
         }
     }
 }

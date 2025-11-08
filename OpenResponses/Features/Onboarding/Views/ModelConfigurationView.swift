@@ -36,7 +36,7 @@ struct ModelConfigurationView: View {
                 selectedModel: $activePrompt.openAIModel,
                 openAIService: openAIService
             )
-            .onChange(of: activePrompt.openAIModel) { _, newModel in
+            .onChange(of: activePrompt.openAIModel) { oldModel, newModel in
                 let compatibilityService = ModelCompatibilityService.shared
                 let supportsComputer = compatibilityService.isToolSupported(
                     .computer,
@@ -52,6 +52,20 @@ struct ModelConfigurationView: View {
                     activePrompt.enableComputerUse = false
                     activePrompt.ultraStrictComputerUse = false
                 }
+
+                let supportsReasoning = compatibilityService
+                    .getCapabilities(for: newModel)?
+                    .supportsReasoningEffort == true
+                let previousSupportedReasoning = compatibilityService
+                    .getCapabilities(for: oldModel)?
+                    .supportsReasoningEffort == true
+
+                if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
+                    activePrompt.includeReasoningContent = true
+                } else if !supportsReasoning && activePrompt.includeReasoningContent {
+                    activePrompt.includeReasoningContent = false
+                }
+
                 onSave()
             }
             

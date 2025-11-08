@@ -31,12 +31,11 @@ struct SettingsHomeView: View {
                 // Tab content
                 Group {
                     switch selectedTab {
-                    case .general: GeneralTab(apiKey: $apiKey)
+                    case .general: GeneralTab(apiKey: $apiKey, showingPromptLibrary: $showingPromptLibrary)
                     case .model: ModelTab()
                     case .tools: ToolsTab(
                         showingNotionQuickConnect: $showingNotionQuickConnect,
-                        showingFileManager: $showingFileManager,
-                        showingPromptLibrary: $showingPromptLibrary
+                        showingFileManager: $showingFileManager
                     )
                     case .mcp: MCPTab(
                         showingConnectorGallery: $showingMCPGallery,
@@ -108,6 +107,7 @@ private enum SettingsTab: CaseIterable {
 private struct GeneralTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Binding var apiKey: String
+    @Binding var showingPromptLibrary: Bool
     @State private var savingDefault = false
     @State private var resetConfirm = false
 
@@ -164,6 +164,28 @@ private struct GeneralTab: View {
                     Text("This will restore all settings to factory defaults.")
                 }
             }
+
+            Section(header: Label("Presets", systemImage: "book.fill")) {
+                Button {
+                    showingPromptLibrary = true
+                } label: {
+                    HStack {
+                        Image(systemName: "book.fill")
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Prompt Library")
+                                .fontWeight(.medium)
+                            Text("Save and load prompt configurations")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.right.circle.fill")
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
         }
     }
 }
@@ -193,7 +215,6 @@ private struct ToolsTab: View {
     
     @Binding var showingNotionQuickConnect: Bool
     @Binding var showingFileManager: Bool
-    @Binding var showingPromptLibrary: Bool
     @State private var hasNotionIntegrationToken: Bool = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
 
     private var isImageGenerationSupported: Bool {
@@ -287,28 +308,45 @@ private struct ToolsTab: View {
                     }
                     .padding(.vertical, 4)
                 }
-            }
-            
-            // Prompt Library
-            Section(header: Label("Presets", systemImage: "book.fill")) {
-                Button {
-                    showingPromptLibrary = true
-                } label: {
-                    HStack {
-                        Image(systemName: "book.fill")
-                            .foregroundColor(.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Prompt Library")
-                                .fontWeight(.medium)
-                            Text("Save and load prompt configurations")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+
+                Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+
+                if viewModel.activePrompt.enableFileSearch {
+                    TextField("Vector Store IDs (comma-separated)", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                    Text("Search through uploaded files in your vector stores")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    DisclosureGroup("Advanced Options") {
+                        HStack {
+                            Text("Max Results").font(.caption)
+                            Spacer()
+                            Text(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "Default (10)")
+                                .font(.caption).foregroundColor(.secondary)
                         }
-                        Spacer()
-                        Image(systemName: "arrow.right.circle.fill")
-                            .foregroundColor(.blue)
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
+                                set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
+                            ),
+                            in: 1...50, step: 1
+                        )
+
+                        Text("Ranker").font(.caption)
+                        Picker("", selection: $viewModel.activePrompt.fileSearchRanker.bound) {
+                            Text("Auto").tag(Optional<String>.none)
+                            Text("Auto (Explicit)").tag(Optional("auto"))
+                            Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .padding(.vertical, 4)
+                } else {
+                    Text("Enable file search to let the assistant query uploaded documents.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -399,45 +437,6 @@ private struct ToolsTab: View {
                         Text("Not supported by current model or streaming mode")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                    }
-                }
-            }
-
-            // File Search
-            Section(header: Label("File Search", systemImage: "doc.text.magnifyingglass")) {
-                Toggle("Enable Vector Store Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                
-                if viewModel.activePrompt.enableFileSearch {
-                    TextField("Vector Store IDs (comma-separated)", text: $viewModel.activePrompt.selectedVectorStoreIds.bound)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    Text("Search through uploaded files in your vector stores")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    DisclosureGroup("Advanced Options") {
-                        HStack {
-                            Text("Max Results").font(.caption)
-                            Spacer()
-                            Text(viewModel.activePrompt.fileSearchMaxResults.map { "\($0)" } ?? "Default (10)")
-                                .font(.caption).foregroundColor(.secondary)
-                        }
-
-                        Slider(
-                            value: Binding(
-                                get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
-                                set: { viewModel.activePrompt.fileSearchMaxResults = Int($0) }
-                            ),
-                            in: 1...50, step: 1
-                        )
-
-                        Text("Ranker").font(.caption)
-                        Picker("", selection: $viewModel.activePrompt.fileSearchRanker.bound) {
-                            Text("Auto").tag(Optional<String>.none)
-                            Text("Auto (Explicit)").tag(Optional("auto"))
-                            Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
-                        }
-                        .pickerStyle(.segmented)
                     }
                 }
             }
@@ -568,7 +567,7 @@ private struct MCPTab: View {
                     set: { newValue in
                         var updated = viewModel.activePrompt
                         updated.enableMCPTool = newValue
-                        viewModel.activePrompt = updated
+                        viewModel.replaceActivePrompt(with: updated)
                         viewModel.saveActivePrompt()
                     }
                 )) {
@@ -796,7 +795,7 @@ private struct MCPTab: View {
         prompt.mcpAuthHeaderKey = "Authorization"
         prompt.mcpKeepAuthInHeaders = false
 
-        viewModel.activePrompt = prompt
+        viewModel.replaceActivePrompt(with: prompt)
         viewModel.saveActivePrompt()
         viewModel.lastMCPServerLabel = nil
 

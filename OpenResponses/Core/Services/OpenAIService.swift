@@ -2073,14 +2073,6 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         stream: Bool,
         logPrefix: String
     ) throws -> Data {
-        let functionCallMessage: [String: Any] = [
-            "type": "function_call",
-            "name": call.name ?? "",
-            "arguments": call.arguments ?? "",
-            "call_id": call.callId ?? ""
-        ]
-        AppLogger.log("📤 [\(logPrefix)] Function call message created", category: .openAI, level: .info)
-
         let functionOutputMessage: [String: Any] = [
             "type": "function_call_output",
             "call_id": call.callId ?? "",
@@ -2091,7 +2083,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var requestObject: [String: Any] = [
             "model": model,
             "store": true,
-            "input": [functionCallMessage, functionOutputMessage]
+            // The responses API expects only the tool output payload when returning data for an existing call.
+            // Re-sending the original function call message triggers a fresh invocation without a matching output,
+            // which leads to the "No tool output found" 400 error we observed.
+            "input": [functionOutputMessage]
         ]
 
         if stream {

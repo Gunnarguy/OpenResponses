@@ -81,7 +81,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. Controlled by `Prompt.backgroundMode`; included by `OpenAIService.buildRequestObject` when enabled.                                                                                                                         |
 | `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, Custom Function tools, and OpenAI-hosted MCP connectors (Dropbox, Gmail, SharePoint, etc.) as well as remote MCP servers (including Notion's official hosted endpoint per <https://modelcontextprotocol.io/docs/getting-started/intro>) with secure OAuth tokens. Remote Notion connections now persist structured headers in the Keychain (Authorization + Notion-Version) to satisfy the official API and eliminate recurring 401 errors.                                                                      |
 | `tool_choice`  | `String` or `Object` | No       | Forces the model to use a specific tool.                                                                                               | **Implemented**. `Prompt.toolChoice`; added to the request when not `auto`.                                                                                                                                                                  |
-| `include`      | `Array<String>`      | No       | Specifies additional data to include in the output (e.g., `message.output_text.logprobs`).                                             | **Partially Implemented**. Built by `buildIncludeArray`: supports `file_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`, `reasoning.encrypted_content`, and `message.input_image.image_url`.          |
+| `include`      | `Array<String>`      | No       | Specifies additional data to include in the output (e.g., `message.output_text.logprobs`).                                             | **Partially Implemented**. Built by `buildIncludeArray`: supports `file_search_call.results`, `web_search_call.action.sources`, `message.output_text.logprobs`, `reasoning.encrypted_content`, and `message.input_image.image_url`. Reasoning-capable models now auto-enable `reasoning.encrypted_content` so encrypted traces stream without extra configuration.          |
 
 ---
 
@@ -273,6 +273,8 @@ The app provides granular streaming status feedback through `StreamingStatusView
 | `.generatingImage`   | `image_generation` tool calls              | ✅ Complete    |
 | `.runningTool(name)` | Generic tool calls with custom names       | ✅ Complete    |
 | `.streamingText`     | `response.content_part.added`, text deltas | ✅ Complete    |
+
+Assistant reasoning payloads captured from `reasoning` output items are now persisted per response and rendered inline in `MessageBubbleView` via the collapsible **Assistant Thinking** panel. This provides a direct mapping from the API's reasoning stream to an auditable UI transcript.
 
 ### 2.3. Output Content and Annotations
 

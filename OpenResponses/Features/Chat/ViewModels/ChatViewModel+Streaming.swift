@@ -28,6 +28,8 @@ extension ChatViewModel {
             handleContentPartDoneChunk(chunk, messageId: messageId)
         case "response.output_item.done":
             handleOutputItemDoneChunk(chunk, messageId: messageId)
+        case "response.output_item.delta":
+            handleOutputItemDeltaChunk(chunk, messageId: messageId)
         case "response.done", "response.completed":
             handleResponseCompletion(chunk, messageId: messageId)
         case "response.image_generation_call.partial_image":
@@ -192,6 +194,7 @@ extension ChatViewModel {
         messages.append(ChatMessage(role: .system, text: "⚠️ Error: \(errorMessage)"))
         isStreaming = false
         streamingStatus = .idle
+        finalizeStreamingReasoning(for: messageId)
         streamingMessageId = nil
         isAwaitingComputerOutput = false
     }
@@ -221,6 +224,7 @@ extension ChatViewModel {
         messages.append(ChatMessage(role: .system, text: "⚠️ Request failed: \(errorMessage)"))
         isStreaming = false
         streamingStatus = .idle
+        finalizeStreamingReasoning(for: messageId)
         streamingMessageId = nil
         isAwaitingComputerOutput = false
     }
@@ -268,6 +272,30 @@ extension ChatViewModel {
                 await self?.handleComputerToolCallWithFullResponse(item, messageId: messageId)
             }
         }
+    }
+
+    /// Handles incremental updates for output items, including reasoning traces.
+    private func handleOutputItemDeltaChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let item = chunk.item else { return }
+
+        switch item.type {
+        case "reasoning":
+            handleReasoningDelta(item, messageId: messageId)
+        default:
+            break
+        }
+    }
+
+    /// Captures live reasoning deltas so the UI can surface the assistant's chain of thought.
+    private func handleReasoningDelta(_ item: StreamingItem, messageId: UUID) {
+        let fragments = item.content?.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) } ?? []
+        guard !fragments.isEmpty else { return }
+
+        let combined = fragments.filter { !$0.isEmpty }.joined(separator: " ")
+        guard !combined.isEmpty else { return }
+
+        AppLogger.log("🧠 [Streaming] Reasoning delta received (len=\(combined.count))", category: .streaming, level: .debug)
+        appendStreamingReasoning(delta: combined, to: messageId)
     }
 
     /// Finalizes the response once the stream signals completion.
@@ -346,6 +374,8 @@ extension ChatViewModel {
             recomputeCumulativeUsage()
         }
 
+        applyReasoningTraces(responseId: chunk.response?.id, to: messageId)
+
         if !isAwaitingComputerOutput {
             isStreaming = false
             streamingStatus = .idle
@@ -414,7 +444,7 @@ extension ChatViewModel {
     private func handleImageGenerationCompletedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         guard let item = chunk.item else { return }
         streamingStatus = .imageGenerationCompleting
-        logActivity("🎨 Finalizing image…")
+    logActivity("🎨 Finalizing image")
         handleCompletedStreamingItem(item, for: messageId)
         stopImageGenerationHeartbeat(for: messageId)
 
@@ -568,7 +598,7 @@ extension ChatViewModel {
             }
         }
         
-        logActivity("MCP: Calling \(toolName) on \(serverLabel)…")
+    logActivity("MCP: Calling \(toolName) on \(serverLabel)")
         streamingStatus = .runningTool(toolName)
         trackToolUsage(for: messageId, tool: "mcp")
     }
@@ -652,11 +682,11 @@ extension ChatViewModel {
         mcpArgumentBuffers[itemId] = existing + fragment
 
         let previewLimit = 160
-        let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
+    let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
         AppLogger.log("MCP arguments delta for item \(itemId): \(preview)", category: .mcp, level: .debug)
 
         if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
-            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)…")
+            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)")
         }
     }
 

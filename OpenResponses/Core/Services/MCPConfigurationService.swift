@@ -38,7 +38,7 @@ final class MCPConfigurationService {
             prompt.mcpIsConnector = false
             prompt.mcpConnectorId = nil
             
-            chatViewModel.activePrompt = prompt
+            chatViewModel.replaceActivePrompt(with: prompt)
             chatViewModel.saveActivePrompt()
             
             AppLogger.log("✅ Notion MCP config cleared. Use 'Direct Notion Integration' in Settings → MCP tab instead.", category: .mcp, level: .info)
@@ -56,7 +56,7 @@ final class MCPConfigurationService {
             }
             // Normalize approval to never unless the user explicitly set always
             prompt.mcpRequireApproval = normalizeApproval(prompt.mcpRequireApproval)
-            chatViewModel.activePrompt = prompt
+            chatViewModel.replaceActivePrompt(with: prompt)
             chatViewModel.saveActivePrompt()
             return
         }
@@ -77,7 +77,7 @@ final class MCPConfigurationService {
                 prompt.mcpAllowedTools = "" // all tools
             }
             prompt.mcpRequireApproval = normalizeApproval(prompt.mcpRequireApproval)
-            chatViewModel.activePrompt = prompt
+            chatViewModel.replaceActivePrompt(with: prompt)
             chatViewModel.saveActivePrompt()
             return
         }

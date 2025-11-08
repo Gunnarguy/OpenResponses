@@ -56,6 +56,10 @@ class ChatViewModel: ObservableObject {
     private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
     // Minimum buffer size before forcing a flush (characters)
     let minBufferSizeForFlush: Int = 20
+    /// Captures live reasoning text fragments while the assistant streams.
+    private var streamingReasoningTextByMessageId: [UUID: String] = [:]
+    /// Provides stable IDs so the UI can diff live reasoning entries without flicker.
+    private var streamingReasoningTraceIdByMessageId: [UUID: UUID] = [:]
     /// Buffers streaming MCP argument payloads keyed by tool call item ID.
     var mcpArgumentBuffers: [String: String] = [:]
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
@@ -487,7 +491,7 @@ class ChatViewModel: ObservableObject {
                             let rawTop = NotionAuthService.shared.stripBearer(raw)
                             KeychainService.shared.save(value: rawTop, forKey: "mcp_manual_\(label)")
                             saveActivePrompt()
-                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing…")
+                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing")
                             messages.append(sys)
                             // Do not return; proceed
                         } else {
@@ -521,14 +525,14 @@ class ChatViewModel: ObservableObject {
 
                 if !probeSatisfied {
                     let labelForLog = label.isEmpty ? "(unnamed)" : label
-                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe…", category: .openAI, level: .warning)
+                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
                     if authHeader == nil && !isNotionOfficial {
                         let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
                         let sys = ChatMessage(role: .system, text: guidance)
                         messages.append(sys)
                         return
                     }
-                    logActivity("Probing MCP tools…")
+                    logActivity("Running MCP tool diagnostics")
                     Task { [weak self] in
                         guard let self = self else { return }
                         do {
@@ -548,7 +552,7 @@ class ChatViewModel: ObservableObject {
                                     }
                                 }
                                 d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
-                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send…", category: .openAI, level: .info)
+                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send", category: .openAI, level: .info)
                                 self.logActivity("MCP tools validated (\(result.count))")
                                 // Retry sending the original message, bypassing the gate this once.
                                 self.sendUserMessage(trimmed, bypassMCPGate: true)
@@ -574,7 +578,7 @@ class ChatViewModel: ObservableObject {
         // Determine streaming mode up front for logging and flow control
         let streamingEnabled = activePrompt.enableStreaming
         // Keep recent activity so users can see context; do not clear here to avoid flashing.
-        logActivity("Connecting to OpenAI…")
+    logActivity("Connecting to OpenAI API")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
         
         // Append the user's message to the chat with URL detection
@@ -586,6 +590,7 @@ class ChatViewModel: ObservableObject {
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
+    resetStreamingReasoning(for: assistantMsgId)
         
         // Disable input while processing
         isStreaming = true
@@ -1203,7 +1208,7 @@ class ChatViewModel: ObservableObject {
                 let normalizedFilter = NotionService.shared.normalizeSearchFilter(decodedArgs.filter_type)
                 let maxResults = trimmedQuery.isEmpty ? 12 : 25
                 AppLogger.log("🔍 [searchNotion] Query: \(trimmedQuery), Filter: \(normalizedFilter ?? "none")", category: .network, level: .info)
-                logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"...")
+                logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"")
 
                 let searchResult = try await NotionService.shared.search(
                     query: trimmedQuery,
@@ -1254,7 +1259,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(NotionGetDbArgs.self, from: argsData)
                 AppLogger.log("📊 [getNotionDatabase] Database ID: \(decodedArgs.database_id)", category: .network, level: .info)
-                logActivity("📊 Fetching Notion database \(decodedArgs.database_id)...")
+                logActivity("📊 Fetching Notion database \(decodedArgs.database_id)")
                 let dbResult = try await NotionService.shared.getDatabase(databaseId: decodedArgs.database_id)
                 AppLogger.log("✅ [getNotionDatabase] Got result, converting to JSON...", category: .network, level: .info)
                 let dbJSON = try NotionService.shared.prettyJSONString(from: dbResult)
@@ -1277,7 +1282,7 @@ class ChatViewModel: ObservableObject {
             }
             do {
                 let decodedArgs = try JSONDecoder().decode(NotionGetDataSourceArgs.self, from: argsData)
-                logActivity("📋 Fetching Notion data source \(decodedArgs.data_source_id)...")
+                logActivity("📋 Fetching Notion data source \(decodedArgs.data_source_id)")
                 let dsResult = try await NotionService.shared.getDataSource(dataSourceId: decodedArgs.data_source_id)
                 output = try NotionService.shared.prettyJSONString(from: dsResult)
             } catch {
@@ -1336,7 +1341,7 @@ class ChatViewModel: ObservableObject {
                 let children = argsJSON["children"] as? [[String: Any]]
                 
                 let context = [dataSourceId, databaseId, dataSourceName].compactMap { $0 }.joined(separator: ", ")
-                logActivity("➕ Creating Notion page in [\(context)]...")
+                logActivity("➕ Creating Notion page in [\(context)]")
                 
                 let pageResult = try await NotionService.shared.createPage(
                     dataSourceId: dataSourceId,
@@ -1391,7 +1396,7 @@ class ChatViewModel: ObservableObject {
                 let properties = argsJSON["properties"] as? [String: Any]
                 let archived = argsJSON["archived"] as? Bool
                 
-                logActivity("✏️ Updating Notion page \(pageId)...")
+                logActivity("✏️ Updating Notion page \(pageId)")
                 let updateResult = try await NotionService.shared.updatePage(
                     pageId: pageId,
                     properties: properties,
@@ -1439,7 +1444,7 @@ class ChatViewModel: ObservableObject {
                     break
                 }
                 
-                logActivity("📝 Appending blocks to Notion page \(pageId)...")
+                logActivity("📝 Appending blocks to Notion page \(pageId)")
                 let appendResult = try await NotionService.shared.appendBlocks(pageId: pageId, blocks: blocks)
                 output = try NotionService.shared.prettyJSONString(from: appendResult)
             } catch {
@@ -1460,7 +1465,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(FetchCalendarArgs.self, from: argsData)
                 AppLogger.log("📅 [fetchAppleCalendarEvents] Date range: \(decodedArgs.startDate) to \(decodedArgs.endDate)", category: .network, level: .info)
-                logActivity("📅 Fetching Apple Calendar events...")
+                logActivity("📅 Fetching Apple Calendar events")
                 
                 let provider = AppContainer.shared.appleProvider
                 let events = try await provider.listEvents(
@@ -1496,7 +1501,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(FetchRemindersArgs.self, from: argsData)
                 AppLogger.log("✅ [fetchAppleReminders] Fetching reminders...", category: .network, level: .info)
-                logActivity("✅ Fetching Apple Reminders...")
+                logActivity("✅ Fetching Apple Reminders")
                 
                 let provider = AppContainer.shared.appleProvider
                 let reminders = try await provider.listReminders(
@@ -1536,7 +1541,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(CreateEventArgs.self, from: argsData)
                 AppLogger.log("📅 [createAppleCalendarEvent] Creating event: \(decodedArgs.title)", category: .network, level: .info)
-                logActivity("📅 Creating calendar event: \(decodedArgs.title)...")
+                logActivity("📅 Creating calendar event: \(decodedArgs.title)")
                 
                 let provider = AppContainer.shared.appleProvider
                 let event = try await provider.createEvent(
@@ -1576,7 +1581,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(CreateReminderArgs.self, from: argsData)
                 AppLogger.log("📝 [createAppleReminder] Creating reminder: \(decodedArgs.title)", category: .network, level: .info)
-                logActivity("📝 Creating Apple Reminder: \(decodedArgs.title)...")
+                logActivity("📝 Creating Apple Reminder: \(decodedArgs.title)")
                 
                 let provider = AppContainer.shared.appleProvider
                 let reminder = try await provider.createReminder(
@@ -1612,7 +1617,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(SearchContactsArgs.self, from: argsData)
                 AppLogger.log("📇 [searchAppleContacts] Query: \(decodedArgs.query)", category: .network, level: .info)
-                logActivity("📇 Searching Apple Contacts for '\(decodedArgs.query)'...")
+                logActivity("📇 Searching Apple Contacts for '\(decodedArgs.query)'")
                 
                 let provider = AppContainer.shared.appleProvider
                 let contacts = try await provider.searchContacts(
@@ -1645,7 +1650,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(GetContactArgs.self, from: argsData)
                 AppLogger.log("📇 [getAppleContact] Identifier: \(decodedArgs.identifier)", category: .network, level: .info)
-                logActivity("📇 Fetching contact details...")
+                logActivity("📇 Fetching contact details")
                 
                 let provider = AppContainer.shared.appleProvider
                 let contact = try await provider.getContact(identifier: decodedArgs.identifier)
@@ -1683,7 +1688,7 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(CreateContactArgs.self, from: argsData)
                 let contactName = [decodedArgs.givenName, decodedArgs.familyName].compactMap { $0 }.joined(separator: " ")
                 AppLogger.log("📇 [createAppleContact] Creating contact: \(contactName.isEmpty ? "Unknown" : contactName)", category: .network, level: .info)
-                logActivity("📇 Creating Apple Contact: \(contactName.isEmpty ? "Unknown" : contactName)...")
+                logActivity("📇 Creating Apple Contact: \(contactName.isEmpty ? "Unknown" : contactName)")
                 
                 let provider = AppContainer.shared.appleProvider
                 let contact = try await provider.createContact(
@@ -1771,6 +1776,7 @@ class ChatViewModel: ObservableObject {
                     self.streamingMessageId = messageId
                     self.isStreaming = true
                     self.streamingStatus = .connecting
+                    self.resetStreamingReasoning(for: messageId)
                 }
 
                 let stream = api.streamFunctionOutput(
@@ -1954,6 +1960,7 @@ class ChatViewModel: ObservableObject {
             await MainActor.run {
                 self.streamingStatus = .connecting
                 self.isStreaming = true
+                self.resetStreamingReasoning(for: messageId)
             }
 
             do {
@@ -2035,10 +2042,50 @@ class ChatViewModel: ObservableObject {
             print("Active prompt saved.")
         }
     }
-    
+
+    /// Ensures reasoning-related toggles line up with the currently selected model.
+    @discardableResult
+    private func enforceReasoningDefaults(for prompt: inout Prompt, previousModelId: String?) -> Bool {
+        let compatibilityService = ModelCompatibilityService.shared
+        let supportsReasoning = compatibilityService
+            .getCapabilities(for: prompt.openAIModel)?
+            .supportsReasoningEffort == true
+        let previousSupportedReasoning: Bool = {
+            guard let previousModelId else { return false }
+            return compatibilityService
+                .getCapabilities(for: previousModelId)?
+                .supportsReasoningEffort == true
+        }()
+
+        var didChange = false
+
+        if supportsReasoning {
+            if !prompt.includeReasoningContent && !previousSupportedReasoning {
+                prompt.includeReasoningContent = true
+                didChange = true
+            }
+        } else if prompt.includeReasoningContent {
+            prompt.includeReasoningContent = false
+            didChange = true
+        }
+
+        return didChange
+    }
+
+    /// Replaces the active prompt, normalizing capabilities before storing it.
+    @discardableResult
+    func replaceActivePrompt(with prompt: Prompt, previousModelId: String? = nil) -> Bool {
+        var updatedPrompt = prompt
+        let baselineModel = previousModelId ?? activePrompt.openAIModel
+        let reasoningChanged = enforceReasoningDefaults(for: &updatedPrompt, previousModelId: baselineModel)
+        activePrompt = updatedPrompt
+        return reasoningChanged
+    }
+
     /// Force reset the active prompt to default values
     func resetToDefaultPrompt() {
-        self.activePrompt = Prompt.defaultPrompt()
+        let defaultPrompt = Prompt.defaultPrompt()
+        replaceActivePrompt(with: defaultPrompt, previousModelId: nil)
         UserDefaults.standard.removeObject(forKey: "activePrompt")
         saveActivePrompt()
         print("Prompt reset to default and saved.")
@@ -2048,30 +2095,29 @@ class ChatViewModel: ObservableObject {
     private func loadActivePrompt() {
         if let data = UserDefaults.standard.data(forKey: "activePrompt"),
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
-            self.activePrompt = decoded
-            
+            var prompt = decoded
             var needsSave = false
             
             // Ensure computer use stays aligned with model capabilities
             let compatibilityService = ModelCompatibilityService.shared
             let supportsComputerUse = compatibilityService.isToolSupported(
                 .computer,
-                for: self.activePrompt.openAIModel,
-                isStreaming: self.activePrompt.enableStreaming
+                for: prompt.openAIModel,
+                isStreaming: prompt.enableStreaming
             )
 
-            if self.activePrompt.enableComputerUse && !supportsComputerUse {
+            if prompt.enableComputerUse && !supportsComputerUse {
                 AppLogger.log(
-                    "[Settings] Disabling computer use – model \(self.activePrompt.openAIModel) does not support the computer tool",
+                    "[Settings] Disabling computer use – model \(prompt.openAIModel) does not support the computer tool",
                     category: .ui,
                     level: .info
                 )
-                self.activePrompt.enableComputerUse = false
-                self.activePrompt.ultraStrictComputerUse = false
+                prompt.enableComputerUse = false
+                prompt.ultraStrictComputerUse = false
                 needsSave = true
             }
 
-            if self.activePrompt.enableNotionIntegration {
+            if prompt.enableNotionIntegration {
                 let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
                 if !hasNotionToken {
                     // Prevent stale toggles when the backing Notion token has been removed
@@ -2080,33 +2126,36 @@ class ChatViewModel: ObservableObject {
                         category: .ui,
                         level: .info
                     )
-                    self.activePrompt.enableNotionIntegration = false
+                    prompt.enableNotionIntegration = false
                     needsSave = true
                 }
             }
             
             // Migration: Update truncation from "disabled" to "auto" for better context management
-            if self.activePrompt.truncationStrategy == "disabled" {
+            if prompt.truncationStrategy == "disabled" {
                 print("Migrating truncation strategy from 'disabled' to 'auto'")
-                self.activePrompt.truncationStrategy = "auto"
+                prompt.truncationStrategy = "auto"
                 needsSave = true
             }
             
             // Validate the model name - if it's a UUID or invalid, reset to default
-            if isInvalidModelName(decoded.openAIModel) {
-                print("Invalid model name detected: \(decoded.openAIModel), resetting to default")
-                self.activePrompt.openAIModel = "gpt-4o"
+            if isInvalidModelName(prompt.openAIModel) {
+                print("Invalid model name detected: \(prompt.openAIModel), resetting to default")
+                prompt.openAIModel = "gpt-4o"
                 needsSave = true
             }
+
+            let reasoningChanged = enforceReasoningDefaults(for: &prompt, previousModelId: nil)
+            activePrompt = prompt
             
-            if needsSave {
+            if needsSave || reasoningChanged {
                 saveActivePrompt() // Save all migrations at once
             }
             
             print("Active prompt loaded.")
         } else {
             // If no saved prompt is found, use the default
-            self.activePrompt = Prompt.defaultPrompt()
+            replaceActivePrompt(with: Prompt.defaultPrompt(), previousModelId: nil)
             print("No saved prompt found, initialized with default.")
         }
     }
@@ -2251,7 +2300,7 @@ class ChatViewModel: ObservableObject {
         // Decrement attempts and persist; mark retry as scheduled to prevent duplicate notes
         ctx.remainingAttempts -= 1
         if !ctx.retryScheduled {
-            AppLogger.log("[Streaming Retry] Temporary issue: \(reason). Retrying once…", category: .openAI, level: .warning)
+            AppLogger.log("[Streaming Retry] Temporary issue: \(reason). Retrying once", category: .openAI, level: .warning)
             // Surface via status chip rather than adding a red system message to the chat
             streamingStatus = .connecting
         }
@@ -2263,6 +2312,7 @@ class ChatViewModel: ObservableObject {
         streamingMessageId = messageId
         isStreaming = true
         streamingStatus = .connecting
+        resetStreamingReasoning(for: messageId)
 
         // Backoff briefly to avoid immediate repeat failures
         streamingTask = Task { [ctx, weak self] in
@@ -3257,6 +3307,10 @@ class ChatViewModel: ObservableObject {
         let specificError = OpenAIServiceError.from(error: error)
         let errorText = specificError.userFriendlyDescription
         
+        if let streamingId = streamingMessageId {
+            finalizeStreamingReasoning(for: streamingId)
+        }
+
         // Log the error with analytics
         AnalyticsService.shared.trackError(specificError, context: "ChatViewModel")
         
@@ -3318,6 +3372,9 @@ class ChatViewModel: ObservableObject {
         deltaFlushWorkItems.values.forEach { $0.cancel() }
         deltaFlushWorkItems.removeAll()
         surfacedMCPToolWarnings.removeAll()
+        streamingReasoningTextByMessageId.removeAll()
+        streamingReasoningTraceIdByMessageId.removeAll()
+        reasoningBufferByResponseId.removeAll()
         
         updateActiveConversation(conversation)
     }
@@ -3329,6 +3386,8 @@ class ChatViewModel: ObservableObject {
         else { return }
 
         conversation.messages.remove(at: index)
+        streamingReasoningTextByMessageId.removeValue(forKey: message.id)
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: message.id)
         updateActiveConversation(conversation)
     }
 
@@ -3343,6 +3402,7 @@ class ChatViewModel: ObservableObject {
             flushDeltaBufferIfNeeded(for: streamingId)
             // Stop any image generation heartbeats
             stopImageGenerationHeartbeat(for: streamingId)
+            finalizeStreamingReasoning(for: streamingId)
         }
         
         // Update UI immediately
@@ -3370,11 +3430,11 @@ class ChatViewModel: ObservableObject {
         switch eventType {
         case "response.created":
             streamingStatus = .connecting
-            logActivity("Response created")
+            logActivity("Response registered")
         case "response.in_progress":
             // Generic in-progress heartbeat from the API
             if streamingStatus == .idle { streamingStatus = .thinking }
-            logActivity("Working…")
+            logActivity("Analyzing request")
         case "response.output_text.delta":
             streamingStatus = .streamingText
             // Do not log every token to avoid spam
@@ -3382,9 +3442,9 @@ class ChatViewModel: ObservableObject {
             // When a new output item is added (e.g., reasoning, tool call, message)
             if let typ = item?.type {
                 if typ == "reasoning" { streamingStatus = .thinking }
-                logActivity("Output item added: \(typ)")
+                logActivity("Started output: \(typ)")
             } else {
-                logActivity("Output item added")
+                logActivity("Started output item")
             }
         case "response.output_item.delta":
             // Deltas for a specific output item (e.g., reasoning tokens)
@@ -3393,21 +3453,21 @@ class ChatViewModel: ObservableObject {
             break
         case "response.output_item.completed":
             if let typ = item?.type {
-                logActivity("Output item completed: \(typ)")
+                logActivity("Completed output: \(typ)")
             } else {
-                logActivity("Output item completed")
+                logActivity("Completed output item")
             }
         case "response.image_generation_call.in_progress":
             streamingStatus = .generatingImage
-            logActivity("🎨 Image generation started")
+            logActivity("🎨 Starting image render")
             // Start a heartbeat to show progress during long generation times
             // Only start if not already running for this message
             if let msgId = messageId, imageHeartbeatTasks[msgId] == nil {
                 startImageGenerationHeartbeat(for: msgId)
             }
         case "response.image_generation_call.partial_image":
-            streamingStatus = .imageGenerationProgress("Generating image…")
-            logActivity("🖼️ Image preview updating…")
+            streamingStatus = .imageGenerationProgress("Generating image")
+            logActivity("🖼️ Updating image preview")
        case "response.computer_call.in_progress", "computer.in_progress",
            "response.computer_call.screenshot_taken", "computer.screenshot",
            "response.computer_call.action_performed", "computer.action",
@@ -3416,17 +3476,17 @@ class ChatViewModel: ObservableObject {
             streamingStatus = .usingComputer
             switch eventType {
             case "response.computer_call.in_progress", "computer.in_progress":
-                logActivity("Computer: preparing action…")
+                logActivity("Computer: staging action")
             case "response.computer_call.screenshot_taken", "computer.screenshot":
                 logActivity("Computer: captured screenshot")
             case "response.computer_call.action_performed", "computer.action":
                 if let action = item?.action, let type = action["type"]?.value as? String {
-                    logActivity("Computer: action \(type)")
+                    logActivity("Computer: executed \(type)")
                 } else {
-                    logActivity("Computer: action performed")
+                    logActivity("Computer: executed action")
                 }
             case "response.computer_call.completed", "computer.completed":
-                logActivity("Computer: step completed")
+                logActivity("Computer: step complete")
             default: break
             }
         case "response.tool_call.started":
@@ -3434,10 +3494,10 @@ class ChatViewModel: ObservableObject {
                 // Special-case the computer tool to keep the UX consistent
                 if toolName == APICapabilities.ToolType.computer.rawValue || toolName == "computer" {
                     streamingStatus = .usingComputer
-                    logActivity("Computer tool started")
+                    logActivity("Computer tool engaged")
                 } else if toolName == "code_interpreter" {
                     streamingStatus = .generatingCode
-                    logActivity("Code interpreter started")
+                    logActivity("Code interpreter engaged")
                 } else if toolName == "fetchAppleCalendarEvents" {
                     streamingStatus = .runningTool("Calendar")
                     logActivity("📅 Fetching Apple Calendar events")
@@ -3452,16 +3512,16 @@ class ChatViewModel: ObservableObject {
                     logActivity("📝 Creating Apple Reminder")
                 } else {
                     streamingStatus = .runningTool(toolName)
-                    logActivity("Running tool: \(toolName)")
+                    logActivity("Executing tool: \(toolName)")
                 }
             } else {
                 streamingStatus = .runningTool("unknown")
-                logActivity("Running tool…")
+                logActivity("Executing tool")
             }
         case "response.output_text.annotation.added":
             // When artifacts are being processed from code interpreter
             streamingStatus = .processingArtifacts
-            logActivity("Processing generated files…")
+            logActivity("Processing generated files")
         case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             let serverLabel = item?.serverLabel ?? "MCP"
             let status = item?.status?.lowercased()
@@ -3473,21 +3533,21 @@ class ChatViewModel: ObservableObject {
                 if eventType.hasSuffix("completed") || status == "completed" {
                     logActivity("✅ MCP: Tools ready from \(serverLabel)")
                 } else if eventType.hasSuffix("in_progress") {
-                    logActivity("🔧 MCP: Listing tools from \(serverLabel)")
+                    logActivity("🔧 MCP: Listing tools for \(serverLabel)")
                 } else {
-                    logActivity("🔧 MCP: Updating tools from \(serverLabel)")
+                    logActivity("🔧 MCP: Updating tools for \(serverLabel)")
                 }
             }
         case "response.mcp_call.added", "response.mcp_call.in_progress":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
                 streamingStatus = .runningTool("MCP: \(toolName)")
-                logActivity("🔧 MCP: Calling \(toolName) on \(serverLabel)")
+                logActivity("🔧 MCP: Invoking \(toolName) on \(serverLabel)")
             } else if let toolName = item?.name {
                 streamingStatus = .runningTool("MCP: \(toolName)")
-                logActivity("🔧 MCP: Calling \(toolName)")
+                logActivity("🔧 MCP: Invoking \(toolName)")
             } else {
                 streamingStatus = .runningTool("MCP")
-                logActivity("🔧 MCP: Running tool")
+                logActivity("🔧 MCP: Running tool call")
             }
         case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             let toolName = item?.name ?? "MCP tool"
@@ -3501,9 +3561,9 @@ class ChatViewModel: ObservableObject {
             }
         case "response.mcp_call_arguments.delta":
             if let name = item?.name ?? item?.serverLabel {
-                logActivity("🔧 MCP: Preparing arguments for \(name)")
+                logActivity("🔧 MCP: Assembling arguments for \(name)")
             } else {
-                logActivity("🔧 MCP: Preparing tool arguments")
+                logActivity("🔧 MCP: Assembling tool arguments")
             }
         case "response.mcp_call_arguments.done":
             if let name = item?.name ?? item?.serverLabel {
@@ -3514,7 +3574,7 @@ class ChatViewModel: ObservableObject {
         case "response.mcp_approval_request.added":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
                 streamingStatus = .runningTool("MCP: Awaiting approval")
-                logActivity("🔒 MCP: \(toolName) on \(serverLabel) requires approval")
+                logActivity("🔒 MCP: \(toolName) on \(serverLabel) awaiting approval")
             } else {
                 streamingStatus = .runningTool("MCP: Awaiting approval")
                 logActivity("🔒 MCP: Approval required")
@@ -3522,7 +3582,7 @@ class ChatViewModel: ObservableObject {
         case "response.done", "response.completed":
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
-            logActivity("Response completed")
+            logActivity("Response delivered")
         default:
             // Keep current status for unknown events
             break
@@ -3704,6 +3764,65 @@ extension ChatViewModel {
 
 // MARK: - Reasoning Replay Support
 extension ChatViewModel {
+    /// Clears any live reasoning buffers tied to a given assistant message.
+    func resetStreamingReasoning(for messageId: UUID) {
+        streamingReasoningTextByMessageId[messageId] = ""
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: messageId)
+
+        if let index = messages.firstIndex(where: { $0.id == messageId }) {
+            var updated = messages
+            updated[index].reasoning = nil
+            messages = updated
+        }
+    }
+
+    /// Appends a reasoning delta emitted during streaming to the live transcript panel.
+    func appendStreamingReasoning(delta: String, to messageId: UUID) {
+        let trimmed = delta.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var aggregate = streamingReasoningTextByMessageId[messageId] ?? ""
+
+        if trimmed == aggregate {
+            return
+        } else if !aggregate.isEmpty, trimmed.hasPrefix(aggregate) {
+            aggregate = trimmed
+        } else if !aggregate.isEmpty, aggregate.hasSuffix(trimmed) {
+            return
+        } else if !aggregate.isEmpty, aggregate.contains(trimmed) {
+            return
+        } else {
+            aggregate.append(aggregate.isEmpty ? trimmed : " " + trimmed)
+        }
+        streamingReasoningTextByMessageId[messageId] = aggregate
+
+        let traceId = streamingReasoningTraceIdByMessageId[messageId] ?? UUID()
+        streamingReasoningTraceIdByMessageId[messageId] = traceId
+
+        let trace = ReasoningTrace(id: traceId, text: aggregate, isSummary: true)
+        updateStreamingReasoningTrace(trace, messageId: messageId)
+    }
+
+    /// Removes live reasoning buffers once the final reasoning payload arrives.
+    func finalizeStreamingReasoning(for messageId: UUID) {
+        streamingReasoningTextByMessageId.removeValue(forKey: messageId)
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: messageId)
+    }
+
+    private func updateStreamingReasoningTrace(_ trace: ReasoningTrace, messageId: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        var updated = messages
+        var reasoning = updated[index].reasoning ?? []
+        if let existingIndex = reasoning.firstIndex(where: { $0.id == trace.id }) {
+            reasoning[existingIndex] = trace
+        } else {
+            reasoning.insert(trace, at: 0)
+        }
+        updated[index].reasoning = reasoning
+        messages = updated
+    }
+
     @discardableResult
     func storeReasoningItems(from response: OpenAIResponse) -> [[String: Any]]? {
         let payloads = response.output.compactMap { makeReasoningPayload(from: $0) }
@@ -3716,6 +3835,72 @@ extension ChatViewModel {
         let payloads = (response.output ?? []).compactMap { makeReasoningPayload(from: $0) }
         updateReasoningBuffer(with: payloads, responseId: response.id)
         return payloads.isEmpty ? nil : payloads
+    }
+
+    /// Transforms the cached reasoning payload dictionaries into display-ready trace models.
+    func convertReasoningPayloadsToTraces(_ payloads: [[String: Any]]) -> [ReasoningTrace] {
+        guard !payloads.isEmpty else { return [] }
+
+        var summaries: [ReasoningTrace] = []
+        var details: [ReasoningTrace] = []
+        var seenTexts = Set<String>()
+
+        for payload in payloads {
+            guard (payload["type"] as? String) == "reasoning" else { continue }
+
+            if let summaryItems = payload["summary"] as? [[String: Any]] {
+                for item in summaryItems {
+                    guard let text = item["text"] as? String else { continue }
+                    let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !cleaned.isEmpty, seenTexts.insert(cleaned).inserted else { continue }
+                    summaries.append(ReasoningTrace(text: cleaned, isSummary: true))
+                }
+            }
+
+            if let contentItems = payload["content"] as? [[String: Any]] {
+                for item in contentItems {
+                    guard let text = item["text"] as? String else { continue }
+                    let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !cleaned.isEmpty, seenTexts.insert(cleaned).inserted else { continue }
+                    let level = item["level"] as? Int ?? payload["level"] as? Int
+                    details.append(ReasoningTrace(text: cleaned, level: level))
+                }
+            }
+        }
+
+        return summaries + details
+    }
+
+    /// Binds the latest reasoning trace list to the assistant message associated with a response ID.
+    func applyReasoningTraces(responseId: String?, to messageId: UUID) {
+        let payloads: [[String: Any]]?
+        if let responseId, let cached = reasoningBufferByResponseId[responseId] {
+            payloads = cached
+        } else if let liveText = streamingReasoningTextByMessageId[messageId]?.trimmingCharacters(in: .whitespacesAndNewlines), !liveText.isEmpty {
+            payloads = [[
+                "type": "reasoning",
+                "summary": [["text": liveText]]
+            ]]
+        } else {
+            payloads = nil
+        }
+
+        guard let payloads else {
+            finalizeStreamingReasoning(for: messageId)
+            return
+        }
+
+        let traces = convertReasoningPayloadsToTraces(payloads)
+
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
+            finalizeStreamingReasoning(for: messageId)
+            return
+        }
+
+        var updatedMessages = messages
+        updatedMessages[messageIndex].reasoning = traces.isEmpty ? nil : traces
+        messages = updatedMessages
+        finalizeStreamingReasoning(for: messageId)
     }
 
     func updateReasoningBuffer(with payloads: [[String: Any]]?, responseId: String) {
@@ -3864,12 +4049,12 @@ extension ChatViewModel {
             guard let self = self else { return }
             
             let heartbeatMessages = [
-                "🎨 Composing image…",
-                "🖼️ Refining details…", 
-                "✨ Adding lighting effects…",
-                "🎨 Adjusting composition…",
-                "🖼️ Enhancing quality…",
-                "✨ Almost ready…"
+                "🎨 Composing image",
+                "🖼️ Refining details", 
+                "✨ Adding lighting effects",
+                "🎨 Adjusting composition",
+                "🖼️ Enhancing quality",
+                "✨ Almost ready"
             ]
             
             var counter = 0
@@ -3891,7 +4076,7 @@ extension ChatViewModel {
                     
                     // Update streaming status with progress indicator
                     if counter > 0 {
-                        let progressText = heartbeatMessages[index].replacingOccurrences(of: "…", with: "")
+                        let progressText = heartbeatMessages[index]
                         self.streamingStatus = .imageGenerationProgress(progressText)
                     }
                 }
@@ -4092,6 +4277,7 @@ extension ChatViewModel {
         }
 
         messages[messageIndex] = updatedMessage
+        applyReasoningTraces(responseId: response.id, to: messageId)
         recomputeCumulativeUsage()
 
         AppLogger.log("💬 [handleNonStreamingResponse] Final message text: \(updatedMessage.text ?? "<no text>")", category: .openAI, level: .info)
