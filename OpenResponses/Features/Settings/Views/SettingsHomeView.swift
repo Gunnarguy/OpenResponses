@@ -791,6 +791,7 @@ private struct ToolsTab: View {
 
 private struct AdvancedTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
+    @State private var showingAbout = false
 
     private var modelCaps: ModelCompatibilityService.ModelCapabilities? {
         ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)
@@ -805,6 +806,26 @@ private struct AdvancedTab: View {
             retrievalSection
             metadataSection
             userSection
+            appInfoSection
+        }
+        .sheet(isPresented: $showingAbout) {
+            AboutView()
+        }
+    }
+    
+    private var appInfoSection: some View {
+        Section(header: Label("Application", systemImage: "info.circle")) {
+            Button {
+                showingAbout = true
+            } label: {
+                HStack {
+                    Label("About & Licenses", systemImage: "doc.text.fill")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                }
+            }
         }
     }
 

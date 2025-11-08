@@ -94,6 +94,9 @@ iOSInjectionProject/
 
 # API Keys and Secrets (just in case)
 *.env
+.env
+.envrc
+test.env
 config.plist
 secrets.plist
 
