@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Clean, tabbed Settings container aligned with OpenAI Responses Playground mental model.
-/// Tabs: General, Model, Tools, Advanced
+/// Tabs: General, Model, Tools, MCP, Advanced
 struct SettingsHomeView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @StateObject private var promptLibrary = PromptLibrary()
@@ -127,7 +127,32 @@ private struct GeneralTab: View {
                         }
                     }
                 }
+
+                Toggle("Store Responses on OpenAI", isOn: $viewModel.activePrompt.storeResponses)
+                Text("Disable if you prefer responses to be ephemeral on OpenAI's side.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, -4)
+            }
+
+            Section(header: Label("Streaming", systemImage: "bolt.horizontal.circle")) {
                 Toggle("Enable Streaming", isOn: $viewModel.activePrompt.enableStreaming)
+
+                Toggle("Include Usage Events", isOn: $viewModel.activePrompt.streamIncludeUsage)
+                    .disabled(!viewModel.activePrompt.enableStreaming)
+                Text("Stream token counts as they're produced.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 2)
+                    .opacity(viewModel.activePrompt.enableStreaming ? 1 : 0.4)
+
+                Toggle("Include Obfuscated Segments", isOn: $viewModel.activePrompt.streamIncludeObfuscation)
+                    .disabled(!viewModel.activePrompt.enableStreaming)
+                Text("Surface redaction markers rather than hiding sensitive spans.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 2)
+                    .opacity(viewModel.activePrompt.enableStreaming ? 1 : 0.4)
             }
 
             Section(header: Label("Published Prompt", systemImage: "doc.text.fill")) {
@@ -137,6 +162,22 @@ private struct GeneralTab: View {
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                 }
+            }
+
+            Section(header: Label("Request Identity", systemImage: "person.badge.key.fill")) {
+                TextField("Safety Identifier (hashed user id)", text: $viewModel.activePrompt.safetyIdentifier)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                Text("Use a stable hash (e.g., SHA256 of a user id) to help detect abuse across sessions.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                TextField("Prompt Cache Key", text: $viewModel.activePrompt.promptCacheKey)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                Text("Reuse cached system/developer prompts for faster warm starts.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
 
             Section(header: Label("Persistence", systemImage: "tray.and.arrow.down.fill")) {
@@ -342,6 +383,42 @@ private struct ToolsTab: View {
                             Text("Default 2024-08-21").tag(Optional("default-2024-08-21"))
                         }
                         .pickerStyle(.segmented)
+
+                        Toggle("Use Score Threshold", isOn: fileSearchThresholdBinding)
+                        if viewModel.activePrompt.fileSearchScoreThreshold != nil {
+                            Slider(
+                                value: Binding(
+                                    get: { viewModel.activePrompt.fileSearchScoreThreshold ?? 0.5 },
+                                    set: { value in
+                                        viewModel.activePrompt.fileSearchScoreThreshold = roundedScoreThreshold(value)
+                                    }
+                                ),
+                                in: 0...1
+                            )
+                            let threshold = viewModel.activePrompt.fileSearchScoreThreshold ?? 0
+                            Text("Ignore matches below \(String(format: "%.2f", threshold)) confidence.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Divider().padding(.vertical, 4)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Attribute Filters JSON")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            TextEditor(text: $viewModel.activePrompt.fileSearchFiltersJSON.bound)
+                                .frame(minHeight: 120)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.secondary.opacity(0.2))
+                                )
+
+                            Text("Provide a comparison/compound filter payload (see Responses API docs). Leave blank to search all records.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 } else {
                     Text("Enable file search to let the assistant query uploaded documents.")
@@ -385,26 +462,7 @@ private struct ToolsTab: View {
                 }
             }
 
-            // Web Search
-            Section(header: Label("Web Search", systemImage: "magnifyingglass.circle.fill")) {
-                Toggle("Enable Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
-                
-                if viewModel.activePrompt.enableWebSearch {
-                    TextField("Mode (e.g., default)", text: $viewModel.activePrompt.webSearchMode)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Search Instructions (optional)").font(.caption).foregroundColor(.secondary)
-                        TextEditor(text: $viewModel.activePrompt.webSearchInstructions)
-                            .frame(minHeight: 60)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
-                    }
-
-                    Stepper("Max Pages: \(viewModel.activePrompt.webSearchMaxPages)", value: $viewModel.activePrompt.webSearchMaxPages, in: 1...20)
-                    Stepper("Crawl Depth: \(viewModel.activePrompt.webSearchCrawlDepth)", value: $viewModel.activePrompt.webSearchCrawlDepth, in: 0...5)
-                }
-            }
+            webSearchSection
 
             // Code Interpreter
             Section(header: Label("Code Interpreter", systemImage: "terminal.fill")) {
@@ -438,6 +496,90 @@ private struct ToolsTab: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                } else if viewModel.activePrompt.enableImageGeneration {
+                    TextField("Image Model", text: $viewModel.activePrompt.imageGenerationModel)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+
+                    Picker("Size", selection: $viewModel.activePrompt.imageGenerationSize) {
+                        Text("Auto").tag("auto")
+                        Text("1024×1024").tag("1024x1024")
+                        Text("1024×1536").tag("1024x1536")
+                        Text("1536×1024").tag("1536x1024")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("Quality", selection: $viewModel.activePrompt.imageGenerationQuality) {
+                        Text("Auto").tag("auto")
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("Output", selection: $viewModel.activePrompt.imageGenerationOutputFormat) {
+                        Text("PNG").tag("png")
+                        Text("WEBP").tag("webp")
+                        Text("JPEG").tag("jpeg")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("Background", selection: $viewModel.activePrompt.imageGenerationBackground) {
+                        Text("Auto").tag("auto")
+                        Text("Transparent").tag("transparent")
+                        Text("Opaque").tag("opaque")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text("Model, size, quality, and format map directly to the Responses API image_generation tool inputs.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Section(header: Label("Custom Function Tool", systemImage: "hammer.fill")) {
+                Toggle("Enable Custom Tool", isOn: $viewModel.activePrompt.enableCustomTool)
+
+                if viewModel.activePrompt.enableCustomTool {
+                    TextField("Function Name", text: $viewModel.activePrompt.customToolName)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+
+                    TextField("Short Description", text: $viewModel.activePrompt.customToolDescription)
+
+                    Picker("Execution", selection: $viewModel.activePrompt.customToolExecutionType) {
+                        Text("Echo").tag("echo")
+                        Text("Calculator").tag("calculator")
+                        Text("Webhook").tag("webhook")
+                    }
+                    .pickerStyle(.segmented)
+
+                    if viewModel.activePrompt.customToolExecutionType == "webhook" {
+                        TextField("Webhook URL", text: $viewModel.activePrompt.customToolWebhookURL)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Parameters JSON")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        TextEditor(text: $viewModel.activePrompt.customToolParametersJSON)
+                            .frame(minHeight: 120)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.2))
+                            )
+
+                        Text("Matches the function tool schema sent to the model.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    Text("Expose a single function-style tool that the assistant can call.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -456,6 +598,193 @@ private struct ToolsTab: View {
             viewModel.saveActivePrompt()
         }
     }
+
+    private var fileSearchThresholdBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.fileSearchScoreThreshold != nil },
+            set: { enabled in
+                if enabled {
+                    if viewModel.activePrompt.fileSearchScoreThreshold == nil {
+                        viewModel.activePrompt.fileSearchScoreThreshold = 0.5
+                    }
+                } else {
+                    viewModel.activePrompt.fileSearchScoreThreshold = nil
+                }
+            }
+        )
+    }
+
+    private func roundedScoreThreshold(_ raw: Double) -> Double {
+        let clamped = min(max(raw, 0), 1)
+        return Double((clamped * 100).rounded() / 100)
+    }
+
+    private enum WebSearchModeSelection: Hashable {
+        case defaultMode
+        case custom
+    }
+
+    private var webSearchSection: some View {
+        Section(header: Label("Web Search", systemImage: "magnifyingglass.circle.fill")) {
+            Toggle("Enable Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+
+            if viewModel.activePrompt.enableWebSearch {
+                webSearchModePicker
+                webSearchInstructionsEditor
+                webSearchAdvancedControls
+            } else {
+                Text("Keep the toggle on to let the assistant gather fresh context from the web.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webSearchModePicker: some View {
+        Picker("Search Focus", selection: webSearchModeSelection) {
+            Text("General Web").tag(WebSearchModeSelection.defaultMode)
+            Text("Specialized").tag(WebSearchModeSelection.custom)
+        }
+        .pickerStyle(.segmented)
+
+        if webSearchModeSelection.wrappedValue == .custom {
+            TextField("Enter the code OpenAI provided (for example, news)", text: $viewModel.activePrompt.webSearchMode)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+        }
+
+        Text("General Web uses OpenAI's standard web index. Choose Specialized only if OpenAI gave you a profile code (like \"news\") for a focused dataset.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+    }
+
+    @ViewBuilder
+    private var webSearchInstructionsEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Search Instructions (optional)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $viewModel.activePrompt.webSearchInstructions)
+                    .frame(minHeight: 70)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+
+                if viewModel.activePrompt.webSearchInstructions.isEmpty {
+                    Text("Highlight sources, tone, or queries to prioritize.")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .padding(.top, 8)
+                        .padding(.leading, 6)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var webSearchAdvancedControls: some View {
+        // Mirrors web_search tuning options from API/ResponsesAPI.md
+        DisclosureGroup("Advanced Tuning") {
+            Toggle("Limit Pages", isOn: webSearchPagesBinding)
+            if viewModel.activePrompt.webSearchMaxPages > 0 {
+                Stepper(
+                    "Max Pages: \(viewModel.activePrompt.webSearchMaxPages)",
+                    value: Binding(
+                        get: { max(viewModel.activePrompt.webSearchMaxPages, 1) },
+                        set: { viewModel.activePrompt.webSearchMaxPages = max(min($0, 20), 1) }
+                    ),
+                    in: 1...20
+                )
+            }
+
+            Toggle("Limit Crawl Depth", isOn: webSearchDepthBinding)
+            if viewModel.activePrompt.webSearchCrawlDepth > 0 {
+                Stepper(
+                    "Crawl Depth: \(viewModel.activePrompt.webSearchCrawlDepth)",
+                    value: Binding(
+                        get: { max(viewModel.activePrompt.webSearchCrawlDepth, 1) },
+                        set: { viewModel.activePrompt.webSearchCrawlDepth = max(min($0, 5), 1) }
+                    ),
+                    in: 1...5
+                )
+                Text("Higher depth follows additional links on each page.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Divider().padding(.vertical, 4)
+
+            TextField("Allowed Domains (comma-separated)", text: $viewModel.activePrompt.webSearchAllowedDomains.bound)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            Text("Restrict search results to trusted domains when populated.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            TextField("Blocked Domains (comma-separated)", text: $viewModel.activePrompt.webSearchBlockedDomains.bound)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+
+            Text("Exclude specific hosts from web search results.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            Divider().padding(.vertical, 4)
+
+            Text("Approximate User Location")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Group {
+                TextField("City", text: $viewModel.activePrompt.userLocationCity.bound)
+                TextField("Region", text: $viewModel.activePrompt.userLocationRegion.bound)
+                TextField("Country (ISO code)", text: $viewModel.activePrompt.userLocationCountry.bound)
+                TextField("Timezone (e.g. America/Los_Angeles)", text: $viewModel.activePrompt.userLocationTimezone.bound)
+            }
+            .textInputAutocapitalization(.never)
+            .disableAutocorrection(true)
+        }
+    }
+
+    private var webSearchModeSelection: Binding<WebSearchModeSelection> {
+        Binding(
+            get: {
+                viewModel.activePrompt.webSearchMode == "default"
+                ? .defaultMode
+                : .custom
+            },
+            set: { selection in
+                switch selection {
+                case .defaultMode:
+                    viewModel.activePrompt.webSearchMode = "default"
+                case .custom:
+                    if viewModel.activePrompt.webSearchMode == "default" {
+                        viewModel.activePrompt.webSearchMode = ""
+                    }
+                }
+            }
+        )
+    }
+
+    private var webSearchPagesBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.webSearchMaxPages > 0 },
+            set: { enabled in
+                viewModel.activePrompt.webSearchMaxPages = enabled ? max(viewModel.activePrompt.webSearchMaxPages, 5) : 0
+            }
+        )
+    }
+
+    private var webSearchDepthBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.webSearchCrawlDepth > 0 },
+            set: { enabled in
+                viewModel.activePrompt.webSearchCrawlDepth = enabled ? max(viewModel.activePrompt.webSearchCrawlDepth, 1) : 0
+            }
+        )
+    }
 }
 
 // MARK: - Advanced
@@ -469,66 +798,162 @@ private struct AdvancedTab: View {
 
     var body: some View {
         Form {
-            Section(header: Label("Tool Choice", systemImage: "switch.2")) {
-                Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
-                    Text("Auto").tag("auto")
-                    Text("Required").tag("required")
-                    Text("None").tag("none")
-                }
-                .pickerStyle(.segmented)
+            toolChoiceSection
+            truncationSection
+            toolExecutionSection
+            responseIncludesSection
+            retrievalSection
+            metadataSection
+            userSection
+        }
+    }
+
+    private var toolChoiceSection: some View {
+        Section(header: Label("Tool Choice", systemImage: "switch.2")) {
+            Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
+                Text("Auto").tag("auto")
+                Text("Required").tag("required")
+                Text("None").tag("none")
             }
+            .pickerStyle(.segmented)
+        }
+    }
 
-            Section(header: Label("Truncation & Tier", systemImage: "scissors")) {
-                Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
-                    Text("Disabled").tag("disabled")
-                    Text("Auto").tag("auto")
-                }
-                .pickerStyle(.segmented)
-
-                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
-                    Text("Auto").tag("auto")
-                    Text("Default").tag("default")
-                }
-                .pickerStyle(.segmented)
+    private var truncationSection: some View {
+        Section(header: Label("Truncation & Tier", systemImage: "scissors")) {
+            Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
+                Text("Disabled").tag("disabled")
+                Text("Auto").tag("auto")
             }
+            .pickerStyle(.segmented)
 
-            Section(header: Label("Response Includes", systemImage: "tray.full")) {
-                Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)
-                Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
-                Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
-                Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
-
-                HStack {
-                    Toggle("Include Output Logprobs", isOn: $viewModel.activePrompt.includeOutputLogprobs)
-                        .disabled(modelCaps?.supportsReasoningEffort == true)
-                    if modelCaps?.supportsReasoningEffort == true {
-                        Image(systemName: "info.circle.fill").foregroundColor(.blue)
-                    }
-                }
-
-                HStack {
-                    Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
-                        .disabled(!(modelCaps?.supportsReasoningEffort == true))
-                    if !(modelCaps?.supportsReasoningEffort == true) {
-                        Image(systemName: "info.circle.fill").foregroundColor(.blue)
-                    }
-                }
+            Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
+                Text("Auto").tag("auto")
+                Text("Default").tag("default")
             }
+            .pickerStyle(.segmented)
+        }
+    }
 
-            Section(header: Label("Metadata", systemImage: "square.and.pencil")) {
-                TextEditor(text: $viewModel.activePrompt.metadata.bound)
-                    .frame(minHeight: 100)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
-                Text("Custom metadata as JSON object (stored in request).")
-                    .font(.caption).foregroundColor(.secondary)
-            }
+    private var toolExecutionSection: some View {
+        Section(header: Label("Tool Execution", systemImage: "hammer.circle")) {
+            Toggle("Allow Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
+            Toggle("Enable Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
 
-            Section(header: Label("User", systemImage: "person.crop.circle")) {
-                TextField("User Identifier (optional)", text: $viewModel.activePrompt.userIdentifier)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
+            Toggle("Limit Tool Calls", isOn: limitToolCallsBinding)
+            if viewModel.activePrompt.maxToolCalls > 0 {
+                Stepper(
+                    "Max Tool Calls: \(viewModel.activePrompt.maxToolCalls)",
+                    value: Binding(
+                        get: { max(viewModel.activePrompt.maxToolCalls, 1) },
+                        set: { viewModel.activePrompt.maxToolCalls = max(min($0, 32), 1) }
+                    ),
+                    in: 1...32
+                )
             }
         }
+    }
+
+    private var responseIncludesSection: some View {
+        Section(header: Label("Response Includes", systemImage: "tray.full")) {
+            Toggle("Include Computer Use Output", isOn: $viewModel.activePrompt.includeComputerUseOutput)
+            Toggle("Include File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+            Toggle("Include Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
+            Toggle("Include Web Search Sources", isOn: $viewModel.activePrompt.includeWebSearchSources)
+            Toggle("Include Input Image URLs", isOn: $viewModel.activePrompt.includeInputImageUrls)
+            Toggle("Include Code Interpreter Output", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+            Toggle("Include Computer Call Output", isOn: $viewModel.activePrompt.includeComputerCallOutput)
+
+            HStack {
+                Toggle("Include Output Logprobs", isOn: includeLogprobBinding)
+                    .disabled(modelCaps?.supportsReasoningEffort == true)
+                if modelCaps?.supportsReasoningEffort == true {
+                    Image(systemName: "info.circle.fill").foregroundColor(.blue)
+                }
+            }
+
+            if viewModel.activePrompt.includeOutputLogprobs {
+                Stepper(
+                    "Top Logprobs: \(viewModel.activePrompt.topLogprobs)",
+                    value: $viewModel.activePrompt.topLogprobs,
+                    in: 1...20
+                )
+                Text("Higher numbers expose more alternative tokens per position.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            HStack {
+                Toggle("Include Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+                    .disabled(!(modelCaps?.supportsReasoningEffort == true))
+                if !(modelCaps?.supportsReasoningEffort == true) {
+                    Image(systemName: "info.circle.fill").foregroundColor(.blue)
+                }
+            }
+        }
+    }
+
+    private var retrievalSection: some View {
+        Section(header: Label("Retrieval Context", systemImage: "text.magnifyingglass")) {
+            TextField("Search Context Size (tokens)", text: $viewModel.activePrompt.searchContextSize.bound)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            Text("Overrides automatic chunk size when set. Leave blank for default behavior.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var metadataSection: some View {
+        Section(header: Label("Metadata", systemImage: "square.and.pencil")) {
+            TextEditor(text: $viewModel.activePrompt.metadata.bound)
+                .frame(minHeight: 100)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2)))
+            Text("Custom metadata as JSON object (stored in request).")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var userSection: some View {
+        Section(header: Label("User", systemImage: "person.crop.circle")) {
+            TextField("User Identifier (optional)", text: $viewModel.activePrompt.userIdentifier)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+            Text("Legacy identifier still accepted by older models. Prefer Safety Identifier above when possible.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var limitToolCallsBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.maxToolCalls > 0 },
+            set: { newValue in
+                if newValue {
+                    if viewModel.activePrompt.maxToolCalls == 0 {
+                        viewModel.activePrompt.maxToolCalls = 4
+                    }
+                } else {
+                    viewModel.activePrompt.maxToolCalls = 0
+                }
+            }
+        )
+    }
+
+    private var includeLogprobBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.includeOutputLogprobs },
+            set: { newValue in
+                viewModel.activePrompt.includeOutputLogprobs = newValue
+                if newValue && viewModel.activePrompt.topLogprobs == 0 {
+                    viewModel.activePrompt.topLogprobs = 5
+                }
+                if !newValue {
+                    viewModel.activePrompt.topLogprobs = 0
+                }
+            }
+        )
     }
 }
 

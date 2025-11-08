@@ -450,6 +450,37 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if prompt.enableCodeInterpreter {
             instructions.append("\n\nYou can run Python code via code_interpreter for analysis, calculations, and file processing.")
         }
+
+        if prompt.enableWebSearch {
+            var webGuidance: [String] = []
+
+            let trimmedInstructions = prompt.webSearchInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedInstructions.isEmpty {
+                webGuidance.append(trimmedInstructions)
+            }
+
+            if prompt.webSearchMaxPages > 0 {
+                webGuidance.append("Limit browsing to at most \(prompt.webSearchMaxPages) pages per request.")
+            }
+
+            if prompt.webSearchCrawlDepth > 0 {
+                webGuidance.append("Do not exceed a crawl depth of \(prompt.webSearchCrawlDepth) when following links.")
+            }
+
+            let allowedDomains = sanitizedDomainList(from: prompt.webSearchAllowedDomains)
+            if !allowedDomains.isEmpty {
+                webGuidance.append("Focus on sources from: \(allowedDomains.joined(separator: ", ")).")
+            }
+
+            let blockedDomains = sanitizedDomainList(from: prompt.webSearchBlockedDomains)
+            if !blockedDomains.isEmpty {
+                webGuidance.append("Avoid citing: \(blockedDomains.joined(separator: ", ")).")
+            }
+
+            if !webGuidance.isEmpty {
+                instructions.append("\n\nWeb search guidance:\n" + webGuidance.joined(separator: " "))
+            }
+        }
         
         return instructions.joined()
     }
@@ -481,7 +512,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             isStreaming: stream
         )
 
-        if let encodedTools = encodeTools(tools) {
+        if let encodedTools = encodeTools(tools, prompt: prompt) {
             requestObject["tools"] = encodedTools
         }
 
@@ -511,8 +542,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             into: &requestObject
         )
 
-        if let textFormat = buildTextFormat(for: prompt) {
-            requestObject["text"] = textFormat
+        if let textConfiguration = buildTextConfiguration(for: prompt) {
+            requestObject["text"] = textConfiguration
         }
 
         if let promptObject = buildPromptObject(for: prompt) {
@@ -526,7 +557,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
         var metadata: [String: Any] = [
             "model": prompt.openAIModel,
-            "store": true
+            "store": prompt.storeResponses
         ]
 
         let instructions = buildInstructions(prompt: prompt)
@@ -536,7 +567,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         if stream {
             metadata["stream"] = true
-            metadata["stream_options"] = ["include_obfuscation": false]
+            var streamOptions: [String: Bool] = [
+                "include_obfuscation": prompt.streamIncludeObfuscation
+            ]
+
+            if prompt.streamIncludeUsage {
+                streamOptions["include_usage"] = true
+            }
+
+            metadata["stream_options"] = streamOptions
         }
 
         return metadata
@@ -592,7 +631,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     }
 
     /// Encodes tools into a JSON-compatible array payload.
-    private func encodeTools(_ tools: [APICapabilities.Tool]) -> [Any]? {
+    private func encodeTools(_ tools: [APICapabilities.Tool], prompt: Prompt) -> [Any]? {
         guard !tools.isEmpty else {
             AppLogger.log("No tools to include in request", category: .openAI, level: .info)
             return nil
@@ -602,13 +641,121 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let toolsData = try encoder.encode(tools)
-            if let json = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
+            if var json = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
+                for index in json.indices {
+                    guard let type = json[index]["type"] as? String else { continue }
+                    switch type {
+                    case "web_search", "web_search_preview":
+                        json[index] = applyWebSearchConfiguration(
+                            to: json[index],
+                            prompt: prompt
+                        )
+                    case "image_generation":
+                        json[index] = applyImageGenerationConfiguration(
+                            to: json[index],
+                            prompt: prompt
+                        )
+                    default:
+                        break
+                    }
+                }
+
                 AppLogger.log("Successfully added tools to request", category: .openAI, level: .info)
                 return json
             }
             return nil
         } catch {
             AppLogger.log("Failed to encode tools: \(error)", category: .openAI, level: .error)
+            return nil
+        }
+    }
+
+    /// Applies advanced configuration from the active prompt to the web search tool payload.
+    private func applyWebSearchConfiguration(to tool: [String: Any], prompt: Prompt) -> [String: Any] {
+        var configured = tool
+
+        let trimmedMode = prompt.webSearchMode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedMode.isEmpty, trimmedMode != "default" {
+            configured["profile"] = trimmedMode
+        }
+
+        if let contextSize = prompt.searchContextSize, !contextSize.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            configured["search_context_size"] = contextSize.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let allowedDomains = sanitizedDomainList(from: prompt.webSearchAllowedDomains)
+        let blockedDomains = sanitizedDomainList(from: prompt.webSearchBlockedDomains)
+        var filters: [String: Any] = [:]
+        if !allowedDomains.isEmpty { filters["allowed_domains"] = allowedDomains }
+        if !blockedDomains.isEmpty { filters["blocked_domains"] = blockedDomains }
+        if filters.isEmpty {
+            configured.removeValue(forKey: "filters")
+        } else {
+            configured["filters"] = filters
+        }
+
+        var userLocation: [String: String] = [:]
+        if let city = prompt.userLocationCity?.trimmingCharacters(in: .whitespacesAndNewlines), !city.isEmpty {
+            userLocation["city"] = city
+        }
+        if let region = prompt.userLocationRegion?.trimmingCharacters(in: .whitespacesAndNewlines), !region.isEmpty {
+            userLocation["region"] = region
+        }
+        if let country = prompt.userLocationCountry?.trimmingCharacters(in: .whitespacesAndNewlines), !country.isEmpty {
+            userLocation["country"] = country
+        }
+        if let timezone = prompt.userLocationTimezone?.trimmingCharacters(in: .whitespacesAndNewlines), !timezone.isEmpty {
+            userLocation["timezone"] = timezone
+        }
+        if !userLocation.isEmpty {
+            userLocation["type"] = "approximate"
+            configured["user_location"] = userLocation
+        } else {
+            configured.removeValue(forKey: "user_location")
+        }
+
+        return configured
+    }
+
+    /// Normalizes a comma-separated domain list into API-ready array of domains.
+    private func sanitizedDomainList(from raw: String?) -> [String] {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+
+        return raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Adds optional background support for image generation requests.
+    private func applyImageGenerationConfiguration(to tool: [String: Any], prompt: Prompt) -> [String: Any] {
+        var configured = tool
+        let background = prompt.imageGenerationBackground.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !background.isEmpty {
+            configured["background"] = background
+        }
+        return configured
+    }
+
+    /// Attempts to decode file search filters from JSON, logging failures for easier debugging.
+    private func parseFileSearchFilters(from raw: String?) -> AttributeFilter? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+
+        guard let data = raw.data(using: .utf8) else {
+            AppLogger.log("File search filters string is not valid UTF-8", category: .openAI, level: .error)
+            return nil
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            let filter = try decoder.decode(AttributeFilter.self, from: data)
+            return filter
+        } catch {
+            AppLogger.log("Failed to decode file search filters JSON: \(error)", category: .openAI, level: .error)
             return nil
         }
     }
@@ -794,7 +941,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         if prompt.enableImageGeneration, compatibilityService.isToolSupported(APICapabilities.ToolType.imageGeneration, for: prompt.openAIModel, isStreaming: isStreaming) {
-            tools.append(.imageGeneration(model: "gpt-image-1", size: "auto", quality: "high", outputFormat: "png"))
+            tools.append(
+                .imageGeneration(
+                    model: prompt.imageGenerationModel,
+                    size: prompt.imageGenerationSize,
+                    quality: prompt.imageGenerationQuality,
+                    outputFormat: prompt.imageGenerationOutputFormat
+                )
+            )
         }
 
         if prompt.enableFileSearch, compatibilityService.isToolSupported(APICapabilities.ToolType.fileSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -810,12 +964,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                    let threshold = prompt.fileSearchScoreThreshold {
                     rankingOptions = RankingOptions(ranker: ranker, scoreThreshold: threshold)
                 }
+
+                let filters = parseFileSearchFilters(from: prompt.fileSearchFiltersJSON)
                 
                 tools.append(.fileSearch(
                     vectorStoreIds: vectorStoreIds,
                     maxNumResults: prompt.fileSearchMaxResults,
                     rankingOptions: rankingOptions,
-                    filters: nil // TODO: Add attribute filter support from UI
+                    filters: filters
                 ))
             }
         }
@@ -1583,6 +1739,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var parameters: [String: Any] = [:]
         let compatibilityService = ModelCompatibilityService.shared
 
+        if !prompt.promptCacheKey.isEmpty {
+            parameters["prompt_cache_key"] = prompt.promptCacheKey
+        }
+
+        if !prompt.safetyIdentifier.isEmpty {
+            parameters["safety_identifier"] = prompt.safetyIdentifier
+        }
+
+        // Verbosity moved under text.verbosity in latest API. Handled in buildTextConfiguration.
+
         if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel) {
             parameters["temperature"] = prompt.temperature
         }
@@ -1673,8 +1839,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var includeArray: [String] = []
         
         if prompt.includeCodeInterpreterOutputs {
-            // Note: code_interpreter outputs are not supported in the current API
-            // This option is kept for UI compatibility but won't be added to the request
+            includeArray.append("code_interpreter_call.outputs")
         }
         
         if prompt.includeFileSearchResults {
@@ -1683,6 +1848,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         
         if prompt.includeWebSearchResults {
             includeArray.append("web_search_call.results")
+        }
+
+        if prompt.includeWebSearchSources {
+            includeArray.append("web_search_call.action.sources")
         }
         
         if prompt.includeOutputLogprobs {
@@ -1710,6 +1879,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // Include computer tool outputs only when the computer tool is actually added for this request
         // or when using the dedicated computer-use model (which always uses the computer tool).
         if hasComputerTool || prompt.openAIModel == "computer-use-preview" {
+            if prompt.includeComputerCallOutput {
+                includeArray.append("computer_call_output.output")
+            }
             if prompt.enableComputerUse || prompt.includeComputerUseOutput {
                 includeArray.append("computer_call_output.output.image_url")
             }
@@ -1722,38 +1894,42 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return includeArray
     }
     
-    /// Constructs the `text` format object for structured outputs if JSON schema is enabled.
-    private func buildTextFormat(for prompt: Prompt) -> [String: Any]? {
-        guard prompt.textFormatType == "json_schema" && !prompt.jsonSchemaName.isEmpty else {
-            return nil
+    /// Constructs the `text` configuration object, including structured output schema and verbosity.
+    private func buildTextConfiguration(for prompt: Prompt) -> [String: Any]? {
+        var textConfiguration: [String: Any] = [:]
+
+        if !prompt.verbosity.isEmpty {
+            textConfiguration["verbosity"] = prompt.verbosity
         }
-        
-        var schema: [String: Any] = [:]
-        
-        // Parse the JSON schema content if provided
-        if !prompt.jsonSchemaContent.isEmpty {
-            do {
-                if let data = prompt.jsonSchemaContent.data(using: .utf8),
-                   let parsedSchema = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    schema = parsedSchema
+
+        if prompt.textFormatType == "json_schema" && !prompt.jsonSchemaName.isEmpty {
+            var schema: [String: Any] = [:]
+
+            // Parse the JSON schema content if provided
+            if !prompt.jsonSchemaContent.isEmpty {
+                do {
+                    if let data = prompt.jsonSchemaContent.data(using: .utf8),
+                       let parsedSchema = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        schema = parsedSchema
+                    }
+                } catch {
+                    print("Invalid JSON schema format, using empty schema: \(error)")
+                    schema = ["type": "object", "properties": [:]]
                 }
-            } catch {
-                print("Invalid JSON schema format, using empty schema: \(error)")
+            } else {
                 schema = ["type": "object", "properties": [:]]
             }
-        } else {
-            schema = ["type": "object", "properties": [:]]
-        }
-        
-        return [
-            "format": [
+
+            textConfiguration["format"] = [
                 "type": "json_schema",
                 "name": prompt.jsonSchemaName,
                 "description": prompt.jsonSchemaDescription.isEmpty ? prompt.jsonSchemaName : prompt.jsonSchemaDescription,
                 "strict": prompt.jsonSchemaStrict,
                 "schema": schema
             ]
-        ]
+        }
+
+        return textConfiguration.isEmpty ? nil : textConfiguration
     }
     
     /// Constructs the `prompt` object for published prompts if enabled.

@@ -22,10 +22,17 @@ struct Prompt: Codable, Identifiable, Equatable {
     var webSearchInstructions: String
     var webSearchMaxPages: Int
     var webSearchCrawlDepth: Int
+    var webSearchAllowedDomains: String?
+    var webSearchBlockedDomains: String?
     var enableCodeInterpreter: Bool
     var codeInterpreterContainerType: String
     var codeInterpreterPreloadFileIds: String?
     var enableImageGeneration: Bool
+    var imageGenerationModel: String
+    var imageGenerationSize: String
+    var imageGenerationQuality: String
+    var imageGenerationOutputFormat: String
+    var imageGenerationBackground: String
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String?
     
@@ -33,6 +40,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var fileSearchMaxResults: Int? // 1-50
     var fileSearchRanker: String? // "auto" or "default-2024-08-21"
     var fileSearchScoreThreshold: Double? // 0.0-1.0
+    var fileSearchFiltersJSON: String?
     
     var enableMCPTool: Bool
     var enableCustomTool: Bool
@@ -112,6 +120,12 @@ struct Prompt: Codable, Identifiable, Equatable {
     var topP: Double
     var truncationStrategy: String
     var userIdentifier: String
+    var storeResponses: Bool = true
+    var streamIncludeUsage: Bool = false
+    var streamIncludeObfuscation: Bool = false
+    var promptCacheKey: String = ""
+    var safetyIdentifier: String = ""
+    var verbosity: String = "medium"
     
     // Text Formatting
     var textFormatType: String
@@ -125,6 +139,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var includeComputerCallOutput: Bool
     var includeFileSearchResults: Bool
     var includeWebSearchResults: Bool
+    var includeWebSearchSources: Bool = false
     var includeInputImageUrls: Bool
     var includeOutputLogprobs: Bool
     var includeReasoningContent: Bool
@@ -160,18 +175,18 @@ struct Prompt: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         // Explicitly list all properties to be encoded/decoded
         case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
-    case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth
-    case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, enableFileSearch, selectedVectorStoreIds
-    case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold
+        case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth, webSearchAllowedDomains, webSearchBlockedDomains
+    case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, imageGenerationModel, imageGenerationSize, imageGenerationQuality, imageGenerationOutputFormat, imageGenerationBackground, enableFileSearch, selectedVectorStoreIds
+    case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold, fileSearchFiltersJSON
     case enableComputerUse
     case enableNotionIntegration, enableAppleIntegrations
     case enableMCPTool, mcpServerLabel, mcpServerURL, mcpHeaders, mcpRequireApproval, mcpAllowedTools, mcpAuthHeaderKey, mcpKeepAuthInHeaders
     case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
-        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier
+        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier, storeResponses, streamIncludeUsage, streamIncludeObfuscation, promptCacheKey, safetyIdentifier, verbosity
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
-    case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
+    case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeWebSearchSources, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
     case ultraStrictComputerUse
         case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
         case toolChoice, metadata, searchContextSize
@@ -198,11 +213,17 @@ struct Prompt: Codable, Identifiable, Equatable {
             codeInterpreterContainerType: "auto",
             codeInterpreterPreloadFileIds: "",
             enableImageGeneration: true,
+            imageGenerationModel: "gpt-image-1",
+            imageGenerationSize: "auto",
+            imageGenerationQuality: "high",
+            imageGenerationOutputFormat: "png",
+            imageGenerationBackground: "auto",
             enableFileSearch: false,
             selectedVectorStoreIds: "",
             fileSearchMaxResults: nil,
             fileSearchRanker: nil,
             fileSearchScoreThreshold: nil,
+            fileSearchFiltersJSON: nil,
             enableMCPTool: true,
             enableCustomTool: false,
             enableComputerUse: false,
@@ -235,6 +256,12 @@ struct Prompt: Codable, Identifiable, Equatable {
             topP: 1.0,
             truncationStrategy: "auto", // Changed from "disabled" - enables automatic context management
             userIdentifier: "",
+            storeResponses: true,
+            streamIncludeUsage: false,
+            streamIncludeObfuscation: false,
+            promptCacheKey: "",
+            safetyIdentifier: "",
+            verbosity: "medium",
             textFormatType: "text",
             jsonSchemaName: "",
             jsonSchemaDescription: "",
@@ -244,6 +271,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             includeComputerCallOutput: false,
             includeFileSearchResults: false,
             includeWebSearchResults: false,
+            includeWebSearchSources: false,
             includeInputImageUrls: false,
             includeOutputLogprobs: false,
             includeReasoningContent: false,
