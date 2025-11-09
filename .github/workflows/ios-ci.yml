@@ -2,129 +2,129 @@ name: iOS CI
 
 on:
   push:
-    branches: [ main, release/*, feature/* ]
+    branches: [main, release/*, feature/*]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build-and-test:
     name: Build and Test
     runs-on: macos-14
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Select Xcode version
-      run: sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
-      
-    - name: Show Xcode version
-      run: xcodebuild -version
-      
-    - name: Show available destinations
-      run: xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -showdestinations
-      
-    - name: Clean build folder
-      run: |
-        xcodebuild clean \
-          -project OpenResponses.xcodeproj \
-          -scheme OpenResponses
-    
-    - name: Build for testing
-      run: |
-        xcodebuild build-for-testing \
-          -project OpenResponses.xcodeproj \
-          -scheme OpenResponses \
-          -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' \
-          -derivedDataPath DerivedData \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
-    
-    - name: Run tests
-      run: |
-        xcodebuild test-without-building \
-          -project OpenResponses.xcodeproj \
-          -scheme OpenResponses \
-          -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' \
-          -derivedDataPath DerivedData \
-          -resultBundlePath TestResults.xcresult \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
-    
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: TestResults.xcresult
-        retention-days: 30
-    
-    - name: Check for build warnings
-      run: |
-        if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' build 2>&1 | grep -q "warning:"; then
-          echo "⚠️ Build completed with warnings"
-          exit 0
-        else
-          echo "✅ Build completed without warnings"
-        fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Show available destinations
+        run: xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -showdestinations
+
+      - name: Clean build folder
+        run: |
+          xcodebuild clean \
+            -project OpenResponses.xcodeproj \
+            -scheme OpenResponses
+
+      - name: Build for testing
+        run: |
+          xcodebuild build-for-testing \
+            -project OpenResponses.xcodeproj \
+            -scheme OpenResponses \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' \
+            -derivedDataPath DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run tests
+        run: |
+          xcodebuild test-without-building \
+            -project OpenResponses.xcodeproj \
+            -scheme OpenResponses \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          retention-days: 30
+
+      - name: Check for build warnings
+        run: |
+          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1' build 2>&1 | grep -q "warning:"; then
+            echo "⚠️ Build completed with warnings"
+            exit 0
+          else
+            echo "✅ Build completed without warnings"
+          fi
 
   lint:
     name: Lint Swift Code
     runs-on: macos-14
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install SwiftLint
-      run: brew install swiftlint
-      
-    - name: Run SwiftLint
-      run: swiftlint lint --strict --reporter github-actions-logging
-      continue-on-error: true
-  
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Run SwiftLint
+        run: swiftlint lint --strict --reporter github-actions-logging
+        continue-on-error: true
+
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run secret scan
-      run: |
-        echo "🔍 Scanning for exposed secrets..."
-        if grep -r "sk-[a-zA-Z0-9]\{48\}" --include="*.swift" --include="*.json" .; then
-          echo "❌ Found potential API keys in code!"
-          exit 1
-        fi
-        
-        if grep -r "secret_" --include="*.swift" .; then
-          echo "⚠️ Found 'secret_' references - verify they're not hardcoded"
-        fi
-        
-        echo "✅ No obvious secrets found"
-    
-    - name: Check for .env files
-      run: |
-        if find . -name ".env" -o -name ".env.*" | grep -v ".env.example"; then
-          echo "⚠️ Warning: .env files found (should be .gitignored)"
-        else
-          echo "✅ No .env files in repository"
-        fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run secret scan
+        run: |
+          echo "🔍 Scanning for exposed secrets..."
+          if grep -r "sk-[a-zA-Z0-9]\{48\}" --include="*.swift" --include="*.json" .; then
+            echo "❌ Found potential API keys in code!"
+            exit 1
+          fi
+
+          if grep -r "secret_" --include="*.swift" .; then
+            echo "⚠️ Found 'secret_' references - verify they're not hardcoded"
+          fi
+
+          echo "✅ No obvious secrets found"
+
+      - name: Check for .env files
+        run: |
+          if find . -name ".env" -o -name ".env.*" | grep -v ".env.example"; then
+            echo "⚠️ Warning: .env files found (should be .gitignored)"
+          else
+            echo "✅ No .env files in repository"
+          fi
 
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run markdownlint
-      uses: DavidAnson/markdownlint-cli2-action@v16
-      with:
-        globs: '**/*.md'
-      continue-on-error: true
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: "**/*.md"
+        continue-on-error: true
