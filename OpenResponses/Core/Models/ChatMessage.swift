@@ -807,6 +807,13 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
         
         return desc + ")"
     }
+    
+    /// Initialize from a ContentItem
+    init(contentItem: ContentItem) {
+        self.type = contentItem.type
+        self.text = contentItem.text
+        self.imageURL = contentItem.imageURL?.url
+    }
 }
 
 /// Streaming item object
@@ -885,6 +892,42 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     /// Provides a readable description of the item
     var description: String {
         "StreamingItem(id: \"\(id)\", type: \"\(type)\")"
+    }
+    
+    /// Initialize from an OutputItem (used when processing final response completion)
+    init(outputItem: OutputItem) {
+        self.id = outputItem.id
+        self.type = outputItem.type
+        self.status = "completed" // Items in final output are completed
+        self.content = outputItem.content?.map { StreamingContentItem(contentItem: $0) }
+        self.role = nil
+        self.name = outputItem.name
+        self.arguments = outputItem.arguments
+        self.callId = outputItem.callId
+        self.action = outputItem.action
+        self.pendingSafetyChecks = outputItem.pendingSafetyChecks
+        self.serverLabel = nil
+        self.tools = nil
+        self.approvalRequestId = nil
+        self.error = nil
+    }
+    
+    /// Initialize from a StreamingOutputItem (used in response completion)
+    init(streamingOutputItem: StreamingOutputItem) {
+        self.id = streamingOutputItem.id
+        self.type = streamingOutputItem.type
+        self.status = streamingOutputItem.status ?? "completed"
+        self.content = streamingOutputItem.content
+        self.role = streamingOutputItem.role
+        self.name = streamingOutputItem.name
+        self.arguments = streamingOutputItem.arguments
+        self.callId = nil // StreamingOutputItem doesn't have callId
+        self.action = nil
+        self.pendingSafetyChecks = nil
+        self.serverLabel = streamingOutputItem.serverLabel
+        self.tools = streamingOutputItem.tools
+        self.approvalRequestId = streamingOutputItem.approvalRequestId
+        self.error = streamingOutputItem.error
     }
 }
 

@@ -384,36 +384,56 @@ final class NotionService {
         properties: [String: Any]? = nil,
         children: [[String: Any]]? = nil
     ) async throws -> [String: Any] {
-        // Resolve the data source ID if only database info provided
-        let resolvedDataSourceId = try await resolveDataSourceId(
+        let trimmedDatabaseId = databaseId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let context = try await resolveDataSourceContext(
             dataSourceId: dataSourceId,
-            databaseId: databaseId,
+            databaseId: trimmedDatabaseId,
             dataSourceName: dataSourceName
         )
-        
-        AppLogger.log("➕ [Notion] Creating page in data source: \(resolvedDataSourceId)", category: .network, level: .info)
-        
-        var body: [String: Any] = [
+
+        AppLogger.log("➕ [Notion] Creating page in data source: \(context.dataSourceId)", category: .network, level: .info)
+
+        var primaryBody: [String: Any] = [
             "parent": [
                 "type": "data_source_id",
-                "data_source_id": resolvedDataSourceId
+                "data_source_id": context.dataSourceId
             ]
         ]
-        
+
         if let properties = properties, !properties.isEmpty {
-            body["properties"] = properties
+            primaryBody["properties"] = properties
         }
         if let children = children, !children.isEmpty {
-            body["children"] = children
+            primaryBody["children"] = children
         }
-        
-        let data = try await performRequest(endpoint: "/pages", method: "POST", body: body)
-        let result = try decodeDictionary(from: data)
-        
-        let pageId = result["id"] as? String ?? "unknown"
-        AppLogger.log("✅ [Notion] Page created: \(pageId)", category: .network, level: .info)
-        
-        return result
+
+        var legacyBody: [String: Any]? = nil
+        if let fallbackDatabaseId = trimmedDatabaseId ?? context.databaseId {
+            var alternativeBody = primaryBody
+            alternativeBody["parent"] = [
+                "type": "database_id",
+                "database_id": fallbackDatabaseId
+            ]
+            legacyBody = alternativeBody
+        }
+
+        func executeCreate(body: [String: Any]) async throws -> [String: Any] {
+            let data = try await performRequest(endpoint: "/pages", method: "POST", body: body)
+            let result = try decodeDictionary(from: data)
+            let pageId = result["id"] as? String ?? "unknown"
+            AppLogger.log("✅ [Notion] Page created: \(pageId)", category: .network, level: .info)
+            return result
+        }
+
+        do {
+            return try await executeCreate(body: primaryBody)
+        } catch NotionError.requestFailed(let statusCode, let message) {
+            guard statusCode == 400, let legacyBody else {
+                throw NotionError.requestFailed(statusCode: statusCode, message: message)
+            }
+            AppLogger.log("⚠️ [Notion] data_source_id parent rejected (400). Retrying with database_id for compatibility.", category: .network, level: .warning)
+            return try await executeCreate(body: legacyBody)
+        }
     }
     
     /// Updates properties or archives an existing page.
@@ -479,13 +499,30 @@ final class NotionService {
     /// Resolves a data source ID from the given parameters.
     /// If dataSourceId is provided, returns it directly.
     /// If databaseId is provided, fetches the database and resolves to a single data source (or uses dataSourceName to disambiguate).
-    private func resolveDataSourceId(
+    private struct DataSourceContext {
+        let dataSourceId: String
+        let databaseId: String?
+    }
+
+    private func resolveDataSourceContext(
         dataSourceId: String?,
         databaseId: String?,
         dataSourceName: String?
-    ) async throws -> String {
+    ) async throws -> DataSourceContext {
         if let id = dataSourceId?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
-            return id
+            if let databaseId = databaseId?.trimmingCharacters(in: .whitespacesAndNewlines), !databaseId.isEmpty {
+                return DataSourceContext(dataSourceId: id, databaseId: databaseId)
+            }
+
+            // Attempt to infer parent database from the data source when not provided.
+            if let dataSource = try? await getDataSource(dataSourceId: id),
+               let databaseParent = dataSource["database_parent"] as? [String: Any],
+               let inferredDatabaseId = databaseParent["database_id"] as? String,
+               !inferredDatabaseId.isEmpty {
+                return DataSourceContext(dataSourceId: id, databaseId: inferredDatabaseId)
+            }
+
+            return DataSourceContext(dataSourceId: id, databaseId: nil)
         }
         
         guard let databaseId = databaseId?.trimmingCharacters(in: .whitespacesAndNewlines), !databaseId.isEmpty else {
@@ -501,13 +538,13 @@ final class NotionService {
         if let name = dataSourceName?.lowercased() {
             if let matching = dataSources.first(where: { ($0["name"] as? String)?.lowercased() == name }),
                let id = matching["id"] as? String {
-                return id
+                return DataSourceContext(dataSourceId: id, databaseId: databaseId)
             }
         }
         
         // If there's only one data source, return it
         if dataSources.count == 1, let id = dataSources.first?["id"] as? String {
-            return id
+            return DataSourceContext(dataSourceId: id, databaseId: databaseId)
         }
         
         // Multiple data sources and no name provided

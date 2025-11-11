@@ -36,8 +36,9 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - fileNames: An optional array of filenames corresponding to the file data.
     ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
+    ///   - conversationId: An optional conversation ID for backend-managed conversations.
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -53,6 +54,7 @@ class OpenAIService: OpenAIServiceProtocol {
             fileIds: fileIds,
             imageAttachments: imageAttachments,
             previousResponseId: previousResponseId,
+            conversationId: conversationId,
             stream: false
         )
 
@@ -167,8 +169,9 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - fileNames: An optional array of filenames corresponding to the file data.
     ///   - imageAttachments: An optional array of image attachments.
     ///   - previousResponseId: The ID of the previous response for continuity.
+    ///   - conversationId: An optional conversation ID for backend-managed conversations.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -187,6 +190,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         fileIds: fileIds,
                         imageAttachments: imageAttachments,
                         previousResponseId: previousResponseId,
+                        conversationId: conversationId,
                         stream: true
                     )
                     
@@ -488,7 +492,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
         var requestObject = baseRequestMetadata(for: prompt, stream: stream)
         
         // If customInput is provided (e.g., for MCP approval response), use it directly
@@ -530,6 +534,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
+        }
+        
+        if let convId = conversationId {
+            requestObject["conversation_id"] = convId
         }
 
         if prompt.backgroundMode {
@@ -1962,6 +1970,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         model: String,
         reasoningItems: [[String: Any]]?,
         previousResponseId: String?,
+        conversationId: String?,
         prompt: Prompt
     ) async throws -> OpenAIResponse {
         AppLogger.log("🔄 [sendFunctionOutput] Starting...", category: .openAI, level: .info)
@@ -1983,7 +1992,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             previousResponseId: previousResponseId,
             prompt: prompt,
             stream: false,
-            logPrefix: "sendFunctionOutput"
+            logPrefix: "sendFunctionOutput",
+            reasoningItems: reasoningItems
         )
 
         var request = URLRequest(url: apiURL)
@@ -2084,13 +2094,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
     }
 
-    /// Streams the output of a function call back to the API and yields streaming events.
-    func streamFunctionOutput(
-        call: OutputItem,
-        output: String,
+    /// Streams one or more function call outputs back to the API and yields streaming events.
+    /// This method supports batch processing of multiple function outputs in a single request.
+    func streamFunctionOutputs(
+        outputs: [FunctionCallOutputPayload],
         model: String,
         reasoningItems: [[String: Any]]?,
         previousResponseId: String?,
+        conversationId: String?,
         prompt: Prompt
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -2100,137 +2111,119 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
                         return
                     }
+                    
+                    // Build input array with function_call_output items
+                    // NOTE: Do NOT include reasoning items here - they belong to the previous turn
+                    // and the API expects reasoning to be followed by its corresponding message/output.
+                    // When sending function outputs, we only need the function_call and function_call_output.
+                    var inputArray: [[String: Any]] = []
 
-                    let jsonData = try self.buildFunctionOutputRequestData(
-                        call: call,
-                        output: output,
-                        model: model,
-                        previousResponseId: previousResponseId,
-                        prompt: prompt,
-                        stream: true,
-                        logPrefix: "streamFunctionOutput"
-                    )
+                    var appendedCallIds = Set<String>()
+                    for output in outputs {
+                        // Use consistent call identifier logic: callId if present, otherwise id
+                        let callIdentifier = output.callId.isEmpty ? (output.callItem?.id ?? output.callId) : output.callId
+                        
+                        if let callItem = output.callItem {
+                            if appendedCallIds.insert(callIdentifier).inserted {
+                                let encodedCall = encodeFunctionCallItem(callItem)
+                                AppLogger.log("📦 [streamFunctionOutputs] Adding function_call item: id=\(callItem.id), callId=\(callItem.callId ?? "none"), type=\(callItem.type)", category: .openAI, level: .info)
+                                inputArray.append(encodedCall)
+                            }
+                        }
 
-                    var request = URLRequest(url: self.apiURL)
+                        let functionOutputMessage: [String: Any] = [
+                            "type": "function_call_output",
+                            "call_id": callIdentifier,
+                            "output": output.output
+                        ]
+                        
+                        AppLogger.log("📤 [streamFunctionOutputs] Adding function_call_output for call_id: \(callIdentifier)", category: .openAI, level: .info)
+                        inputArray.append(functionOutputMessage)
+                    }
+                    
+                    var requestObject: [String: Any] = [
+                        "model": model,
+                        "store": true,
+                        "input": inputArray,
+                        "stream": true
+                    ]
+                    
+                    if let prevId = previousResponseId, !prevId.isEmpty {
+                        requestObject["previous_response_id"] = prevId
+                    }
+                    
+                    if let convId = conversationId, !convId.isEmpty {
+                        requestObject["conversation_id"] = convId
+                    }
+                    
+                    // Add tools
+                    let tools = buildTools(for: prompt, userMessage: "", isStreaming: true)
+                    if !tools.isEmpty {
+                        let toolsData = try JSONEncoder().encode(tools)
+                        if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
+                            requestObject["tools"] = toolsArray
+                        }
+                    }
+                    
+                    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+                    
+                    var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = jsonData
-
-                    AnalyticsService.shared.logAPIRequest(
-                        url: self.apiURL,
-                        method: "POST",
-                        headers: ["Authorization": "Bearer \(apiKey)", "Content-Type": "application/json"],
-                        body: jsonData
-                    )
+                    
+                    AppLogger.log("📤 [streamFunctionOutputs] Sending \(outputs.count) function outputs", category: .openAI, level: .info)
+                    
                     AnalyticsService.shared.trackEvent(
                         name: AnalyticsEvent.apiRequestSent,
                         parameters: [
-                            AnalyticsParameter.endpoint: "responses_function_output_stream",
+                            AnalyticsParameter.endpoint: "responses_function_outputs_stream",
                             AnalyticsParameter.requestMethod: "POST",
-                            AnalyticsParameter.requestSize: jsonData.count,
-                            AnalyticsParameter.model: model,
-                            AnalyticsParameter.streamingEnabled: true
+                            AnalyticsParameter.streamingEnabled: true,
+                            AnalyticsParameter.model: model
                         ]
                     )
-
+                    
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
-
+                    
                     guard let httpResponse = response as? HTTPURLResponse else {
                         continuation.finish(throwing: OpenAIServiceError.invalidResponseData)
                         return
                     }
-
+                    
                     if httpResponse.statusCode != 200 {
                         var errorData = Data()
                         for try await byte in bytes {
                             errorData.append(byte)
                         }
-
-                        AnalyticsService.shared.logAPIResponse(
-                            url: self.apiURL,
-                            statusCode: httpResponse.statusCode,
-                            headers: httpResponse.allHeaderFields,
-                            body: errorData
-                        )
-                        AnalyticsService.shared.trackEvent(
-                            name: AnalyticsEvent.networkError,
-                            parameters: [
-                                AnalyticsParameter.endpoint: "responses_function_output_stream",
-                                AnalyticsParameter.statusCode: httpResponse.statusCode,
-                                AnalyticsParameter.errorCode: httpResponse.statusCode,
-                                AnalyticsParameter.errorDomain: "OpenAIStreamingAPI",
-                                AnalyticsParameter.streamingEnabled: true
-                            ]
-                        )
-
                         let message = String(data: errorData, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                        AppLogger.log("❌ [streamFunctionOutputs] Error: \(message)", category: .openAI, level: .error)
                         continuation.finish(throwing: OpenAIServiceError.requestFailed(httpResponse.statusCode, message))
                         return
                     }
-
-                    AnalyticsService.shared.trackEvent(
-                        name: AnalyticsEvent.apiResponseReceived,
-                        parameters: [
-                            AnalyticsParameter.endpoint: "responses_function_output_stream",
-                            AnalyticsParameter.statusCode: httpResponse.statusCode,
-                            AnalyticsParameter.streamingEnabled: true,
-                            AnalyticsParameter.model: model
-                        ]
-                    )
-
+                    
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: ") {
                             let dataString = String(line.dropFirst(6))
                             if dataString == "[DONE]" {
-                                AppLogger.log("Stream function output completed with [DONE] marker", category: .streaming, level: .debug)
+                                AppLogger.log("✅ [streamFunctionOutputs] Stream completed", category: .openAI, level: .info)
                                 continuation.finish()
                                 return
                             }
-
+                            
                             guard let data = dataString.data(using: .utf8) else { continue }
-
+                            
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
-
-                                let milestoneEvents: Set<String> = [
-                                    "response.created",
-                                    "response.completed",
-                                    "response.failed"
-                                ]
-
-                                if milestoneEvents.contains(decodedChunk.type) {
-                                    AnalyticsService.shared.logStreamingEvent(
-                                        eventType: decodedChunk.type,
-                                        data: dataString,
-                                        parsedEvent: decodedChunk
-                                    )
-                                    AnalyticsService.shared.trackEvent(
-                                        name: AnalyticsEvent.streamingEventReceived,
-                                        parameters: [
-                                            AnalyticsParameter.eventType: decodedChunk.type,
-                                            AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
-                                        ]
-                                    )
-                                }
-
                                 continuation.yield(decodedChunk)
                             } catch {
-                                AppLogger.log(
-                                    "Function output stream decoding error: \(error.localizedDescription)\nData: \(dataString)",
-                                    category: .streaming,
-                                    level: .warning
-                                )
-                                AnalyticsService.shared.logStreamingEvent(
-                                    eventType: "decoding_error",
-                                    data: dataString,
-                                    parsedEvent: ["error": error.localizedDescription]
-                                )
+                                AppLogger.log("⚠️ [streamFunctionOutputs] Decoding error: \(error)", category: .openAI, level: .warning)
                             }
                         }
                     }
-
+                    
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -2247,22 +2240,44 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         previousResponseId: String?,
         prompt: Prompt,
         stream: Bool,
-        logPrefix: String
+        logPrefix: String,
+        reasoningItems: [[String: Any]]?
     ) throws -> Data {
+        // Defensive handling: use call_id if available, otherwise fallback to item.id
+        let callIdentifier: String
+        if let callId = call.callId, !callId.isEmpty {
+            callIdentifier = callId
+        } else if !call.id.isEmpty {
+            callIdentifier = call.id
+            AppLogger.log("⚠️ [\(logPrefix)] Using fallback call identifier from item.id", category: .openAI, level: .debug)
+        } else {
+            throw OpenAIServiceError.invalidRequest("Missing call_id for function output payload")
+        }
+
+        var inputItems: [[String: Any]] = []
+        if let reasoningItems, !reasoningItems.isEmpty {
+            let dedupedReasoning = deduplicatedInputItems(reasoningItems, logPrefix: logPrefix)
+            inputItems.append(contentsOf: dedupedReasoning)
+            AppLogger.log("📤 [\(logPrefix)] Including \(dedupedReasoning.count) reasoning item(s)", category: .openAI, level: .info)
+        }
+
+        let encodedCall = encodeFunctionCallItem(call)
+        inputItems.append(encodedCall)
+
         let functionOutputMessage: [String: Any] = [
             "type": "function_call_output",
-            "call_id": call.callId ?? "",
+            "call_id": callIdentifier,
             "output": output
         ]
+        // The Responses API rejects the optional `name` field on function_call_output items.
         AppLogger.log("📤 [\(logPrefix)] Function output message created", category: .openAI, level: .info)
+
+        inputItems.append(functionOutputMessage)
 
         var requestObject: [String: Any] = [
             "model": model,
             "store": true,
-            // The responses API expects only the tool output payload when returning data for an existing call.
-            // Re-sending the original function call message triggers a fresh invocation without a matching output,
-            // which leads to the "No tool output found" 400 error we observed.
-            "input": [functionOutputMessage]
+            "input": inputItems
         ]
 
         if stream {
@@ -2294,6 +2309,62 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AppLogger.log("📤 [\(logPrefix)] Request body size: \(jsonData.count) bytes", category: .openAI, level: .info)
         return jsonData
     }
+
+    private func encodeFunctionCallItem(_ call: OutputItem) -> [String: Any] {
+        // NOTE: We intentionally omit the original item `id` to avoid duplicate-id rejections
+        // when replaying the assistant's function_call as part of a function output payload.
+        // The API only requires the call_id / name / arguments tuple.
+        var encoded: [String: Any] = [
+            "type": call.type
+        ]
+
+        if let callId = call.callId, !callId.isEmpty {
+            encoded["call_id"] = callId
+        }
+
+        if let name = call.name, !name.isEmpty {
+            encoded["name"] = name
+        }
+
+        if let arguments = call.arguments, !arguments.isEmpty {
+            encoded["arguments"] = arguments
+        }
+
+        if let content = call.content, !content.isEmpty {
+            encoded["content"] = content.map { item -> [String: Any] in
+                var payload: [String: Any] = ["type": item.type]
+                if let text = item.text { payload["text"] = text }
+                if let imageURL = item.imageURL?.url { payload["image_url"] = ["url": imageURL] }
+                if let imageFile = item.imageFile?.file_id { payload["image_file"] = ["file_id": imageFile] }
+                return payload
+            }
+        }
+
+        return encoded
+    }
+
+    /// Removes duplicate input items (e.g., reasoning traces) that share the same `id` value.
+    /// The Responses API rejects payloads containing duplicate IDs, so we defensively filter them here.
+    private func deduplicatedInputItems(_ items: [[String: Any]], logPrefix: String) -> [[String: Any]] {
+        guard !items.isEmpty else { return items }
+
+        var seenIds = Set<String>()
+        var result: [[String: Any]] = []
+
+        for item in items {
+            if let identifier = item["id"] as? String, !identifier.isEmpty {
+                if seenIds.insert(identifier).inserted {
+                    result.append(item)
+                } else {
+                    AppLogger.log("♻️ [\(logPrefix)] Dropping duplicate input item id=\(identifier)", category: .openAI, level: .debug)
+                }
+            } else {
+                result.append(item)
+            }
+        }
+
+        return result
+    }
     
     /// Sends an MCP approval response back to the API to continue execution after user authorization.
     /// - Parameters:
@@ -2322,6 +2393,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             fileIds: nil,
             imageAttachments: nil,
             previousResponseId: previousResponseId,
+            conversationId: nil,
             stream: false,
             customInput: [approvalResponse] // Pass approval response as input
         )
@@ -2422,6 +2494,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         fileIds: nil,
                         imageAttachments: nil,
                         previousResponseId: previousResponseId,
+                        conversationId: nil,
                         stream: true,
                         customInput: [approvalResponse]
                     )
@@ -2519,7 +2592,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             fileNames: nil,
             fileIds: nil,
             imageAttachments: nil,
-            previousResponseId: nil
+            previousResponseId: nil,
+            conversationId: nil
         )
     }
 
@@ -2548,7 +2622,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             fileNames: nil,
             fileIds: nil,
             imageAttachments: nil,
-            previousResponseId: nil
+            previousResponseId: nil,
+            conversationId: nil
         )
     }
     
@@ -2572,7 +2647,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             fileNames: nil,
             fileIds: nil,
             imageAttachments: nil,
-            previousResponseId: nil
+            previousResponseId: nil,
+            conversationId: nil
         )
         
         var foundLabel = targetLabel
@@ -3894,6 +3970,186 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         } catch {
             print("Models decoding error: \(error)")
             throw OpenAIServiceError.invalidResponseData
+        }
+    }
+    
+    // MARK: - Conversations API
+    
+    /// Lists conversations with optional limit and ordering.
+    func listConversations(limit: Int?, order: String?) async throws -> ConversationListResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        var urlComponents = URLComponents(string: "https://api.openai.com/v1/conversations")!
+        var queryItems: [URLQueryItem] = []
+        
+        if let limit = limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        if let order = order {
+            queryItems.append(URLQueryItem(name: "order", value: order))
+        }
+        
+        if !queryItems.isEmpty {
+            urlComponents.queryItems = queryItems
+        }
+        
+        guard let url = urlComponents.url else {
+            throw OpenAIServiceError.invalidRequest("Invalid URL for listConversations")
+        }
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        return try JSONDecoder().decode(ConversationListResponse.self, from: data)
+    }
+    
+    /// Creates a new conversation.
+    func createConversation(title: String?, metadata: [String: String]?, store: Bool?) async throws -> ConversationDetail {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        var body: [String: Any] = [:]
+        if let title = title {
+            body["title"] = title
+        }
+        if let metadata = metadata {
+            body["metadata"] = metadata
+        }
+        if let store = store {
+            body["store"] = store
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        
+        let url = URL(string: "https://api.openai.com/v1/conversations")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        return try JSONDecoder().decode(ConversationDetail.self, from: data)
+    }
+    
+    /// Gets details for a specific conversation.
+    func getConversation(conversationId: String) async throws -> ConversationDetail {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        return try JSONDecoder().decode(ConversationDetail.self, from: data)
+    }
+    
+    /// Updates an existing conversation.
+    func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?, store: Bool?) async throws -> ConversationDetail {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        var body: [String: Any] = [:]
+        if let title = title {
+            body["title"] = title
+        }
+        if let metadata = metadata {
+            body["metadata"] = metadata
+        }
+        if let archived = archived {
+            body["archived"] = archived
+        }
+        if let store = store {
+            body["store"] = store
+        }
+        
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        
+        let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+        
+        return try JSONDecoder().decode(ConversationDetail.self, from: data)
+    }
+    
+    /// Deletes a conversation.
+    func deleteConversation(conversationId: String) async throws {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 && httpResponse.statusCode != 204 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
     }
 

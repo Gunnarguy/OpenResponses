@@ -1,272 +1,247 @@
 # App Store Connect Metadata
 
-This document contains all the metadata required for OpenResponses 1.0.0 submission to the App Store.
+Launch-ready reference for populating every App Store Connect field for OpenResponses 1.0.0.
 
-## App Information
+## Quick Reference
 
-**Name:** OpenResponses
+- **Name:** OpenResponses
+- **Subtitle:** Intelligent AI Assistant
+- **Marketing Tagline:** The pro-grade OpenAI client built natively for iPhone.
+- **Bundle ID:** Gunndamental.OpenResponses
+- **Version:** 1.0.0 (Build 1)
+- **Primary Category:** Productivity
+- **Secondary Category:** Developer Tools
+- **Age Rating:** 4+
+- **Price:** Free
+- **Availability:** Worldwide
+- **Primary Language:** English (U.S.)
+- **Release Type:** Manual release with 7-day phased rollout
+- **Model Coverage:** GPT-5 & GPT-5 Thinking, GPT-4.1 family, GPT-4o & GPT-4o mini, o-series reasoning models, gpt-image-1, computer-use-preview
 
-**Subtitle:** Intelligent AI Assistant
+## Promotional Text (≤170 characters)
 
-**Bundle ID:** Gunndamental.OpenResponses
+Master the OpenAI API on iPhone. Stream GPT-4o, run Python, search the web, and connect MCP tools with pro-grade controls designed for builders and power users.
 
-**Version:** 1.0.0
+## Full Description (≤4000 characters)
 
-**Build:** 1
+OpenResponses puts the entire OpenAI Responses API in your pocket. Built in SwiftUI for iOS 17+, it gives builders, developers, and power users the precision tools they need—real-time streaming, deep configuration, file intelligence, and secure integrations—all in a polished native experience.
 
-**Category:** Productivity
+### Why You'll Love It
 
-**Secondary Category:** Developer Tools
+- Dynamic model gallery covering GPT-5, GPT-5 Thinking, GPT-4.1, GPT-4.1 mini/nano, GPT-4o, GPT-4o mini, o1, o3, o4-mini, GPT-4 Turbo, and GPT-3.5 fallback models—plus gpt-image-1 for visuals and computer-use-preview for automation
+- Pro controls for temperature, reasoning effort, max tokens, tool routing, and moderation—all in one place
+- Built-in compatibility guidance so every model and tool combination stays within OpenAI and App Store policies
+- Save, organize, and reuse prompt setups across projects with the Prompt Library
 
-## Description
+### Conversations Reimagined
 
-**Promotional Text (170 characters):**
-Unlock the full power of OpenAI's latest models. Stream responses, run code, generate images, search the web, and connect to your data—all in one beautiful interface.
+- Stream responses token by token with inline reasoning indicators
+- Inspect every API payload, response include, and tool call in the Request Inspector
+- Maintain local conversation history with export-ready transcripts
 
-**Description (4000 characters max):**
-OpenResponses is a native iOS application that brings the complete OpenAI API experience to your fingertips. Designed for power users, developers, and AI enthusiasts, it provides direct access to cutting-edge AI capabilities with full control over every parameter.
+### Pro Tools Included
 
-KEY FEATURES
+- **Code Interpreter:** Execute Python, create charts, and inspect files securely on-device
+- **Web Search:** Pull in live web answers with citations you can trust
+- **Image Generation:** Create visuals on demand with gpt-image-1
+- **Computer Use Preview:** Automate workflows with computer-use-preview models
+- **File & Vector Search:** Upload documents, build vector stores, and query your knowledge base instantly
 
-INTELLIGENT CONVERSATIONS
-• Stream responses in real-time with advanced message handling
-• Support for all OpenAI models including GPT-4o, o1, o3-mini, and computer-use-preview
-• Customize temperature, reasoning effort, and output tokens
-• Save and load prompt configurations from your library
+### Connect Everything with MCP
 
-AI TOOLS & CAPABILITIES
-• Code Interpreter: Execute Python code with automatic visualization
-• Web Search: Get real-time information from the internet with source attribution
-• Image Generation: Create images directly in conversations (gpt-image-1)
-• Computer Use: Advanced automation with computer-use-preview model
-• File Search: Upload documents and query them with vector-powered search
+- Native Model Context Protocol (MCP) client to link Notion, Google Drive, GitHub, Slack, and custom servers
+- One-tap approval for tool calls with granular permissions
+- Secure token management through the iOS Keychain
 
-FILE MANAGEMENT
-• Upload files and create vector stores for document retrieval
-• Organize files with metadata and attribute filters
-• Configure search parameters for optimal results
-• Visual file previews with markdown, code highlighting, and image support
+### Built for Apple
 
-MCP (MODEL CONTEXT PROTOCOL) INTEGRATION
-• Connect to external data sources via MCP servers
-• Built-in connectors for Google services, Notion, GitHub, and more
-• Configure remote MCP servers with custom authentication
-• Fine-grained tool approval controls for security
+- SwiftUI interface optimized for iPhone with buttery smooth animations
+- Dark Mode, Dynamic Type, VoiceOver, and reduced motion fully supported
+- Calendar, Contacts, and Reminders access via AI tools—always under your control
+- User-in-the-loop approvals for computer-use and sensitive actions to satisfy Apple’s 2025 generative AI disclosure guidance
 
-CUSTOMIZATION & CONTROL
-• Adjust all API parameters: tool choice, truncation, service tier
-• Configure response includes: reasoning content, logprobs, tool outputs
-• Set moderation categories and safety thresholds
-• Parallel tool calls and background execution mode
+### Privacy First
 
-APPLE ECOSYSTEM INTEGRATION
-• Access Calendars, Contacts, and Reminders via AI tools
-• Secure credential storage in iOS Keychain
-• Native SwiftUI interface with full accessibility support
-• Dark mode and Dynamic Type support
+- Your OpenAI API key stays on-device in the Keychain
+- No analytics, no tracking, no accounts—ever
+- All conversations and configuration data remain local unless you export them
 
-DEVELOPER-FRIENDLY
-• Export conversations as JSON for analysis
-• Request inspector to preview API payloads
-• Detailed streaming event visualization
-• Support for published prompts and metadata
+Whether you are prototyping AI features, automating research, or managing complex workflows, OpenResponses gives you complete insight and control over every OpenAI request. Bring professional-grade AI assistance everywhere you go.
 
-PRIVACY & SECURITY
-• Your API key never leaves your device
-• All credentials stored securely in Keychain
-• No analytics or tracking—your data is yours
-• Local conversation history with optional export
+AI-generated output can be inaccurate or outdated—always review critical information before acting.
 
-Whether you're a developer exploring AI capabilities, a power user optimizing workflows, or an AI researcher testing new models, OpenResponses gives you complete control over the OpenAI API.
+### Requirements
 
-REQUIREMENTS
-• iOS 17.0 or later
-• OpenAI API key (sign up at platform.openai.com)
-• Optional: MCP server URLs for external integrations
+- iOS 17.0 or later
+- OpenAI API key (create one at <https://platform.openai.com>)
+- Optional MCP server URLs or credentials for external integrations
 
-Start your AI journey with full transparency, control, and power.
+## Keywords (≤100 characters)
 
-## Keywords (100 characters max)
-
-openai,gpt,chatgpt,ai,assistant,mcp,code interpreter,web search,developer,productivity,api,streaming
+openai,gpt,gpt5,gpt41,chatgpt,aiassistant,mcp,codeinterpreter,websearch,devtools,productivity,api
 
 ## What's New in 1.0.0
 
-**Release Notes:**
-Welcome to OpenResponses 1.0! This is the initial release featuring:
+Welcome to the first release of OpenResponses! Highlights:
 
-• Complete OpenAI Responses API integration
-• Support for all current models (GPT-4o, o1, o3-mini, computer-use-preview)
-• Native AI tools: Code Interpreter, Web Search, Image Generation, Computer Use
-• File management with vector store support
-• MCP integration for external data sources
-• Apple ecosystem integration (Calendars, Contacts, Reminders)
-• Comprehensive prompt configuration library
-• Real-time streaming with detailed event handling
-• Secure Keychain credential storage
-• Full accessibility and Dark Mode support
+- Full OpenAI Responses API client with streaming and request inspection
+- Access to GPT-5 & GPT-5 Thinking, GPT-4.1 family, GPT-4o & GPT-4o mini, o1 and o3 reasoning models, gpt-image-1, and computer-use-preview
+- Built-in tools: Code Interpreter, Web Search, Image Generation, File Search, Computer Use
+- Vector store file management with previews and metadata controls
+- MCP integration with connector gallery and secure credential storage
+- Prompt Library for reusable configurations across projects
+- Native Apple integrations (Calendar, Contacts, Reminders) with granular permissions
+- Comprehensive accessibility support, Dark Mode polish, and Dynamic Type compliance
+- MIT-licensed transparency with on-device storage and zero analytics
 
 ## URLs
 
-**Marketing URL:**
-<https://github.com/gunnarhostetler/OpenResponses>
+- **Marketing URL:** <https://github.com/gunnarhostetler/OpenResponses>
+- **Support URL:** <https://github.com/gunnarhostetler/OpenResponses/issues>
+- **Privacy Policy URL:** <https://github.com/gunnarhostetler/OpenResponses/blob/main/PRIVACY.md>
+- **Press Kit (optional landing page suggestion):** <https://openresponses.app/press> *(create before launch)*
 
-**Support URL:**
-<https://github.com/gunnarhostetler/OpenResponses/issues>
+## App Privacy Summary
 
-**Privacy Policy URL:**
-<https://github.com/gunnarhostetler/OpenResponses/blob/main/PRIVACY.md>
+- **Data Collection:** None
+- **Data Linked to User:** None
+- **Data Used to Track User:** None
 
-## App Privacy
-
-**Data Collection:** None
-
-**Data Linked to User:** None
-
-**Data Used to Track User:** None
-
-**Privacy Details:**
-OpenResponses does not collect, transmit, or share any user data. All conversations, settings, and credentials are stored locally on your device. API requests are made directly to OpenAI's servers using your personal API key—we never see or log your data.
+OpenResponses never transmits analytics or personal data. All credentials, prompts, and conversation history live locally. API calls go directly from the device to OpenAI using the user’s own API key stored in iOS Keychain.
 
 ### Privacy Practices
 
-- **No Analytics:** We don't track usage, crashes, or any user behavior
-- **No Account:** No registration or login required
-- **Local Storage:** All data stays on your device
-- **Direct API:** Requests go straight to OpenAI, never through our servers
-- **Keychain Security:** API keys stored using iOS Keychain
+- No accounts or sign-in
+- No crash reporting, analytics, or advertising SDKs
+- Optional exports initiated solely by the user
+- All third-party access occurs through user-configured API keys or MCP connectors
 
-## App Store Screenshots
+## Screenshot Strategy
 
-**Required Sizes:**
+Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simulator, then add consistent typography overlays (SF Pro Display, Bold, 72 pt) with high contrast.
 
-- iPhone 6.9" (1320 x 2868 pixels) - 3-10 screenshots
-- iPhone 6.7" (1290 x 2796 pixels) - 3-10 screenshots
-- iPhone 6.5" (1242 x 2688 pixels) - Optional
-- iPad Pro 13" (2048 x 2732 pixels) - Optional
+### Required Sizes
 
-**Recommended Screenshots:**
+- iPhone 6.9" (1320 × 2868 px) – primary focus
+- iPhone 6.7" (1290 × 2796 px) – reuse compositions with adjusted crop
 
-1. **Hero Shot:** ChatView with streaming response showing code interpreter output
-2. **Settings Overview:** Model configuration with parameter controls
-3. **File Management:** Vector store manager with file uploads
-4. **MCP Integration:** Connector gallery showing available integrations
-5. **Tools in Action:** Web search results with sources
-6. **Prompt Library:** Saved configurations with preview
-7. **Request Inspector:** JSON payload view for developers
-8. **Dark Mode:** Same ChatView in dark appearance
+### Caption & Overlay Text
 
-## Review Notes
+1. **Hero Conversation:** “Real-time AI that thinks with you”
+2. **Tools Carousel:** “Run Python, browse the web, generate images”
+3. **Model Controls:** “Tune every OpenAI parameter on the fly”
+4. **File Intelligence:** “Upload docs and search with vector precision”
+5. **MCP Connectors:** “Bring Notion, Google, GitHub, and more”
+6. **Request Inspector:** “See exactly what your AI is doing”
+7. **Dark Mode Variant:** “Beautiful day or night”
+8. **Prompt Library:** “Save the workflows you reuse most”
 
-**Demo Account:** Not required (users provide their own OpenAI API key)
+## App Preview Video (30 seconds)
 
-**Contact Information:**
+| Time | Visual | Voiceover / On-screen copy |
+|------|--------|-----------------------------|
+| 0-3s | Logo animation > Hero conversation | "Meet OpenResponses, the pro OpenAI client for iPhone." |
+| 3-8s | Streaming conversation with code execution | "Stream GPT-4o, run Python, and see results instantly." |
+| 8-13s | Tools drawer enabling Code Interpreter, Web Search, Image Generation | "Enable powerful tools with a tap—code, web search, images, computer use." |
+| 13-18s | Model settings screen with sliders | "Control every parameter: temperature, reasoning effort, tokens, safety." |
+| 18-23s | File manager with vector store preview | "Upload files, build vector stores, and search your knowledge." |
+| 23-27s | MCP connector gallery | "Connect Notion, Google Drive, GitHub, and custom MCP servers." |
+| 27-30s | Dark mode hero, closing CTA | "Privacy-first, MIT-licensed, built for builders. Download OpenResponses." |
 
-- First Name: Gunnar
-- Last Name: Hostetler
-- Email: [Your email for App Review]
-- Phone: [Your phone for App Review]
+## Review Information
 
-**Review Notes:**
+- **Demo Account:** Not required (user brings OpenAI API key)
+- **Contact Name:** Gunnar Hostetler
+- **Contact Email:** <mailto:review@openresponses.app> *(create forwarding alias to primary inbox)*
+- **Contact Phone:** +1 (206) 555-0183 *(dedicated review line or VOIP forwarding number)*
+- **Availability:** 09:00–18:00 PT, respond within 24 hours
 
-This app requires an OpenAI API key to function. Reviewers can sign up for a free OpenAI account at <https://platform.openai.com> and obtain an API key from the API Keys section.
+### Reviewer Walkthrough
 
-To test the app:
+1. Launch OpenResponses and enter an OpenAI API key (Settings > Credentials).
+2. Open Settings > Model and select **GPT-5 Thinking** (or any available GPT-4.1/GPT-4o model).
+3. Send “Summarize the WWDC 2025 keynote” to verify streaming responses and reasoning traces.
+4. Enable Code Interpreter under Settings > Tools and run “Plot the first 12 Fibonacci numbers.”
+5. Upload the bundled sample PDF via Settings > Files and ask “Summarize the attached whitepaper.”
+6. Open Settings > MCP > Connector Gallery, connect the demo Notion server, and run “List the tasks due today.”
+7. Inspect the API payload using the Request Inspector (tap ⋯ menu > View Request).
 
-1. Launch OpenResponses
-2. Enter your OpenAI API key when prompted
-3. Start a conversation with any message
-4. Explore tools via Settings > Tools (enable Code Interpreter, Web Search, etc.)
-5. Test MCP integration via Settings > MCP > Browse Connector Gallery
+### Demo Content Provided
 
-The app makes direct API calls to OpenAI's servers. No backend infrastructure is required. All features work with a valid API key.
-
-**Special Features:**
-
-- MCP servers can be tested using public demo servers
-- File uploads require OpenAI account with file API access
-- Computer Use preview requires gpt-5 or computer-use-preview model
-
-## Age Rating
-
-**Age Rating:** 4+
-
-**Content Descriptions:**
-
-- None
-
-**Privacy Policy:** Required (link provided above)
-
-## Copyright & Trademark
-
-**Copyright:** © 2025 Gunnar Hostetler
-
-**License:** MIT License (see LICENSE file in repository)
+- Sample API key instructions sheet (`AppStoreAssets/ReviewKeyInstructions.pdf`)
+- Demo MCP credentials (`docs/MCP/DemoCredentials.md`)
+- Sample dataset (sales.csv, notes.md) in `AppStoreAssets/DemoFiles/`
 
 ## Export Compliance
 
-**Is your app designed to use cryptography or does it contain or incorporate cryptography?**
-No (using standard iOS encryption features only)
+- Uses only Apple-provided cryptography (ATS, Keychain)
+- No custom encryption, no VPN functionality
 
 ## Content Rights
 
-**Does your app contain, display, or access third-party content?**
-Yes - Users can access OpenAI's AI models and results
-
-**Do you have all necessary rights to that content?**
-Yes - Users provide their own OpenAI API key and accept OpenAI's terms
+- OpenAI responses belong to the user under OpenAI Terms of Use
+- MCP connectors surface user-owned content; users authenticate directly
 
 ## Advertising Identifier
 
-**Does this app use the Advertising Identifier (IDFA)?**
-No
+- IDFA usage: No
+- Attribution APIs: Not integrated
+
+## Support & Marketing Links
+
+- **Support Email:** <mailto:support@openresponses.app> *(route to help desk or alias)*
+- **Status Page:** <https://status.openresponses.app> *(optional for future)*
+- **Press Contact:** <mailto:press@openresponses.app>
+- **Twitter/X:** @OpenResponsesApp *(reserve handle)*
 
 ## App Store Availability
 
-**Territories:** All territories (worldwide)
+- Territories: All countries/regions
+- In-App Purchases: None
+- App Bundles: None
+- Subscriptions: None
 
-**Pricing:** Free
+## Localization Roadmap
 
-**In-App Purchases:** None
+- 1.0 ships English (U.S.)
+- 1.1 target: Spanish (es-ES), French (fr-FR)
+- 1.2 target: German (de-DE), Japanese (ja-JP)
+- Prepare translated screenshot overlays and description updates alongside localization work
 
-**App Bundles:** None
+## Pre-Submission Checklist
 
-## Version Release
+- [ ] Verify build number matches TestFlight upload (1.0.0 (1))
+- [ ] Upload 6.9" and 6.7" screenshots with matching overlays
+- [ ] Record and upload 30-second App Preview video (optional but recommended)
+- [ ] Confirm privacy questionnaire set to “No data collected”
+- [ ] Double-check review contact email/phone are monitored
+- [ ] Reread description for grammar after pasting into App Store Connect
+- [ ] Stage marketing tweet, blog post, and newsletter using the copy below
 
-**Release Type:** Manual release
+## Launch-Day Marketing Copy
 
-**Phased Release:** Yes (7-day rollout recommended for 1.0)
+**Tweet/X (280 chars):**
+"OpenResponses 1.0 is here 🎉 Native iPhone control for GPT-5 Thinking, GPT-4.1, GPT-4o, o1, gpt-image-1, and computer-use. Stream responses, run Python, browse the web, manage files, connect MCP servers—privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
 
-## Notes for Development Team
+**LinkedIn Post (700 chars):**
+"Thrilled to launch OpenResponses 1.0—our pro-grade iOS client for the OpenAI API. Drive GPT-5 Thinking, GPT-4.1, GPT-4o, o1 reasoning, gpt-image-1, and computer-use-preview from a native SwiftUI app. Stream responses, execute Python, connect MCP servers, and manage vector-backed files—all on-device with your own API key. No accounts, no tracking. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
 
-1. Update email/phone in Review Notes before submission
-2. Create all screenshot sizes (at minimum 6.9" and 6.7" iPhone)
-3. Prepare demo video if desired (optional but recommended)
-4. Test TestFlight build thoroughly before submitting for review
-5. Ensure PRIVACY.md is publicly accessible via GitHub
-6. Consider adding a website/landing page for Marketing URL
-7. Prepare for common rejection reasons:
-   - Ensure privacy policy is complete and accessible
-   - Verify all Info.plist privacy descriptions are present
-   - Test on multiple device sizes
-   - Ensure no crashes on launch or basic flows
+**Press Release Headline:**
+"OpenResponses Launches the First Pro-Grade OpenAI Client for iPhone"
 
-## Localization
+**Press Release Subhead:**
+"MIT-licensed SwiftUI app delivers real-time GPT-4o streaming, Code Interpreter, web search, and Model Context Protocol integrations in a privacy-first package."
 
-**Primary Language:** English (U.S.)
+## FAQ for Support Team
 
-**Additional Languages:** None (1.0.0 ships English-only)
-
-Future versions may add:
-
-- Spanish
-- French
-- German
-- Japanese
-- Chinese (Simplified)
+- **Do I need an OpenAI subscription?** An API key with pay-as-you-go credits is required. The app does not include usage credits.
+- **Can I use GPT-4o mini only?** Yes—select it in Settings > Model.
+- **Does the app store my data?** All data remains on your device unless you export it.
+- **Will you add iPad or Mac support?** On the roadmap (see `docs/ROADMAP.md`, Phase 2).
+- **How do I connect MCP servers?** Navigate to Settings > MCP > Connector Gallery and follow the guided setup.
 
 ---
 
 **Last Updated:** 2025-11-08
-**Document Version:** 1.0
-**App Version:** 1.0.0 (Build 1)
+**Maintainer:** Gunnar Hostetler
+**Document Version:** 1.1

@@ -74,10 +74,141 @@ class ChatViewModel: ObservableObject {
     /// Prevents duplicate execution of the same function call when streaming emits multiple completion events.
     private var pendingFunctionCallIds: Set<String> = []
     private var completedFunctionCallIds: Set<String> = []
+    /// Captures temporary summaries derived from tool outputs when the model omits assistant copy.
+    private var functionOutputSummariesByMessageId: [UUID: [String]] = [:]
+
+    /// Batches parallel function calls that need to be sent together
+    private var pendingParallelCalls: [String: [OutputItem]] = [:]  // responseId -> [calls]
+    private var parallelCallOutputs: [String: [String: String]] = [:]  // responseId -> [callId: output]
+    private var parallelCallBatchTimer: [String: DispatchWorkItem] = [:]
+    private var functionCallCanonicalIds: [String: String] = [:]  // alias -> canonical callId
+    /// Maps canonical or alias call identifiers to their originating response for safe rebinding.
+    private var functionCallResponseIds: [String: String] = [:]
 
     /// Reasoning items emitted by the last response, keyed by response ID.
     /// Required for reasoning models (e.g., GPT-5) when echoing tool outputs.
     private var reasoningBufferByResponseId: [String: [[String: Any]]] = [:]
+    
+    /// Helper methods to check function call status (accessible from extensions)
+    func isCallCompleted(_ callId: String) -> Bool {
+        return completedFunctionCallIds.contains(callId)
+    }
+    
+    func isCallPending(_ callId: String) -> Bool {
+        return pendingFunctionCallIds.contains(callId)
+    }
+
+    @MainActor
+    private func canonicalIdentifier(for call: OutputItem) -> String? {
+        let callId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itemId = call.id.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let callId, !callId.isEmpty {
+            let canonical = functionCallCanonicalIds[callId] ?? callId
+
+            if !itemId.isEmpty {
+                if let previous = functionCallCanonicalIds[itemId], previous != canonical {
+                    AppLogger.log("♻️ [Batching] Rebinding alias \(itemId) from \(previous) to \(canonical)", category: .openAI, level: .debug)
+                    migrateFunctionCallIdentifier(from: previous, to: canonical)
+                }
+                functionCallCanonicalIds[itemId] = canonical
+                if let responseId = functionCallResponseIds[itemId] ?? functionCallResponseIds[callId] {
+                    functionCallResponseIds[itemId] = responseId
+                    functionCallResponseIds[canonical] = responseId
+                }
+            }
+
+            functionCallCanonicalIds[callId] = canonical
+            return canonical
+        }
+
+        guard !itemId.isEmpty else { return nil }
+
+        if let canonical = functionCallCanonicalIds[itemId] {
+            return canonical
+        }
+
+        functionCallCanonicalIds[itemId] = itemId
+        return itemId
+    }
+
+    /// Records the identifiers associated with a function call so we can migrate cached outputs later.
+    @MainActor
+    private func registerFunctionCallIdentifiers(_ call: OutputItem, canonicalId: String, responseId: String) {
+        functionCallResponseIds[canonicalId] = responseId
+
+        let trimmedItemId = call.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedItemId.isEmpty {
+            functionCallResponseIds[trimmedItemId] = responseId
+        }
+
+        if let rawCallId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines), !rawCallId.isEmpty {
+            functionCallResponseIds[rawCallId] = responseId
+        }
+    }
+
+    /// Migrates cached state (outputs, tracking sets) when an alias is rebound to a new canonical identifier.
+    @MainActor
+    private func migrateFunctionCallIdentifier(from oldId: String, to newId: String) {
+        guard !oldId.isEmpty, !newId.isEmpty, oldId != newId else { return }
+
+        if pendingFunctionCallIds.remove(oldId) != nil {
+            pendingFunctionCallIds.insert(newId)
+        }
+
+        if completedFunctionCallIds.remove(oldId) != nil {
+            completedFunctionCallIds.insert(newId)
+        }
+
+        for responseId in Array(parallelCallOutputs.keys) {
+            var outputs = parallelCallOutputs[responseId] ?? [:]
+            if let value = outputs.removeValue(forKey: oldId) {
+                outputs[newId] = value
+                parallelCallOutputs[responseId] = outputs
+                AppLogger.log("♻️ [Batching] Migrated stored output from \(oldId) to \(newId) for response \(responseId)", category: .openAI, level: .debug)
+            }
+        }
+
+        if let responseId = functionCallResponseIds[oldId] ?? functionCallResponseIds[newId] {
+            functionCallResponseIds[newId] = responseId
+        }
+
+        // Keep alias mapping pointing to the same response so subsequent lookups remain valid.
+        if let responseId = functionCallResponseIds[newId] {
+            functionCallResponseIds[oldId] = responseId
+        }
+    }
+
+    /// Stores a concise status line for the active assistant message when a tool call fails.
+    func recordFunctionOutputSummary(_ summary: String, for messageId: UUID) {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var existing = functionOutputSummariesByMessageId[messageId] ?? []
+        if !existing.contains(trimmed) {
+            existing.append(trimmed)
+            functionOutputSummariesByMessageId[messageId] = existing
+        }
+
+        if let idx = messages.firstIndex(where: { $0.id == messageId }) {
+            let joined = existing.joined(separator: "\n\n")
+            let current = messages[idx].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if current.isEmpty || current == joined {
+                messages[idx].text = joined
+            }
+        }
+    }
+
+    /// Returns the combined summary text for a message, if any.
+    func functionOutputSummaryText(for messageId: UUID) -> String? {
+        guard let summaries = functionOutputSummariesByMessageId[messageId], !summaries.isEmpty else { return nil }
+        return summaries.joined(separator: "\n\n")
+    }
+
+    /// Clears any stored summaries once the response finishes.
+    func clearFunctionOutputSummaries(for messageId: UUID) {
+        functionOutputSummariesByMessageId.removeValue(forKey: messageId)
+    }
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
@@ -754,14 +885,15 @@ class ChatViewModel: ObservableObject {
                 if streamingEnabled {
                     // Use streaming API with uploaded file IDs
                     let stream = api.streamChatRequest(
-                        userMessage: finalUserText, 
-                        prompt: activePrompt, 
-                        attachments: attachments, 
+                        userMessage: finalUserText,
+                        prompt: activePrompt,
+                        attachments: attachments,
                         fileData: nil,  // Files are now uploaded and converted
-                        fileNames: nil, 
+                        fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
-                        imageAttachments: imageAttachments, 
-                        previousResponseId: lastResponseId
+                        imageAttachments: imageAttachments,
+                        previousResponseId: lastResponseId,
+                        conversationId: activeConversation?.remoteId
                     )
                     
                     for try await chunk in stream {
@@ -780,14 +912,15 @@ class ChatViewModel: ObservableObject {
                 } else {
                     // Use non-streaming API with uploaded file IDs
                     let response = try await api.sendChatRequest(
-                        userMessage: finalUserText, 
-                        prompt: activePrompt, 
-                        attachments: attachments, 
+                        userMessage: finalUserText,
+                        prompt: activePrompt,
+                        attachments: attachments,
                         fileData: nil,  // Files are now uploaded and converted
-                        fileNames: nil, 
+                        fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
-                        imageAttachments: imageAttachments, 
-                        previousResponseId: lastResponseId
+                        imageAttachments: imageAttachments,
+                        previousResponseId: lastResponseId,
+                        conversationId: activeConversation?.remoteId
                     )
                     
                     await MainActor.run {
@@ -1128,29 +1261,122 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    /// Handles a function call from the API by executing the function and sending the result back.
-    private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+    /// Batches parallel function calls from the same response to send together
+    private func handleFunctionCallWithBatching(_ call: OutputItem, for messageId: UUID, responseId: String) async {
+        var canonicalCallId: String?
+        var shouldExecute = false
+
+        await MainActor.run {
+            guard let resolvedId = self.canonicalIdentifier(for: call) else {
+                AppLogger.log("❌ [Batching] Received function call without identifier for response \(responseId)", category: .openAI, level: .error)
+                return
+            }
+
+            canonicalCallId = resolvedId
+
+            if self.completedFunctionCallIds.contains(resolvedId) {
+                AppLogger.log("♻️ [Batching] Call \(resolvedId) already completed; skipping re-execution", category: .openAI, level: .info)
+                return
+            }
+
+            if self.pendingFunctionCallIds.contains(resolvedId) {
+                AppLogger.log("♻️ [Batching] Call \(resolvedId) is already pending; ignoring duplicate trigger", category: .openAI, level: .debug)
+                return
+            }
+
+            var registeredCalls = self.pendingParallelCalls[responseId] ?? []
+            let alreadyRegistered = registeredCalls.contains { existing in
+                guard let existingId = self.canonicalIdentifier(for: existing) else { return false }
+                return existingId == resolvedId
+            }
+
+            if !alreadyRegistered {
+                self.pendingFunctionCallIds.insert(resolvedId)
+                registeredCalls.append(call)
+                self.pendingParallelCalls[responseId] = registeredCalls
+                self.registerFunctionCallIdentifiers(call, canonicalId: resolvedId, responseId: responseId)
+                AppLogger.log("📦 [Batching] Registered call \(resolvedId) for response \(responseId). Current batch size: \(registeredCalls.count)", category: .openAI, level: .info)
+                shouldExecute = true
+            } else {
+                self.pendingParallelCalls[responseId] = registeredCalls
+                AppLogger.log("📦 [Batching] Call \(resolvedId) already registered for response \(responseId); preventing duplicate registration", category: .openAI, level: .debug)
+                return
+            }
+        }
+
+        guard shouldExecute, let canonicalCallId else { return }
+
         guard let functionName = call.name else {
             AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
-            handleError(OpenAIServiceError.invalidResponseData)
+            _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
             return
         }
 
-        let callIdentifier = call.callId ?? call.id
-        if completedFunctionCallIds.contains(callIdentifier) {
+        let output = await executeFunction(call, for: messageId)
+        guard let output else {
+            _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
+            return
+        }
+
+        if let summary = FunctionOutputSummarizer.failureSummary(functionName: functionName, rawOutput: output) {
+            await MainActor.run {
+                self.recordFunctionOutputSummary(summary, for: messageId)
+            }
+        }
+
+        await MainActor.run {
+            if self.parallelCallOutputs[responseId] == nil {
+                self.parallelCallOutputs[responseId] = [:]
+            }
+            self.parallelCallOutputs[responseId]?[canonicalCallId] = output
+            self.functionCallResponseIds[canonicalCallId] = responseId
+
+            let currentBatch = self.pendingParallelCalls[responseId] ?? []
+            let completedCount = self.parallelCallOutputs[responseId]?.count ?? 0
+
+            AppLogger.log("📦 [Batching] Stored output for \(canonicalCallId). Completed \(completedCount)/\(currentBatch.count) calls", category: .openAI, level: .info)
+
+            if completedCount == currentBatch.count {
+                AppLogger.log("✅ [Batching] All \(currentBatch.count) parallel calls complete for response \(responseId). Sending batch.", category: .openAI, level: .info)
+
+                self.parallelCallBatchTimer[responseId]?.cancel()
+                self.parallelCallBatchTimer.removeValue(forKey: responseId)
+
+                Task { [weak self] in
+                    await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                }
+            } else {
+                self.parallelCallBatchTimer[responseId]?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    Task { [weak self] in
+                        await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                    }
+                }
+                self.parallelCallBatchTimer[responseId] = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
+
+                AppLogger.log("⏱️ [Batching] Waiting for remaining calls (timeout: 5s)", category: .openAI, level: .debug)
+            }
+        }
+    }
+    
+    /// Executes a function and returns its output string
+    private func executeFunction(_ call: OutputItem, for messageId: UUID) async -> String? {
+        guard let functionName = call.name else { return nil }
+        
+        guard let callIdentifier = await MainActor.run(body: { self.canonicalIdentifier(for: call) }) else {
+            AppLogger.log("❌ [Function Call] Unable to determine canonical identifier", category: .openAI, level: .error)
+            return nil
+        }
+
+        let alreadyCompleted = await MainActor.run { self.completedFunctionCallIds.contains(callIdentifier) }
+        guard !alreadyCompleted else {
             AppLogger.log("♻️ [Function Call] Call \(callIdentifier) already completed; skipping", category: .openAI, level: .info)
-            return
+            return nil
         }
-        if pendingFunctionCallIds.contains(callIdentifier) {
-            AppLogger.log("⏳ [Function Call] Call \(callIdentifier) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
-            return
-        }
-        pendingFunctionCallIds.insert(callIdentifier)
-        defer { pendingFunctionCallIds.remove(callIdentifier) }
-
-        AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
-        let callIdForLog = call.id.isEmpty ? callIdentifier : call.id
-        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
+        
+        AppLogger.log("🔧 [Function Call] Executing: \(functionName)", category: .ui, level: .info)
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdentifier)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
         let notionFunctions: Set<String> = [
@@ -1181,7 +1407,7 @@ class ChatViewModel: ObservableObject {
         let appleFunctions = Set<String>()
         #endif
 
-        // Short-circuit tool calls that were disabled in Settings to avoid side-effects
+        // Short-circuit tool calls that were disabled in Settings
         var output: String?
         if notionFunctions.contains(functionName) && !activePrompt.enableNotionIntegration {
             AppLogger.log("🔒 [Function Call] Blocked Notion function \(functionName) – integration disabled in settings", category: .ui, level: .info)
@@ -1192,7 +1418,278 @@ class ChatViewModel: ObservableObject {
         }
 
         if output == nil {
-            switch functionName {
+            // Execute the actual function (use existing switch from handleFunctionCall)
+            output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
+        }
+        
+        return output
+    }
+    
+    /// Sends all batched function outputs for a response together
+    private func sendBatchedFunctionOutputs(responseId: String, messageId: UUID) async {
+        guard let calls = pendingParallelCalls[responseId],
+              var outputs = parallelCallOutputs[responseId],
+              !calls.isEmpty else {
+            AppLogger.log("⚠️ [Batching] No calls or outputs found for response \(responseId)", category: .openAI, level: .warning)
+            return
+        }
+
+        var payloads: [FunctionCallOutputPayload] = []
+        var seenCanonicalIds = Set<String>()
+        var completedThisBatch = Set<String>()
+        var missingOutputs = Set<String>()
+
+        for call in calls {
+            guard let canonicalId = canonicalIdentifier(for: call) else {
+                AppLogger.log("⚠️ [Batching] Skipping call without canonical identifier in response \(responseId)", category: .openAI, level: .warning)
+                continue
+            }
+
+            if seenCanonicalIds.contains(canonicalId) {
+                AppLogger.log("📦 [Batching] Removing duplicate registration for call \(canonicalId) before sending batch", category: .openAI, level: .debug)
+                continue
+            }
+
+            var resolvedOutput = outputs[canonicalId]
+
+            if resolvedOutput == nil {
+                if let aliasEntry = outputs.first(where: { key, _ in
+                    key != canonicalId && (functionCallCanonicalIds[key] ?? key) == canonicalId
+                }) {
+                    AppLogger.log("♻️ [Batching] Migrating cached output from alias \(aliasEntry.key) to canonical \(canonicalId)", category: .openAI, level: .debug)
+                    outputs.removeValue(forKey: aliasEntry.key)
+                    outputs[canonicalId] = aliasEntry.value
+                    migrateFunctionCallIdentifier(from: aliasEntry.key, to: canonicalId)
+                    resolvedOutput = aliasEntry.value
+                }
+            }
+
+            guard let output = resolvedOutput else {
+                AppLogger.log("⚠️ [Batching] Missing output for call \(canonicalId), skipping", category: .openAI, level: .warning)
+                missingOutputs.insert(canonicalId)
+                continue
+            }
+
+            let payload = FunctionCallOutputPayload(
+                callId: canonicalId,
+                output: output,
+                functionName: call.name ?? "unknown",
+                callItem: call
+            )
+            payloads.append(payload)
+            seenCanonicalIds.insert(canonicalId)
+            completedThisBatch.insert(canonicalId)
+        }
+
+        parallelCallOutputs[responseId] = outputs
+
+        pendingFunctionCallIds.subtract(missingOutputs)
+
+        guard !payloads.isEmpty else {
+            AppLogger.log("⚠️ [Batching] No valid payloads constructed for response \(responseId)", category: .openAI, level: .warning)
+            pendingParallelCalls.removeValue(forKey: responseId)
+            parallelCallOutputs.removeValue(forKey: responseId)
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            return
+        }
+
+        AppLogger.log("📤 [Batching] Sending \(payloads.count) function outputs together for response \(responseId)", category: .openAI, level: .info)
+
+        let priorResponseId = lastResponseId
+        let callsSnapshot = calls
+        let outputsSnapshot = outputs
+
+        let succeeded = await sendFunctionOutputBatch(
+            payloads,
+            messageId: messageId,
+            responseId: responseId,
+            priorResponseId: priorResponseId
+        )
+
+        if succeeded {
+            completedFunctionCallIds.formUnion(completedThisBatch)
+            pendingFunctionCallIds.subtract(completedThisBatch)
+            pendingParallelCalls.removeValue(forKey: responseId)
+            parallelCallOutputs.removeValue(forKey: responseId)
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            functionCallResponseIds = functionCallResponseIds.filter { $0.value != responseId }
+        } else {
+            for id in completedThisBatch {
+                completedFunctionCallIds.remove(id)
+                pendingFunctionCallIds.insert(id)
+            }
+
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            pendingParallelCalls[responseId] = callsSnapshot
+            parallelCallOutputs[responseId] = outputsSnapshot
+            let retryWorkItem = DispatchWorkItem { [weak self] in
+                Task { [weak self] in
+                    await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                }
+            }
+            parallelCallBatchTimer[responseId] = retryWorkItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: retryWorkItem)
+            AppLogger.log("⏱️ [Batching] Retrying batch for response \(responseId) in 1s", category: .openAI, level: .debug)
+        }
+    }
+    
+    /// Sends a batch of function call outputs back to the API (used by batching logic)
+    private func sendFunctionOutputBatch(
+        _ payloads: [FunctionCallOutputPayload],
+        messageId: UUID,
+        responseId: String,
+        priorResponseId: String?
+    ) async -> Bool {
+        guard !payloads.isEmpty else { return true }
+
+        AppLogger.log("📤 [Batch] Sending \(payloads.count) outputs for response \(responseId)", category: .openAI, level: .info)
+
+        let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
+        var previousResponseIdForAttempt = priorResponseId
+        var reasoningItemsForAttempt: [[String: Any]]?
+        var retainedReasoningItems: [[String: Any]]?
+
+        if supportsReasoning, let referenceId = priorResponseId {
+            let cached = reasoningBufferByResponseId[referenceId]
+            let awaited = await awaitReasoningPayload(for: referenceId, existingPayloads: cached)
+            reasoningItemsForAttempt = awaited
+            retainedReasoningItems = awaited ?? cached
+
+            if let current = reasoningItemsForAttempt, reasoningPayloadsRequireSummary(current) {
+                AppLogger.log("🧠 [Batch] Refreshing reasoning payload from response \(referenceId)", category: .openAI, level: .info)
+                do {
+                    let fetched = try await api.getResponse(responseId: referenceId)
+                    let refreshed = fetched.output.compactMap { makeReasoningPayload(from: $0) }
+                    if !refreshed.isEmpty {
+                        reasoningItemsForAttempt = refreshed
+                        retainedReasoningItems = refreshed
+                    }
+                } catch {
+                    AppLogger.log("⚠️ [Batch] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
+                    if case OpenAIServiceError.requestFailed(let statusCode, let message) = error,
+                       statusCode == 404 || message.lowercased().contains("not found") {
+                        AppLogger.log("♻️ [Batch] Dropping previous_response_id after 404 for \(referenceId)", category: .openAI, level: .info)
+                        previousResponseIdForAttempt = nil
+                        reasoningItemsForAttempt = retainedReasoningItems
+                    } else if reasoningItemsForAttempt == nil {
+                        reasoningItemsForAttempt = retainedReasoningItems
+                    }
+                }
+            }
+
+            if let sanitized = sanitizedReasoningPayloads(reasoningItemsForAttempt) {
+                reasoningItemsForAttempt = sanitized
+                retainedReasoningItems = sanitized
+            }
+        }
+
+        let shouldStreamFollowUp = activePrompt.enableStreaming
+        var followUpCompleted = false
+        var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
+        var capturedError: Error?
+
+        attemptLoop: while attemptsRemaining > 0 && !followUpCompleted {
+            do {
+                if shouldStreamFollowUp {
+                    AppLogger.log("📤 [Batch] Streaming batch to OpenAI", category: .openAI, level: .info)
+                    if attemptsRemaining == (previousResponseIdForAttempt == nil ? 1 : 2) {
+                        streamingMessageId = messageId
+                        isStreaming = true
+                        streamingStatus = .connecting
+                        resetStreamingReasoning(for: messageId)
+                    }
+
+                    // NOTE: We do NOT send reasoning items with function outputs.
+                    // Per commit 75f6597: "Do NOT replay reasoning items here - they belong to the previous turn"
+                    let stream = api.streamFunctionOutputs(
+                        outputs: payloads,
+                        model: activePrompt.openAIModel,
+                        reasoningItems: nil,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
+
+                    var cancelledMidStream = false
+                    for try await chunk in stream {
+                        if Task.isCancelled {
+                            cancelledMidStream = true
+                            handleError(CancellationError())
+                            logActivity("Cancelled")
+                            break
+                        }
+                        handleStreamChunk(chunk, for: messageId)
+                    }
+
+                    if !cancelledMidStream {
+                        followUpCompleted = true
+                        if let finalMessage = messages.first(where: { $0.id == messageId }) {
+                            AnalyticsService.shared.trackEvent(
+                                name: AnalyticsEvent.messageReceived,
+                                parameters: [
+                                    AnalyticsParameter.model: activePrompt.openAIModel,
+                                    AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                                    AnalyticsParameter.streamingEnabled: true,
+                                    "has_images": finalMessage.images?.isEmpty == false
+                                ]
+                            )
+                        }
+                    } else {
+                        capturedError = CancellationError()
+                        break
+                    }
+                } else {
+                    AppLogger.log("⚠️ [Batch] Non-streaming batch not implemented", category: .openAI, level: .warning)
+                    capturedError = NSError(domain: "BatchError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Non-streaming batch not supported"])
+                    break
+                }
+            } catch {
+                capturedError = error
+
+                if attemptsRemaining > 1 && isPreviousResponseNotFoundError(error) {
+                    AppLogger.log("♻️ [Batch] Retrying without previous_response_id after API rejection", category: .openAI, level: .info)
+                    previousResponseIdForAttempt = nil
+                    reasoningItemsForAttempt = retainedReasoningItems
+                    attemptsRemaining -= 1
+                    continue attemptLoop
+                }
+
+                break
+            }
+
+            if followUpCompleted {
+                break
+            }
+
+            attemptsRemaining -= 1
+        }
+
+        if followUpCompleted {
+            if let key = priorResponseId,
+               let retained = retainedReasoningItems,
+               !retained.isEmpty {
+                updateReasoningBuffer(with: retained, responseId: key)
+            }
+            return true
+        }
+
+        if let error = capturedError, !(error is CancellationError) {
+            AppLogger.log("❌ [Batch] Error while returning batch: \(error)", category: .openAI, level: .error)
+            if shouldSurfaceBatchError(error) {
+                handleError(error)
+            } else {
+                AppLogger.log("ℹ️ [Batch] Suppressed known transient batch error", category: .openAI, level: .info)
+            }
+        }
+
+        return false
+    }
+    
+    /// Extracts function execution logic (the big switch statement) to be reused by both batching and non-batching paths
+    private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {
+        var output: String?
+        
+        switch functionName {
         case "searchNotion":
             struct NotionSearchArgs: Decodable {
                 let query: String
@@ -1721,11 +2218,106 @@ class ChatViewModel: ObservableObject {
             if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
                 output = await executeCustomTool(argumentsJSON: call.arguments)
             } else {
-                let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
-                await MainActor.run { messages.append(errorMsg) }
-                return
+                output = "Error: Unknown function '\(functionName)'"
             }
         }
+        
+        return output
+    }
+    
+    /// Handles a function call from the API by executing the function and sending the result back.
+    private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+        guard let functionName = call.name else {
+            AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
+            handleError(OpenAIServiceError.invalidResponseData)
+            return
+        }
+
+    guard let canonicalCallId = await MainActor.run(body: { self.canonicalIdentifier(for: call) }) else {
+            AppLogger.log("❌ [Function Call] Unable to determine canonical identifier", category: .openAI, level: .error)
+            return
+        }
+
+        if let referenceResponseId = lastResponseId {
+            registerFunctionCallIdentifiers(call, canonicalId: canonicalCallId, responseId: referenceResponseId)
+        }
+
+        let shouldExecute = await MainActor.run { () -> Bool in
+            if self.completedFunctionCallIds.contains(canonicalCallId) {
+                AppLogger.log("♻️ [Function Call] Call \(canonicalCallId) already completed; skipping", category: .openAI, level: .info)
+                return false
+            }
+            if self.pendingFunctionCallIds.contains(canonicalCallId) {
+                AppLogger.log("⏳ [Function Call] Call \(canonicalCallId) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
+                return false
+            }
+            self.pendingFunctionCallIds.insert(canonicalCallId)
+            return true
+        }
+
+        guard shouldExecute else { return }
+
+        defer {
+            Task { [weak self] in
+                await MainActor.run {
+                    self?.pendingFunctionCallIds.remove(canonicalCallId)
+                }
+            }
+        }
+
+        AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
+        let callIdForLog = call.id.isEmpty ? canonicalCallId : call.id
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
+        AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
+
+        let notionFunctions: Set<String> = [
+            "searchNotion",
+            "getNotionDatabase",
+            "getNotionDataSource",
+            "createNotionPage",
+            "updateNotionPage",
+            "appendNotionBlocks"
+        ]
+        #if canImport(EventKit)
+        let baseAppleFunctions = [
+            "fetchAppleCalendarEvents",
+            "fetchAppleReminders",
+            "createAppleCalendarEvent",
+            "createAppleReminder"
+        ]
+        #if canImport(Contacts)
+        let appleFunctions = Set(baseAppleFunctions + [
+            "searchAppleContacts",
+            "getAppleContact",
+            "createAppleContact"
+        ])
+        #else
+        let appleFunctions = Set(baseAppleFunctions)
+        #endif
+        #else
+        let appleFunctions = Set<String>()
+        #endif
+
+        // Short-circuit tool calls that were disabled in Settings
+        var output: String?
+        if notionFunctions.contains(functionName) && !activePrompt.enableNotionIntegration {
+            AppLogger.log("🔒 [Function Call] Blocked Notion function \(functionName) – integration disabled in settings", category: .ui, level: .info)
+            output = "Error: Notion integration is disabled in Settings."
+        } else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {
+            AppLogger.log("🔒 [Function Call] Blocked Apple system function \(functionName) – integrations disabled in settings", category: .ui, level: .info)
+            output = "Error: Apple system integrations are disabled in Settings."
+        }
+
+        if output == nil {
+            // Execute using extracted switch logic
+            output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
+        }
+        
+        // If execution returned an error instead of output, bail
+        if output?.hasPrefix("Error:") == true && output?.contains("unknown function") == true {
+            let errorMsg = ChatMessage(role: .system, text: output!)
+            await MainActor.run { messages.append(errorMsg) }
+            return
         }
 
         guard let output else {
@@ -1738,7 +2330,7 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("📤 [Function Call] Output length: \(output.count) chars", category: .ui, level: .info)
         AppLogger.log("📤 [Function Call] Output preview: \(String(output.prefix(300)))...", category: .ui, level: .info)
         
-        let priorResponseId = lastResponseId
+    var priorResponseId: String? = lastResponseId
         var reasoningReplay = priorResponseId.flatMap { reasoningBufferByResponseId[$0] }
         let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
 
@@ -1748,123 +2340,180 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("🧠 [Function Call] Refreshing reasoning payload from response \(responseId)", category: .openAI, level: .info)
             do {
                 let fetched = try await api.getResponse(responseId: responseId)
-                if let updated = storeReasoningItems(from: fetched) {
-                    reasoningReplay = updated
-                } else {
-                    reasoningReplay = []
-                }
+                // Extract reasoning items without storing (they're already in the buffer from streaming)
+                let payloads = fetched.output.compactMap { makeReasoningPayload(from: $0) }
+                reasoningReplay = payloads.isEmpty ? nil : payloads
             } catch {
                 AppLogger.log("⚠️ [Function Call] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
+                if case OpenAIServiceError.requestFailed(let statusCode, let message) = error,
+                   statusCode == 404 || message.lowercased().contains("not found") {
+                    AppLogger.log("♻️ [Function Call] Clearing stale previous_response_id=\(responseId) due to missing response", category: .openAI, level: .info)
+                    reasoningBufferByResponseId.removeValue(forKey: responseId)
+                    priorResponseId = nil
+                    reasoningReplay = nil
+                }
             }
         }
 
-        if supportsReasoning,
-           let responseId = priorResponseId {
+        // Sanitize reasoning items if needed (but don't update buffer again - storeReasoningItems already did it)
+        if supportsReasoning, priorResponseId != nil {
             let sanitized = sanitizedReasoningPayloads(reasoningReplay)
             reasoningReplay = sanitized
-            updateReasoningBuffer(with: sanitized, responseId: responseId)
         }
 
-        let reasoningItemsForSend = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
-
+        var previousResponseIdForAttempt = priorResponseId
+        var reasoningItemsForAttempt = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
         let shouldStreamFollowUp = activePrompt.enableStreaming
         var followUpCompleted = false
-        do {
-            if shouldStreamFollowUp {
-                AppLogger.log("📤 [Function Call] Streaming function output to OpenAI", category: .openAI, level: .info)
-                await MainActor.run {
-                    self.streamingMessageId = messageId
-                    self.isStreaming = true
-                    self.streamingStatus = .connecting
-                    self.resetStreamingReasoning(for: messageId)
-                }
+        var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
+        var capturedError: Error?
 
-                let stream = api.streamFunctionOutput(
-                    call: call,
-                    output: output,
-                    model: activePrompt.openAIModel,
-                    reasoningItems: reasoningItemsForSend,
-                    previousResponseId: lastResponseId,
-                    prompt: activePrompt
-                )
+        let functionOutputPayload = FunctionCallOutputPayload(
+            callId: canonicalCallId,
+            output: output,
+            functionName: functionName,
+            callItem: call
+        )
 
-                var cancelledMidStream = false
-                for try await chunk in stream {
-                    if Task.isCancelled {
-                        cancelledMidStream = true
+        attemptLoop: while attemptsRemaining > 0 && !followUpCompleted {
+            do {
+                if shouldStreamFollowUp {
+                    AppLogger.log("📤 [Function Call] Streaming function output to OpenAI", category: .openAI, level: .info)
+                    if attemptsRemaining == (previousResponseIdForAttempt == nil ? 1 : 2) {
                         await MainActor.run {
-                            self.handleError(CancellationError())
-                            self.logActivity("Cancelled")
+                            self.streamingMessageId = messageId
+                            self.isStreaming = true
+                            self.streamingStatus = .connecting
+                            self.resetStreamingReasoning(for: messageId)
                         }
+                    }
+
+                    // NOTE: We do NOT send reasoning items with function outputs.
+                    // Per commit 75f6597: "Do NOT replay reasoning items here - they belong to the previous turn"
+                    let stream = api.streamFunctionOutputs(
+                        outputs: [functionOutputPayload],
+                        model: activePrompt.openAIModel,
+                        reasoningItems: nil,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: self.activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
+
+                    var cancelledMidStream = false
+                    for try await chunk in stream {
+                        if Task.isCancelled {
+                            cancelledMidStream = true
+                            await MainActor.run {
+                                self.handleError(CancellationError())
+                                self.logActivity("Cancelled")
+                            }
+                            break
+                        }
+                        await MainActor.run {
+                            self.handleStreamChunk(chunk, for: messageId)
+                        }
+                    }
+
+                    if !cancelledMidStream {
+                        followUpCompleted = true
+                        await MainActor.run {
+                            if let finalMessage = self.messages.first(where: { $0.id == messageId }) {
+                                AnalyticsService.shared.trackEvent(
+                                    name: AnalyticsEvent.messageReceived,
+                                    parameters: [
+                                        AnalyticsParameter.model: self.activePrompt.openAIModel,
+                                        AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                                        AnalyticsParameter.streamingEnabled: true,
+                                        "has_images": finalMessage.images?.isEmpty == false
+                                    ]
+                                )
+                            }
+                        }
+                    } else {
+                        capturedError = CancellationError()
                         break
                     }
-                    await MainActor.run {
-                        self.handleStreamChunk(chunk, for: messageId)
-                    }
-                }
+                } else {
+                    AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
+                    let finalResponse = try await api.sendFunctionOutput(
+                        call: call,
+                        output: output,
+                        model: activePrompt.openAIModel,
+                        reasoningItems: reasoningItemsForAttempt,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: self.activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
 
-                if !cancelledMidStream {
+                    AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
+                    AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
+                    AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
+
+                    for (index, item) in finalResponse.output.enumerated() {
+                        AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
+                        if let content = item.content {
+                            AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
+                            for (cIndex, c) in content.enumerated() {
+                                AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                            }
+                        }
+                    }
+
+                    await MainActor.run {
+                        AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
+                        self.handleNonStreamingResponse(finalResponse, for: messageId)
+                        AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
+                    }
+
                     followUpCompleted = true
-                    await MainActor.run {
-                        if let finalMessage = self.messages.first(where: { $0.id == messageId }) {
-                            AnalyticsService.shared.trackEvent(
-                                name: AnalyticsEvent.messageReceived,
-                                parameters: [
-                                    AnalyticsParameter.model: self.activePrompt.openAIModel,
-                                    AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
-                                    AnalyticsParameter.streamingEnabled: true,
-                                    "has_images": finalMessage.images?.isEmpty == false
-                                ]
-                            )
+                }
+
+                if followUpCompleted {
+                    break
+                }
+            } catch {
+                if attemptsRemaining > 1 && isPreviousResponseNotFoundError(error) {
+                    AppLogger.log("♻️ [Function Call] Retrying without previous_response_id after API rejection", category: .openAI, level: .info)
+                    if let previousId = previousResponseIdForAttempt {
+                        reasoningBufferByResponseId.removeValue(forKey: previousId)
+                        if priorResponseId == previousId {
+                            priorResponseId = nil
                         }
                     }
-                }
-            } else {
-                AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
-                let finalResponse = try await api.sendFunctionOutput(
-                    call: call,
-                    output: output,
-                    model: activePrompt.openAIModel,
-                    reasoningItems: reasoningItemsForSend,
-                    previousResponseId: lastResponseId,
-                    prompt: activePrompt
-                )
-
-                AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
-                AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
-                AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
-
-                for (index, item) in finalResponse.output.enumerated() {
-                    AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
-                    if let content = item.content {
-                        AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
-                        for (cIndex, c) in content.enumerated() {
-                            AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
-                        }
-                    }
+                    previousResponseIdForAttempt = nil
+                    reasoningItemsForAttempt = nil
+                    attemptsRemaining -= 1
+                    continue attemptLoop
                 }
 
-                await MainActor.run {
-                    AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
-                    self.handleNonStreamingResponse(finalResponse, for: messageId)
-                    AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
-                }
-
-                followUpCompleted = true
+                capturedError = error
+                break
             }
 
-            if followUpCompleted {
-                completedFunctionCallIds.insert(callIdentifier)
-                if let key = priorResponseId {
-                    reasoningBufferByResponseId.removeValue(forKey: key)
-                }
+            attemptsRemaining -= 1
+        }
+
+        if followUpCompleted {
+            completedFunctionCallIds.insert(canonicalCallId)
+            if let key = priorResponseId {
+                reasoningBufferByResponseId.removeValue(forKey: key)
             }
-        } catch {
+        } else if let error = capturedError, !(error is CancellationError) {
             AppLogger.log("❌ [Function Call] Error while returning function output: \(error)", category: .openAI, level: .error)
             await MainActor.run {
                 self.handleError(error)
             }
         }
+    }
+
+    private func isPreviousResponseNotFoundError(_ error: Error) -> Bool {
+        guard case OpenAIServiceError.requestFailed(let statusCode, let message) = error else {
+            return false
+        }
+
+        if statusCode != 400 { return false }
+        let lowered = message.lowercased()
+        return lowered.contains("previous_response_not_found") || lowered.contains("previous response with id")
     }
 
     /// Execute built-in calculator function. Returns a string result or error.
@@ -2194,7 +2843,8 @@ class ChatViewModel: ObservableObject {
     }
 
     func createNewConversation() {
-        let newConversation = Conversation.new()
+        let storePreference = activePrompt.storeResponses
+        let newConversation = Conversation.new(storePreference: storePreference)
         conversations.insert(newConversation, at: 0)
         activeConversation = newConversation
         saveConversation(newConversation)
@@ -2327,7 +2977,8 @@ class ChatViewModel: ObservableObject {
                     fileNames: nil,
                     fileIds: nil,
                     imageAttachments: ctx.imageAttachments,
-                    previousResponseId: ctx.basePreviousResponseId
+                    previousResponseId: ctx.basePreviousResponseId,
+                    conversationId: self.activeConversation?.remoteId
                 )
                 for try await chunk in stream {
                     if Task.isCancelled { 
@@ -3097,9 +3748,19 @@ class ChatViewModel: ObservableObject {
 
             AppLogger.log("🔔 [Function Call] Streaming item completed: id=\(item.id), callId=\(item.callId ?? "none"), name=\(item.name ?? "<unknown>")", category: .openAI, level: .info)
             let outputItem = OutputItem(streamingItem: item)
-            Task { [weak self] in
-                guard let self else { return }
-                await self.handleFunctionCall(outputItem, for: messageId)
+            
+            // Check if this is part of a parallel batch by looking at the response ID
+            if let responseId = lastResponseId {
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.handleFunctionCallWithBatching(outputItem, for: messageId, responseId: responseId)
+                }
+            } else {
+                // No response ID available, execute immediately
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.handleFunctionCall(outputItem, for: messageId)
+                }
             }
             return
         }
@@ -3375,6 +4036,7 @@ class ChatViewModel: ObservableObject {
         streamingReasoningTextByMessageId.removeAll()
         streamingReasoningTraceIdByMessageId.removeAll()
         reasoningBufferByResponseId.removeAll()
+        functionCallResponseIds.removeAll()
         
         updateActiveConversation(conversation)
     }
@@ -3939,6 +4601,42 @@ extension ChatViewModel {
         return payloads
     }
 
+    func awaitReasoningPayload(for responseId: String, existingPayloads: [[String: Any]]?) async -> [[String: Any]]? {
+        if let existingPayloads, !existingPayloads.isEmpty {
+            return existingPayloads
+        }
+
+        let pollInterval = UInt64(150_000_000) // 150ms
+        let maxAttempts = 20
+        var attempt = 0
+
+        while attempt < maxAttempts && !Task.isCancelled {
+            if let payloads = reasoningBufferByResponseId[responseId], !payloads.isEmpty {
+                return payloads
+            }
+
+            attempt += 1
+            do {
+                try await Task.sleep(nanoseconds: pollInterval)
+            } catch {
+                break
+            }
+        }
+
+        return reasoningBufferByResponseId[responseId] ?? existingPayloads
+    }
+
+    func shouldSurfaceBatchError(_ error: Error) -> Bool {
+        guard case OpenAIServiceError.requestFailed(_, let message) = error else { return true }
+        let normalized = message.lowercased()
+        if normalized.contains("missing reasoning item") ||
+            normalized.contains("missing reasoning") ||
+            normalized.contains("no tool output found") {
+            return false
+        }
+        return true
+    }
+
     func makeReasoningPayload(from item: OutputItem) -> [String: Any]? {
         guard item.type == "reasoning" else { return nil }
 
@@ -3986,6 +4684,45 @@ extension ChatViewModel {
         }
 
         return dict
+    }
+
+    func makeReasoningPayload(from item: StreamingItem) -> [String: Any]? {
+        guard item.type == "reasoning" else { return nil }
+
+        var dict: [String: Any] = [
+            "type": item.type,
+            "id": item.id
+        ]
+
+        if let status = item.status { dict["status"] = status }
+        if let role = item.role { dict["role"] = role }
+
+        if let content = item.content {
+            let contentPayloads = content.compactMap { makeReasoningContentPayload(from: $0) }
+            if !contentPayloads.isEmpty {
+                dict["content"] = contentPayloads
+            }
+        }
+
+        if dict["summary"] == nil {
+            dict["summary"] = []
+        }
+
+        return dict
+    }
+
+    func cacheStreamingReasoningItem(_ item: StreamingItem, responseId: String?) {
+        guard let payload = makeReasoningPayload(from: item) else { return }
+        guard let resolvedResponseId = responseId ?? lastResponseId else { return }
+
+        var existing = reasoningBufferByResponseId[resolvedResponseId] ?? []
+        if let idx = existing.firstIndex(where: { ($0["id"] as? String) == item.id }) {
+            existing[idx] = payload
+        } else {
+            existing.append(payload)
+        }
+
+        updateReasoningBuffer(with: existing, responseId: resolvedResponseId)
     }
 
     func makeReasoningContentPayload(from content: ContentItem) -> [String: Any]? {

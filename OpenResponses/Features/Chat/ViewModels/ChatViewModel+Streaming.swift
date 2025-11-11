@@ -321,6 +321,18 @@ extension ChatViewModel {
                 } else {
                     AppLogger.log("📄 [Streaming] Output[\(index)] has no content array", category: .streaming, level: .debug)
                 }
+                
+                // Check for completed function calls that weren't processed during streaming
+                if item.type == "function_call" && item.status?.lowercased() == "completed" {
+                    let callId = item.id // StreamingOutputItem uses just 'id', not 'callId'
+                    let isCompleted = callId.isEmpty ? false : self.isCallCompleted(callId)
+                    let isPending = callId.isEmpty ? false : self.isCallPending(callId)
+                    
+                    if !isCompleted && !isPending {
+                        AppLogger.log("🔔 [Streaming] Found unprocessed completed function call in final response: id=\(item.id), name=\(item.name ?? "<unknown>")", category: .streaming, level: .info)
+                        handleCompletedStreamingItem(StreamingItem(streamingOutputItem: item), for: messageId)
+                    }
+                }
             }
         } else {
             AppLogger.log("📦 [Streaming] Completion chunk has no output items", category: .streaming, level: .debug)
@@ -363,6 +375,9 @@ extension ChatViewModel {
                 } else if let mcpText = buildTextFromMCPItems(chunk.response?.output) {
                     AppLogger.log("📝 [Streaming] Synthesized MCP text of length \(mcpText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = mcpText
+                } else if let fallback = functionOutputSummaryText(for: messageId), !fallback.isEmpty {
+                    AppLogger.log("📝 [Streaming] Using function output summary fallback (len=\(fallback.count))", category: .streaming, level: .info)
+                    updated[msgIndex].text = fallback
                 } else if let approvalText = buildTextFromApprovalRequests(approvalRequestsFromCompletion) {
                     AppLogger.log("📝 [Streaming] Synthesized approval text of length \(approvalText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = approvalText
@@ -373,6 +388,8 @@ extension ChatViewModel {
             messages = updated
             recomputeCumulativeUsage()
         }
+
+        clearFunctionOutputSummaries(for: messageId)
 
         applyReasoningTraces(responseId: chunk.response?.id, to: messageId)
 
@@ -478,6 +495,7 @@ extension ChatViewModel {
     /// Tracks tool usage whenever a new output item is emitted.
     private func handleOutputItemAddedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         if let item = chunk.item {
+            cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             trackToolUsage(item, for: messageId)
         }
     }
@@ -485,6 +503,7 @@ extension ChatViewModel {
     /// Handles completion notifications for output items.
     private func handleOutputItemCompletedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         if let item = chunk.item {
+            cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             handleCompletedStreamingItem(item, for: messageId)
         }
     }
