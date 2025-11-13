@@ -65,6 +65,7 @@ OpenResponses puts the entire OpenAI Responses API in your pocket. Built in Swif
 - Your OpenAI API key stays on-device in the Keychain
 - No analytics, no tracking, no accounts—ever
 - All conversations and configuration data remain local unless you export them
+- Safety notices in onboarding and the chat composer remind you that AI output can be inaccurate and to keep sensitive information out of prompts
 
 Whether you are prototyping AI features, automating research, or managing complex workflows, OpenResponses gives you complete insight and control over every OpenAI request. Bring professional-grade AI assistance everywhere you go.
 
@@ -74,6 +75,7 @@ AI-generated output can be inaccurate or outdated—always review critical infor
 
 - iOS 17.0 or later
 - OpenAI API key (create one at <https://platform.openai.com>)
+- Active OpenAI billing set up for that key—usage charges accrue directly to the reviewer or user
 - Optional MCP server URLs or credentials for external integrations
 
 ## Keywords (≤100 characters)

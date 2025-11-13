@@ -561,6 +561,37 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return requestObject
     }
 
+#if DEBUG
+    /// Lightweight test hook so unit tests can validate request assembly without exposing internals in production builds.
+    func testing_buildRequestObject(
+        for prompt: Prompt,
+        userMessage: String?,
+        attachments: [[String: Any]]? = nil,
+        fileData: [Data]? = nil,
+        fileNames: [String]? = nil,
+        fileIds: [String]? = nil,
+        imageAttachments: [InputImage]? = nil,
+        previousResponseId: String? = nil,
+        conversationId: String? = nil,
+        stream: Bool = false,
+        customInput: [[String: Any]]? = nil
+    ) -> [String: Any] {
+        buildRequestObject(
+            for: prompt,
+            userMessage: userMessage,
+            attachments: attachments,
+            fileData: fileData,
+            fileNames: fileNames,
+            fileIds: fileIds,
+            imageAttachments: imageAttachments,
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            stream: stream,
+            customInput: customInput
+        )
+    }
+#endif
+
     /// Builds base metadata for a request, adding instructions, store flag, and stream options.
     private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
         var metadata: [String: Any] = [

@@ -2,372 +2,201 @@
 //  OpenAIServiceTests.swift
 //  OpenResponsesTests
 //
-//  Created for App Store release - comprehensive API service tests
-//
 
 import XCTest
 @testable import OpenResponses
 
 final class OpenAIServiceTests: XCTestCase {
-    var service: OpenAIService!
-    
+    private var service: OpenAIService!
+
     override func setUp() {
         super.setUp()
         service = OpenAIService()
     }
-    
+
     override func tearDown() {
         service = nil
         super.tearDown()
     }
-    
-    // MARK: - Request Building Tests
-    
-    func testBuildRequestObjectBasic() throws {
-        // Given: A basic prompt with minimal configuration
+
+    private func buildRequest(
+        prompt: Prompt,
+        message: String = "Hello",
+        stream: Bool = false,
+        previousResponseID: String? = nil,
+        conversationID: String? = nil
+    ) -> [String: Any] {
+        service.testing_buildRequestObject(
+            for: prompt,
+            userMessage: message,
+            previousResponseId: previousResponseID,
+            conversationId: conversationID,
+            stream: stream
+        )
+    }
+
+    func testRequestIncludesModelAndStreamFlag() {
         var prompt = Prompt.defaultPrompt()
         prompt.openAIModel = "gpt-4o"
-        prompt.enableStreaming = true
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Hello", fileAttachments: nil)
-        ]
-        
-        // When: Building a request object
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Request object should have basic structure
-        XCTAssertNotNil(requestObject["model"], "Should include model")
-        XCTAssertEqual(requestObject["model"] as? String, "gpt-4o")
-        XCTAssertNotNil(requestObject["stream"], "Should include stream flag")
-        XCTAssertEqual(requestObject["stream"] as? Bool, true)
-        XCTAssertNotNil(requestObject["input"], "Should include input array")
-        
-        // Verify input array structure
-        let input = requestObject["input"] as? [[String: Any]]
-        XCTAssertNotNil(input)
-        XCTAssertEqual(input?.count, 1, "Should have one message")
-        
-        let firstMessage = input?.first
-        XCTAssertEqual(firstMessage?["role"] as? String, "user")
-        XCTAssertEqual(firstMessage?["content"] as? String, "Hello")
+
+        let request = buildRequest(prompt: prompt, message: "Hi", stream: true)
+
+        XCTAssertEqual(request["model"] as? String, "gpt-4o")
+        XCTAssertEqual(request["stream"] as? Bool, true)
+
+        let input = request["input"] as? [[String: Any]]
+        XCTAssertEqual(input?.count, 1)
+        let userMessage = input?.first
+        XCTAssertEqual(userMessage?["role"] as? String, "user")
+
+        if let content = userMessage?["content"] as? [[String: Any]] {
+            XCTAssertEqual(content.first?["type"] as? String, "input_text")
+            XCTAssertEqual(content.first?["text"] as? String, "Hi")
+        } else {
+            XCTFail("User content should use structured array")
+        }
     }
-    
-    func testBuildRequestObjectWithSystemInstructions() throws {
-        // Given: A prompt with system instructions
+
+    func testDeveloperInstructionsAppearBeforeUserMessage() {
         var prompt = Prompt.defaultPrompt()
-        prompt.systemInstructions = "You are a helpful assistant."
         prompt.developerInstructions = "Be concise."
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include instructions
-        let input = requestObject["input"] as? [[String: Any]]
-        XCTAssertNotNil(input)
-        
-        // First message should be system instructions
-        let systemMsg = input?.first
-        XCTAssertEqual(systemMsg?["type"] as? String, "message")
-        XCTAssertEqual(systemMsg?["role"] as? String, "system")
+
+        let request = buildRequest(prompt: prompt, message: "Summarize this")
+
+        guard let input = request["input"] as? [[String: Any]] else {
+            return XCTFail("Input array missing")
+        }
+
+        XCTAssertEqual(input.first?["role"] as? String, "developer")
+        XCTAssertEqual(input.first?["content"] as? String, "Be concise.")
+        XCTAssertEqual(input.last?["role"] as? String, "user")
     }
-    
-    func testBuildRequestObjectWithTemperature() throws {
-        // Given: A prompt with custom temperature
+
+    func testTemperatureIncludedWhenSupported() {
         var prompt = Prompt.defaultPrompt()
-        prompt.temperature = 0.7
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include temperature
-        XCTAssertEqual(requestObject["temperature"] as? Double, 0.7)
+        prompt.temperature = 0.42
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertEqual(request["temperature"] as? Double, 0.42)
     }
-    
-    func testBuildRequestObjectWithMaxTokens() throws {
-        // Given: A prompt with max output tokens
+
+    func testMaxOutputTokensIncluded() {
         var prompt = Prompt.defaultPrompt()
-        prompt.maxOutputTokens = 2000
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include max_completion_tokens
-        XCTAssertEqual(requestObject["max_completion_tokens"] as? Int, 2000)
+        prompt.maxOutputTokens = 1500
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertEqual(request["max_output_tokens"] as? Int, 1500)
     }
-    
-    func testBuildRequestObjectWithReasoningEffort() throws {
-        // Given: A reasoning model with effort set
+
+    func testReasoningPayloadForReasoningModel() {
         var prompt = Prompt.defaultPrompt()
-        prompt.openAIModel = "o1"
+        prompt.openAIModel = "o1-preview"
         prompt.reasoningEffort = "high"
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include reasoning_effort
-        XCTAssertEqual(requestObject["reasoning_effort"] as? String, "high")
+        prompt.reasoningSummary = "concise"
+
+        let request = buildRequest(prompt: prompt)
+
+        let reasoning = request["reasoning"] as? [String: Any]
+        XCTAssertEqual(reasoning?["effort"] as? String, "high")
+        XCTAssertEqual(reasoning?["summary"] as? String, "concise")
     }
-    
-    func testBuildRequestObjectWithToolsEnabled() throws {
-        // Given: A prompt with code interpreter enabled
+
+    func testToolsIncludeCodeInterpreterWhenEnabled() {
         var prompt = Prompt.defaultPrompt()
         prompt.enableCodeInterpreter = true
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Calculate something", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include tools array
-        let tools = requestObject["tools"] as? [[String: Any]]
-        XCTAssertNotNil(tools)
-        XCTAssertTrue(tools?.contains(where: { $0["type"] as? String == "code_interpreter" }) ?? false,
-                     "Should include code_interpreter tool")
+        prompt.enableImageGeneration = false
+        prompt.enableWebSearch = false
+        prompt.enableFileSearch = false
+
+        let request = buildRequest(prompt: prompt, message: "Calculate area")
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+
+        XCTAssertTrue(tools.contains { $0["type"] as? String == "code_interpreter" })
     }
-    
-    func testBuildRequestObjectWithFileSearch() throws {
-        // Given: A prompt with file search enabled and vector stores
+
+    func testFileSearchToolCarriesVectorStoreIds() {
         var prompt = Prompt.defaultPrompt()
         prompt.enableFileSearch = true
-        prompt.vectorStoreIDs = ["vs_123", "vs_456"]
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Search my docs", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include file_search tool and vector stores
-        let tools = requestObject["tools"] as? [[String: Any]]
-        XCTAssertNotNil(tools)
-        
-        let fileSearchTool = tools?.first(where: { $0["type"] as? String == "file_search" })
-        XCTAssertNotNil(fileSearchTool)
-        
-        let vectorStores = fileSearchTool?["file_search"] as? [String: Any]
-        let vectorStoreIds = vectorStores?["vector_store_ids"] as? [String]
-        XCTAssertEqual(vectorStoreIds, ["vs_123", "vs_456"])
+        prompt.selectedVectorStoreIds = "vs_123, vs_456"
+        prompt.enableCodeInterpreter = false
+        prompt.enableWebSearch = false
+        prompt.enableImageGeneration = false
+
+        let request = buildRequest(prompt: prompt, message: "Search my docs")
+
+                guard let tools = request["tools"] as? [[String: Any]],
+                            let fileSearch = tools.first(where: { $0["type"] as? String == "file_search" }),
+                            let ids = fileSearch["vector_store_ids"] as? [String] else {
+                        return XCTFail("Expected file_search tool with vector store IDs")
+        }
+
+        XCTAssertEqual(ids, ["vs_123", "vs_456"])
     }
-    
-    func testBuildRequestObjectWithWebSearch() throws {
-        // Given: A prompt with web search enabled
+
+    func testWebSearchToolIncludedWhenEnabled() {
         var prompt = Prompt.defaultPrompt()
         prompt.enableWebSearch = true
         prompt.webSearchMode = "grounded"
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Latest news", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include web_search tool
-        let tools = requestObject["tools"] as? [[String: Any]]
-        XCTAssertNotNil(tools)
-        XCTAssertTrue(tools?.contains(where: { $0["type"] as? String == "web_search" }) ?? false)
+        prompt.enableCodeInterpreter = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+
+        let request = buildRequest(prompt: prompt, message: "Latest news")
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+
+        XCTAssertTrue(tools.contains { $0["type"] as? String == "web_search" || $0["type"] as? String == "web_search_preview" })
     }
-    
-    func testBuildRequestObjectWithMetadata() throws {
-        // Given: A prompt with custom metadata
+
+    func testMetadataParsedIntoDictionary() {
         var prompt = Prompt.defaultPrompt()
-        prompt.metadata = "{\"user_id\": \"test123\", \"session\": \"abc\"}"
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include metadata
-        let metadata = requestObject["metadata"] as? [String: Any]
-        XCTAssertNotNil(metadata)
+        prompt.metadata = "{\"user_id\":\"test123\",\"session\":\"abc\"}"
+
+        let request = buildRequest(prompt: prompt)
+
+        let metadata = request["metadata"] as? [String: Any]
         XCTAssertEqual(metadata?["user_id"] as? String, "test123")
         XCTAssertEqual(metadata?["session"] as? String, "abc")
     }
-    
-    func testBuildRequestObjectWithModerationEnabled() throws {
-        // Given: A prompt with moderation enabled
+
+    func testInvalidMetadataSilentlyIgnored() {
         var prompt = Prompt.defaultPrompt()
-        prompt.enableModeration = true
-        prompt.moderationModel = "omni-moderation-latest"
-        prompt.moderationCategories = ["sexual", "violence"]
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include moderation config
-        let moderation = requestObject["moderation"] as? [String: Any]
-        XCTAssertNotNil(moderation)
-        XCTAssertEqual(moderation?["model"] as? String, "omni-moderation-latest")
-        
-        let categories = moderation?["categories"] as? [String]
-        XCTAssertEqual(categories?.sorted(), ["sexual", "violence"])
+        prompt.metadata = "not json"
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertNil(request["metadata"])
     }
-    
-    // MARK: - Conversation Context Tests
-    
-    func testBuildRequestObjectWithPreviousResponseID() throws {
-        // Given: A prompt with conversation context
+
+    func testPreviousResponseIdPropagates() {
+        let request = buildRequest(prompt: Prompt.defaultPrompt(), previousResponseID: "resp_123")
+        XCTAssertEqual(request["previous_response_id"] as? String, "resp_123")
+    }
+
+    func testConversationIdPropagates() {
+        let request = buildRequest(prompt: Prompt.defaultPrompt(), conversationID: "conv_789")
+        XCTAssertEqual(request["conversation_id"] as? String, "conv_789")
+    }
+
+    func testCustomInputOverridesDefaultMessages() {
         let prompt = Prompt.defaultPrompt()
-        let messages = [
-            ChatMessage(role: .user, content: "Follow-up question", fileAttachments: nil)
-        ]
-        
-        // When: Building request with previous response ID
-        let requestObject = try service.buildRequestObject(
+        let custom: [[String: Any]] = [["role": "user", "content": "preset"]]
+
+        let request = service.testing_buildRequestObject(
             for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: "resp_abc123",
-            responseID: nil
+            userMessage: nil,
+            customInput: custom
         )
-        
-        // Then: Should include previous_response_id
-        XCTAssertEqual(requestObject["previous_response_id"] as? String, "resp_abc123")
-    }
-    
-    func testBuildRequestObjectWithConversationID() throws {
-        // Given: A prompt with conversation ID
-        let prompt = Prompt.defaultPrompt()
-        let messages = [
-            ChatMessage(role: .user, content: "Message in conversation", fileAttachments: nil)
-        ]
-        
-        // When: Building request with conversation ID
-        let requestObject = try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: "conv_xyz789",
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should include conversation_id
-        XCTAssertEqual(requestObject["conversation_id"] as? String, "conv_xyz789")
-    }
-    
-    // MARK: - Edge Cases
-    
-    func testBuildRequestObjectWithEmptyMessages() throws {
-        // Given: No user messages
-        let prompt = Prompt.defaultPrompt()
-        let messages: [ChatMessage] = []
-        
-        // When/Then: Should handle gracefully
-        XCTAssertNoThrow(try service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        ))
-    }
-    
-    func testBuildRequestObjectWithInvalidMetadata() {
-        // Given: Invalid JSON metadata
-        var prompt = Prompt.defaultPrompt()
-        prompt.metadata = "{invalid json}"
-        
-        let messages = [
-            ChatMessage(role: .user, content: "Test", fileAttachments: nil)
-        ]
-        
-        // When: Building request
-        let requestObject = try? service.buildRequestObject(
-            for: prompt,
-            messages: messages,
-            conversationID: nil,
-            previousResponseID: nil,
-            responseID: nil
-        )
-        
-        // Then: Should still build request (ignoring invalid metadata)
-        XCTAssertNotNil(requestObject)
+
+        let input = request["input"] as? [[String: Any]]
+        XCTAssertEqual(input?.first?["content"] as? String, "preset")
+        XCTAssertEqual(input?.first?["role"] as? String, "user")
     }
 }

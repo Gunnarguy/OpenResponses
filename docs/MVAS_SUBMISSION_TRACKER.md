@@ -52,6 +52,7 @@ Deliver a TestFlight-ready build and App Store Connect submission for OpenRespon
 - 2025-11-11: Refreshed `PRIVACY.md` and published `docs/AppReviewNotes.md` for App Review handoff.
 - 2025-11-11: Captured detailed MVAS execution plan covering metadata, assets, archive/upload, and submission steps.
 - 2025-11-11 (evening): Verified completed workstreams: secrets hygiene ✅, Info.plist strings ✅, privacy docs ✅, metadata prep ✅, app icon ✅, screenshot guide ✅.
+- 2025-11-12: Added in-app AI accuracy warnings plus pre-permission disclosures for Calendar, Reminders, Contacts, and computer-use local network prompts.
 
 ## Next Update
 

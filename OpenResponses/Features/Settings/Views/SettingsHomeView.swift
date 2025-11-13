@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Clean, tabbed Settings container aligned with OpenAI Responses Playground mental model.
 /// Tabs: General, Model, Tools, MCP, Advanced
@@ -257,6 +258,8 @@ private struct ToolsTab: View {
     @Binding var showingNotionQuickConnect: Bool
     @Binding var showingFileManager: Bool
     @State private var hasNotionIntegrationToken: Bool = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+    @AppStorage("hasShownComputerUseDisclosure") private var hasShownComputerUseDisclosure = false
+    @State private var showComputerUseDisclosure = false
 
     private var isImageGenerationSupported: Bool {
         ModelCompatibilityService.shared.isToolSupported(
@@ -442,8 +445,36 @@ private struct ToolsTab: View {
                     isStreaming: viewModel.activePrompt.enableStreaming
                 )
 
-                Toggle("Enable Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
+                let computerUseBinding = Binding(
+                    get: { viewModel.activePrompt.enableComputerUse },
+                    set: { newValue in
+                        guard newValue != viewModel.activePrompt.enableComputerUse else { return }
+                        if newValue && !hasShownComputerUseDisclosure {
+                            showComputerUseDisclosure = true
+                        } else {
+                            viewModel.activePrompt.enableComputerUse = newValue
+                        }
+                        if !newValue {
+                            viewModel.activePrompt.enableComputerUse = false
+                        }
+                    }
+                )
+
+                Toggle("Enable Computer Use", isOn: computerUseBinding)
                     .disabled(!isSupported)
+                    .alert("Enable Computer Use?", isPresented: $showComputerUseDisclosure) {
+                        Button("Continue", role: .none) {
+                            viewModel.activePrompt.enableComputerUse = true
+                            hasShownComputerUseDisclosure = true
+                            showComputerUseDisclosure = false
+                        }
+                        Button("Cancel", role: .cancel) {
+                            viewModel.activePrompt.enableComputerUse = false
+                            showComputerUseDisclosure = false
+                        }
+                    } message: {
+                        Text("Computer Use connects to your approved bridge over the local network and can control apps when you approve each step. Keep the review sheet open and only allow actions you trust.")
+                    }
 
                 if !isSupported {
                     HStack {
@@ -1419,6 +1450,8 @@ private struct AppleIntegrationsCard: View {
     @State private var calendarCount: Int?
     @State private var contactsCount: Int?
     @State private var reminderListCount: Int?
+    @State private var pendingPermission: PermissionType?
+    @State private var showPermissionPrompt = false
     
     private var isIOS17OrLater: Bool {
         if #available(iOS 17.0, *) {
@@ -1464,7 +1497,7 @@ private struct AppleIntegrationsCard: View {
                 detailLabel: "calendars",
                 isRequesting: $isRequesting,
                 showDetails: showDetails,
-                onConnect: requestCalendarAccess
+                onConnect: { presentPermission(.calendar) }
             )
             
             Divider()
@@ -1480,7 +1513,7 @@ private struct AppleIntegrationsCard: View {
                 detailLabel: "lists",
                 isRequesting: $isRequesting,
                 showDetails: showDetails,
-                onConnect: requestRemindersAccess
+                onConnect: { presentPermission(.reminders) }
             )
             
             Divider()
@@ -1491,7 +1524,7 @@ private struct AppleIntegrationsCard: View {
                 contactsCount: contactsCount,
                 isRequesting: $isRequesting,
                 showDetails: showDetails,
-                onConnect: requestContactsAccess
+                onConnect: { presentPermission(.contacts) }
             )
             
             // Error Display
@@ -1553,12 +1586,91 @@ private struct AppleIntegrationsCard: View {
             refreshStatus()
             loadDetailCounts()
         }
+        .alert(permissionTitle, isPresented: $showPermissionPrompt, presenting: pendingPermission) { permission in
+            Button(pendingButtonLabel(for: permission), role: .none) {
+                requestPermission(permission)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPermission = nil
+            }
+        } message: { permission in
+            Text(permissionMessage(for: permission))
+        }
     }
     
     private func refreshStatus() {
         calendarAccess = EKEventStore.authorizationStatus(for: .event)
         remindersAccess = EKEventStore.authorizationStatus(for: .reminder)
         contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
+    }
+
+    private func presentPermission(_ type: PermissionType) {
+        pendingPermission = type
+        showPermissionPrompt = true
+    }
+
+    private func requestPermission(_ type: PermissionType) {
+        switch type {
+        case .calendar:
+            if calendarAccess == .denied || calendarAccess == .restricted {
+                openSettings()
+            } else {
+                requestCalendarAccess()
+            }
+        case .reminders:
+            if remindersAccess == .denied || remindersAccess == .restricted {
+                openSettings()
+            } else {
+                requestRemindersAccess()
+            }
+        case .contacts:
+            if contactsAccess == .denied || contactsAccess == .restricted {
+                openSettings()
+            } else {
+                requestContactsAccess()
+            }
+        }
+        showPermissionPrompt = false
+        pendingPermission = nil
+    }
+
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private var permissionTitle: String {
+        guard let pendingPermission else { return "Permission Required" }
+        switch pendingPermission {
+        case .calendar:
+            return "Calendar Access"
+        case .reminders:
+            return "Reminders Access"
+        case .contacts:
+            return "Contacts Access"
+        }
+    }
+
+    private func pendingButtonLabel(for permission: PermissionType) -> String {
+        switch permission {
+        case .calendar:
+            return (calendarAccess == .denied || calendarAccess == .restricted) ? "Open Settings" : "Continue"
+        case .reminders:
+            return (remindersAccess == .denied || remindersAccess == .restricted) ? "Open Settings" : "Continue"
+        case .contacts:
+            return (contactsAccess == .denied || contactsAccess == .restricted) ? "Open Settings" : "Continue"
+        }
+    }
+
+    private func permissionMessage(for permission: PermissionType) -> String {
+        switch permission {
+        case .calendar:
+            return "OpenResponses uses your Calendar only when you approve an action in chat. Events stay on device and the app never syncs in the background."
+        case .reminders:
+            return "Granting access lets the assistant add or update Reminders that you explicitly request. We do not read or send data elsewhere."
+        case .contacts:
+            return "Contacts access helps the assistant look up people when you ask. Data remains local; deny access any time from Settings."
+        }
     }
     
     private func loadDetailCounts() {
@@ -1675,6 +1787,12 @@ private struct AppleIntegrationsCard: View {
     }
 }
 
+private enum PermissionType {
+    case calendar
+    case reminders
+    case contacts
+}
+
 // MARK: - Helper Views
 
 private struct IntegrationRow: View {
@@ -1726,7 +1844,7 @@ private struct IntegrationRow: View {
             
             if status == .notDetermined || status == .denied {
                 Button(action: onConnect) {
-                    Text(status == .notDetermined ? "Connect" : "Retry")
+                    Text(status == .notDetermined ? "Connect" : "Fix in Settings")
                         .font(.caption)
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
@@ -1831,7 +1949,7 @@ private struct ContactsIntegrationRow: View {
             
             if contactsAccess == .notDetermined || contactsAccess == .denied {
                 Button(action: onConnect) {
-                    Text(contactsAccess == .notDetermined ? "Connect" : "Retry")
+                    Text(contactsAccess == .notDetermined ? "Connect" : "Fix in Settings")
                         .font(.caption)
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)

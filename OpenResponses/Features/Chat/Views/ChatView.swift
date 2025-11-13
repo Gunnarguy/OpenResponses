@@ -195,6 +195,7 @@ struct ChatView: View {
     @ViewBuilder
     private var inputArea: some View {
         VStack(spacing: 0) {
+            aiSafetyNotice
             // Playground-style attachment pills (replaces old SelectedImagesView/SelectedFilesView)
             AttachmentPills()
                 .environmentObject(viewModel)
@@ -261,6 +262,17 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
+    }
+
+    @ViewBuilder
+    private var aiSafetyNotice: some View {
+        Text("AI responses can be inaccurate or outdated. Verify critical details and keep sensitive data out of prompts.")
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top, 6)
     }
 
     @ViewBuilder

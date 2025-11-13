@@ -21,7 +21,7 @@ struct OnboardingView: View {
         ),
         OnboardingPage(
             title: "API Key Required",
-            description: "To get started, you'll need an OpenAI API key. Don't worry - your key is stored securely on your device and never shared.",
+            description: "To get started, you'll need an OpenAI API key. Your key stays on this device, and the assistant may still produce inaccurate answers—review everything before acting.",
             imageName: "key.fill",
             color: .orange
         )
@@ -51,6 +51,12 @@ struct OnboardingView: View {
                             .animation(.easeInOut(duration: 0.2), value: currentPage)
                     }
                 }
+
+                Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
                 
                 // Action buttons
                 HStack(spacing: 16) {
