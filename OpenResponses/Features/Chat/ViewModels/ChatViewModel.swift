@@ -56,6 +56,10 @@ class ChatViewModel: ObservableObject {
     private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
     // Minimum buffer size before forcing a flush (characters)
     let minBufferSizeForFlush: Int = 20
+    /// Captures live reasoning text fragments while the assistant streams.
+    private var streamingReasoningTextByMessageId: [UUID: String] = [:]
+    /// Provides stable IDs so the UI can diff live reasoning entries without flicker.
+    private var streamingReasoningTraceIdByMessageId: [UUID: UUID] = [:]
     /// Buffers streaming MCP argument payloads keyed by tool call item ID.
     var mcpArgumentBuffers: [String: String] = [:]
     // Maintain container file annotations per message to enable sandbox-link fallback fetches
@@ -70,10 +74,141 @@ class ChatViewModel: ObservableObject {
     /// Prevents duplicate execution of the same function call when streaming emits multiple completion events.
     private var pendingFunctionCallIds: Set<String> = []
     private var completedFunctionCallIds: Set<String> = []
+    /// Captures temporary summaries derived from tool outputs when the model omits assistant copy.
+    private var functionOutputSummariesByMessageId: [UUID: [String]] = [:]
+
+    /// Batches parallel function calls that need to be sent together
+    private var pendingParallelCalls: [String: [OutputItem]] = [:]  // responseId -> [calls]
+    private var parallelCallOutputs: [String: [String: String]] = [:]  // responseId -> [callId: output]
+    private var parallelCallBatchTimer: [String: DispatchWorkItem] = [:]
+    private var functionCallCanonicalIds: [String: String] = [:]  // alias -> canonical callId
+    /// Maps canonical or alias call identifiers to their originating response for safe rebinding.
+    private var functionCallResponseIds: [String: String] = [:]
 
     /// Reasoning items emitted by the last response, keyed by response ID.
     /// Required for reasoning models (e.g., GPT-5) when echoing tool outputs.
     private var reasoningBufferByResponseId: [String: [[String: Any]]] = [:]
+    
+    /// Helper methods to check function call status (accessible from extensions)
+    func isCallCompleted(_ callId: String) -> Bool {
+        return completedFunctionCallIds.contains(callId)
+    }
+    
+    func isCallPending(_ callId: String) -> Bool {
+        return pendingFunctionCallIds.contains(callId)
+    }
+
+    @MainActor
+    private func canonicalIdentifier(for call: OutputItem) -> String? {
+        let callId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itemId = call.id.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let callId, !callId.isEmpty {
+            let canonical = functionCallCanonicalIds[callId] ?? callId
+
+            if !itemId.isEmpty {
+                if let previous = functionCallCanonicalIds[itemId], previous != canonical {
+                    AppLogger.log("♻️ [Batching] Rebinding alias \(itemId) from \(previous) to \(canonical)", category: .openAI, level: .debug)
+                    migrateFunctionCallIdentifier(from: previous, to: canonical)
+                }
+                functionCallCanonicalIds[itemId] = canonical
+                if let responseId = functionCallResponseIds[itemId] ?? functionCallResponseIds[callId] {
+                    functionCallResponseIds[itemId] = responseId
+                    functionCallResponseIds[canonical] = responseId
+                }
+            }
+
+            functionCallCanonicalIds[callId] = canonical
+            return canonical
+        }
+
+        guard !itemId.isEmpty else { return nil }
+
+        if let canonical = functionCallCanonicalIds[itemId] {
+            return canonical
+        }
+
+        functionCallCanonicalIds[itemId] = itemId
+        return itemId
+    }
+
+    /// Records the identifiers associated with a function call so we can migrate cached outputs later.
+    @MainActor
+    private func registerFunctionCallIdentifiers(_ call: OutputItem, canonicalId: String, responseId: String) {
+        functionCallResponseIds[canonicalId] = responseId
+
+        let trimmedItemId = call.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedItemId.isEmpty {
+            functionCallResponseIds[trimmedItemId] = responseId
+        }
+
+        if let rawCallId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines), !rawCallId.isEmpty {
+            functionCallResponseIds[rawCallId] = responseId
+        }
+    }
+
+    /// Migrates cached state (outputs, tracking sets) when an alias is rebound to a new canonical identifier.
+    @MainActor
+    private func migrateFunctionCallIdentifier(from oldId: String, to newId: String) {
+        guard !oldId.isEmpty, !newId.isEmpty, oldId != newId else { return }
+
+        if pendingFunctionCallIds.remove(oldId) != nil {
+            pendingFunctionCallIds.insert(newId)
+        }
+
+        if completedFunctionCallIds.remove(oldId) != nil {
+            completedFunctionCallIds.insert(newId)
+        }
+
+        for responseId in Array(parallelCallOutputs.keys) {
+            var outputs = parallelCallOutputs[responseId] ?? [:]
+            if let value = outputs.removeValue(forKey: oldId) {
+                outputs[newId] = value
+                parallelCallOutputs[responseId] = outputs
+                AppLogger.log("♻️ [Batching] Migrated stored output from \(oldId) to \(newId) for response \(responseId)", category: .openAI, level: .debug)
+            }
+        }
+
+        if let responseId = functionCallResponseIds[oldId] ?? functionCallResponseIds[newId] {
+            functionCallResponseIds[newId] = responseId
+        }
+
+        // Keep alias mapping pointing to the same response so subsequent lookups remain valid.
+        if let responseId = functionCallResponseIds[newId] {
+            functionCallResponseIds[oldId] = responseId
+        }
+    }
+
+    /// Stores a concise status line for the active assistant message when a tool call fails.
+    func recordFunctionOutputSummary(_ summary: String, for messageId: UUID) {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var existing = functionOutputSummariesByMessageId[messageId] ?? []
+        if !existing.contains(trimmed) {
+            existing.append(trimmed)
+            functionOutputSummariesByMessageId[messageId] = existing
+        }
+
+        if let idx = messages.firstIndex(where: { $0.id == messageId }) {
+            let joined = existing.joined(separator: "\n\n")
+            let current = messages[idx].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if current.isEmpty || current == joined {
+                messages[idx].text = joined
+            }
+        }
+    }
+
+    /// Returns the combined summary text for a message, if any.
+    func functionOutputSummaryText(for messageId: UUID) -> String? {
+        guard let summaries = functionOutputSummariesByMessageId[messageId], !summaries.isEmpty else { return nil }
+        return summaries.joined(separator: "\n\n")
+    }
+
+    /// Clears any stored summaries once the response finishes.
+    func clearFunctionOutputSummaries(for messageId: UUID) {
+        functionOutputSummariesByMessageId.removeValue(forKey: messageId)
+    }
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
@@ -487,7 +622,7 @@ class ChatViewModel: ObservableObject {
                             let rawTop = NotionAuthService.shared.stripBearer(raw)
                             KeychainService.shared.save(value: rawTop, forKey: "mcp_manual_\(label)")
                             saveActivePrompt()
-                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing…")
+                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing")
                             messages.append(sys)
                             // Do not return; proceed
                         } else {
@@ -521,14 +656,14 @@ class ChatViewModel: ObservableObject {
 
                 if !probeSatisfied {
                     let labelForLog = label.isEmpty ? "(unnamed)" : label
-                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe…", category: .openAI, level: .warning)
+                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
                     if authHeader == nil && !isNotionOfficial {
                         let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
                         let sys = ChatMessage(role: .system, text: guidance)
                         messages.append(sys)
                         return
                     }
-                    logActivity("Probing MCP tools…")
+                    logActivity("Running MCP tool diagnostics")
                     Task { [weak self] in
                         guard let self = self else { return }
                         do {
@@ -548,7 +683,7 @@ class ChatViewModel: ObservableObject {
                                     }
                                 }
                                 d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
-                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send…", category: .openAI, level: .info)
+                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send", category: .openAI, level: .info)
                                 self.logActivity("MCP tools validated (\(result.count))")
                                 // Retry sending the original message, bypassing the gate this once.
                                 self.sendUserMessage(trimmed, bypassMCPGate: true)
@@ -574,7 +709,7 @@ class ChatViewModel: ObservableObject {
         // Determine streaming mode up front for logging and flow control
         let streamingEnabled = activePrompt.enableStreaming
         // Keep recent activity so users can see context; do not clear here to avoid flashing.
-        logActivity("Connecting to OpenAI…")
+    logActivity("Connecting to OpenAI API")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
         
         // Append the user's message to the chat with URL detection
@@ -586,6 +721,7 @@ class ChatViewModel: ObservableObject {
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
+    resetStreamingReasoning(for: assistantMsgId)
         
         // Disable input while processing
         isStreaming = true
@@ -749,14 +885,15 @@ class ChatViewModel: ObservableObject {
                 if streamingEnabled {
                     // Use streaming API with uploaded file IDs
                     let stream = api.streamChatRequest(
-                        userMessage: finalUserText, 
-                        prompt: activePrompt, 
-                        attachments: attachments, 
+                        userMessage: finalUserText,
+                        prompt: activePrompt,
+                        attachments: attachments,
                         fileData: nil,  // Files are now uploaded and converted
-                        fileNames: nil, 
+                        fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
-                        imageAttachments: imageAttachments, 
-                        previousResponseId: lastResponseId
+                        imageAttachments: imageAttachments,
+                        previousResponseId: lastResponseId,
+                        conversationId: activeConversation?.remoteId
                     )
                     
                     for try await chunk in stream {
@@ -775,14 +912,15 @@ class ChatViewModel: ObservableObject {
                 } else {
                     // Use non-streaming API with uploaded file IDs
                     let response = try await api.sendChatRequest(
-                        userMessage: finalUserText, 
-                        prompt: activePrompt, 
-                        attachments: attachments, 
+                        userMessage: finalUserText,
+                        prompt: activePrompt,
+                        attachments: attachments,
                         fileData: nil,  // Files are now uploaded and converted
-                        fileNames: nil, 
+                        fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
-                        imageAttachments: imageAttachments, 
-                        previousResponseId: lastResponseId
+                        imageAttachments: imageAttachments,
+                        previousResponseId: lastResponseId,
+                        conversationId: activeConversation?.remoteId
                     )
                     
                     await MainActor.run {
@@ -1123,32 +1261,434 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    /// Handles a function call from the API by executing the function and sending the result back.
-    private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+    /// Batches parallel function calls from the same response to send together
+    private func handleFunctionCallWithBatching(_ call: OutputItem, for messageId: UUID, responseId: String) async {
+        var canonicalCallId: String?
+        var shouldExecute = false
+
+        await MainActor.run {
+            guard let resolvedId = self.canonicalIdentifier(for: call) else {
+                AppLogger.log("❌ [Batching] Received function call without identifier for response \(responseId)", category: .openAI, level: .error)
+                return
+            }
+
+            canonicalCallId = resolvedId
+
+            if self.completedFunctionCallIds.contains(resolvedId) {
+                AppLogger.log("♻️ [Batching] Call \(resolvedId) already completed; skipping re-execution", category: .openAI, level: .info)
+                return
+            }
+
+            if self.pendingFunctionCallIds.contains(resolvedId) {
+                AppLogger.log("♻️ [Batching] Call \(resolvedId) is already pending; ignoring duplicate trigger", category: .openAI, level: .debug)
+                return
+            }
+
+            var registeredCalls = self.pendingParallelCalls[responseId] ?? []
+            let alreadyRegistered = registeredCalls.contains { existing in
+                guard let existingId = self.canonicalIdentifier(for: existing) else { return false }
+                return existingId == resolvedId
+            }
+
+            if !alreadyRegistered {
+                self.pendingFunctionCallIds.insert(resolvedId)
+                registeredCalls.append(call)
+                self.pendingParallelCalls[responseId] = registeredCalls
+                self.registerFunctionCallIdentifiers(call, canonicalId: resolvedId, responseId: responseId)
+                AppLogger.log("📦 [Batching] Registered call \(resolvedId) for response \(responseId). Current batch size: \(registeredCalls.count)", category: .openAI, level: .info)
+                shouldExecute = true
+            } else {
+                self.pendingParallelCalls[responseId] = registeredCalls
+                AppLogger.log("📦 [Batching] Call \(resolvedId) already registered for response \(responseId); preventing duplicate registration", category: .openAI, level: .debug)
+                return
+            }
+        }
+
+        guard shouldExecute, let canonicalCallId else { return }
+
         guard let functionName = call.name else {
             AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
-            handleError(OpenAIServiceError.invalidResponseData)
+            _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
             return
         }
 
-        let callIdentifier = call.callId ?? call.id
-        if completedFunctionCallIds.contains(callIdentifier) {
+        let output = await executeFunction(call, for: messageId)
+        guard let output else {
+            _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
+            return
+        }
+
+        if let summary = FunctionOutputSummarizer.failureSummary(functionName: functionName, rawOutput: output) {
+            await MainActor.run {
+                self.recordFunctionOutputSummary(summary, for: messageId)
+            }
+        }
+
+        await MainActor.run {
+            if self.parallelCallOutputs[responseId] == nil {
+                self.parallelCallOutputs[responseId] = [:]
+            }
+            self.parallelCallOutputs[responseId]?[canonicalCallId] = output
+            self.functionCallResponseIds[canonicalCallId] = responseId
+
+            let currentBatch = self.pendingParallelCalls[responseId] ?? []
+            let completedCount = self.parallelCallOutputs[responseId]?.count ?? 0
+
+            AppLogger.log("📦 [Batching] Stored output for \(canonicalCallId). Completed \(completedCount)/\(currentBatch.count) calls", category: .openAI, level: .info)
+
+            if completedCount == currentBatch.count {
+                AppLogger.log("✅ [Batching] All \(currentBatch.count) parallel calls complete for response \(responseId). Sending batch.", category: .openAI, level: .info)
+
+                self.parallelCallBatchTimer[responseId]?.cancel()
+                self.parallelCallBatchTimer.removeValue(forKey: responseId)
+
+                Task { [weak self] in
+                    await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                }
+            } else {
+                self.parallelCallBatchTimer[responseId]?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    Task { [weak self] in
+                        await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                    }
+                }
+                self.parallelCallBatchTimer[responseId] = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
+
+                AppLogger.log("⏱️ [Batching] Waiting for remaining calls (timeout: 5s)", category: .openAI, level: .debug)
+            }
+        }
+    }
+    
+    /// Executes a function and returns its output string
+    private func executeFunction(_ call: OutputItem, for messageId: UUID) async -> String? {
+        guard let functionName = call.name else { return nil }
+        
+        guard let callIdentifier = await MainActor.run(body: { self.canonicalIdentifier(for: call) }) else {
+            AppLogger.log("❌ [Function Call] Unable to determine canonical identifier", category: .openAI, level: .error)
+            return nil
+        }
+
+        let alreadyCompleted = await MainActor.run { self.completedFunctionCallIds.contains(callIdentifier) }
+        guard !alreadyCompleted else {
             AppLogger.log("♻️ [Function Call] Call \(callIdentifier) already completed; skipping", category: .openAI, level: .info)
-            return
+            return nil
         }
-        if pendingFunctionCallIds.contains(callIdentifier) {
-            AppLogger.log("⏳ [Function Call] Call \(callIdentifier) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
-            return
-        }
-        pendingFunctionCallIds.insert(callIdentifier)
-        defer { pendingFunctionCallIds.remove(callIdentifier) }
-
-        AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
-        let callIdForLog = call.id.isEmpty ? callIdentifier : call.id
-        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
+        
+        AppLogger.log("🔧 [Function Call] Executing: \(functionName)", category: .ui, level: .info)
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdentifier)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
-        let output: String
+        let notionFunctions: Set<String> = [
+            "searchNotion",
+            "getNotionDatabase",
+            "getNotionDataSource",
+            "createNotionPage",
+            "updateNotionPage",
+            "appendNotionBlocks"
+        ]
+        #if canImport(EventKit)
+        let baseAppleFunctions = [
+            "fetchAppleCalendarEvents",
+            "fetchAppleReminders",
+            "createAppleCalendarEvent",
+            "createAppleReminder"
+        ]
+        #if canImport(Contacts)
+        let appleFunctions = Set(baseAppleFunctions + [
+            "searchAppleContacts",
+            "getAppleContact",
+            "createAppleContact"
+        ])
+        #else
+        let appleFunctions = Set(baseAppleFunctions)
+        #endif
+        #else
+        let appleFunctions = Set<String>()
+        #endif
+
+        // Short-circuit tool calls that were disabled in Settings
+        var output: String?
+        if notionFunctions.contains(functionName) && !activePrompt.enableNotionIntegration {
+            AppLogger.log("🔒 [Function Call] Blocked Notion function \(functionName) – integration disabled in settings", category: .ui, level: .info)
+            output = "Error: Notion integration is disabled in Settings."
+        } else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {
+            AppLogger.log("🔒 [Function Call] Blocked Apple system function \(functionName) – integrations disabled in settings", category: .ui, level: .info)
+            output = "Error: Apple system integrations are disabled in Settings."
+        }
+
+        if output == nil {
+            // Execute the actual function (use existing switch from handleFunctionCall)
+            output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
+        }
+        
+        return output
+    }
+    
+    /// Sends all batched function outputs for a response together
+    private func sendBatchedFunctionOutputs(responseId: String, messageId: UUID) async {
+        guard let calls = pendingParallelCalls[responseId],
+              var outputs = parallelCallOutputs[responseId],
+              !calls.isEmpty else {
+            AppLogger.log("⚠️ [Batching] No calls or outputs found for response \(responseId)", category: .openAI, level: .warning)
+            return
+        }
+
+        var payloads: [FunctionCallOutputPayload] = []
+        var seenCanonicalIds = Set<String>()
+        var completedThisBatch = Set<String>()
+        var missingOutputs = Set<String>()
+
+        for call in calls {
+            guard let canonicalId = canonicalIdentifier(for: call) else {
+                AppLogger.log("⚠️ [Batching] Skipping call without canonical identifier in response \(responseId)", category: .openAI, level: .warning)
+                continue
+            }
+
+            if seenCanonicalIds.contains(canonicalId) {
+                AppLogger.log("📦 [Batching] Removing duplicate registration for call \(canonicalId) before sending batch", category: .openAI, level: .debug)
+                continue
+            }
+
+            var resolvedOutput = outputs[canonicalId]
+
+            if resolvedOutput == nil {
+                if let aliasEntry = outputs.first(where: { key, _ in
+                    key != canonicalId && (functionCallCanonicalIds[key] ?? key) == canonicalId
+                }) {
+                    AppLogger.log("♻️ [Batching] Migrating cached output from alias \(aliasEntry.key) to canonical \(canonicalId)", category: .openAI, level: .debug)
+                    outputs.removeValue(forKey: aliasEntry.key)
+                    outputs[canonicalId] = aliasEntry.value
+                    migrateFunctionCallIdentifier(from: aliasEntry.key, to: canonicalId)
+                    resolvedOutput = aliasEntry.value
+                }
+            }
+
+            guard let output = resolvedOutput else {
+                AppLogger.log("⚠️ [Batching] Missing output for call \(canonicalId), skipping", category: .openAI, level: .warning)
+                missingOutputs.insert(canonicalId)
+                continue
+            }
+
+            let payload = FunctionCallOutputPayload(
+                callId: canonicalId,
+                output: output,
+                functionName: call.name ?? "unknown",
+                callItem: call
+            )
+            payloads.append(payload)
+            seenCanonicalIds.insert(canonicalId)
+            completedThisBatch.insert(canonicalId)
+        }
+
+        parallelCallOutputs[responseId] = outputs
+
+        pendingFunctionCallIds.subtract(missingOutputs)
+
+        guard !payloads.isEmpty else {
+            AppLogger.log("⚠️ [Batching] No valid payloads constructed for response \(responseId)", category: .openAI, level: .warning)
+            pendingParallelCalls.removeValue(forKey: responseId)
+            parallelCallOutputs.removeValue(forKey: responseId)
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            return
+        }
+
+        AppLogger.log("📤 [Batching] Sending \(payloads.count) function outputs together for response \(responseId)", category: .openAI, level: .info)
+
+        let priorResponseId = lastResponseId
+        let callsSnapshot = calls
+        let outputsSnapshot = outputs
+
+        let succeeded = await sendFunctionOutputBatch(
+            payloads,
+            messageId: messageId,
+            responseId: responseId,
+            priorResponseId: priorResponseId
+        )
+
+        if succeeded {
+            completedFunctionCallIds.formUnion(completedThisBatch)
+            pendingFunctionCallIds.subtract(completedThisBatch)
+            pendingParallelCalls.removeValue(forKey: responseId)
+            parallelCallOutputs.removeValue(forKey: responseId)
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            functionCallResponseIds = functionCallResponseIds.filter { $0.value != responseId }
+        } else {
+            for id in completedThisBatch {
+                completedFunctionCallIds.remove(id)
+                pendingFunctionCallIds.insert(id)
+            }
+
+            parallelCallBatchTimer.removeValue(forKey: responseId)
+            pendingParallelCalls[responseId] = callsSnapshot
+            parallelCallOutputs[responseId] = outputsSnapshot
+            let retryWorkItem = DispatchWorkItem { [weak self] in
+                Task { [weak self] in
+                    await self?.sendBatchedFunctionOutputs(responseId: responseId, messageId: messageId)
+                }
+            }
+            parallelCallBatchTimer[responseId] = retryWorkItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: retryWorkItem)
+            AppLogger.log("⏱️ [Batching] Retrying batch for response \(responseId) in 1s", category: .openAI, level: .debug)
+        }
+    }
+    
+    /// Sends a batch of function call outputs back to the API (used by batching logic)
+    private func sendFunctionOutputBatch(
+        _ payloads: [FunctionCallOutputPayload],
+        messageId: UUID,
+        responseId: String,
+        priorResponseId: String?
+    ) async -> Bool {
+        guard !payloads.isEmpty else { return true }
+
+        AppLogger.log("📤 [Batch] Sending \(payloads.count) outputs for response \(responseId)", category: .openAI, level: .info)
+
+        let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
+        var previousResponseIdForAttempt = priorResponseId
+        var reasoningItemsForAttempt: [[String: Any]]?
+        var retainedReasoningItems: [[String: Any]]?
+
+        if supportsReasoning, let referenceId = priorResponseId {
+            let cached = reasoningBufferByResponseId[referenceId]
+            let awaited = await awaitReasoningPayload(for: referenceId, existingPayloads: cached)
+            reasoningItemsForAttempt = awaited
+            retainedReasoningItems = awaited ?? cached
+
+            if let current = reasoningItemsForAttempt, reasoningPayloadsRequireSummary(current) {
+                AppLogger.log("🧠 [Batch] Refreshing reasoning payload from response \(referenceId)", category: .openAI, level: .info)
+                do {
+                    let fetched = try await api.getResponse(responseId: referenceId)
+                    let refreshed = fetched.output.compactMap { makeReasoningPayload(from: $0) }
+                    if !refreshed.isEmpty {
+                        reasoningItemsForAttempt = refreshed
+                        retainedReasoningItems = refreshed
+                    }
+                } catch {
+                    AppLogger.log("⚠️ [Batch] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
+                    if case OpenAIServiceError.requestFailed(let statusCode, let message) = error,
+                       statusCode == 404 || message.lowercased().contains("not found") {
+                        AppLogger.log("♻️ [Batch] Dropping previous_response_id after 404 for \(referenceId)", category: .openAI, level: .info)
+                        previousResponseIdForAttempt = nil
+                        reasoningItemsForAttempt = retainedReasoningItems
+                    } else if reasoningItemsForAttempt == nil {
+                        reasoningItemsForAttempt = retainedReasoningItems
+                    }
+                }
+            }
+
+            if let sanitized = sanitizedReasoningPayloads(reasoningItemsForAttempt) {
+                reasoningItemsForAttempt = sanitized
+                retainedReasoningItems = sanitized
+            }
+        }
+
+        let shouldStreamFollowUp = activePrompt.enableStreaming
+        var followUpCompleted = false
+        var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
+        var capturedError: Error?
+
+        attemptLoop: while attemptsRemaining > 0 && !followUpCompleted {
+            do {
+                if shouldStreamFollowUp {
+                    AppLogger.log("📤 [Batch] Streaming batch to OpenAI", category: .openAI, level: .info)
+                    if attemptsRemaining == (previousResponseIdForAttempt == nil ? 1 : 2) {
+                        streamingMessageId = messageId
+                        isStreaming = true
+                        streamingStatus = .connecting
+                        resetStreamingReasoning(for: messageId)
+                    }
+
+                    // NOTE: We do NOT send reasoning items with function outputs.
+                    // Per commit 75f6597: "Do NOT replay reasoning items here - they belong to the previous turn"
+                    let stream = api.streamFunctionOutputs(
+                        outputs: payloads,
+                        model: activePrompt.openAIModel,
+                        reasoningItems: nil,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
+
+                    var cancelledMidStream = false
+                    for try await chunk in stream {
+                        if Task.isCancelled {
+                            cancelledMidStream = true
+                            handleError(CancellationError())
+                            logActivity("Cancelled")
+                            break
+                        }
+                        handleStreamChunk(chunk, for: messageId)
+                    }
+
+                    if !cancelledMidStream {
+                        followUpCompleted = true
+                        if let finalMessage = messages.first(where: { $0.id == messageId }) {
+                            AnalyticsService.shared.trackEvent(
+                                name: AnalyticsEvent.messageReceived,
+                                parameters: [
+                                    AnalyticsParameter.model: activePrompt.openAIModel,
+                                    AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                                    AnalyticsParameter.streamingEnabled: true,
+                                    "has_images": finalMessage.images?.isEmpty == false
+                                ]
+                            )
+                        }
+                    } else {
+                        capturedError = CancellationError()
+                        break
+                    }
+                } else {
+                    AppLogger.log("⚠️ [Batch] Non-streaming batch not implemented", category: .openAI, level: .warning)
+                    capturedError = NSError(domain: "BatchError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Non-streaming batch not supported"])
+                    break
+                }
+            } catch {
+                capturedError = error
+
+                if attemptsRemaining > 1 && isPreviousResponseNotFoundError(error) {
+                    AppLogger.log("♻️ [Batch] Retrying without previous_response_id after API rejection", category: .openAI, level: .info)
+                    previousResponseIdForAttempt = nil
+                    reasoningItemsForAttempt = retainedReasoningItems
+                    attemptsRemaining -= 1
+                    continue attemptLoop
+                }
+
+                break
+            }
+
+            if followUpCompleted {
+                break
+            }
+
+            attemptsRemaining -= 1
+        }
+
+        if followUpCompleted {
+            if let key = priorResponseId,
+               let retained = retainedReasoningItems,
+               !retained.isEmpty {
+                updateReasoningBuffer(with: retained, responseId: key)
+            }
+            return true
+        }
+
+        if let error = capturedError, !(error is CancellationError) {
+            AppLogger.log("❌ [Batch] Error while returning batch: \(error)", category: .openAI, level: .error)
+            if shouldSurfaceBatchError(error) {
+                handleError(error)
+            } else {
+                AppLogger.log("ℹ️ [Batch] Suppressed known transient batch error", category: .openAI, level: .info)
+            }
+        }
+
+        return false
+    }
+    
+    /// Extracts function execution logic (the big switch statement) to be reused by both batching and non-batching paths
+    private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {
+        var output: String?
+        
         switch functionName {
         case "searchNotion":
             struct NotionSearchArgs: Decodable {
@@ -1165,7 +1705,7 @@ class ChatViewModel: ObservableObject {
                 let normalizedFilter = NotionService.shared.normalizeSearchFilter(decodedArgs.filter_type)
                 let maxResults = trimmedQuery.isEmpty ? 12 : 25
                 AppLogger.log("🔍 [searchNotion] Query: \(trimmedQuery), Filter: \(normalizedFilter ?? "none")", category: .network, level: .info)
-                logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"...")
+                logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"")
 
                 let searchResult = try await NotionService.shared.search(
                     query: trimmedQuery,
@@ -1197,8 +1737,8 @@ class ChatViewModel: ObservableObject {
                 }
 
                 output = jsonOutput
-                AppLogger.log("✅ [searchNotion] JSON output length: \(output.count) chars", category: .network, level: .info)
-                AppLogger.log("📋 [searchNotion] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+                AppLogger.log("✅ [searchNotion] JSON output length: \(jsonOutput.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [searchNotion] Output preview: \(String(jsonOutput.prefix(200)))...", category: .network, level: .info)
             } catch {
                 let errorMsg = "Error processing searchNotion: \(error.localizedDescription)"
                 AppLogger.log("❌ [searchNotion] \(errorMsg)", category: .network, level: .error)
@@ -1216,12 +1756,13 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(NotionGetDbArgs.self, from: argsData)
                 AppLogger.log("📊 [getNotionDatabase] Database ID: \(decodedArgs.database_id)", category: .network, level: .info)
-                logActivity("📊 Fetching Notion database \(decodedArgs.database_id)...")
+                logActivity("📊 Fetching Notion database \(decodedArgs.database_id)")
                 let dbResult = try await NotionService.shared.getDatabase(databaseId: decodedArgs.database_id)
                 AppLogger.log("✅ [getNotionDatabase] Got result, converting to JSON...", category: .network, level: .info)
-                output = try NotionService.shared.prettyJSONString(from: dbResult)
-                AppLogger.log("✅ [getNotionDatabase] JSON output length: \(output.count) chars", category: .network, level: .info)
-                AppLogger.log("📋 [getNotionDatabase] Output preview: \(String(output.prefix(200)))...", category: .network, level: .info)
+                let dbJSON = try NotionService.shared.prettyJSONString(from: dbResult)
+                output = dbJSON
+                AppLogger.log("✅ [getNotionDatabase] JSON output length: \(dbJSON.count) chars", category: .network, level: .info)
+                AppLogger.log("📋 [getNotionDatabase] Output preview: \(String(dbJSON.prefix(200)))...", category: .network, level: .info)
             } catch {
                 let errorMsg = "Error processing getNotionDatabase: \(error.localizedDescription)"
                 AppLogger.log("❌ [getNotionDatabase] \(errorMsg)", category: .network, level: .error)
@@ -1238,7 +1779,7 @@ class ChatViewModel: ObservableObject {
             }
             do {
                 let decodedArgs = try JSONDecoder().decode(NotionGetDataSourceArgs.self, from: argsData)
-                logActivity("📋 Fetching Notion data source \(decodedArgs.data_source_id)...")
+                logActivity("📋 Fetching Notion data source \(decodedArgs.data_source_id)")
                 let dsResult = try await NotionService.shared.getDataSource(dataSourceId: decodedArgs.data_source_id)
                 output = try NotionService.shared.prettyJSONString(from: dsResult)
             } catch {
@@ -1297,7 +1838,7 @@ class ChatViewModel: ObservableObject {
                 let children = argsJSON["children"] as? [[String: Any]]
                 
                 let context = [dataSourceId, databaseId, dataSourceName].compactMap { $0 }.joined(separator: ", ")
-                logActivity("➕ Creating Notion page in [\(context)]...")
+                logActivity("➕ Creating Notion page in [\(context)]")
                 
                 let pageResult = try await NotionService.shared.createPage(
                     dataSourceId: dataSourceId,
@@ -1352,7 +1893,7 @@ class ChatViewModel: ObservableObject {
                 let properties = argsJSON["properties"] as? [String: Any]
                 let archived = argsJSON["archived"] as? Bool
                 
-                logActivity("✏️ Updating Notion page \(pageId)...")
+                logActivity("✏️ Updating Notion page \(pageId)")
                 let updateResult = try await NotionService.shared.updatePage(
                     pageId: pageId,
                     properties: properties,
@@ -1400,21 +1941,388 @@ class ChatViewModel: ObservableObject {
                     break
                 }
                 
-                logActivity("📝 Appending blocks to Notion page \(pageId)...")
+                logActivity("📝 Appending blocks to Notion page \(pageId)")
                 let appendResult = try await NotionService.shared.appendBlocks(pageId: pageId, blocks: blocks)
                 output = try NotionService.shared.prettyJSONString(from: appendResult)
             } catch {
                 output = "Error processing appendNotionBlocks: \(error.localizedDescription)"
             }
         
+        #if canImport(EventKit)
+        case "fetchAppleCalendarEvents":
+            struct FetchCalendarArgs: Decodable {
+                let startDate: String
+                let endDate: String
+                let calendarIdentifiers: [String]?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for fetchAppleCalendarEvents."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(FetchCalendarArgs.self, from: argsData)
+                AppLogger.log("📅 [fetchAppleCalendarEvents] Date range: \(decodedArgs.startDate) to \(decodedArgs.endDate)", category: .network, level: .info)
+                logActivity("📅 Fetching Apple Calendar events")
+                
+                let provider = AppContainer.shared.appleProvider
+                let events = try await provider.listEvents(
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    calendarIdentifiers: decodedArgs.calendarIdentifiers
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(events)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [fetchAppleCalendarEvents] Found \(events.count) events", category: .network, level: .info)
+                logActivity("✅ Found \(events.count) calendar events")
+            } catch {
+                let errorMsg = "Error fetching Apple Calendar events: \(error.localizedDescription)"
+                AppLogger.log("❌ [fetchAppleCalendarEvents] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Calendar fetch failed")
+            }
+        
+        case "fetchAppleReminders":
+            struct FetchRemindersArgs: Decodable {
+                let startDate: String?
+                let endDate: String?
+                let completed: Bool?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for fetchAppleReminders."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(FetchRemindersArgs.self, from: argsData)
+                AppLogger.log("✅ [fetchAppleReminders] Fetching reminders...", category: .network, level: .info)
+                logActivity("✅ Fetching Apple Reminders")
+                
+                let provider = AppContainer.shared.appleProvider
+                let reminders = try await provider.listReminders(
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    completed: decodedArgs.completed,
+                    listIdentifiers: nil
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(reminders)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [fetchAppleReminders] Found \(reminders.count) reminders", category: .network, level: .info)
+                logActivity("✅ Found \(reminders.count) reminders")
+            } catch {
+                let errorMsg = "Error fetching Apple Reminders: \(error.localizedDescription)"
+                AppLogger.log("❌ [fetchAppleReminders] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Reminders fetch failed")
+            }
+        
+        case "createAppleCalendarEvent":
+            struct CreateEventArgs: Decodable {
+                let title: String
+                let startDate: String
+                let endDate: String
+                let location: String?
+                let notes: String?
+                let calendarIdentifier: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleCalendarEvent."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateEventArgs.self, from: argsData)
+                AppLogger.log("📅 [createAppleCalendarEvent] Creating event: \(decodedArgs.title)", category: .network, level: .info)
+                logActivity("📅 Creating calendar event: \(decodedArgs.title)")
+                
+                let provider = AppContainer.shared.appleProvider
+                let event = try await provider.createEvent(
+                    title: decodedArgs.title,
+                    startISO8601: decodedArgs.startDate,
+                    endISO8601: decodedArgs.endDate,
+                    location: decodedArgs.location,
+                    notes: decodedArgs.notes,
+                    calendarIdentifier: decodedArgs.calendarIdentifier
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(event)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleCalendarEvent] Created event successfully", category: .network, level: .info)
+                logActivity("✅ Created event: \(decodedArgs.title)")
+            } catch {
+                let errorMsg = "Error creating Apple Calendar event: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleCalendarEvent] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Event creation failed")
+            }
+        
+        case "createAppleReminder":
+            struct CreateReminderArgs: Decodable {
+                let title: String
+                let notes: String?
+                let dueDate: String?
+                let priority: Int?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleReminder."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateReminderArgs.self, from: argsData)
+                AppLogger.log("📝 [createAppleReminder] Creating reminder: \(decodedArgs.title)", category: .network, level: .info)
+                logActivity("📝 Creating Apple Reminder: \(decodedArgs.title)")
+                
+                let provider = AppContainer.shared.appleProvider
+                let reminder = try await provider.createReminder(
+                    title: decodedArgs.title,
+                    notes: decodedArgs.notes,
+                    dueDateISO8601: decodedArgs.dueDate,
+                    listIdentifier: nil  // TODO: Add priority support
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(reminder)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleReminder] Created reminder successfully", category: .network, level: .info)
+                logActivity("✅ Created reminder: \(decodedArgs.title)")
+            } catch {
+                let errorMsg = "Error creating Apple Reminder: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleReminder] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Reminder creation failed")
+            }
+        
+        case "searchAppleContacts":
+            struct SearchContactsArgs: Decodable {
+                let query: String
+                let limit: Int?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for searchAppleContacts."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(SearchContactsArgs.self, from: argsData)
+                AppLogger.log("📇 [searchAppleContacts] Query: \(decodedArgs.query)", category: .network, level: .info)
+                logActivity("📇 Searching Apple Contacts for '\(decodedArgs.query)'")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contacts = try await provider.searchContacts(
+                    query: decodedArgs.query,
+                    limit: decodedArgs.limit ?? 50
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contacts)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [searchAppleContacts] Found \(contacts.count) contacts", category: .network, level: .info)
+                logActivity("✅ Found \(contacts.count) contacts")
+            } catch {
+                let errorMsg = "Error searching Apple Contacts: \(error.localizedDescription)"
+                AppLogger.log("❌ [searchAppleContacts] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact search failed")
+            }
+        
+        case "getAppleContact":
+            struct GetContactArgs: Decodable {
+                let identifier: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for getAppleContact."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(GetContactArgs.self, from: argsData)
+                AppLogger.log("📇 [getAppleContact] Identifier: \(decodedArgs.identifier)", category: .network, level: .info)
+                logActivity("📇 Fetching contact details")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contact = try await provider.getContact(identifier: decodedArgs.identifier)
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contact)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [getAppleContact] Retrieved contact details", category: .network, level: .info)
+                logActivity("✅ Retrieved contact details")
+            } catch {
+                let errorMsg = "Error getting Apple Contact: \(error.localizedDescription)"
+                AppLogger.log("❌ [getAppleContact] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact fetch failed")
+            }
+        
+        case "createAppleContact":
+            struct CreateContactArgs: Decodable {
+                let givenName: String?
+                let familyName: String?
+                let organizationName: String?
+                let phoneNumber: String?
+                let phoneLabel: String?
+                let emailAddress: String?
+                let emailLabel: String?
+                let note: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for createAppleContact."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(CreateContactArgs.self, from: argsData)
+                let contactName = [decodedArgs.givenName, decodedArgs.familyName].compactMap { $0 }.joined(separator: " ")
+                AppLogger.log("📇 [createAppleContact] Creating contact: \(contactName.isEmpty ? "Unknown" : contactName)", category: .network, level: .info)
+                logActivity("📇 Creating Apple Contact: \(contactName.isEmpty ? "Unknown" : contactName)")
+                
+                let provider = AppContainer.shared.appleProvider
+                let contact = try await provider.createContact(
+                    givenName: decodedArgs.givenName,
+                    familyName: decodedArgs.familyName,
+                    organizationName: decodedArgs.organizationName,
+                    phoneNumber: decodedArgs.phoneNumber,
+                    phoneLabel: decodedArgs.phoneLabel,
+                    emailAddress: decodedArgs.emailAddress,
+                    emailLabel: decodedArgs.emailLabel,
+                    note: decodedArgs.note
+                )
+                
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let jsonData = try encoder.encode(contact)
+                output = String(data: jsonData, encoding: .utf8) ?? "{}"
+                
+                AppLogger.log("✅ [createAppleContact] Created contact successfully", category: .network, level: .info)
+                logActivity("✅ Created contact")
+            } catch {
+                let errorMsg = "Error creating Apple Contact: \(error.localizedDescription)"
+                AppLogger.log("❌ [createAppleContact] \(errorMsg)", category: .network, level: .error)
+                output = errorMsg
+                logActivity("❌ Contact creation failed")
+            }
+        #endif
+        
         default:
             if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
                 output = await executeCustomTool(argumentsJSON: call.arguments)
             } else {
-                let errorMsg = ChatMessage(role: .system, text: "Error: Assistant tried to call unknown function '\(functionName)'.")
-                await MainActor.run { messages.append(errorMsg) }
-                return
+                output = "Error: Unknown function '\(functionName)'"
             }
+        }
+        
+        return output
+    }
+    
+    /// Handles a function call from the API by executing the function and sending the result back.
+    private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+        guard let functionName = call.name else {
+            AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
+            handleError(OpenAIServiceError.invalidResponseData)
+            return
+        }
+
+    guard let canonicalCallId = await MainActor.run(body: { self.canonicalIdentifier(for: call) }) else {
+            AppLogger.log("❌ [Function Call] Unable to determine canonical identifier", category: .openAI, level: .error)
+            return
+        }
+
+        if let referenceResponseId = lastResponseId {
+            registerFunctionCallIdentifiers(call, canonicalId: canonicalCallId, responseId: referenceResponseId)
+        }
+
+        let shouldExecute = await MainActor.run { () -> Bool in
+            if self.completedFunctionCallIds.contains(canonicalCallId) {
+                AppLogger.log("♻️ [Function Call] Call \(canonicalCallId) already completed; skipping", category: .openAI, level: .info)
+                return false
+            }
+            if self.pendingFunctionCallIds.contains(canonicalCallId) {
+                AppLogger.log("⏳ [Function Call] Call \(canonicalCallId) already in progress; skipping duplicate trigger", category: .openAI, level: .debug)
+                return false
+            }
+            self.pendingFunctionCallIds.insert(canonicalCallId)
+            return true
+        }
+
+        guard shouldExecute else { return }
+
+        defer {
+            Task { [weak self] in
+                await MainActor.run {
+                    self?.pendingFunctionCallIds.remove(canonicalCallId)
+                }
+            }
+        }
+
+        AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
+        let callIdForLog = call.id.isEmpty ? canonicalCallId : call.id
+        AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
+        AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
+
+        let notionFunctions: Set<String> = [
+            "searchNotion",
+            "getNotionDatabase",
+            "getNotionDataSource",
+            "createNotionPage",
+            "updateNotionPage",
+            "appendNotionBlocks"
+        ]
+        #if canImport(EventKit)
+        let baseAppleFunctions = [
+            "fetchAppleCalendarEvents",
+            "fetchAppleReminders",
+            "createAppleCalendarEvent",
+            "createAppleReminder"
+        ]
+        #if canImport(Contacts)
+        let appleFunctions = Set(baseAppleFunctions + [
+            "searchAppleContacts",
+            "getAppleContact",
+            "createAppleContact"
+        ])
+        #else
+        let appleFunctions = Set(baseAppleFunctions)
+        #endif
+        #else
+        let appleFunctions = Set<String>()
+        #endif
+
+        // Short-circuit tool calls that were disabled in Settings
+        var output: String?
+        if notionFunctions.contains(functionName) && !activePrompt.enableNotionIntegration {
+            AppLogger.log("🔒 [Function Call] Blocked Notion function \(functionName) – integration disabled in settings", category: .ui, level: .info)
+            output = "Error: Notion integration is disabled in Settings."
+        } else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {
+            AppLogger.log("🔒 [Function Call] Blocked Apple system function \(functionName) – integrations disabled in settings", category: .ui, level: .info)
+            output = "Error: Apple system integrations are disabled in Settings."
+        }
+
+        if output == nil {
+            // Execute using extracted switch logic
+            output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
+        }
+        
+        // If execution returned an error instead of output, bail
+        if output?.hasPrefix("Error:") == true && output?.contains("unknown function") == true {
+            let errorMsg = ChatMessage(role: .system, text: output!)
+            await MainActor.run { messages.append(errorMsg) }
+            return
+        }
+
+        guard let output else {
+            AppLogger.log("❌ [Function Call] No output generated for function \(functionName)", category: .openAI, level: .error)
+            return
         }
 
         // Send the result back to the API
@@ -1422,7 +2330,7 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("📤 [Function Call] Output length: \(output.count) chars", category: .ui, level: .info)
         AppLogger.log("📤 [Function Call] Output preview: \(String(output.prefix(300)))...", category: .ui, level: .info)
         
-        let priorResponseId = lastResponseId
+    var priorResponseId: String? = lastResponseId
         var reasoningReplay = priorResponseId.flatMap { reasoningBufferByResponseId[$0] }
         let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
 
@@ -1432,66 +2340,180 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("🧠 [Function Call] Refreshing reasoning payload from response \(responseId)", category: .openAI, level: .info)
             do {
                 let fetched = try await api.getResponse(responseId: responseId)
-                if let updated = storeReasoningItems(from: fetched) {
-                    reasoningReplay = updated
-                } else {
-                    reasoningReplay = []
-                }
+                // Extract reasoning items without storing (they're already in the buffer from streaming)
+                let payloads = fetched.output.compactMap { makeReasoningPayload(from: $0) }
+                reasoningReplay = payloads.isEmpty ? nil : payloads
             } catch {
                 AppLogger.log("⚠️ [Function Call] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
-            }
-        }
-
-        if supportsReasoning,
-           let responseId = priorResponseId {
-            let sanitized = sanitizedReasoningPayloads(reasoningReplay)
-            reasoningReplay = sanitized
-            updateReasoningBuffer(with: sanitized, responseId: responseId)
-        }
-
-        let reasoningItemsForSend = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
-
-        do {
-            AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
-            let finalResponse = try await api.sendFunctionOutput(
-                call: call,
-                output: output,
-                model: activePrompt.openAIModel,
-                reasoningItems: reasoningItemsForSend,
-                previousResponseId: lastResponseId,
-                prompt: activePrompt
-            )
-
-            AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
-            AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
-            AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
-            completedFunctionCallIds.insert(callIdentifier)
-            
-            for (index, item) in finalResponse.output.enumerated() {
-                AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
-                if let content = item.content {
-                    AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
-                    for (cIndex, c) in content.enumerated() {
-                        AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
-                    }
+                if case OpenAIServiceError.requestFailed(let statusCode, let message) = error,
+                   statusCode == 404 || message.lowercased().contains("not found") {
+                    AppLogger.log("♻️ [Function Call] Clearing stale previous_response_id=\(responseId) due to missing response", category: .openAI, level: .info)
+                    reasoningBufferByResponseId.removeValue(forKey: responseId)
+                    priorResponseId = nil
+                    reasoningReplay = nil
                 }
             }
+        }
 
-            await MainActor.run {
-                AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
-                self.handleNonStreamingResponse(finalResponse, for: messageId)
-                AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
+        // Sanitize reasoning items if needed (but don't update buffer again - storeReasoningItems already did it)
+        if supportsReasoning, priorResponseId != nil {
+            let sanitized = sanitizedReasoningPayloads(reasoningReplay)
+            reasoningReplay = sanitized
+        }
+
+        var previousResponseIdForAttempt = priorResponseId
+        var reasoningItemsForAttempt = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
+        let shouldStreamFollowUp = activePrompt.enableStreaming
+        var followUpCompleted = false
+        var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
+        var capturedError: Error?
+
+        let functionOutputPayload = FunctionCallOutputPayload(
+            callId: canonicalCallId,
+            output: output,
+            functionName: functionName,
+            callItem: call
+        )
+
+        attemptLoop: while attemptsRemaining > 0 && !followUpCompleted {
+            do {
+                if shouldStreamFollowUp {
+                    AppLogger.log("📤 [Function Call] Streaming function output to OpenAI", category: .openAI, level: .info)
+                    if attemptsRemaining == (previousResponseIdForAttempt == nil ? 1 : 2) {
+                        await MainActor.run {
+                            self.streamingMessageId = messageId
+                            self.isStreaming = true
+                            self.streamingStatus = .connecting
+                            self.resetStreamingReasoning(for: messageId)
+                        }
+                    }
+
+                    // NOTE: We do NOT send reasoning items with function outputs.
+                    // Per commit 75f6597: "Do NOT replay reasoning items here - they belong to the previous turn"
+                    let stream = api.streamFunctionOutputs(
+                        outputs: [functionOutputPayload],
+                        model: activePrompt.openAIModel,
+                        reasoningItems: nil,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: self.activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
+
+                    var cancelledMidStream = false
+                    for try await chunk in stream {
+                        if Task.isCancelled {
+                            cancelledMidStream = true
+                            await MainActor.run {
+                                self.handleError(CancellationError())
+                                self.logActivity("Cancelled")
+                            }
+                            break
+                        }
+                        await MainActor.run {
+                            self.handleStreamChunk(chunk, for: messageId)
+                        }
+                    }
+
+                    if !cancelledMidStream {
+                        followUpCompleted = true
+                        await MainActor.run {
+                            if let finalMessage = self.messages.first(where: { $0.id == messageId }) {
+                                AnalyticsService.shared.trackEvent(
+                                    name: AnalyticsEvent.messageReceived,
+                                    parameters: [
+                                        AnalyticsParameter.model: self.activePrompt.openAIModel,
+                                        AnalyticsParameter.messageLength: finalMessage.text?.count ?? 0,
+                                        AnalyticsParameter.streamingEnabled: true,
+                                        "has_images": finalMessage.images?.isEmpty == false
+                                    ]
+                                )
+                            }
+                        }
+                    } else {
+                        capturedError = CancellationError()
+                        break
+                    }
+                } else {
+                    AppLogger.log("📤 [Function Call] Calling sendFunctionOutput...", category: .openAI, level: .info)
+                    let finalResponse = try await api.sendFunctionOutput(
+                        call: call,
+                        output: output,
+                        model: activePrompt.openAIModel,
+                        reasoningItems: reasoningItemsForAttempt,
+                        previousResponseId: previousResponseIdForAttempt,
+                        conversationId: self.activeConversation?.remoteId,
+                        prompt: activePrompt
+                    )
+
+                    AppLogger.log("✅ [Function Call] Got response from sendFunctionOutput", category: .openAI, level: .info)
+                    AppLogger.log("✅ [Function Call] Response ID: \(finalResponse.id)", category: .openAI, level: .info)
+                    AppLogger.log("✅ [Function Call] Output items count: \(finalResponse.output.count)", category: .openAI, level: .info)
+
+                    for (index, item) in finalResponse.output.enumerated() {
+                        AppLogger.log("📋 [Function Call] Output item \(index): type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
+                        if let content = item.content {
+                            AppLogger.log("📋 [Function Call] Output item \(index) has \(content.count) content parts", category: .openAI, level: .info)
+                            for (cIndex, c) in content.enumerated() {
+                                AppLogger.log("📋 [Function Call] Content \(cIndex): type=\(c.type), text=\(c.text?.prefix(100) ?? "none")", category: .openAI, level: .info)
+                            }
+                        }
+                    }
+
+                    await MainActor.run {
+                        AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
+                        self.handleNonStreamingResponse(finalResponse, for: messageId)
+                        AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
+                    }
+
+                    followUpCompleted = true
+                }
+
+                if followUpCompleted {
+                    break
+                }
+            } catch {
+                if attemptsRemaining > 1 && isPreviousResponseNotFoundError(error) {
+                    AppLogger.log("♻️ [Function Call] Retrying without previous_response_id after API rejection", category: .openAI, level: .info)
+                    if let previousId = previousResponseIdForAttempt {
+                        reasoningBufferByResponseId.removeValue(forKey: previousId)
+                        if priorResponseId == previousId {
+                            priorResponseId = nil
+                        }
+                    }
+                    previousResponseIdForAttempt = nil
+                    reasoningItemsForAttempt = nil
+                    attemptsRemaining -= 1
+                    continue attemptLoop
+                }
+
+                capturedError = error
+                break
             }
 
+            attemptsRemaining -= 1
+        }
+
+        if followUpCompleted {
+            completedFunctionCallIds.insert(canonicalCallId)
             if let key = priorResponseId {
                 reasoningBufferByResponseId.removeValue(forKey: key)
             }
-        } catch {
-            AppLogger.log("❌ [Function Call] Error in sendFunctionOutput: \(error)", category: .openAI, level: .error)
+        } else if let error = capturedError, !(error is CancellationError) {
+            AppLogger.log("❌ [Function Call] Error while returning function output: \(error)", category: .openAI, level: .error)
             await MainActor.run {
                 self.handleError(error)
             }
         }
+    }
+
+    private func isPreviousResponseNotFoundError(_ error: Error) -> Bool {
+        guard case OpenAIServiceError.requestFailed(let statusCode, let message) = error else {
+            return false
+        }
+
+        if statusCode != 400 { return false }
+        let lowered = message.lowercased()
+        return lowered.contains("previous_response_not_found") || lowered.contains("previous response with id")
     }
 
     /// Execute built-in calculator function. Returns a string result or error.
@@ -1587,6 +2609,7 @@ class ChatViewModel: ObservableObject {
             await MainActor.run {
                 self.streamingStatus = .connecting
                 self.isStreaming = true
+                self.resetStreamingReasoning(for: messageId)
             }
 
             do {
@@ -1668,10 +2691,50 @@ class ChatViewModel: ObservableObject {
             print("Active prompt saved.")
         }
     }
-    
+
+    /// Ensures reasoning-related toggles line up with the currently selected model.
+    @discardableResult
+    private func enforceReasoningDefaults(for prompt: inout Prompt, previousModelId: String?) -> Bool {
+        let compatibilityService = ModelCompatibilityService.shared
+        let supportsReasoning = compatibilityService
+            .getCapabilities(for: prompt.openAIModel)?
+            .supportsReasoningEffort == true
+        let previousSupportedReasoning: Bool = {
+            guard let previousModelId else { return false }
+            return compatibilityService
+                .getCapabilities(for: previousModelId)?
+                .supportsReasoningEffort == true
+        }()
+
+        var didChange = false
+
+        if supportsReasoning {
+            if !prompt.includeReasoningContent && !previousSupportedReasoning {
+                prompt.includeReasoningContent = true
+                didChange = true
+            }
+        } else if prompt.includeReasoningContent {
+            prompt.includeReasoningContent = false
+            didChange = true
+        }
+
+        return didChange
+    }
+
+    /// Replaces the active prompt, normalizing capabilities before storing it.
+    @discardableResult
+    func replaceActivePrompt(with prompt: Prompt, previousModelId: String? = nil) -> Bool {
+        var updatedPrompt = prompt
+        let baselineModel = previousModelId ?? activePrompt.openAIModel
+        let reasoningChanged = enforceReasoningDefaults(for: &updatedPrompt, previousModelId: baselineModel)
+        activePrompt = updatedPrompt
+        return reasoningChanged
+    }
+
     /// Force reset the active prompt to default values
     func resetToDefaultPrompt() {
-        self.activePrompt = Prompt.defaultPrompt()
+        let defaultPrompt = Prompt.defaultPrompt()
+        replaceActivePrompt(with: defaultPrompt, previousModelId: nil)
         UserDefaults.standard.removeObject(forKey: "activePrompt")
         saveActivePrompt()
         print("Prompt reset to default and saved.")
@@ -1681,39 +2744,67 @@ class ChatViewModel: ObservableObject {
     private func loadActivePrompt() {
         if let data = UserDefaults.standard.data(forKey: "activePrompt"),
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
-            self.activePrompt = decoded
-            
+            var prompt = decoded
             var needsSave = false
             
-            // Migration: Enable computer use by default for existing prompts
-            if !self.activePrompt.enableComputerUse {
-                print("Migrating existing prompt to enable computer use by default")
-                self.activePrompt.enableComputerUse = true
+            // Ensure computer use stays aligned with model capabilities
+            let compatibilityService = ModelCompatibilityService.shared
+            let supportsComputerUse = compatibilityService.isToolSupported(
+                .computer,
+                for: prompt.openAIModel,
+                isStreaming: prompt.enableStreaming
+            )
+
+            if prompt.enableComputerUse && !supportsComputerUse {
+                AppLogger.log(
+                    "[Settings] Disabling computer use – model \(prompt.openAIModel) does not support the computer tool",
+                    category: .ui,
+                    level: .info
+                )
+                prompt.enableComputerUse = false
+                prompt.ultraStrictComputerUse = false
                 needsSave = true
+            }
+
+            if prompt.enableNotionIntegration {
+                let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+                if !hasNotionToken {
+                    // Prevent stale toggles when the backing Notion token has been removed
+                    AppLogger.log(
+                        "[Settings] Disabling Notion integration – no token available in keychain",
+                        category: .ui,
+                        level: .info
+                    )
+                    prompt.enableNotionIntegration = false
+                    needsSave = true
+                }
             }
             
             // Migration: Update truncation from "disabled" to "auto" for better context management
-            if self.activePrompt.truncationStrategy == "disabled" {
+            if prompt.truncationStrategy == "disabled" {
                 print("Migrating truncation strategy from 'disabled' to 'auto'")
-                self.activePrompt.truncationStrategy = "auto"
+                prompt.truncationStrategy = "auto"
                 needsSave = true
             }
             
             // Validate the model name - if it's a UUID or invalid, reset to default
-            if isInvalidModelName(decoded.openAIModel) {
-                print("Invalid model name detected: \(decoded.openAIModel), resetting to default")
-                self.activePrompt.openAIModel = "gpt-4o"
+            if isInvalidModelName(prompt.openAIModel) {
+                print("Invalid model name detected: \(prompt.openAIModel), resetting to default")
+                prompt.openAIModel = "gpt-4o"
                 needsSave = true
             }
+
+            let reasoningChanged = enforceReasoningDefaults(for: &prompt, previousModelId: nil)
+            activePrompt = prompt
             
-            if needsSave {
+            if needsSave || reasoningChanged {
                 saveActivePrompt() // Save all migrations at once
             }
             
             print("Active prompt loaded.")
         } else {
             // If no saved prompt is found, use the default
-            self.activePrompt = Prompt.defaultPrompt()
+            replaceActivePrompt(with: Prompt.defaultPrompt(), previousModelId: nil)
             print("No saved prompt found, initialized with default.")
         }
     }
@@ -1752,7 +2843,8 @@ class ChatViewModel: ObservableObject {
     }
 
     func createNewConversation() {
-        let newConversation = Conversation.new()
+        let storePreference = activePrompt.storeResponses
+        let newConversation = Conversation.new(storePreference: storePreference)
         conversations.insert(newConversation, at: 0)
         activeConversation = newConversation
         saveConversation(newConversation)
@@ -1858,7 +2950,7 @@ class ChatViewModel: ObservableObject {
         // Decrement attempts and persist; mark retry as scheduled to prevent duplicate notes
         ctx.remainingAttempts -= 1
         if !ctx.retryScheduled {
-            AppLogger.log("[Streaming Retry] Temporary issue: \(reason). Retrying once…", category: .openAI, level: .warning)
+            AppLogger.log("[Streaming Retry] Temporary issue: \(reason). Retrying once", category: .openAI, level: .warning)
             // Surface via status chip rather than adding a red system message to the chat
             streamingStatus = .connecting
         }
@@ -1870,6 +2962,7 @@ class ChatViewModel: ObservableObject {
         streamingMessageId = messageId
         isStreaming = true
         streamingStatus = .connecting
+        resetStreamingReasoning(for: messageId)
 
         // Backoff briefly to avoid immediate repeat failures
         streamingTask = Task { [ctx, weak self] in
@@ -1884,7 +2977,8 @@ class ChatViewModel: ObservableObject {
                     fileNames: nil,
                     fileIds: nil,
                     imageAttachments: ctx.imageAttachments,
-                    previousResponseId: ctx.basePreviousResponseId
+                    previousResponseId: ctx.basePreviousResponseId,
+                    conversationId: self.activeConversation?.remoteId
                 )
                 for try await chunk in stream {
                     if Task.isCancelled { 
@@ -2654,9 +3748,19 @@ class ChatViewModel: ObservableObject {
 
             AppLogger.log("🔔 [Function Call] Streaming item completed: id=\(item.id), callId=\(item.callId ?? "none"), name=\(item.name ?? "<unknown>")", category: .openAI, level: .info)
             let outputItem = OutputItem(streamingItem: item)
-            Task { [weak self] in
-                guard let self else { return }
-                await self.handleFunctionCall(outputItem, for: messageId)
+            
+            // Check if this is part of a parallel batch by looking at the response ID
+            if let responseId = lastResponseId {
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.handleFunctionCallWithBatching(outputItem, for: messageId, responseId: responseId)
+                }
+            } else {
+                // No response ID available, execute immediately
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.handleFunctionCall(outputItem, for: messageId)
+                }
             }
             return
         }
@@ -2864,6 +3968,10 @@ class ChatViewModel: ObservableObject {
         let specificError = OpenAIServiceError.from(error: error)
         let errorText = specificError.userFriendlyDescription
         
+        if let streamingId = streamingMessageId {
+            finalizeStreamingReasoning(for: streamingId)
+        }
+
         // Log the error with analytics
         AnalyticsService.shared.trackError(specificError, context: "ChatViewModel")
         
@@ -2925,6 +4033,10 @@ class ChatViewModel: ObservableObject {
         deltaFlushWorkItems.values.forEach { $0.cancel() }
         deltaFlushWorkItems.removeAll()
         surfacedMCPToolWarnings.removeAll()
+        streamingReasoningTextByMessageId.removeAll()
+        streamingReasoningTraceIdByMessageId.removeAll()
+        reasoningBufferByResponseId.removeAll()
+        functionCallResponseIds.removeAll()
         
         updateActiveConversation(conversation)
     }
@@ -2936,6 +4048,8 @@ class ChatViewModel: ObservableObject {
         else { return }
 
         conversation.messages.remove(at: index)
+        streamingReasoningTextByMessageId.removeValue(forKey: message.id)
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: message.id)
         updateActiveConversation(conversation)
     }
 
@@ -2950,6 +4064,7 @@ class ChatViewModel: ObservableObject {
             flushDeltaBufferIfNeeded(for: streamingId)
             // Stop any image generation heartbeats
             stopImageGenerationHeartbeat(for: streamingId)
+            finalizeStreamingReasoning(for: streamingId)
         }
         
         // Update UI immediately
@@ -2977,11 +4092,11 @@ class ChatViewModel: ObservableObject {
         switch eventType {
         case "response.created":
             streamingStatus = .connecting
-            logActivity("Response created")
+            logActivity("Response registered")
         case "response.in_progress":
             // Generic in-progress heartbeat from the API
             if streamingStatus == .idle { streamingStatus = .thinking }
-            logActivity("Working…")
+            logActivity("Analyzing request")
         case "response.output_text.delta":
             streamingStatus = .streamingText
             // Do not log every token to avoid spam
@@ -2989,9 +4104,9 @@ class ChatViewModel: ObservableObject {
             // When a new output item is added (e.g., reasoning, tool call, message)
             if let typ = item?.type {
                 if typ == "reasoning" { streamingStatus = .thinking }
-                logActivity("Output item added: \(typ)")
+                logActivity("Started output: \(typ)")
             } else {
-                logActivity("Output item added")
+                logActivity("Started output item")
             }
         case "response.output_item.delta":
             // Deltas for a specific output item (e.g., reasoning tokens)
@@ -3000,21 +4115,21 @@ class ChatViewModel: ObservableObject {
             break
         case "response.output_item.completed":
             if let typ = item?.type {
-                logActivity("Output item completed: \(typ)")
+                logActivity("Completed output: \(typ)")
             } else {
-                logActivity("Output item completed")
+                logActivity("Completed output item")
             }
         case "response.image_generation_call.in_progress":
             streamingStatus = .generatingImage
-            logActivity("🎨 Image generation started")
+            logActivity("🎨 Starting image render")
             // Start a heartbeat to show progress during long generation times
             // Only start if not already running for this message
             if let msgId = messageId, imageHeartbeatTasks[msgId] == nil {
                 startImageGenerationHeartbeat(for: msgId)
             }
         case "response.image_generation_call.partial_image":
-            streamingStatus = .imageGenerationProgress("Generating image…")
-            logActivity("🖼️ Image preview updating…")
+            streamingStatus = .imageGenerationProgress("Generating image")
+            logActivity("🖼️ Updating image preview")
        case "response.computer_call.in_progress", "computer.in_progress",
            "response.computer_call.screenshot_taken", "computer.screenshot",
            "response.computer_call.action_performed", "computer.action",
@@ -3023,17 +4138,17 @@ class ChatViewModel: ObservableObject {
             streamingStatus = .usingComputer
             switch eventType {
             case "response.computer_call.in_progress", "computer.in_progress":
-                logActivity("Computer: preparing action…")
+                logActivity("Computer: staging action")
             case "response.computer_call.screenshot_taken", "computer.screenshot":
                 logActivity("Computer: captured screenshot")
             case "response.computer_call.action_performed", "computer.action":
                 if let action = item?.action, let type = action["type"]?.value as? String {
-                    logActivity("Computer: action \(type)")
+                    logActivity("Computer: executed \(type)")
                 } else {
-                    logActivity("Computer: action performed")
+                    logActivity("Computer: executed action")
                 }
             case "response.computer_call.completed", "computer.completed":
-                logActivity("Computer: step completed")
+                logActivity("Computer: step complete")
             default: break
             }
         case "response.tool_call.started":
@@ -3041,22 +4156,34 @@ class ChatViewModel: ObservableObject {
                 // Special-case the computer tool to keep the UX consistent
                 if toolName == APICapabilities.ToolType.computer.rawValue || toolName == "computer" {
                     streamingStatus = .usingComputer
-                    logActivity("Computer tool started")
+                    logActivity("Computer tool engaged")
                 } else if toolName == "code_interpreter" {
                     streamingStatus = .generatingCode
-                    logActivity("Code interpreter started")
+                    logActivity("Code interpreter engaged")
+                } else if toolName == "fetchAppleCalendarEvents" {
+                    streamingStatus = .runningTool("Calendar")
+                    logActivity("📅 Fetching Apple Calendar events")
+                } else if toolName == "createAppleCalendarEvent" {
+                    streamingStatus = .runningTool("Calendar")
+                    logActivity("📅 Creating calendar event")
+                } else if toolName == "fetchAppleReminders" {
+                    streamingStatus = .runningTool("Reminders")
+                    logActivity("✅ Fetching Apple Reminders")
+                } else if toolName == "createAppleReminder" {
+                    streamingStatus = .runningTool("Reminders")
+                    logActivity("📝 Creating Apple Reminder")
                 } else {
                     streamingStatus = .runningTool(toolName)
-                    logActivity("Running tool: \(toolName)")
+                    logActivity("Executing tool: \(toolName)")
                 }
             } else {
                 streamingStatus = .runningTool("unknown")
-                logActivity("Running tool…")
+                logActivity("Executing tool")
             }
         case "response.output_text.annotation.added":
             // When artifacts are being processed from code interpreter
             streamingStatus = .processingArtifacts
-            logActivity("Processing generated files…")
+            logActivity("Processing generated files")
         case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             let serverLabel = item?.serverLabel ?? "MCP"
             let status = item?.status?.lowercased()
@@ -3068,21 +4195,21 @@ class ChatViewModel: ObservableObject {
                 if eventType.hasSuffix("completed") || status == "completed" {
                     logActivity("✅ MCP: Tools ready from \(serverLabel)")
                 } else if eventType.hasSuffix("in_progress") {
-                    logActivity("🔧 MCP: Listing tools from \(serverLabel)")
+                    logActivity("🔧 MCP: Listing tools for \(serverLabel)")
                 } else {
-                    logActivity("🔧 MCP: Updating tools from \(serverLabel)")
+                    logActivity("🔧 MCP: Updating tools for \(serverLabel)")
                 }
             }
         case "response.mcp_call.added", "response.mcp_call.in_progress":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
                 streamingStatus = .runningTool("MCP: \(toolName)")
-                logActivity("🔧 MCP: Calling \(toolName) on \(serverLabel)")
+                logActivity("🔧 MCP: Invoking \(toolName) on \(serverLabel)")
             } else if let toolName = item?.name {
                 streamingStatus = .runningTool("MCP: \(toolName)")
-                logActivity("🔧 MCP: Calling \(toolName)")
+                logActivity("🔧 MCP: Invoking \(toolName)")
             } else {
                 streamingStatus = .runningTool("MCP")
-                logActivity("🔧 MCP: Running tool")
+                logActivity("🔧 MCP: Running tool call")
             }
         case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             let toolName = item?.name ?? "MCP tool"
@@ -3096,9 +4223,9 @@ class ChatViewModel: ObservableObject {
             }
         case "response.mcp_call_arguments.delta":
             if let name = item?.name ?? item?.serverLabel {
-                logActivity("🔧 MCP: Preparing arguments for \(name)")
+                logActivity("🔧 MCP: Assembling arguments for \(name)")
             } else {
-                logActivity("🔧 MCP: Preparing tool arguments")
+                logActivity("🔧 MCP: Assembling tool arguments")
             }
         case "response.mcp_call_arguments.done":
             if let name = item?.name ?? item?.serverLabel {
@@ -3109,7 +4236,7 @@ class ChatViewModel: ObservableObject {
         case "response.mcp_approval_request.added":
             if let toolName = item?.name, let serverLabel = item?.serverLabel {
                 streamingStatus = .runningTool("MCP: Awaiting approval")
-                logActivity("🔒 MCP: \(toolName) on \(serverLabel) requires approval")
+                logActivity("🔒 MCP: \(toolName) on \(serverLabel) awaiting approval")
             } else {
                 streamingStatus = .runningTool("MCP: Awaiting approval")
                 logActivity("🔒 MCP: Approval required")
@@ -3117,7 +4244,7 @@ class ChatViewModel: ObservableObject {
         case "response.done", "response.completed":
             // Prefer idle when we've explicitly finished the stream in handleStreamChunk
             streamingStatus = .idle
-            logActivity("Response completed")
+            logActivity("Response delivered")
         default:
             // Keep current status for unknown events
             break
@@ -3299,6 +4426,65 @@ extension ChatViewModel {
 
 // MARK: - Reasoning Replay Support
 extension ChatViewModel {
+    /// Clears any live reasoning buffers tied to a given assistant message.
+    func resetStreamingReasoning(for messageId: UUID) {
+        streamingReasoningTextByMessageId[messageId] = ""
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: messageId)
+
+        if let index = messages.firstIndex(where: { $0.id == messageId }) {
+            var updated = messages
+            updated[index].reasoning = nil
+            messages = updated
+        }
+    }
+
+    /// Appends a reasoning delta emitted during streaming to the live transcript panel.
+    func appendStreamingReasoning(delta: String, to messageId: UUID) {
+        let trimmed = delta.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var aggregate = streamingReasoningTextByMessageId[messageId] ?? ""
+
+        if trimmed == aggregate {
+            return
+        } else if !aggregate.isEmpty, trimmed.hasPrefix(aggregate) {
+            aggregate = trimmed
+        } else if !aggregate.isEmpty, aggregate.hasSuffix(trimmed) {
+            return
+        } else if !aggregate.isEmpty, aggregate.contains(trimmed) {
+            return
+        } else {
+            aggregate.append(aggregate.isEmpty ? trimmed : " " + trimmed)
+        }
+        streamingReasoningTextByMessageId[messageId] = aggregate
+
+        let traceId = streamingReasoningTraceIdByMessageId[messageId] ?? UUID()
+        streamingReasoningTraceIdByMessageId[messageId] = traceId
+
+        let trace = ReasoningTrace(id: traceId, text: aggregate, isSummary: true)
+        updateStreamingReasoningTrace(trace, messageId: messageId)
+    }
+
+    /// Removes live reasoning buffers once the final reasoning payload arrives.
+    func finalizeStreamingReasoning(for messageId: UUID) {
+        streamingReasoningTextByMessageId.removeValue(forKey: messageId)
+        streamingReasoningTraceIdByMessageId.removeValue(forKey: messageId)
+    }
+
+    private func updateStreamingReasoningTrace(_ trace: ReasoningTrace, messageId: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+        var updated = messages
+        var reasoning = updated[index].reasoning ?? []
+        if let existingIndex = reasoning.firstIndex(where: { $0.id == trace.id }) {
+            reasoning[existingIndex] = trace
+        } else {
+            reasoning.insert(trace, at: 0)
+        }
+        updated[index].reasoning = reasoning
+        messages = updated
+    }
+
     @discardableResult
     func storeReasoningItems(from response: OpenAIResponse) -> [[String: Any]]? {
         let payloads = response.output.compactMap { makeReasoningPayload(from: $0) }
@@ -3311,6 +4497,72 @@ extension ChatViewModel {
         let payloads = (response.output ?? []).compactMap { makeReasoningPayload(from: $0) }
         updateReasoningBuffer(with: payloads, responseId: response.id)
         return payloads.isEmpty ? nil : payloads
+    }
+
+    /// Transforms the cached reasoning payload dictionaries into display-ready trace models.
+    func convertReasoningPayloadsToTraces(_ payloads: [[String: Any]]) -> [ReasoningTrace] {
+        guard !payloads.isEmpty else { return [] }
+
+        var summaries: [ReasoningTrace] = []
+        var details: [ReasoningTrace] = []
+        var seenTexts = Set<String>()
+
+        for payload in payloads {
+            guard (payload["type"] as? String) == "reasoning" else { continue }
+
+            if let summaryItems = payload["summary"] as? [[String: Any]] {
+                for item in summaryItems {
+                    guard let text = item["text"] as? String else { continue }
+                    let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !cleaned.isEmpty, seenTexts.insert(cleaned).inserted else { continue }
+                    summaries.append(ReasoningTrace(text: cleaned, isSummary: true))
+                }
+            }
+
+            if let contentItems = payload["content"] as? [[String: Any]] {
+                for item in contentItems {
+                    guard let text = item["text"] as? String else { continue }
+                    let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !cleaned.isEmpty, seenTexts.insert(cleaned).inserted else { continue }
+                    let level = item["level"] as? Int ?? payload["level"] as? Int
+                    details.append(ReasoningTrace(text: cleaned, level: level))
+                }
+            }
+        }
+
+        return summaries + details
+    }
+
+    /// Binds the latest reasoning trace list to the assistant message associated with a response ID.
+    func applyReasoningTraces(responseId: String?, to messageId: UUID) {
+        let payloads: [[String: Any]]?
+        if let responseId, let cached = reasoningBufferByResponseId[responseId] {
+            payloads = cached
+        } else if let liveText = streamingReasoningTextByMessageId[messageId]?.trimmingCharacters(in: .whitespacesAndNewlines), !liveText.isEmpty {
+            payloads = [[
+                "type": "reasoning",
+                "summary": [["text": liveText]]
+            ]]
+        } else {
+            payloads = nil
+        }
+
+        guard let payloads else {
+            finalizeStreamingReasoning(for: messageId)
+            return
+        }
+
+        let traces = convertReasoningPayloadsToTraces(payloads)
+
+        guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
+            finalizeStreamingReasoning(for: messageId)
+            return
+        }
+
+        var updatedMessages = messages
+        updatedMessages[messageIndex].reasoning = traces.isEmpty ? nil : traces
+        messages = updatedMessages
+        finalizeStreamingReasoning(for: messageId)
     }
 
     func updateReasoningBuffer(with payloads: [[String: Any]]?, responseId: String) {
@@ -3347,6 +4599,42 @@ extension ChatViewModel {
             }
         }
         return payloads
+    }
+
+    func awaitReasoningPayload(for responseId: String, existingPayloads: [[String: Any]]?) async -> [[String: Any]]? {
+        if let existingPayloads, !existingPayloads.isEmpty {
+            return existingPayloads
+        }
+
+        let pollInterval = UInt64(150_000_000) // 150ms
+        let maxAttempts = 20
+        var attempt = 0
+
+        while attempt < maxAttempts && !Task.isCancelled {
+            if let payloads = reasoningBufferByResponseId[responseId], !payloads.isEmpty {
+                return payloads
+            }
+
+            attempt += 1
+            do {
+                try await Task.sleep(nanoseconds: pollInterval)
+            } catch {
+                break
+            }
+        }
+
+        return reasoningBufferByResponseId[responseId] ?? existingPayloads
+    }
+
+    func shouldSurfaceBatchError(_ error: Error) -> Bool {
+        guard case OpenAIServiceError.requestFailed(_, let message) = error else { return true }
+        let normalized = message.lowercased()
+        if normalized.contains("missing reasoning item") ||
+            normalized.contains("missing reasoning") ||
+            normalized.contains("no tool output found") {
+            return false
+        }
+        return true
     }
 
     func makeReasoningPayload(from item: OutputItem) -> [String: Any]? {
@@ -3396,6 +4684,45 @@ extension ChatViewModel {
         }
 
         return dict
+    }
+
+    func makeReasoningPayload(from item: StreamingItem) -> [String: Any]? {
+        guard item.type == "reasoning" else { return nil }
+
+        var dict: [String: Any] = [
+            "type": item.type,
+            "id": item.id
+        ]
+
+        if let status = item.status { dict["status"] = status }
+        if let role = item.role { dict["role"] = role }
+
+        if let content = item.content {
+            let contentPayloads = content.compactMap { makeReasoningContentPayload(from: $0) }
+            if !contentPayloads.isEmpty {
+                dict["content"] = contentPayloads
+            }
+        }
+
+        if dict["summary"] == nil {
+            dict["summary"] = []
+        }
+
+        return dict
+    }
+
+    func cacheStreamingReasoningItem(_ item: StreamingItem, responseId: String?) {
+        guard let payload = makeReasoningPayload(from: item) else { return }
+        guard let resolvedResponseId = responseId ?? lastResponseId else { return }
+
+        var existing = reasoningBufferByResponseId[resolvedResponseId] ?? []
+        if let idx = existing.firstIndex(where: { ($0["id"] as? String) == item.id }) {
+            existing[idx] = payload
+        } else {
+            existing.append(payload)
+        }
+
+        updateReasoningBuffer(with: existing, responseId: resolvedResponseId)
     }
 
     func makeReasoningContentPayload(from content: ContentItem) -> [String: Any]? {
@@ -3459,12 +4786,12 @@ extension ChatViewModel {
             guard let self = self else { return }
             
             let heartbeatMessages = [
-                "🎨 Composing image…",
-                "🖼️ Refining details…", 
-                "✨ Adding lighting effects…",
-                "🎨 Adjusting composition…",
-                "🖼️ Enhancing quality…",
-                "✨ Almost ready…"
+                "🎨 Composing image",
+                "🖼️ Refining details", 
+                "✨ Adding lighting effects",
+                "🎨 Adjusting composition",
+                "🖼️ Enhancing quality",
+                "✨ Almost ready"
             ]
             
             var counter = 0
@@ -3486,7 +4813,7 @@ extension ChatViewModel {
                     
                     // Update streaming status with progress indicator
                     if counter > 0 {
-                        let progressText = heartbeatMessages[index].replacingOccurrences(of: "…", with: "")
+                        let progressText = heartbeatMessages[index]
                         self.streamingStatus = .imageGenerationProgress(progressText)
                     }
                 }
@@ -3687,6 +5014,7 @@ extension ChatViewModel {
         }
 
         messages[messageIndex] = updatedMessage
+        applyReasoningTraces(responseId: response.id, to: messageId)
         recomputeCumulativeUsage()
 
         AppLogger.log("💬 [handleNonStreamingResponse] Final message text: \(updatedMessage.text ?? "<no text>")", category: .openAI, level: .info)

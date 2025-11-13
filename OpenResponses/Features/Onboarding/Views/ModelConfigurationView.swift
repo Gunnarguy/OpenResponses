@@ -36,11 +36,36 @@ struct ModelConfigurationView: View {
                 selectedModel: $activePrompt.openAIModel,
                 openAIService: openAIService
             )
-            .onChange(of: activePrompt.openAIModel) { _, newModel in
-                // Auto-enable computer use for computer-use-preview model
-                if newModel == "computer-use-preview" {
+            .onChange(of: activePrompt.openAIModel) { oldModel, newModel in
+                let compatibilityService = ModelCompatibilityService.shared
+                let supportsComputer = compatibilityService.isToolSupported(
+                    .computer,
+                    for: newModel,
+                    isStreaming: activePrompt.enableStreaming
+                )
+
+                if supportsComputer && newModel == "computer-use-preview" {
+                    // Dedicated model – flip computer use on automatically
                     activePrompt.enableComputerUse = true
+                } else if !supportsComputer && activePrompt.enableComputerUse {
+                    // Selecting a non-computer model should immediately disable the toggle
+                    activePrompt.enableComputerUse = false
+                    activePrompt.ultraStrictComputerUse = false
                 }
+
+                let supportsReasoning = compatibilityService
+                    .getCapabilities(for: newModel)?
+                    .supportsReasoningEffort == true
+                let previousSupportedReasoning = compatibilityService
+                    .getCapabilities(for: oldModel)?
+                    .supportsReasoningEffort == true
+
+                if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
+                    activePrompt.includeReasoningContent = true
+                } else if !supportsReasoning && activePrompt.includeReasoningContent {
+                    activePrompt.includeReasoningContent = false
+                }
+
                 onSave()
             }
             
@@ -244,7 +269,12 @@ struct ModelConfigurationView: View {
                 .fontWeight(.medium)
             
             textFormatTypePicker
+            verbosityPicker
             maxOutputTokensControl
+
+            if activePrompt.textFormatType == "json_schema" {
+                jsonSchemaEditor
+            }
         }
     }
     
@@ -283,6 +313,63 @@ struct ModelConfigurationView: View {
                 }
             ))
             .font(.caption)
+
+            if activePrompt.maxOutputTokens > 0 {
+                Stepper(
+                    "Tokens: \(activePrompt.maxOutputTokens)",
+                    value: $activePrompt.maxOutputTokens,
+                    in: 256...32768,
+                    step: 256
+                )
+                .font(.caption)
+            }
+        }
+    }
+
+    private var verbosityPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Verbosity")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Picker("Verbosity", selection: $activePrompt.verbosity) {
+                Text("Low").tag("low")
+                Text("Medium").tag("medium")
+                Text("High").tag("high")
+                Text("Auto").tag("auto")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: activePrompt.verbosity) { _, _ in onSave() }
+        }
+    }
+
+    private var jsonSchemaEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("JSON Schema")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            TextField("Schema Name", text: $activePrompt.jsonSchemaName)
+                .textFieldStyle(.roundedBorder)
+                .disableAutocorrection(true)
+                .textInputAutocapitalization(.never)
+
+            TextField("Schema Description", text: $activePrompt.jsonSchemaDescription)
+                .textFieldStyle(.roundedBorder)
+
+            Toggle("Strict Validation", isOn: $activePrompt.jsonSchemaStrict)
+                .font(.caption)
+
+            TextEditor(text: $activePrompt.jsonSchemaContent)
+                .frame(minHeight: 140)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.2))
+                )
+
+            Text("Provide a full JSON Schema definition. We'll send it to the Responses API verbatim.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
     }
 }

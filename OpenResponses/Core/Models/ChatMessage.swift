@@ -1,6 +1,23 @@
 import Foundation
 import SwiftUI
 
+/// Represents a single entry in the assistant's reasoning transcript.
+struct ReasoningTrace: Codable, Equatable, Identifiable {
+    let id: UUID
+    let text: String
+    let level: Int?
+    let isSummary: Bool
+    let createdAt: Date
+
+    init(id: UUID = UUID(), text: String, level: Int? = nil, isSummary: Bool = false, createdAt: Date = Date()) {
+        self.id = id
+        self.text = text
+        self.level = level
+        self.isSummary = isSummary
+        self.createdAt = createdAt
+    }
+}
+
 /// Represents a single message in the chat (user, assistant, or system/error).
 struct ChatMessage: Identifiable, Codable {
     enum Role: String, Codable {
@@ -21,12 +38,26 @@ struct ChatMessage: Identifiable, Codable {
     var artifacts: [CodeInterpreterArtifact]?
     /// MCP approval requests pending user decision
     var mcpApprovalRequests: [MCPApprovalRequest]?
+    /// Reasoning trace emitted by reasoning models (e.g., GPT-5)
+    var reasoning: [ReasoningTrace]?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests
+        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests, reasoning
     }
 
-    init(id: UUID = UUID(), role: Role, text: String?, images: [UIImage]? = nil, webURLs: [URL]? = nil, webContentURL: [URL]? = nil, toolsUsed: [String]? = nil, tokenUsage: TokenUsage? = nil, artifacts: [CodeInterpreterArtifact]? = nil, mcpApprovalRequests: [MCPApprovalRequest]? = nil) {
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        text: String?,
+        images: [UIImage]? = nil,
+        webURLs: [URL]? = nil,
+        webContentURL: [URL]? = nil,
+        toolsUsed: [String]? = nil,
+        tokenUsage: TokenUsage? = nil,
+        artifacts: [CodeInterpreterArtifact]? = nil,
+        mcpApprovalRequests: [MCPApprovalRequest]? = nil,
+        reasoning: [ReasoningTrace]? = nil
+    ) {
         self.id = id
         self.role = role
         self.text = text
@@ -37,6 +68,7 @@ struct ChatMessage: Identifiable, Codable {
         self.tokenUsage = tokenUsage
         self.artifacts = artifacts
         self.mcpApprovalRequests = mcpApprovalRequests
+        self.reasoning = reasoning
     }
 
     // MARK: - Codable Conformance
@@ -69,6 +101,7 @@ struct ChatMessage: Identifiable, Codable {
         tokenUsage = try container.decodeIfPresent(TokenUsage.self, forKey: .tokenUsage)
         artifacts = try container.decodeIfPresent([CodeInterpreterArtifact].self, forKey: .artifacts)
         mcpApprovalRequests = try container.decodeIfPresent([MCPApprovalRequest].self, forKey: .mcpApprovalRequests)
+        reasoning = try container.decodeIfPresent([ReasoningTrace].self, forKey: .reasoning)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,6 +129,7 @@ struct ChatMessage: Identifiable, Codable {
         try container.encodeIfPresent(tokenUsage, forKey: .tokenUsage)
         try container.encodeIfPresent(artifacts, forKey: .artifacts)
         try container.encodeIfPresent(mcpApprovalRequests, forKey: .mcpApprovalRequests)
+        try container.encodeIfPresent(reasoning, forKey: .reasoning)
     }
 }
 
@@ -773,6 +807,13 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
         
         return desc + ")"
     }
+    
+    /// Initialize from a ContentItem
+    init(contentItem: ContentItem) {
+        self.type = contentItem.type
+        self.text = contentItem.text
+        self.imageURL = contentItem.imageURL?.url
+    }
 }
 
 /// Streaming item object
@@ -851,6 +892,42 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     /// Provides a readable description of the item
     var description: String {
         "StreamingItem(id: \"\(id)\", type: \"\(type)\")"
+    }
+    
+    /// Initialize from an OutputItem (used when processing final response completion)
+    init(outputItem: OutputItem) {
+        self.id = outputItem.id
+        self.type = outputItem.type
+        self.status = "completed" // Items in final output are completed
+        self.content = outputItem.content?.map { StreamingContentItem(contentItem: $0) }
+        self.role = nil
+        self.name = outputItem.name
+        self.arguments = outputItem.arguments
+        self.callId = outputItem.callId
+        self.action = outputItem.action
+        self.pendingSafetyChecks = outputItem.pendingSafetyChecks
+        self.serverLabel = nil
+        self.tools = nil
+        self.approvalRequestId = nil
+        self.error = nil
+    }
+    
+    /// Initialize from a StreamingOutputItem (used in response completion)
+    init(streamingOutputItem: StreamingOutputItem) {
+        self.id = streamingOutputItem.id
+        self.type = streamingOutputItem.type
+        self.status = streamingOutputItem.status ?? "completed"
+        self.content = streamingOutputItem.content
+        self.role = streamingOutputItem.role
+        self.name = streamingOutputItem.name
+        self.arguments = streamingOutputItem.arguments
+        self.callId = nil // StreamingOutputItem doesn't have callId
+        self.action = nil
+        self.pendingSafetyChecks = nil
+        self.serverLabel = streamingOutputItem.serverLabel
+        self.tools = streamingOutputItem.tools
+        self.approvalRequestId = streamingOutputItem.approvalRequestId
+        self.error = streamingOutputItem.error
     }
 }
 

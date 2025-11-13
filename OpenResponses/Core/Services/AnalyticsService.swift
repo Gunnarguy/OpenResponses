@@ -52,6 +52,15 @@ class AnalyticsService: ObservableObject {
     
     /// Whether detailed network logging is enabled
     @AppStorage("detailedNetworkLogging") private var detailedNetworkLogging: Bool = true
+
+    /// Computed flag that disables network logging in release builds regardless of user defaults.
+    private var isNetworkLoggingEnabled: Bool {
+        #if DEBUG
+        return detailedNetworkLogging
+        #else
+        return false
+        #endif
+    }
     
     // MARK: - Event Tracking
     
@@ -108,7 +117,7 @@ class AnalyticsService: ObservableObject {
     ///   - headers: The request headers.
     ///   - body: The request body, if any.
     func logAPIRequest(url: URL, method: String, headers: [String: String], body: Data?) {
-        guard detailedNetworkLogging else { return }
+        guard isNetworkLoggingEnabled else { return }
         
         // Store request for inspection
         let requestRecord = APIRequestRecord(
@@ -150,7 +159,7 @@ class AnalyticsService: ObservableObject {
     ///   - headers: The response headers.
     ///   - body: The response body, if any.
     func logAPIResponse(url: URL, statusCode: Int, headers: [AnyHashable: Any], body: Data?) {
-        guard detailedNetworkLogging else { return }
+        guard isNetworkLoggingEnabled else { return }
         
         // Find the corresponding request and attach the response
         if let lastRequest = apiRequestHistory.last(where: { $0.url == url }) {
@@ -191,7 +200,7 @@ class AnalyticsService: ObservableObject {
     ///   - data: The raw event data.
     ///   - parsedEvent: The parsed event object, if available.
     func logStreamingEvent(eventType: String, data: String, parsedEvent: Any?) {
-        guard detailedNetworkLogging else { return }
+        guard isNetworkLoggingEnabled else { return }
         
         // Use the enhanced AppLogger method for structured streaming events
         if let event = parsedEvent as? StreamingEvent {

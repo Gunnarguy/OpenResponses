@@ -1,5 +1,13 @@
 import Foundation
 
+/// Payload representing a function/tool call output that should be returned to the OpenAI Responses API.
+struct FunctionCallOutputPayload {
+    let callId: String
+    let output: String
+    let functionName: String?
+    let callItem: OutputItem?
+}
+
 /// Protocol defining the core functionality of the OpenAI service.
 /// This makes the service more testable and allows for dependency injection.
 protocol OpenAIServiceProtocol {
@@ -11,8 +19,9 @@ protocol OpenAIServiceProtocol {
         fileData: [Data]?,
         fileNames: [String]?,
         fileIds: [String]?,
-    imageAttachments: [InputImage]?,
-        previousResponseId: String?
+        imageAttachments: [InputImage]?,
+        previousResponseId: String?,
+        conversationId: String?
     ) async throws -> OpenAIResponse
     
     /// Streams a chat request and returns events as they arrive.
@@ -23,8 +32,9 @@ protocol OpenAIServiceProtocol {
         fileData: [Data]?,
         fileNames: [String]?,
         fileIds: [String]?,
-    imageAttachments: [InputImage]?,
-        previousResponseId: String?
+        imageAttachments: [InputImage]?,
+        previousResponseId: String?,
+        conversationId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
     
     /// Retrieves a response by ID.
@@ -46,8 +56,19 @@ protocol OpenAIServiceProtocol {
         model: String,
         reasoningItems: [[String: Any]]?,
         previousResponseId: String?,
+        conversationId: String?,
         prompt: Prompt
     ) async throws -> OpenAIResponse
+
+    /// Streams one or more function call outputs back to the API and yields streaming events.
+    func streamFunctionOutputs(
+        outputs: [FunctionCallOutputPayload],
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        conversationId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error>
 
     /// Sends computer-use call output back to the API.
     /// Use this to continue a computer-use turn by providing observations, screenshots, or status.
@@ -174,6 +195,50 @@ protocol OpenAIServiceProtocol {
     
     /// Lists available models from the OpenAI API.
     func listModels() async throws -> [OpenAIModel]
+
+        // MARK: - Conversations API
+
+        func listConversations(limit: Int?, order: String?) async throws -> ConversationListResponse
+        func createConversation(title: String?, metadata: [String: String]?, store: Bool?) async throws -> ConversationDetail
+        func getConversation(conversationId: String) async throws -> ConversationDetail
+        func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?, store: Bool?) async throws -> ConversationDetail
+        func deleteConversation(conversationId: String) async throws
+}
+
+extension OpenAIServiceProtocol {
+    /// Convenience single-call overload retained for backward compatibility.
+    func streamFunctionOutput(
+        call: OutputItem,
+        output: String,
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        conversationId: String?,
+        prompt: Prompt
+    ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        let identifier = call.callId ?? call.id
+        guard !identifier.isEmpty else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: OpenAIServiceError.invalidRequest("Missing call_id for function output."))
+            }
+        }
+
+        let payload = FunctionCallOutputPayload(
+            callId: identifier,
+            output: output,
+            functionName: call.name,
+            callItem: call
+        )
+
+        return streamFunctionOutputs(
+            outputs: [payload],
+            model: model,
+            reasoningItems: reasoningItems,
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            prompt: prompt
+        )
+    }
 }
 
 /// Network client protocol for handling HTTP requests to OpenAI.
@@ -221,6 +286,8 @@ enum OpenAIEndpoint {
     case fileContent(String)
     case vectorStores
     case specificVectorStore(String)
+    case conversations
+    case specificConversation(String)
     
     /// Returns the full URL for the endpoint.
     var url: URL {
@@ -241,6 +308,10 @@ enum OpenAIEndpoint {
             return URL(string: "\(baseURL)/vector_stores")!
         case .specificVectorStore(let id):
             return URL(string: "\(baseURL)/vector_stores/\(id)")!
+        case .conversations:
+            return URL(string: "\(baseURL)/conversations")!
+        case .specificConversation(let id):
+            return URL(string: "\(baseURL)/conversations/\(id)")!
         }
     }
 }

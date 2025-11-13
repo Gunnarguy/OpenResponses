@@ -20,6 +20,14 @@ struct PlaygroundSettingsPanel: View {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
+
+    private var isComputerUseSupported: Bool {
+        ModelCompatibilityService.shared.isToolSupported(
+            .computer,
+            for: viewModel.activePrompt.openAIModel,
+            isStreaming: viewModel.activePrompt.enableStreaming
+        )
+    }
     
     var body: some View {
         NavigationView {
@@ -27,11 +35,25 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o1-preview", "o1-mini", "o3-mini"], id: \.self) { model in
+                        ForEach(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o1-preview", "o1-mini", "o3-mini", "computer-use-preview"], id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
                     .pickerStyle(.menu)
+                    .onChange(of: viewModel.activePrompt.openAIModel) { _, newModel in
+                        let compatibilityService = ModelCompatibilityService.shared
+                        let supportsComputer = compatibilityService.isToolSupported(
+                            .computer,
+                            for: newModel,
+                            isStreaming: viewModel.activePrompt.enableStreaming
+                        )
+                        if supportsComputer && newModel == "computer-use-preview" {
+                            viewModel.activePrompt.enableComputerUse = true
+                        } else if !supportsComputer && viewModel.activePrompt.enableComputerUse {
+                            viewModel.activePrompt.enableComputerUse = false
+                            viewModel.activePrompt.ultraStrictComputerUse = false
+                        }
+                    }
                 }
                 
                 // MARK: - Tools Section
@@ -44,6 +66,13 @@ struct PlaygroundSettingsPanel: View {
                     
                     Toggle("Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
                         .toggleStyle(SwitchToggleStyle(tint: .indigo))
+                        .disabled(!isComputerUseSupported)
+
+                    if !isComputerUseSupported {
+                        Text("Computer use requires the computer-use-preview model.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
                 // MARK: - Parameters Section

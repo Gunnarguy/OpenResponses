@@ -439,6 +439,7 @@ class ToolConnectionsViewModel: ObservableObject {
         case .gcal: return ToolHub.shared.gcal
         case .gcontacts: return ToolHub.shared.gcts
         case .notion: return ToolHub.shared.notion
+        case .apple: return AppContainer.shared.appleProvider
         }
     }
 

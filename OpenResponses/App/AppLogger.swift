@@ -69,13 +69,21 @@ enum AppLogger {
     
     /// Log level for OpenAI API requests and responses
     /// This allows quick adjustment of verbosity for API logs
+    #if DEBUG
     static var openAILogLevel: Level = .debug
-    /// When true, requests/responses bodies are omitted to keep logs concise
-    static var minimizeOpenAILogBodies: Bool = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies") {
-        didSet {
-            log("Minimize API Log Bodies set to: \(minimizeOpenAILogBodies)", category: .openAI, level: .info)
+    private static var minimizeOpenAILogBodiesStorage = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies")
+    static var minimizeOpenAILogBodies: Bool {
+        get { minimizeOpenAILogBodiesStorage }
+        set {
+            minimizeOpenAILogBodiesStorage = newValue
+            UserDefaults.standard.set(newValue, forKey: "minimizeOpenAILogBodies")
+            log("Minimize API Log Bodies set to: \(newValue)", category: .openAI, level: .info)
         }
     }
+    #else
+    static var openAILogLevel: Level = .info
+    static var minimizeOpenAILogBodies: Bool { true }
+    #endif
     
     /// Controls debug-level logging for MCP category (redacted + deduped).
     static var verboseMCPLogging: Bool = UserDefaults.standard.bool(forKey: "verboseMCPLogging") {
