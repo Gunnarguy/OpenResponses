@@ -35,7 +35,7 @@ jobs:
           xcodebuild build-for-testing \
             -project OpenResponses.xcodeproj \
             -scheme OpenResponses \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -derivedDataPath DerivedData
 
       - name: Run tests
@@ -43,7 +43,7 @@ jobs:
           xcodebuild test-without-building \
             -project OpenResponses.xcodeproj \
             -scheme OpenResponses \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult
 
@@ -57,7 +57,7 @@ jobs:
 
       - name: Check for build warnings
         run: |
-          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' build 2>&1 | grep -q "warning:"; then
+          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build 2>&1 | grep -q "warning:"; then
             echo "⚠️ Build completed with warnings"
             exit 0
           else

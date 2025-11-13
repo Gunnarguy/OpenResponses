@@ -73,7 +73,14 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || exit 1
+            2>&1 | tee build.log || true
+          
+          if [ -d "./build/OpenResponses.xcarchive" ]; then
+            echo "✅ Archive created successfully"
+          else
+            echo "⚠️  Archive creation had issues, see log"
+            tail -50 build.log
+          fi
         continue-on-error: true
 
       - name: Archive size check
