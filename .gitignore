@@ -5,6 +5,9 @@
 ## User settings
 xcuserdata/
 
+# Python virtual environments
+.venv/
+
 ## compatibility with Xcode 8 and earlier (ignoring not required starting Xcode 9)
 *.xcscmblueprint
 *.xccheckout
@@ -109,6 +112,9 @@ AuthKey_*.p8
 
 # Archive
 *.xcarchive
+
+# Xcode result bundles
+*.xcresult
 
 # All markdown documentation files (to prevent accidental secret commits)
 *.md

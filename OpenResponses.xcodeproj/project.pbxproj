@@ -137,6 +137,7 @@
 				B06DB44F2E0FB40B00C7BDB3 /* Sources */,
 				B06DB4502E0FB40B00C7BDB3 /* Frameworks */,
 				B06DB4512E0FB40B00C7BDB3 /* Resources */,
+				B04DEADB2F4F521400123456 /* Clear Extended Attributes */,
 			);
 			buildRules = (
 			);
@@ -159,6 +160,7 @@
 				B0D1A0722F2F5C2C00A1B100 /* Sources */,
 				B0D1A0732F2F5C2C00A1B100 /* Frameworks */,
 				B0D1A0742F2F5C2C00A1B100 /* Resources */,
+				B04DEADC2F4F521400123456 /* Clear Extended Attributes */,
 			);
 			buildRules = (
 			);
@@ -177,6 +179,7 @@
 				B0D1A0822F2F5C2C00A1B100 /* Sources */,
 				B0D1A0832F2F5C2C00A1B100 /* Frameworks */,
 				B0D1A0842F2F5C2C00A1B100 /* Resources */,
+				B04DEADD2F4F521400123456 /* Clear Extended Attributes */,
 			);
 			buildRules = (
 			);
@@ -255,6 +258,66 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B04DEADB2F4F521400123456 /* Clear Extended Attributes */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)",
+			);
+			name = "Clear Extended Attributes";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+		};
+		B04DEADC2F4F521400123456 /* Clear Extended Attributes */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)",
+			);
+			name = "Clear Extended Attributes";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+		};
+		B04DEADD2F4F521400123456 /* Clear Extended Attributes */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)",
+			);
+			name = "Clear Extended Attributes";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B06DB44F2E0FB40B00C7BDB3 /* Sources */ = {

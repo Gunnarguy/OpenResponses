@@ -29,11 +29,14 @@ class ComputerService: NSObject, WKNavigationDelegate {
     // This helps avoid the model immediately clicking promo/suggestion tiles before results finish loading.
     private var suppressClicksUntil: Date?
     
-    init(autoAttachWebView: Bool = true) {
+    init(autoAttachWebView: Bool = ComputerService.shouldAutoAttachWebView()) {
         self.autoAttachWebView = autoAttachWebView
         super.init()
         AppLogger.log("🔧 [ComputerService] Initializing new ComputerService instance", category: .general, level: .info)
-        guard autoAttachWebView else { return }
+        guard autoAttachWebView else {
+            AppLogger.log("🤖 [ComputerService] Skipping WebView auto-attach for current configuration", category: .general, level: .info)
+            return
+        }
 
         setupWebView()
 
@@ -46,7 +49,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     override convenience init() {
-        self.init(autoAttachWebView: true)
+        self.init(autoAttachWebView: ComputerService.shouldAutoAttachWebView())
     }
 
     // Note: We avoid isolated deinit (requires iOS 18.4+) and rely on successful attach to unregister observers.
@@ -1201,6 +1204,16 @@ class ComputerService: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         navigationContinuation?.resume(throwing: ComputerUseError.navigationFailed(error))
         navigationContinuation = nil
+    }
+}
+
+// MARK: - Test detection helpers
+
+private extension ComputerService {
+    /// Determines whether the service should automatically attach a WebView.
+    /// We disable auto-attach when running inside XCTest to avoid simulator crashes during CI.
+    nonisolated(unsafe) static func shouldAutoAttachWebView() -> Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
     }
 }
 
