@@ -274,10 +274,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_TEMP_DIR)/clear-xattrs.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n\nif [ -n \"${SCRIPT_OUTPUT_FILE_0:-}\" ]; then\n  touch \"$SCRIPT_OUTPUT_FILE_0\"\nfi\n";
 		};
 		B04DEADC2F4F521400123456 /* Clear Extended Attributes */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -293,10 +294,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_TEMP_DIR)/clear-xattrs.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n\nif [ -n \"${SCRIPT_OUTPUT_FILE_0:-}\" ]; then\n  touch \"$SCRIPT_OUTPUT_FILE_0\"\nfi\n";
 		};
 		B04DEADD2F4F521400123456 /* Clear Extended Attributes */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -312,10 +314,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_TEMP_DIR)/clear-xattrs.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n";
+			shellScript = "if [ -n \"$CODESIGNING_FOLDER_PATH\" ]; then\n  /usr/bin/xattr -cr \"$CODESIGNING_FOLDER_PATH\" 2>/dev/null || true\nfi\n\nif [ -n \"${SCRIPT_OUTPUT_FILE_0:-}\" ]; then\n  touch \"$SCRIPT_OUTPUT_FILE_0\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
