@@ -1,5 +1,5 @@
-import Foundation
 import AuthenticationServices
+import Foundation
 
 // MARK: - Public Models
 
@@ -7,6 +7,7 @@ public struct NotionDatabaseSummary: Hashable, Codable, Identifiable {
     public var id: String { // Notion can return non-UUIDs for child_database blocks
         return notionId
     }
+
     let notionId: String
     let title: String
     let parentPageId: String?
@@ -25,14 +26,26 @@ private struct NotionSearchReq: Codable {
     struct Filter: Codable { let property: String; let value: String }
     let query: String?
     let filter: Filter?
-    let start_cursor: String?
-    let page_size: Int?
+    let startCursor: String?
+    let pageSize: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case query, filter
+        case startCursor = "start_cursor"
+        case pageSize = "page_size"
+    }
 }
 
 private struct NotionSearchResp: Codable {
     let results: [NotionObject]
-    let next_cursor: String?
-    let has_more: Bool
+    let nextCursor: String?
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
 }
 
 private enum NotionObject: Codable {
@@ -48,16 +61,16 @@ private enum NotionObject: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = (try? container.decode(String.self, forKey: .object)) ?? ""
         let singleValueContainer = try decoder.singleValueContainer()
-    switch type {
-    case "database": self = .database(try singleValueContainer.decode(NotionDatabase.self))
-    case "page":     self = .page(try singleValueContainer.decode(NotionPageWithParent.self))
-    case "block":    self = .block(try singleValueContainer.decode(NotionBlock.self))
-    case "data_source": self = .dataSource(try singleValueContainer.decode(NotionDataSourceSearchResult.self))
-    default:         self = .unknown
+        switch type {
+        case "database": self = try .database(singleValueContainer.decode(NotionDatabase.self))
+        case "page": self = try .page(singleValueContainer.decode(NotionPageWithParent.self))
+        case "block": self = try .block(singleValueContainer.decode(NotionBlock.self))
+        case "data_source": self = try .dataSource(singleValueContainer.decode(NotionDataSourceSearchResult.self))
+        default: self = .unknown
+        }
     }
-    }
-    
-    func encode(to encoder: Encoder) throws {
+
+    func encode(to _: Encoder) throws {
         // Not needed for this implementation
     }
 }
@@ -65,9 +78,16 @@ private enum NotionObject: Codable {
 private struct NotionPageWithParent: Codable {
     struct Parent: Codable {
         let type: String?
-        let database_id: String?
-        let data_source_id: String?
+        let databaseId: String?
+        let dataSourceId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case databaseId = "database_id"
+            case dataSourceId = "data_source_id"
+        }
     }
+
     let object: String
     let id: String
     let parent: Parent?
@@ -81,29 +101,62 @@ private struct NotionDataSource: Codable {
 private struct NotionDataSourceSearchResult: Codable {
     struct Parent: Codable {
         let type: String?
-        let database_id: String?
-        let page_id: String?
+        let databaseId: String?
+        let pageId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case databaseId = "database_id"
+            case pageId = "page_id"
+        }
     }
 
     let object: String
     let id: String
     let name: String?
     let parent: Parent?
-    let database_parent: Parent?
+    let databaseParent: Parent?
+
+    enum CodingKeys: String, CodingKey {
+        case object, id, name, parent
+        case databaseParent = "database_parent"
+    }
 
     var databaseId: String? {
-        parent?.database_id ?? database_parent?.database_id
+        parent?.databaseId ?? databaseParent?.databaseId
     }
 }
 
 private struct NotionDatabase: Codable {
-    struct Parent: Codable { let type: String?; let page_id: String?; let workspace: Bool? }
-    struct Title: Codable { let plain_text: String? }
+    struct Parent: Codable {
+        let type: String?
+        let pageId: String?
+        let workspace: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case type, workspace
+            case pageId = "page_id"
+        }
+    }
+
+    struct Title: Codable {
+        let plainText: String?
+
+        enum CodingKeys: String, CodingKey {
+            case plainText = "plain_text"
+        }
+    }
+
     let object: String
     let id: String
     let parent: Parent
     let title: [Title]
-    let data_sources: [NotionDataSource]?
+    let dataSources: [NotionDataSource]?
+
+    enum CodingKeys: String, CodingKey {
+        case object, id, parent, title
+        case dataSources = "data_sources"
+    }
 }
 
 private struct NotionPage: Codable { let object: String; let id: String }
@@ -121,30 +174,59 @@ private struct NotionBlock: Codable {
 
 private struct NotionChildrenResp: Codable {
     let results: [NotionBlock]
-    let next_cursor: String?
-    let has_more: Bool
+    let nextCursor: String?
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
 }
 
-private struct NotionRichText: Codable { let plain_text: String? }
+private struct NotionRichText: Codable {
+    let plainText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case plainText = "plain_text"
+    }
+}
+
 private struct NotionPropertyValue: Codable {
     let type: String?
     let title: [NotionRichText]?
 }
+
 private struct NotionPageWithProps: Codable {
     let id: String
     let properties: [String: NotionPropertyValue]
 }
+
 private struct NotionQueryResp: Codable {
     let results: [NotionPageWithProps]
-    let has_more: Bool
-    let next_cursor: String?
+    let hasMore: Bool
+    let nextCursor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case hasMore = "has_more"
+        case nextCursor = "next_cursor"
+    }
 }
+
 private struct NotionPageParentResp: Codable {
     struct Parent: Codable {
         let type: String
-        let database_id: String?
-        let page_id: String?
+        let databaseId: String?
+        let pageId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case databaseId = "database_id"
+            case pageId = "page_id"
+        }
     }
+
     let id: String
     let parent: Parent
 }
@@ -179,7 +261,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
 
     public init() {}
 
-    public func connect(presentingAnchor: ASPresentationAnchor?) async throws {
+    public func connect(presentingAnchor _: ASPresentationAnchor?) async throws {
         guard TokenStore.readString(account: tokenAccount) != nil else {
             throw NSError(domain: "NotionProvider", code: 401, userInfo: [NSLocalizedDescriptionKey: "No Notion token found in Keychain. Please add one in Settings."])
         }
@@ -187,7 +269,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
 
     /// Search for databases across the entire workspace (top-level call from chat)
     /// Returns all databases accessible with the current integration token.
-    /// 
+    ///
     /// API Version 2025-09-03 Compliance:
     /// - Searches for both "database" objects (direct database access) AND "data_source" objects (new 2025 model)
     /// - Extracts database_id from page parents when databases aren't directly searchable
@@ -214,11 +296,11 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 label: "data_source search"
             ) { obj in
                 switch obj {
-                case .database(let db):
+                case let .database(db):
                     if databaseIds.insert(db.id).inserted {
                         print("  - Found database via search: \(db.id)")
                     }
-                case .dataSource(let ds):
+                case let .dataSource(ds):
                     if let dbId = ds.databaseId, databaseIds.insert(dbId).inserted {
                         let label = ds.name ?? "(unnamed data source)"
                         print("  - Found data_source \(label) -> database \(dbId)")
@@ -245,19 +327,19 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 label: "database search"
             ) { obj in
                 switch obj {
-                case .database(let db):
-                    let title = db.title.first?.plain_text ?? "(untitled)"
+                case let .database(db):
+                    let title = db.title.first?.plainText ?? "(untitled)"
                     let summary = NotionDatabaseSummary(
                         notionId: db.id,
                         title: title,
-                        parentPageId: db.parent.page_id,
+                        parentPageId: db.parent.pageId,
                         source: "search"
                     )
                     if databases.insert(summary).inserted {
                         databaseIds.insert(db.id)
                         print("  - Found database: \(title) [\(db.id)]")
                     }
-                case .dataSource(let ds):
+                case let .dataSource(ds):
                     if let dbId = ds.databaseId, databaseIds.insert(dbId).inserted {
                         print("  - Captured database ID via data_source fallback: \(dbId)")
                     }
@@ -282,7 +364,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 filters: [nil],
                 label: "page search"
             ) { obj in
-                if case .page(let page) = obj, let dbId = page.parent?.database_id, databaseIds.insert(dbId).inserted {
+                if case let .page(page) = obj, let dbId = page.parent?.databaseId, databaseIds.insert(dbId).inserted {
                     print("  - Found database via page parent: \(dbId)")
                 }
             }
@@ -305,19 +387,19 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 let req = try baseRequest("databases/\(dbId)")
                 let (data, _, _) = try await http.send(req)
                 let db = try JSONDecoder().decode(NotionDatabase.self, from: data)
-                let title = db.title.first?.plain_text ?? "(untitled)"
+                let title = db.title.first?.plainText ?? "(untitled)"
 
                 let summary = NotionDatabaseSummary(
                     notionId: db.id,
                     title: title,
-                    parentPageId: db.parent.page_id,
+                    parentPageId: db.parent.pageId,
                     source: "parent_id"
                 )
                 databases.insert(summary)
 
                 print("  ✅ Fetched database: \(title)")
 
-                if let dataSources = db.data_sources {
+                if let dataSources = db.dataSources {
                     print("     └─ Has \(dataSources.count) data source(s)")
                     for ds in dataSources {
                         print("        - \(ds.name ?? "Unnamed") [\(ds.id)]")
@@ -364,7 +446,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         let req = try baseRequest("search", method: "POST", jsonBody: body)
         let (data, response, _) = try await http.send(req)
 
-        if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+        if let httpResponse = response as? HTTPURLResponse, !(200 ... 299).contains(httpResponse.statusCode) {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw SearchHTTPError(statusCode: httpResponse.statusCode, body: message, attemptedFilter: filterValue)
         }
@@ -383,7 +465,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 return (response, filter)
             } catch let httpError as SearchHTTPError {
                 let isLast = index == filters.count - 1
-                if (httpError.statusCode == 400 || httpError.statusCode == 422) && !isLast {
+                if httpError.statusCode == 400 || httpError.statusCode == 422, !isLast {
                     let current = filter ?? "none"
                     let next = filters[index + 1] ?? "none"
                     print("⚠️ NotionProvider: filter '\(current)' rejected (HTTP \(httpError.statusCode)). Retrying with '\(next)'.")
@@ -401,8 +483,8 @@ public final class NotionProvider: ToolProvider, NotionReadable {
             throw error
         }
 
-    let attemptedFilter = filters.last?.flatMap { $0 }
-    throw SearchHTTPError(statusCode: -1, body: "All search filters failed", attemptedFilter: attemptedFilter)
+        let attemptedFilter = filters.last?.flatMap { $0 }
+        throw SearchHTTPError(statusCode: -1, body: "All search filters failed", attemptedFilter: attemptedFilter)
     }
 
     private func collectSearchResults(
@@ -416,7 +498,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         while true {
             response.results.forEach(onResult)
 
-            guard response.has_more, let next = response.next_cursor else {
+            guard response.hasMore, let next = response.nextCursor else {
                 break
             }
 
@@ -465,13 +547,13 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                         let req2 = try baseRequest("databases/\(dbId)")
                         let (d2, _, _) = try await http.send(req2)
                         let resolved = try JSONDecoder().decode(NotionDatabase.self, from: d2)
-                        let t = resolved.title.first?.plain_text ?? "(untitled)"
-                        set.insert(.init(notionId: resolved.id, title: t, parentPageId: resolved.parent.page_id, source: "children"))
+                        let t = resolved.title.first?.plainText ?? "(untitled)"
+                        set.insert(.init(notionId: resolved.id, title: t, parentPageId: resolved.parent.pageId, source: "children"))
                     }
                 default: break
                 }
             }
-            cursorB = resp.has_more ? resp.next_cursor : nil
+            cursorB = resp.hasMore ? resp.nextCursor : nil
         } while cursorB != nil
 
         return Array(set).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
@@ -485,7 +567,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         let req = try baseRequest("databases/\(databaseId)")
         let (data, _, _) = try await http.send(req)
         let resp = try JSONDecoder().decode(NotionDatabase.self, from: data)
-        if let ds = resp.data_sources?.first {
+        if let ds = resp.dataSources?.first {
             let result = (id: ds.id, name: ds.name)
             dsCache[databaseId] = result
             return result
@@ -515,7 +597,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                 acc += resp.results.map { page in
                     NotionPageSummary(notionId: page.id, title: extractTitle(from: page))
                 }
-                cursor = resp.has_more ? resp.next_cursor : nil
+                cursor = resp.hasMore ? resp.nextCursor : nil
             } catch {
                 // Fallback: if data_sources query is unavailable, use legacy database query endpoint
                 return try await legacyListPages(inDatabase: databaseId, pageSize: pageSize)
@@ -536,9 +618,9 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         let filter: [String: Any] = [
             "filter": [
                 "property": titleProperty,
-                "title": [ "equals": value ]
+                "title": ["equals": value],
             ],
-            "page_size": pageSize
+            "page_size": pageSize,
         ]
         let body = try JSONSerialization.data(withJSONObject: filter, options: [])
         let req = try baseRequest("data_sources/\(dsId)/query", method: "POST", jsonBody: body)
@@ -557,21 +639,22 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         let req = try baseRequest("pages/\(pageId)")
         let (data, _, _) = try await http.send(req)
         let resp = try JSONDecoder().decode(NotionPageParentResp.self, from: data)
-        return resp.parent.database_id
+        return resp.parent.databaseId
     }
 
     // MARK: - Helpers
 
     private func extractTitle(from page: NotionPageWithProps) -> String {
         // Prefer "Project Name", then "Name", else first title property
-        if let s = page.properties["Project Name"]?.title?.first?.plain_text, !s.isEmpty {
+        if let s = page.properties["Project Name"]?.title?.first?.plainText, !s.isEmpty {
             return s
         }
-        if let s = page.properties["Name"]?.title?.first?.plain_text, !s.isEmpty {
+        if let s = page.properties["Name"]?.title?.first?.plainText, !s.isEmpty {
             return s
         }
         if let any = page.properties.values.first(where: { ($0.title?.isEmpty == false) }),
-           let s = any.title?.first?.plain_text, !s.isEmpty {
+           let s = any.title?.first?.plainText, !s.isEmpty
+        {
             return s
         }
         return "(untitled)"
@@ -589,7 +672,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
             let (data, _, _) = try await http.send(req)
             let resp = try JSONDecoder().decode(NotionQueryResp.self, from: data)
             acc += resp.results.map { NotionPageSummary(notionId: $0.id, title: extractTitle(from: $0)) }
-            cursor = resp.has_more ? resp.next_cursor : nil
+            cursor = resp.hasMore ? resp.nextCursor : nil
         } while cursor != nil
         return acc
     }
@@ -598,9 +681,9 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         let filter: [String: Any] = [
             "filter": [
                 "property": titleProperty,
-                "title": [ "equals": value ]
+                "title": ["equals": value],
             ],
-            "page_size": pageSize
+            "page_size": pageSize,
         ]
         let body = try JSONSerialization.data(withJSONObject: filter, options: [])
         let req = try baseRequest("databases/\(databaseId)/query", method: "POST", jsonBody: body)

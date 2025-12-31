@@ -34,12 +34,21 @@ struct OAuthConfig {
 }
 
 struct OAuthTokens: Codable {
-    let access_token: String
-    let expires_in: Int
-    let refresh_token: String?
+    let accessToken: String
+    let expiresIn: Int
+    let refreshToken: String?
     let scope: String?
-    let token_type: String
-    var created_at: Date = .init()
+    let tokenType: String
+    var createdAt: Date = .init()
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case expiresIn = "expires_in"
+        case refreshToken = "refresh_token"
+        case scope
+        case tokenType = "token_type"
+        case createdAt = "created_at"
+    }
 }
 
 final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding {
@@ -59,10 +68,10 @@ final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding
     }
 
     static func codeChallenge(from verifier: String) -> String {
-        func sha256(_ s: String) -> Data {
+        func sha256(_ input: String) -> Data { 
             var context = CC_SHA256_CTX()
             CC_SHA256_Init(&context)
-            let data = s.data(using: .utf8)!
+            let data = input.data(using: .utf8)!
             data.withUnsafeBytes {
                 _ = CC_SHA256_Update(&context, $0.baseAddress, CC_LONG(data.count))
             }
@@ -84,7 +93,7 @@ final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding
         let challenge = OAuthPKCE.codeChallenge(from: verifier)
         let state = OAuthPKCE.random()
         let scope = config.scopes.joined(separator: " ")
-        
+
         var comps = URLComponents(url: config.authURL, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             .init(name: "client_id", value: config.clientId),
@@ -130,7 +139,7 @@ final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding
         ]
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         req.httpBody = body.query?.data(using: .utf8)
-        
+
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
             throw URLError(.userAuthenticationRequired)
@@ -172,9 +181,10 @@ public final class GmailProvider: ToolProvider, GmailReadable {
         }
         let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=\(max)")!
         var req = URLRequest(url: url)
-        req.setValue("Bearer \(tokens.access_token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         let (data, _, _) = try await http.send(req)
-        struct ListResp: Codable { struct Thread: Codable { let id: String; let snippet: String? }; let threads: [Thread]? }
+        struct GmailThread: Codable { let id: String; let snippet: String? }
+        struct ListResp: Codable { let threads: [GmailThread]? }
         let parsed = try JSONDecoder().decode(ListResp.self, from: data)
         return (parsed.threads ?? []).map { .init(gmailId: $0.id, snippet: $0.snippet ?? "") }
     }
@@ -218,14 +228,14 @@ public final class GCalProvider: ToolProvider, CalendarReadable {
             .init(name: "maxResults", value: "\(max)")
         ]
         var req = URLRequest(url: comps.url!)
-        req.setValue("Bearer \(tokens.access_token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         let (data, _, _) = try await http.send(req)
-        struct Resp: Codable { struct E: Codable { let id: String; let summary: String?; let start: T; let end: T; struct T: Codable { let dateTime: String?; let date: String? } }; let items: [E]? }
+        struct Resp: Codable { struct Event: Codable { let id: String; let summary: String?; let start: TimeInfo; let end: TimeInfo; struct TimeInfo: Codable { let dateTime: String?; let date: String? } }; let items: [Event]? }
         let parsed = try JSONDecoder().decode(Resp.self, from: data)
-        return (parsed.items ?? []).map { e in
-            .init(eventId: e.id, summary: e.summary ?? "(no title)",
-                  start: e.start.dateTime ?? e.start.date ?? "",
-                  end: e.end.dateTime ?? e.end.date ?? "")
+        return (parsed.items ?? []).map { event in
+            .init(eventId: event.id, summary: event.summary ?? "(no title)",
+                  start: event.start.dateTime ?? event.start.date ?? "",
+                  end: event.end.dateTime ?? event.end.date ?? "")
         }
     }
 }
@@ -267,13 +277,17 @@ public final class GContactsProvider: ToolProvider, ContactsReadable {
             .init(name: "pageSize", value: "\(max)")
         ]
         var req = URLRequest(url: comps.url!)
-        req.setValue("Bearer \(tokens.access_token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         let (data, _, _) = try await http.send(req)
-        struct Resp: Codable { struct P: Codable { let names: [N]?; let emailAddresses: [E]?; struct N: Codable { let displayName: String? }; struct E: Codable { let value: String? } }; let results: [R]?; struct R: Codable { let person: P? } }
+        struct PersonName: Codable { let displayName: String? }
+        struct EmailAddress: Codable { let value: String? }
+        struct Person: Codable { let names: [PersonName]?; let emailAddresses: [EmailAddress]? }
+        struct SearchResult: Codable { let person: Person? }
+        struct Resp: Codable { let results: [SearchResult]? }
         let parsed = try JSONDecoder().decode(Resp.self, from: data)
-        return (parsed.results ?? []).compactMap { r in
-            let name = r.person?.names?.first?.displayName ?? "(unknown)"
-            let email = r.person?.emailAddresses?.first?.value
+        return (parsed.results ?? []).compactMap { result in
+            let name = result.person?.names?.first?.displayName ?? "(unknown)"
+            let email = result.person?.emailAddresses?.first?.value
             return .init(name: name, email: email)
         }
     }

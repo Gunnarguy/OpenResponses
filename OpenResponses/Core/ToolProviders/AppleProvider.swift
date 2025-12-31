@@ -1,7 +1,7 @@
-import Foundation
-import EventKit
-import Contacts
 import AuthenticationServices
+import Contacts
+import EventKit
+import Foundation
 
 #if canImport(EventKit)
 
@@ -40,19 +40,19 @@ public struct AppleReminderDetail: Codable {
 /// Provides MCP-compatible tools for accessing Apple Calendar and Reminders on-device.
 /// Requires user consent through EventKit permissions.
 public final class AppleProvider: ToolProvider {
-    
+
     public var kind: ToolKind { .apple }
-    
+
     public var capabilities: ProviderCapability {
         [.listCalendarEvents, .createCalendarEvent, .listReminders, .createReminder, .searchContacts, .getContact, .createContact]
     }
-    
+
     private let permissionManager: EventKitPermissionManager
     private let calendarRepo: AppleCalendarRepository
     private let reminderRepo: AppleReminderRepository
     private let contactsPermissionManager: ContactsPermissionManager
     private let contactsRepo: ContactsRepository
-    
+
     /// Initializes the provider with dependency injection support.
     public init(
         permissionManager: EventKitPermissionManager = .shared,
@@ -67,7 +67,7 @@ public final class AppleProvider: ToolProvider {
         self.contactsPermissionManager = contactsPermissionManager
         self.contactsRepo = contactsRepo
     }
-    
+
     /// Connects by requesting EventKit permissions for both calendars and reminders.
     public func connect(presentingAnchor: ASPresentationAnchor?) async throws {
         // Request calendar access
@@ -77,7 +77,7 @@ public final class AppleProvider: ToolProvider {
         // Request contacts access
         try await contactsPermissionManager.ensureAccess()
     }
-    
+
     /// Checks if the user has granted calendar permissions.
     public func hasCalendarAccess() -> Bool {
         let status = EKEventStore.authorizationStatus(for: .event)
@@ -87,7 +87,7 @@ public final class AppleProvider: ToolProvider {
             return status == .authorized
         }
     }
-    
+
     /// Checks if the user has granted reminders permissions.
     public func hasRemindersAccess() -> Bool {
         let status = EKEventStore.authorizationStatus(for: .reminder)
@@ -97,13 +97,13 @@ public final class AppleProvider: ToolProvider {
             return status == .authorized
         }
     }
-    
+
     /// Checks if the user has granted contacts permissions.
     public func hasContactsAccess() -> Bool {
         let status = CNContactStore.authorizationStatus(for: .contacts)
         return status == .authorized
     }
-    
+
     /// Revokes permissions by clearing internal state. Note: actual system permissions
     /// must be revoked by the user through Settings > Privacy.
     public func disconnect() {
@@ -116,7 +116,7 @@ public final class AppleProvider: ToolProvider {
 // MARK: - Calendar Operations
 
 extension AppleProvider: AppleCalendarReadable {
-    
+
     /// Fetches calendar events within the specified date range.
     /// - Parameters:
     ///   - startISO8601: ISO8601 start date (e.g., "2025-11-05T00:00:00Z")
@@ -133,7 +133,7 @@ extension AppleProvider: AppleCalendarReadable {
             endISO8601: endISO8601,
             calendarIdentifiers: calendarIdentifiers
         )
-        
+
         return summaries.map { summary in
             AppleCalendarEventDetail(
                 identifier: summary.identifier,
@@ -149,7 +149,7 @@ extension AppleProvider: AppleCalendarReadable {
             )
         }
     }
-    
+
     /// Creates a new calendar event.
     /// - Parameters:
     ///   - title: Event title
@@ -170,19 +170,19 @@ extension AppleProvider: AppleCalendarReadable {
         // Parse ISO8601 dates
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
+
         guard let startDate = formatter.date(from: startISO8601) else {
             throw NSError(domain: "AppleProvider", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Invalid start date format: \(startISO8601)"
             ])
         }
-        
+
         guard let endDate = formatter.date(from: endISO8601) else {
             throw NSError(domain: "AppleProvider", code: 2, userInfo: [
                 NSLocalizedDescriptionKey: "Invalid end date format: \(endISO8601)"
             ])
         }
-        
+
         let summary = try await calendarRepo.createEvent(
             title: title,
             startDate: startDate,
@@ -191,7 +191,7 @@ extension AppleProvider: AppleCalendarReadable {
             notes: notes,
             calendarIdentifier: calendarIdentifier
         )
-        
+
         return AppleCalendarEventDetail(
             identifier: summary.identifier,
             calendarIdentifier: summary.calendarIdentifier,
@@ -210,7 +210,7 @@ extension AppleProvider: AppleCalendarReadable {
 // MARK: - Reminders Operations
 
 extension AppleProvider: AppleReminderReadable {
-    
+
     /// Fetches reminders within the specified date range.
     /// - Parameters:
     ///   - startISO8601: Optional ISO8601 start date for due date filtering
@@ -230,7 +230,7 @@ extension AppleProvider: AppleReminderReadable {
             completed: completed,
             listIdentifiers: listIdentifiers
         )
-        
+
         return summaries.map { summary in
             AppleReminderDetail(
                 identifier: summary.identifier,
@@ -246,7 +246,7 @@ extension AppleProvider: AppleReminderReadable {
             )
         }
     }
-    
+
     /// Creates a new reminder in the specified list.
     /// - Parameters:
     ///   - title: Reminder title
@@ -269,14 +269,14 @@ extension AppleProvider: AppleReminderReadable {
         } else {
             dueDate = nil
         }
-        
+
         let summary = try await reminderRepo.createReminder(
             title: title,
             notes: notes,
             dueDate: dueDate,
             listIdentifier: listIdentifier
         )
-        
+
         return AppleReminderDetail(
             identifier: summary.identifier,
             calendarIdentifier: summary.calendarIdentifier,
@@ -300,7 +300,7 @@ public protocol AppleCalendarReadable {
         endISO8601: String,
         calendarIdentifiers: [String]?
     ) async throws -> [AppleCalendarEventDetail]
-    
+
     func createEvent(
         title: String,
         startISO8601: String,
@@ -318,7 +318,7 @@ public protocol AppleReminderReadable {
         completed: Bool?,
         listIdentifiers: [String]?
     ) async throws -> [AppleReminderDetail]
-    
+
     func createReminder(
         title: String,
         notes: String?,
@@ -330,7 +330,7 @@ public protocol AppleReminderReadable {
 // MARK: - Contacts Operations
 
 extension AppleProvider: AppleContactsReadable {
-    
+
     /// Searches contacts by name, email, or phone
     /// - Parameters:
     ///   - query: Search term to match against contact names
@@ -342,7 +342,7 @@ extension AppleProvider: AppleContactsReadable {
     ) async throws -> [AppleContactSummary] {
         return try await contactsRepo.searchContacts(query: query, limit: limit)
     }
-    
+
     /// Gets all contacts (for "list all" queries)
     /// - Parameter limit: Maximum number of results (default: 100)
     /// - Returns: Array of contact summaries
@@ -351,7 +351,7 @@ extension AppleProvider: AppleContactsReadable {
     ) async throws -> [AppleContactSummary] {
         return try await contactsRepo.getAllContacts(limit: limit)
     }
-    
+
     /// Gets detailed information about a specific contact
     /// - Parameter identifier: The contact's unique identifier
     /// - Returns: Detailed contact information
@@ -360,7 +360,7 @@ extension AppleProvider: AppleContactsReadable {
     ) async throws -> AppleContactDetail {
         return try await contactsRepo.getContact(identifier: identifier)
     }
-    
+
     /// Creates a new contact
     /// - Parameters:
     ///   - givenName: First name
