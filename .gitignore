@@ -120,6 +120,7 @@ AuthKey_*.p8
 *.md
 !README.md
 !LICENSE.md
+!PRIVACY.md
 !docs/**/*.md
 
 # Test and utility scripts
