@@ -9,7 +9,7 @@ on:
 jobs:
   build-and-test:
     name: Build and Test
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
@@ -18,42 +18,42 @@ jobs:
       - name: Select Xcode version
         run: |
           set -euo pipefail
-          if [ -d "/Applications/Xcode_16.1.app/Contents/Developer" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+          # macos-15 runners have Xcode 16.x pre-installed; select latest available
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XCODE_PATH" ] && [ -d "$XCODE_PATH/Contents/Developer" ]; then
+            sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           elif [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
-            # Fall back to the runner-default Xcode location.
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           else
-            echo "❌ No Xcode installation found under /Applications"
-            ls -la /Applications | sed -n '1,200p'
+            echo "❌ No Xcode installation found"
+            ls -la /Applications | grep -i xcode || true
             exit 1
           fi
+          echo "✅ Selected Xcode: $(xcode-select -p)"
+
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - name: Resolve iOS Simulator destination
         id: destination
         run: |
           set -euo pipefail
-          # Pick the first available iPhone device name on the runner.
-          DEVICE_NAME=$(xcrun simctl list devices available | sed -n 's/^    \(iPhone[^()]*\) (.*/\1/p' | head -n 1)
-          if [ -z "${DEVICE_NAME}" ]; then
-            echo "❌ Could not find an available iPhone Simulator device"
-            xcrun simctl list devices available | sed -n '1,200p'
+          # List available iPhone simulators and pick one
+          DEVICE_NAME=$(xcrun simctl list devices available | grep -oE 'iPhone [0-9]+ Pro( Max)?' | head -n 1 | xargs)
+          if [ -z "$DEVICE_NAME" ]; then
+            # Fallback: any iPhone
+            DEVICE_NAME=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -n 1 | xargs)
+          fi
+          if [ -z "$DEVICE_NAME" ]; then
+            echo "❌ No iPhone simulator found"
+            xcrun simctl list devices available
             exit 1
           fi
-          echo "✅ Using Simulator: ${DEVICE_NAME}"
-          echo "value=platform=iOS Simulator,name=${DEVICE_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Show Xcode version
-        run: xcodebuild -version
+          echo "✅ Using Simulator: $DEVICE_NAME"
+          echo "value=platform=iOS Simulator,name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Show available destinations
-        run: xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -showdestinations
-
-      - name: Clean build folder
-        run: |
-          xcodebuild clean \
-            -project OpenResponses.xcodeproj \
-            -scheme OpenResponses
+        run: xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -showdestinations | head -60
 
       - name: Build for testing
         run: |
@@ -61,7 +61,8 @@ jobs:
             -project OpenResponses.xcodeproj \
             -scheme OpenResponses \
             -destination '${{ steps.destination.outputs.value }}' \
-            -derivedDataPath DerivedData
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Run tests
         run: |
@@ -78,20 +79,12 @@ jobs:
         with:
           name: test-results
           path: TestResults.xcresult
+          if-no-files-found: warn
           retention-days: 30
-
-      - name: Check for build warnings
-        run: |
-          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination '${{ steps.destination.outputs.value }}' build 2>&1 | grep -q "warning:"; then
-            echo "⚠️ Build completed with warnings"
-            exit 0
-          else
-            echo "✅ Build completed without warnings"
-          fi
 
   lint:
     name: Lint Swift Code
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
