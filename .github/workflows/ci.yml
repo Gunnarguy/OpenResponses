@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        run: |
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1 || echo "/Applications/Xcode.app")
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          echo "Using: $(xcodebuild -version | head -1)"
+
+      - name: Get Simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [0-9]+ Pro' | head -1 | xargs)
+          [ -z "$DEVICE" ] && DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | xargs)
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          xcodebuild build-for-testing \
+            -project OpenResponses.xcodeproj \
+            -scheme OpenResponses \
+            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.device }}' \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          xcodebuild test-without-building \
+            -project OpenResponses.xcodeproj \
+            -scheme OpenResponses \
+            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.device }}' \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          if-no-files-found: warn
+
+  lint:
+    name: Lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew list swiftlint || brew install swiftlint
+      - run: swiftlint lint --reporter github-actions-logging
+        continue-on-error: true
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets
+        run: |
+          if grep -rE "sk-[a-zA-Z0-9]{48}" --include="*.swift" --include="*.json" .; then
+            echo "❌ Potential API key found"; exit 1
+          fi
+          echo "✅ No secrets found"
+
+  docs:
+    name: Docs Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          for f in README.md LICENSE PRIVACY.md; do
+            [ -f "$f" ] && echo "✅ $f" || { echo "❌ Missing $f"; exit 1; }
+          done
