@@ -5,6 +5,7 @@ import EventKit
 #endif
 
 /// A container for managing dependencies across the application.
+@MainActor
 class AppContainer {
     /// The shared singleton instance of the app container.
     static let shared = AppContainer()
