@@ -5,6 +5,9 @@
 ## User settings
 xcuserdata/
 
+# Python virtual environments
+.venv/
+
 ## compatibility with Xcode 8 and earlier (ignoring not required starting Xcode 9)
 *.xcscmblueprint
 *.xccheckout
@@ -94,6 +97,9 @@ iOSInjectionProject/
 
 # API Keys and Secrets (just in case)
 *.env
+.env
+.envrc
+test.env
 config.plist
 secrets.plist
 
@@ -107,10 +113,14 @@ AuthKey_*.p8
 # Archive
 *.xcarchive
 
+# Xcode result bundles
+*.xcresult
+
 # All markdown documentation files (to prevent accidental secret commits)
 *.md
 !README.md
 !LICENSE.md
+!PRIVACY.md
 !docs/**/*.md
 
 # Test and utility scripts

@@ -126,14 +126,26 @@ struct ChatView: View {
             FileManagerView(initialTab: .vectorStores)
                 .environmentObject(viewModel)
         }
-        .alert("Upload Complete", isPresented: .constant(uploadSuccessMessage != nil)) {
+        .alert(
+            "Upload Complete",
+            isPresented: Binding(
+                get: { uploadSuccessMessage != nil },
+                set: { newValue in if !newValue { uploadSuccessMessage = nil } }
+            )
+        ) {
             Button("OK") {
                 uploadSuccessMessage = nil
             }
         } message: {
             Text(uploadSuccessMessage ?? "")
         }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil), actions: {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { newValue in if !newValue { viewModel.errorMessage = nil } }
+            ),
+            actions: {
             Button("OK") {
                 viewModel.errorMessage = nil
             }
@@ -183,6 +195,7 @@ struct ChatView: View {
     @ViewBuilder
     private var inputArea: some View {
         VStack(spacing: 0) {
+            aiSafetyNotice
             // Playground-style attachment pills (replaces old SelectedImagesView/SelectedFilesView)
             AttachmentPills()
                 .environmentObject(viewModel)
@@ -249,6 +262,17 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
+    }
+
+    @ViewBuilder
+    private var aiSafetyNotice: some View {
+        Text("AI responses can be inaccurate or outdated. Verify critical details and keep sensitive data out of prompts.")
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top, 6)
     }
 
     @ViewBuilder

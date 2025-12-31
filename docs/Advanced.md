@@ -103,6 +103,8 @@ print(response.output_text)
 
 Reasoning models introduce **reasoning tokens**, which are billed as output tokens but are not visible in the final response. Ensure you allocate enough space in the context window for these tokens.
 
+Starting with this update, assistant messages now expose a collapsible **Assistant Thinking** panel that replays the reasoning trace emitted by supported models. Summaries and step-by-step deductions are rendered inline beneath the response so you can audit the model's logic without leaving the chat stream.
+
 ---
 
 ## Streaming

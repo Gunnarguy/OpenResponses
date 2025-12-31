@@ -1,118 +1,43 @@
-# OpenResponses AI Coding Conventions
+# OpenResponses AI Coding Instructions
 
-This document guides AI agents in understanding and contributing to the OpenResponses codebase. It reflects the project's long-term vision as defined in **`ROADMAP.md`**.
+## Orientation
 
-## The Big Picture: A Phased Evolution
+- **Tech Stack:** SwiftUI MVVM using iOS 17+ on iPhone/iPad/Mac (Catalyst). Bootstrapped by `AppContainer` singleton that wires `OpenAIService`, `ComputerService`, storage, analytics, and Apple system providers (Calendar, Reminders, Contacts via EventKit).
+- **Project State:** Phase 1 is feature-complete with local conversation storage, all Responses API tools (computer use, code interpreter, file search, image generation, MCP). Phase 2 (backend Conversations API migration) is scoped in `docs/ROADMAP.md`—always sync code and roadmap together.
+- **Folder Intent:** `OpenResponses/Features` = SwiftUI views (Chat, Tools, Settings, Onboarding); `OpenResponses/Core/Services` = API, automation, persistence; `OpenResponses/Core/ToolProviders` = Notion, MCP, Apple integrations; compliance in `docs/` + `PRIVACY.md`.
 
-The app is undergoing a phased upgrade to achieve 100% compliance with the latest OpenAI and Apple capabilities. All contributions must align with the official **`ROADMAP.md`**.
+## Architecture & Ownership
 
-### Current State vs. Future State
+- **ChatViewModel** (`Features/Chat/`) orchestrates message flow, tool execution, streaming events, safety approvals, and analytics. Split via extensions (`+Streaming`, `+MCP`) to keep core <300 lines; `handleStreamChunk()` fans out 40+ `StreamingEvent` types (text deltas, tool calls, reasoning, usage).
+- **OpenAIService** (`Core/Services/`) builds Responses API payloads, powers `AsyncThrowingStream<StreamingEvent>`, and probes MCP/tool compatibility. Test helper `testing_buildRequestObject()` validated in `OpenAIServiceTests.swift`—always sync API payload changes with tests.
+- **ComputerService** (`Core/Services/`) orchestrates WKWebView automation (navigate → wait → screenshot); enforces `pendingSafetyApproval` gate, 5s blank-page recovery, and click throttle (`2.0s` gap). New actions must respect these guardrails.
+- **ConversationStorageService** persists conversations as JSON (local only until Phase 2 backend lands). Sync patterns (`remoteId`, cursor) will be added for `/v1/conversations` integration.
+- **Tool ecosystem:** Notion/MCP connectors in `Core/ToolProviders/`; `ToolHub.shared` centralizes clients; credentials flow through `Keychain` (never `UserDefaults`); MCP discovery/probing happens during setup.
 
-- **Current:** The app uses a partial implementation of the Responses API (`/v1/responses`) and manages conversation state locally using `previous_response_id`. Conversation history is stored on the device.
-- **Future (The Goal):** The app will fully integrate the **Conversations API** (`/v1/conversations`) for backend-managed, cross-device conversation history. It will also support advanced input modalities (direct file uploads), tools (`computer`, `gpt-image-1`), and on-device Apple Intelligence. Audio input is out of scope.
+## Tool & Data Flows
 
-Refer to the `ROADMAP.md` for the specific phase and priority of each feature.
+- **Attachment Pipeline:** `DocumentPicker → FileConverterService.convert() → buffers in ChatViewModel.attachments → encoded in OpenAIService payload`. Add new file types to `FileConverterService` mappings; both PNG and PDF conversion are present.
+- **Streaming Event Dispatch:** `ChatViewModel+Streaming.handleStreamChunk()` decodes streaming events; maintains `deltaBuffers` (text), `activityLines` (tool calls), `reasoningLines` (o1/o3), and `tokenUsage`. Rename or add event types = update dispatcher, UI reducers, and `StreamingEventDecodingTests.swift`.
+- **Computer Use Safety:** Action execution sequence: evaluate `pendingSafetyApproval`, then `ComputerService.executeAction()` chains navigate → EventKit wait (respects `isWaitingForResponse`) → screenshot. Approval sheet gates all computer calls; emit `computer_call_output` before next prompt.
+- **MCP Provisioning:** `ToolConnectionsView` (pair/auth) → `MCPConnectorGalleryView` (list + test) → secrets in `Prompt.secureMCPHeaders` via `TokenStore` (Keychain). Pre-streaming diagnostics: `OpenAIService.probeMCPListTools()` validates connectivity.
+- **Availability Gating:** Never hardcode tool/model support in views. Query `ModelCompatibilityService.canUseComputerUse(model:)` and `APICapabilities` helpers instead; these centralize OpenAI's evolving feature matrix.
 
-## Architecture & Core Patterns
+## Coding Patterns
 
-The application is built with **SwiftUI** and follows a **Model-View-ViewModel (MVVM)** architecture.
+- **Credentials:** All tokens (OpenAI, MCP, Notion, Google) → `KeychainService` only. Reject `UserDefaults`, environment variable fallback, or hardcoded keys. Use `TokenStore` for named secret retrieval.
+- **Logging & Analytics:** `AppLogger` for debug traces (includes `AppLogger.trace(category:)` for event grouping); `AnalyticsService` for user telemetry (tied to pre-defined event names like `"computer_use_executed"`). Skip `print()` in prod code.
+- **Observability UI:** Activity feed, status chips, and Assistant Thinking panel driven by view-model computed properties (e.g., `currentActivityLines`, `tokenUsageString`). Avoid pushing animation or formatting logic into SwiftUI views; compute in the ViewModel.
+- **Safety & Guardrails:** Blank-page recovery, navigation throttles, click suppression, and approval gates belong in `ChatViewModel` + `ComputerService` (not views). New automation features must wire into existing guardrail lifecycle.
 
-- **Dependency Injection:** A central singleton, `AppContainer` (`/OpenResponses/AppContainer.swift`), manages service dependencies. The primary service is the `OpenAIService`.
-- **MVVM Structure:**
-  - **Views (SwiftUI):** Located in `/OpenResponses/`. The primary UI is `ChatView.swift`. Views are lightweight and driven by the `ChatViewModel`.
-  - **ViewModel (`ChatViewModel.swift`):** This is the brain of the application. It holds all UI state (`@Published` properties), manages the conversation flow, and orchestrates API calls. **Crucially, it is responsible for the transition from local state management to backend conversation sync.**
-  - **Models:** Data structures like `ChatMessage.swift`, `Prompt.swift`, and `StreamingEvent.swift` represent the app's data. These models must be expanded to support all API features as outlined in the roadmap.
+## Build, Test, Release Rituals
 
-## Key Components & Conventions
+- **Build:** Xcode 16.1+, scheme `OpenResponses` (iPhone 16 Pro simulator default). Catalyst via "My Mac (Designed for iPad)" scheme uses same source code.
+- **Security & Preflight:** Always run `python3 scripts/secret_scan.py` before commits (detects exposed API keys, tokens). Run `bash scripts/preflight_check.sh` before release merges (validates build, test pass, no secrets).
+- **Testing:** `xcodebuild test -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro'` runs `OpenAIServiceTests`, `StreamingEventDecodingTests`, `PromptPersistenceTests`, and `FunctionOutputSummarizerTests`. Add tests for new payload shapes or event decoders.
+- **Release QA:** Follow `docs/PRODUCTION_CHECKLIST.md` (full feature smoke tests) + `docs/MVAS_SUBMISSION_TRACKER.md` (App Store compliance). Update MVAS tracker + release notes in `docs/ReleaseNotes_*.md` when user-visible flows change.
 
-- **API Communication (`OpenAIService.swift`):** This is the only class that communicates with the OpenAI API.
+## Documentation & Sync Responsibilities
 
-  - `buildRequestObject(...)` is a critical method that dynamically constructs the complex JSON payload for the `/v1/responses` endpoint. It must be updated to support all parameters and input types (files) from the roadmap.
-  - It will be expanded to include methods for the `/v1/conversations` API (`createConversation`, `listConversations`, etc.).
-
-- **Streaming Logic (`ChatViewModel.swift`):**
-
-  - The method `handleStreamChunk(_:for:)` is the entry point for processing incoming `StreamingEvent` objects. This handler must be enhanced to support **all** event types defined in the API, not just text deltas.
-  - The `updateStreamingStatus(for:item:)` method translates events into user-facing status messages. This is a key UX feature that must cover all tool calls and reasoning steps.
-
-- **Secure Storage (`KeychainService.swift`):** The OpenAI API key is sensitive and **must** be stored in the Keychain. Use the singleton `KeychainService.swift` for all interactions with the Keychain.
-
-## Documentation Ecosystem & Maintenance
-
-This project maintains a comprehensive documentation ecosystem that **MUST** be kept consistent whenever code changes are made. Each document serves a specific purpose:
-
-### Core Documents (Located in `/docs/`)
-
-- **`ROADMAP.md`** - The strategic master plan. Defines all phases, features, and implementation priorities. This is the source of truth for what to build and when.
-- **`CASE_STUDY.md`** - Technical deep-dive and architectural overview. Update when new features demonstrate architectural patterns or when the technical approach changes.
-- **`PRODUCTION_CHECKLIST.md`** - Comprehensive pre-release validation checklist. Update when new features require testing or when new requirements emerge.
-- **`FILE_MANAGEMENT.md`** - User guide for file and vector store features. Update when file handling capabilities change.
-- **`APP_STORE_GUIDE.md`** - App Store submission guidance. Update when new features affect the app description or submission requirements.
-- **`PRIVACY_POLICY.md`** - Legal document. Update when data handling practices change.
-- **`docs/api/Full_API_Reference.md`** - Field-level API implementation status. Update when API coverage changes.
-
-### Documentation Maintenance Rules
-
-**When implementing any feature:**
-
-1. **Check `ROADMAP.md` first** - Understand the feature's phase, priority, and requirements
-2. **Update implementation status** - Mark features as complete in `ROADMAP.md` and `docs/api/Full_API_Reference.md`
-3. **Update `CASE_STUDY.md`** - Add technical details for significant architectural changes
-4. **Update `PRODUCTION_CHECKLIST.md`** - Add testing requirements for new features
-5. **Update user guides** - Modify `FILE_MANAGEMENT.md` or other user-facing docs as needed
-
-**When fixing bugs:**
-
-- Update relevant checklists to prevent regression
-- Update technical documentation if the fix reveals architectural insights
-
-**When refactoring:**
-
-- Update `CASE_STUDY.md` if architectural patterns change
-- Ensure all documentation reflects the new code structure
-
-## Developer Workflow
-
-### Starting Work (New Conversation Protocol)
-
-1. **Read `ROADMAP.md`** - Understand the current phase and priorities
-2. **Check `docs/api/Full_API_Reference.md`** - Understand current API implementation status
-3. **Review `CASE_STUDY.md`** - Understand the architectural patterns and design decisions
-4. **Scan `PRODUCTION_CHECKLIST.md`** - Understand quality and testing standards
-
-### Before Implementing Any Feature
-
-1. **Consult `ROADMAP.md`** - Verify the feature's priority and phase
-2. **Check existing implementation** - Review current code in the relevant files
-3. **Plan documentation updates** - Identify which docs will need updates
-4. **Consider API impact** - Will this change API coverage or capabilities?
-
-### API Key Configuration
-
-On first launch, the app checks for an API key in the Keychain. If none is found, it presents the `SettingsView.swift`.
-
-### Example: Implementing a Feature from the Roadmap (e.g., Direct File Uploads)
-
-**Code Changes:**
-
-1. **Update the Model:** Add a new property to `Prompt.swift` to handle the new data (e.g., `fileData: Data?`)
-2. **Modify `buildRequestObject`:** In `OpenAIService.swift`, add logic to construct the `input_file` object in the request body if the new property is present
-3. **Update the UI:** Add UI elements to `FileManagerView.swift` to attach files
-4. **Update the ViewModel:** Add logic to `ChatViewModel.swift` to manage file attachments and pass the file data to the API service
-5. **Handle New Streaming Events:** If the feature introduces new events, update `updateStreamingStatus` in `ChatViewModel.swift` to provide user feedback
-
-**Documentation Updates:**
-
-1. **Mark complete in `ROADMAP.md`:** Update Phase 1 status for Direct File Uploads
-2. **Update `docs/api/Full_API_Reference.md`:** Mark input_file parameters as implemented
-3. **Update `CASE_STUDY.md`:** Add section on file handling architecture if significant
-4. **Update `PRODUCTION_CHECKLIST.md`:** Add file upload testing requirements
-5. **Update user documentation:** Add file input instructions to relevant user guides
-
-## Critical Success Factors
-
-1. **Always maintain documentation consistency** - Code changes without doc updates create technical debt
-2. **Follow the roadmap phases** - Don't jump ahead to Phase 3 features when Phase 1 is incomplete
-3. **Preserve architectural patterns** - The MVVM structure and dependency injection patterns are foundational
-4. **Test comprehensively** - Use `PRODUCTION_CHECKLIST.md` to ensure quality standards
-5. **Consider AI handoff** - Write code and documentation so the next AI conversation can pick up seamlessly
+- **Authoritative Sources:** `docs/ROADMAP.md` (feature timeline + API coverage), `docs/api/Full_API_Reference.md` (implementation checklist). `docs/CASE_STUDY.md` is historical; defer to roadmap for current state.
+- **Tool + Flow Updates:** Refresh `docs/Tools.md` when integrating new MCP connectors. Update `userInstructions/Setup-Notion-Integration.md`, `Setup-Google-OAuth.md` for auth flow changes. New MCP templates go into user guides.
+- **Compliance & Release:** User-visible changes (approval flows, data handling, copy) → `PRIVACY.md`, `docs/AppReviewNotes.md`, `AppStoreAssets/` metadata. Sync Phase 1→2 transitions with roadmap; add migration notes to Phase 2 branch.

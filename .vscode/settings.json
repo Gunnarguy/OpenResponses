@@ -1,4 +1,9 @@
 {
+  // ════════════════════════════════════════════════════════════════════════════
+  // OpenResponses - iOS Swift Project
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // Copilot
   "github.copilot.chat.scopeSelection": true,
   "github.copilot.chat.codesearch.enabled": true,
   "github.copilot.chat.agent.thinkingTool": true,
@@ -6,7 +11,33 @@
   "github.copilot.chat.editor.temporalContext.enabled": true,
   "github.copilot.chat.edits.temporalContext.enabled": true,
   "github.copilot.chat.generateTests.codeLens": true,
-  "github.copilot.chat.languageContext.fix.typescript.enabled": true,
-  "github.copilot.chat.languageContext.inline.typescript.enabled": true,
-  "github.copilot.chat.notebook.followCellExecution.enabled": true
+
+  // Swift / SweetPad
+  "sweetpad.build.xcodeWorkspacePath": "OpenResponses.xcodeproj/project.xcworkspace",
+  "sweetpad.format.swiftFormatPath": "swift-format",
+  "lldb.library": "/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/LLDB",
+  "lldb.launch.expressions": "native",
+
+  // Formatting
+  "editor.formatOnSave": true,
+  "[swift]": {
+    "editor.defaultFormatter": "vknabel.vscode-swiftformat",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+
+  // Excludes
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/DerivedData": true,
+    "**/build": true,
+    "**/*.xcuserstate": true,
+    "**/xcuserdata": true
+  },
+  "search.exclude": {
+    "**/DerivedData": true,
+    "**/build": true,
+    "**/*.xcuserstate": true
+  }
 }

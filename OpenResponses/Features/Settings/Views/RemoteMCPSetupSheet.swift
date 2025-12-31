@@ -213,7 +213,7 @@ struct RemoteMCPSetupSheet: View {
             prompt.secureMCPHeaders = headers
         }
 
-        viewModel.activePrompt = prompt
+        viewModel.replaceActivePrompt(with: prompt)
         viewModel.saveActivePrompt()
 
         // Persist token copies for parity with disconnectRemote()

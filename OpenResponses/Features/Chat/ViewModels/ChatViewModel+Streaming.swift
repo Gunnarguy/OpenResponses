@@ -28,6 +28,8 @@ extension ChatViewModel {
             handleContentPartDoneChunk(chunk, messageId: messageId)
         case "response.output_item.done":
             handleOutputItemDoneChunk(chunk, messageId: messageId)
+        case "response.output_item.delta":
+            handleOutputItemDeltaChunk(chunk, messageId: messageId)
         case "response.done", "response.completed":
             handleResponseCompletion(chunk, messageId: messageId)
         case "response.image_generation_call.partial_image":
@@ -192,6 +194,7 @@ extension ChatViewModel {
         messages.append(ChatMessage(role: .system, text: "⚠️ Error: \(errorMessage)"))
         isStreaming = false
         streamingStatus = .idle
+        finalizeStreamingReasoning(for: messageId)
         streamingMessageId = nil
         isAwaitingComputerOutput = false
     }
@@ -221,6 +224,7 @@ extension ChatViewModel {
         messages.append(ChatMessage(role: .system, text: "⚠️ Request failed: \(errorMessage)"))
         isStreaming = false
         streamingStatus = .idle
+        finalizeStreamingReasoning(for: messageId)
         streamingMessageId = nil
         isAwaitingComputerOutput = false
     }
@@ -270,6 +274,30 @@ extension ChatViewModel {
         }
     }
 
+    /// Handles incremental updates for output items, including reasoning traces.
+    private func handleOutputItemDeltaChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let item = chunk.item else { return }
+
+        switch item.type {
+        case "reasoning":
+            handleReasoningDelta(item, messageId: messageId)
+        default:
+            break
+        }
+    }
+
+    /// Captures live reasoning deltas so the UI can surface the assistant's chain of thought.
+    private func handleReasoningDelta(_ item: StreamingItem, messageId: UUID) {
+        let fragments = item.content?.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) } ?? []
+        guard !fragments.isEmpty else { return }
+
+        let combined = fragments.filter { !$0.isEmpty }.joined(separator: " ")
+        guard !combined.isEmpty else { return }
+
+        AppLogger.log("🧠 [Streaming] Reasoning delta received (len=\(combined.count))", category: .streaming, level: .debug)
+        appendStreamingReasoning(delta: combined, to: messageId)
+    }
+
     /// Finalizes the response once the stream signals completion.
     func handleResponseCompletion(_ chunk: StreamingEvent, messageId: UUID) {
         AppLogger.log("🎬 [Streaming] Response completed for message: \(messageId)", category: .streaming, level: .info)
@@ -292,6 +320,18 @@ extension ChatViewModel {
                     }
                 } else {
                     AppLogger.log("📄 [Streaming] Output[\(index)] has no content array", category: .streaming, level: .debug)
+                }
+                
+                // Check for completed function calls that weren't processed during streaming
+                if item.type == "function_call" && item.status?.lowercased() == "completed" {
+                    let callId = item.id // StreamingOutputItem uses just 'id', not 'callId'
+                    let isCompleted = callId.isEmpty ? false : self.isCallCompleted(callId)
+                    let isPending = callId.isEmpty ? false : self.isCallPending(callId)
+                    
+                    if !isCompleted && !isPending {
+                        AppLogger.log("🔔 [Streaming] Found unprocessed completed function call in final response: id=\(item.id), name=\(item.name ?? "<unknown>")", category: .streaming, level: .info)
+                        handleCompletedStreamingItem(StreamingItem(streamingOutputItem: item), for: messageId)
+                    }
                 }
             }
         } else {
@@ -335,6 +375,9 @@ extension ChatViewModel {
                 } else if let mcpText = buildTextFromMCPItems(chunk.response?.output) {
                     AppLogger.log("📝 [Streaming] Synthesized MCP text of length \(mcpText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = mcpText
+                } else if let fallback = functionOutputSummaryText(for: messageId), !fallback.isEmpty {
+                    AppLogger.log("📝 [Streaming] Using function output summary fallback (len=\(fallback.count))", category: .streaming, level: .info)
+                    updated[msgIndex].text = fallback
                 } else if let approvalText = buildTextFromApprovalRequests(approvalRequestsFromCompletion) {
                     AppLogger.log("📝 [Streaming] Synthesized approval text of length \(approvalText.count)", category: .streaming, level: .info)
                     updated[msgIndex].text = approvalText
@@ -345,6 +388,10 @@ extension ChatViewModel {
             messages = updated
             recomputeCumulativeUsage()
         }
+
+        clearFunctionOutputSummaries(for: messageId)
+
+        applyReasoningTraces(responseId: chunk.response?.id, to: messageId)
 
         if !isAwaitingComputerOutput {
             isStreaming = false
@@ -414,7 +461,7 @@ extension ChatViewModel {
     private func handleImageGenerationCompletedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         guard let item = chunk.item else { return }
         streamingStatus = .imageGenerationCompleting
-        logActivity("🎨 Finalizing image…")
+    logActivity("🎨 Finalizing image")
         handleCompletedStreamingItem(item, for: messageId)
         stopImageGenerationHeartbeat(for: messageId)
 
@@ -448,6 +495,7 @@ extension ChatViewModel {
     /// Tracks tool usage whenever a new output item is emitted.
     private func handleOutputItemAddedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         if let item = chunk.item {
+            cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             trackToolUsage(item, for: messageId)
         }
     }
@@ -455,6 +503,7 @@ extension ChatViewModel {
     /// Handles completion notifications for output items.
     private func handleOutputItemCompletedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         if let item = chunk.item {
+            cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             handleCompletedStreamingItem(item, for: messageId)
         }
     }
@@ -568,7 +617,7 @@ extension ChatViewModel {
             }
         }
         
-        logActivity("MCP: Calling \(toolName) on \(serverLabel)…")
+    logActivity("MCP: Calling \(toolName) on \(serverLabel)")
         streamingStatus = .runningTool(toolName)
         trackToolUsage(for: messageId, tool: "mcp")
     }
@@ -652,11 +701,11 @@ extension ChatViewModel {
         mcpArgumentBuffers[itemId] = existing + fragment
 
         let previewLimit = 160
-        let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
+    let preview = fragment.count > previewLimit ? String(fragment.prefix(previewLimit)) + "…" : fragment
         AppLogger.log("MCP arguments delta for item \(itemId): \(preview)", category: .mcp, level: .debug)
 
         if let toolName = chunk.name ?? chunk.item?.name, let serverLabel = chunk.serverLabel ?? chunk.item?.serverLabel {
-            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)…")
+            logActivity("MCP: Streaming arguments for \(toolName) on \(serverLabel)")
         }
     }
 
