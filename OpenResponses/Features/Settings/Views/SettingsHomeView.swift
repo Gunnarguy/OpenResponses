@@ -129,6 +129,37 @@ private struct GeneralTab: View {
                     }
                 }
 
+                if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.exploreModeEnabled {
+                    Divider()
+
+                    Toggle(
+                        "Enable Explore Demo (offline)",
+                        isOn: Binding(
+                            get: { viewModel.exploreModeEnabled },
+                            set: { viewModel.setExploreModeEnabled($0) }
+                        )
+                    )
+
+                    Button {
+                        viewModel.startExploreDemoConversation()
+                    } label: {
+                        Label("Start Explore Demo Conversation", systemImage: "sparkles")
+                    }
+                    .disabled(!viewModel.exploreModeEnabled)
+
+                    Button(role: .destructive) {
+                        viewModel.exitExploreDemo()
+                    } label: {
+                        Label("Exit Explore Demo", systemImage: "xmark.circle")
+                    }
+                    .disabled(!viewModel.exploreModeEnabled)
+
+                    Text("Explore Demo simulates responses locally so you can explore the UI without making API calls. Add an API key to generate real responses.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, -2)
+                }
+
                 Toggle("Store Responses on OpenAI", isOn: $viewModel.activePrompt.storeResponses)
                 Text("Disable if you prefer responses to be ephemeral on OpenAI's side.")
                     .font(.caption)
@@ -254,7 +285,7 @@ private struct ModelTab: View {
 
 private struct ToolsTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
-    
+
     @Binding var showingNotionQuickConnect: Bool
     @Binding var showingFileManager: Bool
     @State private var hasNotionIntegrationToken: Bool = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
@@ -286,7 +317,7 @@ private struct ToolsTab: View {
                 }
                 .padding(.vertical, 4)
             }
-            
+
             // Direct Integrations
             Section(header: Label("Direct Integrations", systemImage: "link")) {
                 Toggle("Enable Notion Integration", isOn: $viewModel.activePrompt.enableNotionIntegration)
@@ -316,7 +347,7 @@ private struct ToolsTab: View {
                     .padding(.vertical, 4)
                 }
             }
-            
+
             #if canImport(EventKit)
             // Apple System Integrations
             Section(header: Label("Apple System Integrations", systemImage: "apple.logo")) {
@@ -330,7 +361,7 @@ private struct ToolsTab: View {
                 }
             }
             #endif
-            
+
             // File & Vector Store Management
             Section(header: Label("File Management", systemImage: "doc.fill")) {
                 Button {
@@ -436,7 +467,7 @@ private struct ToolsTab: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             // Computer Use
             Section(header: Label("Computer Use", systemImage: "display")) {
                 let isSupported = ModelCompatibilityService.shared.isToolSupported(
@@ -843,7 +874,7 @@ private struct AdvancedTab: View {
             AboutView()
         }
     }
-    
+
     private var appInfoSection: some View {
         Section(header: Label("Application", systemImage: "info.circle")) {
             Button {
@@ -1452,7 +1483,7 @@ private struct AppleIntegrationsCard: View {
     @State private var reminderListCount: Int?
     @State private var pendingPermission: PermissionType?
     @State private var showPermissionPrompt = false
-    
+
     private var isIOS17OrLater: Bool {
         if #available(iOS 17.0, *) {
             return true
@@ -1460,7 +1491,7 @@ private struct AppleIntegrationsCard: View {
             return false
         }
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header with expand/collapse
@@ -1472,9 +1503,9 @@ private struct AppleIntegrationsCard: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 Button {
                     withAnimation {
                         showDetails.toggle()
@@ -1485,7 +1516,7 @@ private struct AppleIntegrationsCard: View {
                         .foregroundColor(.blue)
                 }
             }
-            
+
             // Calendar Section
             IntegrationRow(
                 icon: "calendar",
@@ -1499,9 +1530,9 @@ private struct AppleIntegrationsCard: View {
                 showDetails: showDetails,
                 onConnect: { presentPermission(.calendar) }
             )
-            
+
             Divider()
-            
+
             // Reminders Section
             IntegrationRow(
                 icon: "checkmark.circle",
@@ -1515,9 +1546,9 @@ private struct AppleIntegrationsCard: View {
                 showDetails: showDetails,
                 onConnect: { presentPermission(.reminders) }
             )
-            
+
             Divider()
-            
+
             // Contacts Section
             ContactsIntegrationRow(
                 contactsAccess: contactsAccess,
@@ -1526,7 +1557,7 @@ private struct AppleIntegrationsCard: View {
                 showDetails: showDetails,
                 onConnect: { presentPermission(.contacts) }
             )
-            
+
             // Error Display
             if let lastError {
                 HStack(spacing: 8) {
@@ -1540,32 +1571,32 @@ private struct AppleIntegrationsCard: View {
                 .padding(.top, 4)
                 .transition(.opacity)
             }
-            
+
             // Behind-the-scenes technical details
             if showDetails {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
-                    
+
                     Text("🔒 Technical Details")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
-                    
+
                     IntegrationDetailRow(
                         label: "iOS Version",
                         value: isIOS17OrLater ? "iOS 17+ (Full Access API)" : "iOS 16 (Legacy API)"
                     )
-                    
+
                     IntegrationDetailRow(
                         label: "Privacy Model",
                         value: "On-device only • Zero cloud sync"
                     )
-                    
+
                     IntegrationDetailRow(
                         label: "API Frameworks",
                         value: "EventKit • Contacts"
                     )
-                    
+
                     IntegrationDetailRow(
                         label: "Integration Type",
                         value: "Native Apple System • MCP-compatible"
@@ -1574,7 +1605,7 @@ private struct AppleIntegrationsCard: View {
                 .padding(.top, 8)
                 .transition(.opacity)
             }
-            
+
             // Usage guidance
             Text("💡 Grant access to use these Apple apps directly in your AI conversations. All data stays on your device.")
                 .font(.caption)
@@ -1597,7 +1628,7 @@ private struct AppleIntegrationsCard: View {
             Text(permissionMessage(for: permission))
         }
     }
-    
+
     private func refreshStatus() {
         calendarAccess = EKEventStore.authorizationStatus(for: .event)
         remindersAccess = EKEventStore.authorizationStatus(for: .reminder)
@@ -1672,7 +1703,7 @@ private struct AppleIntegrationsCard: View {
             return "Contacts access helps the assistant look up people when you ask. Data remains local; deny access any time from Settings."
         }
     }
-    
+
     private func loadDetailCounts() {
         // Load calendar count
         if calendarAccess == .fullAccess {
@@ -1684,7 +1715,7 @@ private struct AppleIntegrationsCard: View {
                 }
             }
         }
-        
+
         // Load reminder lists count
         if remindersAccess == .fullAccess {
             Task {
@@ -1695,7 +1726,7 @@ private struct AppleIntegrationsCard: View {
                 }
             }
         }
-        
+
         // Load contacts count
         if contactsAccess == .authorized {
             Task {
@@ -1710,11 +1741,11 @@ private struct AppleIntegrationsCard: View {
             }
         }
     }
-    
+
     private func requestCalendarAccess() {
         isRequesting = true
         lastError = nil
-        
+
         Task {
             do {
                 AppLogger.log("📅 [Settings] Requesting Calendar access...", category: .ui, level: .info)
@@ -1735,11 +1766,11 @@ private struct AppleIntegrationsCard: View {
             }
         }
     }
-    
+
     private func requestRemindersAccess() {
         isRequesting = true
         lastError = nil
-        
+
         Task {
             do {
                 AppLogger.log("✅ [Settings] Requesting Reminders access...", category: .ui, level: .info)
@@ -1760,11 +1791,11 @@ private struct AppleIntegrationsCard: View {
             }
         }
     }
-    
+
     private func requestContactsAccess() {
         isRequesting = true
         lastError = nil
-        
+
         Task {
             do {
                 AppLogger.log("📇 [Settings] Requesting Contacts access...", category: .ui, level: .info)
@@ -1806,32 +1837,32 @@ private struct IntegrationRow: View {
     @Binding var isRequesting: Bool
     let showDetails: Bool
     let onConnect: () -> Void
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .foregroundColor(iconColor)
                 .font(.title2)
                 .frame(width: 32)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .fontWeight(.semibold)
-                
+
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                
+
                 HStack(spacing: 4) {
                     Circle()
                         .fill(statusColor(for: status))
                         .frame(width: 6, height: 6)
-                    
+
                     Text(statusText(for: status))
                         .font(.caption)
                         .foregroundColor(statusColor(for: status))
                 }
-                
+
                 if showDetails, let count = detailCount {
                     Text("\(count) \(detailLabel) accessible")
                         .font(.caption2)
@@ -1839,9 +1870,9 @@ private struct IntegrationRow: View {
                         .padding(.top, 2)
                 }
             }
-            
+
             Spacer()
-            
+
             if status == .notDetermined || status == .denied {
                 Button(action: onConnect) {
                     Text(status == .notDetermined ? "Connect" : "Fix in Settings")
@@ -1871,7 +1902,7 @@ private struct IntegrationRow: View {
             }
         }
     }
-    
+
     private func statusText(for status: EKAuthorizationStatus) -> String {
         switch status {
         case .notDetermined:
@@ -1888,7 +1919,7 @@ private struct IntegrationRow: View {
             return "Unknown"
         }
     }
-    
+
     private func statusColor(for status: EKAuthorizationStatus) -> Color {
         switch status {
         case .notDetermined:
@@ -1911,32 +1942,32 @@ private struct ContactsIntegrationRow: View {
     @Binding var isRequesting: Bool
     let showDetails: Bool
     let onConnect: () -> Void
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "person.crop.circle")
                 .foregroundColor(.blue)
                 .font(.title2)
                 .frame(width: 32)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Contacts")
                     .fontWeight(.semibold)
-                
+
                 Text("Search and manage contacts")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                
+
                 HStack(spacing: 4) {
                     Circle()
                         .fill(contactsStatusColor(for: contactsAccess))
                         .frame(width: 6, height: 6)
-                    
+
                     Text(contactsStatusText(for: contactsAccess))
                         .font(.caption)
                         .foregroundColor(contactsStatusColor(for: contactsAccess))
                 }
-                
+
                 if showDetails, let count = contactsCount {
                     Text("\(count) contacts accessible")
                         .font(.caption2)
@@ -1944,9 +1975,9 @@ private struct ContactsIntegrationRow: View {
                         .padding(.top, 2)
                 }
             }
-            
+
             Spacer()
-            
+
             if contactsAccess == .notDetermined || contactsAccess == .denied {
                 Button(action: onConnect) {
                     Text(contactsAccess == .notDetermined ? "Connect" : "Fix in Settings")
@@ -1966,7 +1997,7 @@ private struct ContactsIntegrationRow: View {
             }
         }
     }
-    
+
     private func contactsStatusText(for status: CNAuthorizationStatus) -> String {
         switch status {
         case .notDetermined:
@@ -1984,7 +2015,7 @@ private struct ContactsIntegrationRow: View {
             return "Unknown"
         }
     }
-    
+
     private func contactsStatusColor(for status: CNAuthorizationStatus) -> Color {
         switch status {
         case .notDetermined:
@@ -2005,7 +2036,7 @@ private struct ContactsIntegrationRow: View {
 private struct IntegrationDetailRow: View {
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             Text(label)

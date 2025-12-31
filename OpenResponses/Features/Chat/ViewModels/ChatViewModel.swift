@@ -20,6 +20,9 @@ class ChatViewModel: ObservableObject {
     @Published var activePrompt: Prompt
     @Published var errorMessage: String?
     @Published var isConnectedToNetwork: Bool = true
+    /// When enabled and no OpenAI API key is configured, the app simulates responses locally.
+    /// This is designed to let new users explore the UI without requiring credentials.
+    @Published var exploreModeEnabled: Bool = UserDefaults.standard.bool(forKey: "exploreModeEnabled")
     @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = []
     /// True while we are processing a computer-use tool call and must send computer_call_output
     /// before any new message can be sent. Prevents API 400s due to pending tool output.
@@ -27,7 +30,7 @@ class ChatViewModel: ObservableObject {
     // Computer-use preview removed
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
-    
+
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
 
@@ -35,11 +38,11 @@ class ChatViewModel: ObservableObject {
     var containerFileCache: [String: Data] = [:]
     /// Cache for processed artifacts to avoid duplicate processing
     var processedAnnotations: Set<String> = []
-    
+
     /// MCP tool registry: stores discovered tools per server for UI display and instruction generation
     /// Key: server label, Value: array of tool schemas
     @Published var mcpToolRegistry: [String: [[String: AnyCodable]]] = [:]
-    
+
     // MARK: - Private Properties
     let api: OpenAIServiceProtocol
     private let computerService: ComputerService
@@ -48,6 +51,8 @@ class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
     private lazy var networkMonitor = NetworkMonitor.shared
+
+    private let exploreModeDefaultsKey = "exploreModeEnabled"
     // Coalesces rapid-fire text deltas into fewer UI updates per message.
     // Keyed by messageId.
     var deltaBuffers: [UUID: String] = [:]
@@ -88,12 +93,12 @@ class ChatViewModel: ObservableObject {
     /// Reasoning items emitted by the last response, keyed by response ID.
     /// Required for reasoning models (e.g., GPT-5) when echoing tool outputs.
     private var reasoningBufferByResponseId: [String: [[String: Any]]] = [:]
-    
+
     /// Helper methods to check function call status (accessible from extensions)
     func isCallCompleted(_ callId: String) -> Bool {
         return completedFunctionCallIds.contains(callId)
     }
-    
+
     func isCallPending(_ callId: String) -> Bool {
         return pendingFunctionCallIds.contains(callId)
     }
@@ -212,16 +217,16 @@ class ChatViewModel: ObservableObject {
 
     // Conversation-level cumulative token usage, updated live during streaming
     @Published var cumulativeTokenUsage: TokenUsage = TokenUsage()
-    
+
     // Last response token usage for status bar display
     @Published var lastTokenUsage: TokenUsage? = nil
-    
+
     /// Compact activity feed to surface what's happening under the hood during streaming.
     /// Keep short, user-friendly messages. Updated when status changes or tools run.
     @Published var activityLines: [String] = []
     private var lastActivityLine: String?
     private let maxActivityLines: Int = 12
-    
+
     /// Tracks retry context for a streaming request keyed by assistant message ID.
     /// Used to transparently retry once when the streaming API emits a transient model_error.
     private struct StreamRetryContext {
@@ -233,11 +238,11 @@ class ChatViewModel: ObservableObject {
         var retryScheduled: Bool = false
     }
     private var retryContextByMessageId: [UUID: StreamRetryContext] = [:]
-    
+
     /// Image generation heartbeat tracking to provide progress feedback during long waits
     private var imageHeartbeatTasks: [UUID: Task<Void, Never>] = [:]
     private var imageHeartbeatCounters: [UUID: Int] = [:]
-    
+
     /// Fallback mapping from common site keywords to canonical URLs used when the model
     /// requests a first-step screenshot without having navigated yet (e.g., user says "Google").
     /// This keeps the flow moving without blank/"about:blank" screenshots.
@@ -268,7 +273,7 @@ class ChatViewModel: ObservableObject {
         "microsoft": "https://microsoft.com",
         "samsung": "https://samsung.com"
     ]
-    
+
     // MARK: - Computer Use Circuit Breaker
     private var consecutiveWaitCount: Int = 0
     private let maxConsecutiveWaits: Int = 3
@@ -299,24 +304,127 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    init(api: OpenAIServiceProtocol? = nil, computerService: ComputerService? = nil, storageService: ConversationStorageService? = nil) {
+    init(
+        api: OpenAIServiceProtocol? = nil,
+        computerService: ComputerService? = nil,
+        storageService: ConversationStorageService? = nil,
+        startBackgroundWork: Bool = true
+    ) { 
         self.api = api ?? OpenAIService()
         self.computerService = computerService ?? ComputerService()
         self.storageService = storageService ?? ConversationStorageService.shared
         self.activePrompt = Prompt.defaultPrompt()
-        
+
         loadActivePrompt()
         loadConversations()
-        
+
         if conversations.isEmpty {
             createNewConversation()
             clearActivity()
         } else {
             activeConversation = conversations.first
         }
-        
-        setupBindings()
+
+        if startBackgroundWork { 
+            setupBindings()
+        }
         updateModelCompatibility()
+    }
+
+    // MARK: - Explore Demo
+
+    func setExploreModeEnabled(_ enabled: Bool) {
+        exploreModeEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: exploreModeDefaultsKey)
+    }
+
+    /// Starts (or restarts) a local, offline demo conversation.
+    /// This does not make any OpenAI API calls.
+    func startExploreDemoConversation() {
+        setExploreModeEnabled(true)
+
+        // Reset to a clean conversation so the demo is predictable.
+        createNewConversation()
+        guard var conv = activeConversation else { return }
+
+        conv.title = "Explore Demo"
+        var meta = conv.metadata ?? [:]
+        meta["mode"] = "explore_demo"
+        conv.metadata = meta
+        conv.lastResponseId = nil
+        conv.remoteId = nil
+
+        conv.messages = [
+            ChatMessage(role: .system, text: "✨ Explore Demo is offline: no API calls are made. Add an OpenAI API key in Settings to chat for real."),
+            ChatMessage(role: .assistant, text: exploreDemoWelcomeText(), images: nil),
+        ]
+
+        updateActiveConversation(conv)
+        clearActivity()
+        logActivity("Explore Demo ready (offline)")
+    }
+
+    func exitExploreDemo() {
+        setExploreModeEnabled(false)
+        logActivity("Explore Demo disabled")
+    }
+
+    private func exploreDemoWelcomeText() -> String {
+        return "Hi! I’m a demo assistant. I can’t call the OpenAI API yet (no key configured), but you can explore the app’s UI and what it *can* do.\n\nTry asking things like:\n• \"Write a SwiftUI view for a settings screen\"\n• \"Summarize a PDF\" (attach a file once you add a key)\n• \"Use web search to find today’s news\"\n• \"Connect Notion via MCP\"\n\nWhen you’re ready: Settings → General → paste your OpenAI API key."
+    }
+
+    private func isMissingOpenAIKey() -> Bool {
+        let key = KeychainService.shared.load(forKey: "openAIKey")
+        return (key == nil || key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true)
+    }
+
+    private func exploreDemoAssistantText(for userText: String) -> String {
+        let t = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = t.lowercased()
+
+        if lower.contains("swiftui") || lower.contains("swift") || lower.contains("code") {
+            return "(Demo) I *would* generate code here and stream it token-by-token.\n\nIn real mode, you can ask for SwiftUI components, refactors, tests, and architecture advice.\n\nTo enable: add an OpenAI API key in Settings."
+        }
+        if lower.contains("pdf") || lower.contains("file") || lower.contains("document") {
+            return "(Demo) OpenResponses supports file uploads (PDF/text) and can summarize, extract structured data, and answer questions about attachments.\n\nThis demo won’t upload files. Add an API key to enable real file handling."
+        }
+        if lower.contains("image") || lower.contains("generate") || lower.contains("picture") {
+            return "(Demo) The app can generate images with supported models and show them inline.\n\nThis demo won’t call image generation. Add an API key, then enable Image Generation in Settings → Tools."
+        }
+        if lower.contains("web search") || lower.contains("browse") || lower.contains("latest") || lower.contains("news") {
+            return "(Demo) With Web Search enabled, the assistant can fetch up-to-date information and cite sources.\n\nThis demo is offline. Add an API key and enable Web Search in Settings → Tools."
+        }
+        if lower.contains("mcp") || lower.contains("notion") || lower.contains("connector") {
+            return "(Demo) OpenResponses can connect to MCP servers and OpenAI-hosted connectors (e.g., Google Workspace, Dropbox).\n\nIn real mode, you’ll connect a service (OAuth/token) in Settings → MCP, then the assistant can call those tools with your approval."
+        }
+        if lower.contains("computer") || lower.contains("click") || lower.contains("browser") {
+            return "(Demo) Computer Use lets the assistant drive a web view (navigate, click, type) with safety approvals and throttles.\n\nThis demo won’t execute actions. Add an API key and enable Computer Use in Settings → Tools."
+        }
+
+        return "(Demo) I’m running in Explore Demo mode, so I’m not calling the OpenAI API.\n\nTo unlock real responses:\n1) Open Settings → General\n2) Paste your OpenAI API key (sk-...)\n3) Come back and send the same message again."
+    }
+
+    private func chunkDemoText(_ text: String) -> [String] {
+        // Chunk on sentence-ish boundaries for a more "streaming" feel.
+        let separators = CharacterSet(charactersIn: ".!?\n")
+        var chunks: [String] = []
+        var buffer = ""
+        for ch in text {
+            buffer.append(ch)
+            if let scalar = ch.unicodeScalars.first, separators.contains(scalar) {
+                if !buffer.isEmpty { chunks.append(buffer); buffer = "" }
+            }
+        }
+        if !buffer.isEmpty { chunks.append(buffer) }
+        return chunks.isEmpty ? [text] : chunks
+    }
+
+    private func appendDemoChunk(_ chunk: String, to messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var updated = messages
+        let current = updated[idx].text ?? ""
+        updated[idx].text = current + chunk
+        messages = updated
     }
 
     // MARK: - Streaming Helpers
@@ -445,7 +553,7 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     private func setupBindings() {
         networkMonitor.$isConnected
             .receive(on: DispatchQueue.main)
@@ -457,23 +565,23 @@ class ChatViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        
+
         $activePrompt
             .dropFirst() // Ignore the initial value on app launch
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self = self else { return }
-                
+
                 // If a preset was active, any modification turns it into a custom prompt.
                 if self.activePrompt.isPreset {
                     self.activePrompt.isPreset = false
                 }
-                
+
                 self.saveActivePrompt()
                 self.updateModelCompatibility()
             }
             .store(in: &cancellables)
-        
+
         // Periodic cache cleanup to prevent memory bloat
         Timer.publish(every: 300, on: .main, in: .common) // Every 5 minutes
             .autoconnect()
@@ -482,21 +590,21 @@ class ChatViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
+
     private func updateActiveConversation(_ conversation: Conversation) {
         var conv = conversation
         conv.lastModified = Date() // Update timestamp
-        
+
         if let index = conversations.firstIndex(where: { $0.id == conv.id }) {
             conversations[index] = conv
         } else {
             conversations.insert(conv, at: 0)
         }
-        
+
         activeConversation = conv
         saveConversation(conv)
     }
-    
+
     /// Updates the current model compatibility information
     private func updateModelCompatibility() {
         let compatibilityService = ModelCompatibilityService.shared
@@ -528,7 +636,7 @@ class ChatViewModel: ObservableObject {
         agg.total = totalSum == 0 ? nil : totalSum
         agg.estimatedOutput = estOut == 0 ? nil : estOut
         cumulativeTokenUsage = agg
-        
+
         // Update last token usage from most recent assistant message
         if let lastAssistantMessage = messages.last(where: { $0.role == .assistant }),
            let usage = lastAssistantMessage.tokenUsage,
@@ -543,7 +651,7 @@ class ChatViewModel: ObservableObject {
     }
 
     // Removed detection UI and related method
-    
+
     /// Detects if a user message is requesting image generation
     private func detectsImageRequest(_ text: String) -> Bool {
         let lowercased = text.lowercased()
@@ -555,26 +663,26 @@ class ChatViewModel: ObservableObject {
             "image of", "picture of", "photo of", "painting of",
             "sketch", "artwork", "render", "design"
         ]
-        
+
         return imageKeywords.contains { keyword in
             lowercased.contains(keyword)
         }
     }
 
     // detectsScreenshotRequest removed
-    
+
     /// Handles network disconnection by informing the user
     private func handleNetworkDisconnection() {
         let networkMessage = ChatMessage(
-            role: .system, 
-            text: "📱 Network connection lost. Please check your internet connection.", 
+            role: .system,
+            text: "📱 Network connection lost. Please check your internet connection.",
             images: nil
         )
         if !messages.contains(where: { $0.text?.contains("Network connection lost") == true }) {
             messages.append(networkMessage)
         }
     }
-    
+
     /// Sends a user message and processes the assistant's response.
     /// This appends the user message to the chat and interacts with the OpenAI service.
     func sendUserMessage(_ text: String, bypassMCPGate: Bool = false) {
@@ -586,10 +694,70 @@ class ChatViewModel: ObservableObject {
             messages.append(warn)
             return
         }
-        
+
+        // If there is no API key and Explore Demo is not enabled, avoid making a request that will fail.
+        if isMissingOpenAIKey(), !exploreModeEnabled {
+            let guidance = "🔑 No OpenAI API key is configured. Open Settings → General to add one, or enable Explore Demo (offline) to try the UI without API calls."
+            if messages.last?.text != guidance {
+                messages.append(ChatMessage(role: .system, text: guidance))
+            }
+            return
+        }
+
+        // Explore Demo: if enabled and no API key is available, simulate a response locally.
+        if exploreModeEnabled, isMissingOpenAIKey() {
+            // Cancel any previous demo stream.
+            streamingTask?.cancel()
+            surfacedMCPToolWarnings.removeAll()
+
+            // Drop any pending attachments (demo is offline).
+            if !pendingFileAttachments.isEmpty || !pendingFileData.isEmpty || !pendingFileNames.isEmpty || !pendingImageAttachments.isEmpty {
+                pendingFileAttachments.removeAll()
+                pendingFileData.removeAll()
+                pendingFileNames.removeAll()
+                pendingImageAttachments.removeAll()
+                let sys = ChatMessage(role: .system, text: "ℹ️ Explore Demo is offline and won’t upload files/images. Add an API key to use attachments.")
+                messages.append(sys)
+            }
+
+            let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
+            messages.append(userMsg)
+
+            let assistantMsgId = UUID()
+            messages.append(ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil))
+            streamingMessageId = assistantMsgId
+            resetStreamingReasoning(for: assistantMsgId)
+            isStreaming = true
+            streamingStatus = .connecting
+            logActivity("Explore Demo (offline)")
+
+            let full = exploreDemoAssistantText(for: trimmed)
+            let chunks = chunkDemoText(full)
+
+            streamingTask = Task { [weak self] in
+                guard let self = self else { return }
+                for c in chunks {
+                    if Task.isCancelled { return }
+                    await MainActor.run { self.appendDemoChunk(c, to: assistantMsgId) }
+                    try? await Task.sleep(nanoseconds: 160_000_000) // ~160ms between chunks
+                }
+                await MainActor.run {
+                    self.streamingMessageId = nil
+                    self.isStreaming = false
+                    if self.streamingStatus != .idle {
+                        self.streamingStatus = .done
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                            self?.streamingStatus = .idle
+                        }
+                    }
+                }
+            }
+            return
+        }
+
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
-        
+
         // MCP gate for remote servers: require a successful list_tools probe with fresh token hash
         if activePrompt.enableMCPTool && !bypassMCPGate {
             let label = activePrompt.mcpServerLabel
@@ -701,7 +869,7 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
-        
+
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
@@ -711,33 +879,33 @@ class ChatViewModel: ObservableObject {
         // Keep recent activity so users can see context; do not clear here to avoid flashing.
     logActivity("Connecting to OpenAI API")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
-        
+
         // Append the user's message to the chat with URL detection
         let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
         messages.append(userMsg)
-        
+
     // Prepare a placeholder for the assistant's streaming response
         let assistantMsgId = UUID()
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         streamingMessageId = assistantMsgId // Track the new message for streaming
     resetStreamingReasoning(for: assistantMsgId)
-        
+
         // Disable input while processing
         isStreaming = true
-        
+
         // Prepare attachments if any are pending
         let attachments: [[String: Any]]? = pendingFileAttachments.isEmpty ? nil : pendingFileAttachments.map { fileId in
             return ["file_id": fileId, "tools": [["type": "file_search"]]]
         }
-        
+
         // Prepare image attachments if any are pending
         let imageAttachments: [InputImage]? = pendingImageAttachments.isEmpty ? nil : pendingImageAttachments.map { image in
             return InputImage(image: image, detail: selectedImageDetailLevel)
         }
-        
+
     // Audio removed: no audioAttachment
-        
+
         // Clear pending attachments now that they are included in the request
         if attachments != nil {
             pendingFileAttachments.removeAll()
@@ -748,10 +916,10 @@ class ChatViewModel: ObservableObject {
         // NOTE: Don't clear pendingFileData/pendingFileNames here - they're still needed for the API call
         // They will be cleared after successful API call completion
     // no-op: audio removed
-        
+
         // streamingEnabled determined earlier
         print("Using \(streamingEnabled ? "streaming" : "non-streaming") mode")
-        
+
         // Log the message sending event
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.messageSent,
@@ -765,7 +933,7 @@ class ChatViewModel: ObservableObject {
                 "image_count": imageAttachments?.count ?? 0
             ]
         )
-        
+
     // Compose final user text (no audio flow)
     let finalUserText = trimmed
 
@@ -790,20 +958,20 @@ class ChatViewModel: ObservableObject {
             do {
                 // Handle file attachments with intelligent conversion to PDF
                 var uploadedFileIds: [String] = []
-                
+
                 if !pendingFileData.isEmpty && !pendingFileNames.isEmpty {
                     AppLogger.log("📤 Processing \(pendingFileData.count) file(s) before sending message", category: .openAI, level: .info)
-                    
+
                     for (index, data) in pendingFileData.enumerated() {
                         guard index < pendingFileNames.count else { break }
-                        
+
                         let filename = pendingFileNames[index]
                         let fileExtension = (filename as NSString).pathExtension.lowercased()
-                        
+
                         var dataToUpload = data
                         var filenameToUpload = filename
                         var conversionMethod = "none"
-                        
+
                         // Check if file needs conversion to PDF for Responses API compatibility
                         if fileExtension != "pdf" {
                             // For text-based files, convert to PDF
@@ -841,7 +1009,7 @@ class ChatViewModel: ObservableObject {
                                 continue
                             }
                         }
-                        
+
                         // Upload to Files API
                         do {
                             let uploadedFile = try await api.uploadFile(
@@ -850,7 +1018,7 @@ class ChatViewModel: ObservableObject {
                                 purpose: "assistants"
                             )
                             uploadedFileIds.append(uploadedFile.id)
-                            
+
                             if conversionMethod != "none" {
                                 AppLogger.log("✅ Uploaded converted file \(filenameToUpload) -> \(uploadedFile.id) (\(conversionMethod))", category: .openAI, level: .info)
                                 await MainActor.run {
@@ -867,7 +1035,7 @@ class ChatViewModel: ObservableObject {
                         }
                     }
                 }
-                
+
                 // If previous responses are awaiting computer_call_output, resolve them all first.
                 // Only do this when the computer tool is both enabled and supported for the current model/streaming mode.
                 if self.activePrompt.enableComputerUse {
@@ -895,7 +1063,7 @@ class ChatViewModel: ObservableObject {
                         previousResponseId: lastResponseId,
                         conversationId: activeConversation?.remoteId
                     )
-                    
+
                     for try await chunk in stream {
                         // Check for cancellation before handling the next chunk
                         if Task.isCancelled {
@@ -922,7 +1090,7 @@ class ChatViewModel: ObservableObject {
                         previousResponseId: lastResponseId,
                         conversationId: activeConversation?.remoteId
                     )
-                    
+
                     await MainActor.run {
                         self.handleNonStreamingResponse(response, for: assistantMsgId)
                         self.logActivity("Response received")
@@ -961,7 +1129,7 @@ class ChatViewModel: ObservableObject {
                 // Log the final streamed message
                 if let finalMessage = self.messages.first(where: { $0.id == assistantMsgId }) {
                     print("Finished streaming response: \(finalMessage.text ?? "No text content")")
-                    
+
                     // Log the received message
                     AnalyticsService.shared.trackEvent(
                         name: AnalyticsEvent.messageReceived,
@@ -973,7 +1141,7 @@ class ChatViewModel: ObservableObject {
                         ]
                     )
                 }
-                
+
                 self.streamingMessageId = nil
                 self.isStreaming = false // Re-enable input
                 // Stop any image generation heartbeats
@@ -995,15 +1163,15 @@ class ChatViewModel: ObservableObject {
     /// Resolve all pending computer_call items before proceeding (handles chained calls like wait → screenshot).
     private func resolveAllPendingComputerCallsIfAny(for messageId: UUID) async throws -> Bool {
         guard activePrompt.enableComputerUse else { return false }
-        
+
         // Prevent concurrent execution - only one resolution process at a time
         guard !isResolvingComputerCalls else { 
             AppLogger.log("[CUA] resolveAllPending: Already resolving, skipping", category: .openAI, level: .info)
-            return false 
+            return false
         }
         isResolvingComputerCalls = true
         defer { isResolvingComputerCalls = false }
-        
+
         var resolvedAny = false
         var safetyCounter = 0
         while safetyCounter < 5 { // Reduced from 8 to 5 to prevent infinite loops
@@ -1016,16 +1184,16 @@ class ChatViewModel: ObservableObject {
                 await MainActor.run { self.lastResponseId = nil }
                 break
             }
-            
+
             // Log all computer call items in the response
             let computerCalls = full.output.filter { $0.type == "computer_call" }
             AppLogger.log("[CUA] resolveAllPending: Found \(computerCalls.count) computer_call items in response", category: .openAI, level: .info)
             for (index, call) in computerCalls.enumerated() {
                 AppLogger.log("[CUA] resolveAllPending: computerCall[\(index)]: id=\(call.id), callId=\(call.callId ?? "nil")", category: .openAI, level: .info)
             }
-            
+
             guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
-            
+
             if !activePrompt.ultraStrictComputerUse {
                 // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
                 // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
@@ -1041,7 +1209,7 @@ class ChatViewModel: ObservableObject {
                         }
                         break // Skip this tool call and exit the loop
                     }
-                    
+
                     // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
                     if safetyCounter >= 3, let action = computerCallItem.action,
                        let actionType = action["type"]?.value as? String,
@@ -1053,7 +1221,7 @@ class ChatViewModel: ObservableObject {
                         }
                         break
                     }
-                    
+
                     // URGENT INTERVENTION: If still on about:blank after first action and it's trying to click, stop
                     if safetyCounter >= 2, computerService.isOnBlankPage(),
                        let action = computerCallItem.action,
@@ -1066,12 +1234,12 @@ class ChatViewModel: ObservableObject {
                         }
                         break
                     }
-                    
+
                     // Allow navigation, clicks, typing, etc. even if there's already an image
                     AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot action: \(String(describing: computerCallItem.action))", category: .openAI, level: .info)
                 }
             }
-            
+
             AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
             resolvedAny = true
             await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
@@ -1091,7 +1259,7 @@ class ChatViewModel: ObservableObject {
             }
             // Loop will check the newly updated lastResponseId for further pending calls
         }
-        
+
         // Reset wait counter when computer use chain completes (successful or not)
         await MainActor.run { 
             self.consecutiveWaitCount = 0
@@ -1103,7 +1271,7 @@ class ChatViewModel: ObservableObject {
                 self.streamingStatus = .idle
             }
         }
-        
+
         return resolvedAny
     }
 
@@ -1169,7 +1337,7 @@ class ChatViewModel: ObservableObject {
             if actionData.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
                 if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
                     AppLogger.log("[CUA] (resume) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
-                    actionData = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"]) 
+                    actionData = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"])
                 } else {
                     AppLogger.log("[CUA] (resume) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
                 }
@@ -1260,7 +1428,7 @@ class ChatViewModel: ObservableObject {
             await MainActor.run { self.lastResponseId = nil }
         }
     }
-    
+
     /// Batches parallel function calls from the same response to send together
     private func handleFunctionCallWithBatching(_ call: OutputItem, for messageId: UUID, responseId: String) async {
         var canonicalCallId: String?
@@ -1359,11 +1527,11 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Executes a function and returns its output string
     private func executeFunction(_ call: OutputItem, for messageId: UUID) async -> String? {
         guard let functionName = call.name else { return nil }
-        
+
         guard let callIdentifier = await MainActor.run(body: { self.canonicalIdentifier(for: call) }) else {
             AppLogger.log("❌ [Function Call] Unable to determine canonical identifier", category: .openAI, level: .error)
             return nil
@@ -1374,7 +1542,7 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("♻️ [Function Call] Call \(callIdentifier) already completed; skipping", category: .openAI, level: .info)
             return nil
         }
-        
+
         AppLogger.log("🔧 [Function Call] Executing: \(functionName)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Call ID: \(callIdentifier)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
@@ -1421,10 +1589,10 @@ class ChatViewModel: ObservableObject {
             // Execute the actual function (use existing switch from handleFunctionCall)
             output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
         }
-        
+
         return output
     }
-    
+
     /// Sends all batched function outputs for a response together
     private func sendBatchedFunctionOutputs(responseId: String, messageId: UUID) async {
         guard let calls = pendingParallelCalls[responseId],
@@ -1532,7 +1700,7 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("⏱️ [Batching] Retrying batch for response \(responseId) in 1s", category: .openAI, level: .debug)
         }
     }
-    
+
     /// Sends a batch of function call outputs back to the API (used by batching logic)
     private func sendFunctionOutputBatch(
         _ payloads: [FunctionCallOutputPayload],
@@ -1684,11 +1852,11 @@ class ChatViewModel: ObservableObject {
 
         return false
     }
-    
+
     /// Extracts function execution logic (the big switch statement) to be reused by both batching and non-batching paths
     private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {
         var output: String?
-        
+
         switch functionName {
         case "searchNotion":
             struct NotionSearchArgs: Decodable {
@@ -1768,7 +1936,7 @@ class ChatViewModel: ObservableObject {
                 AppLogger.log("❌ [getNotionDatabase] \(errorMsg)", category: .network, level: .error)
                 output = errorMsg
             }
-            
+
         case "getNotionDataSource":
             struct NotionGetDataSourceArgs: Decodable {
                 let data_source_id: String
@@ -1785,7 +1953,7 @@ class ChatViewModel: ObservableObject {
             } catch {
                 output = "Error processing getNotionDataSource: \(error.localizedDescription)"
             }
-            
+
         case "createNotionPage":
             struct NotionCreatePageArgs: Decodable {
                 let data_source_id: String?
@@ -1793,13 +1961,13 @@ class ChatViewModel: ObservableObject {
                 let data_source_name: String?
                 let properties: [String: Any]?
                 let children: [[String: Any]]?
-                
+
                 init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     data_source_id = try container.decodeIfPresent(String.self, forKey: .data_source_id)
                     database_id = try container.decodeIfPresent(String.self, forKey: .database_id)
                     data_source_name = try container.decodeIfPresent(String.self, forKey: .data_source_name)
-                    
+
                     // Decode properties and children as raw JSON
                     if let propsData = try? container.decodeIfPresent(Data.self, forKey: .properties),
                        let propsJSON = try? JSONSerialization.jsonObject(with: propsData) as? [String: Any] {
@@ -1807,7 +1975,7 @@ class ChatViewModel: ObservableObject {
                     } else {
                         properties = nil
                     }
-                    
+
                     if let childrenData = try? container.decodeIfPresent(Data.self, forKey: .children),
                        let childrenJSON = try? JSONSerialization.jsonObject(with: childrenData) as? [[String: Any]] {
                         children = childrenJSON
@@ -1815,7 +1983,7 @@ class ChatViewModel: ObservableObject {
                         children = nil
                     }
                 }
-                
+
                 enum CodingKeys: String, CodingKey {
                     case data_source_id, database_id, data_source_name, properties, children
                 }
@@ -1830,16 +1998,16 @@ class ChatViewModel: ObservableObject {
                     output = "Error: Invalid JSON format for createNotionPage."
                     break
                 }
-                
+
                 let dataSourceId = argsJSON["data_source_id"] as? String
                 let databaseId = argsJSON["database_id"] as? String
                 let dataSourceName = argsJSON["data_source_name"] as? String
                 let properties = argsJSON["properties"] as? [String: Any]
                 let children = argsJSON["children"] as? [[String: Any]]
-                
+
                 let context = [dataSourceId, databaseId, dataSourceName].compactMap { $0 }.joined(separator: ", ")
                 logActivity("➕ Creating Notion page in [\(context)]")
-                
+
                 let pageResult = try await NotionService.shared.createPage(
                     dataSourceId: dataSourceId,
                     databaseId: databaseId,
@@ -1851,18 +2019,18 @@ class ChatViewModel: ObservableObject {
             } catch {
                 output = "Error processing createNotionPage: \(error.localizedDescription)"
             }
-            
+
         case "updateNotionPage":
             struct NotionUpdatePageArgs: Decodable {
                 let page_id: String
                 let properties: [String: Any]?
                 let archived: Bool?
-                
+
                 init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     page_id = try container.decode(String.self, forKey: .page_id)
                     archived = try container.decodeIfPresent(Bool.self, forKey: .archived)
-                    
+
                     if let propsData = try? container.decodeIfPresent(Data.self, forKey: .properties),
                        let propsJSON = try? JSONSerialization.jsonObject(with: propsData) as? [String: Any] {
                         properties = propsJSON
@@ -1870,7 +2038,7 @@ class ChatViewModel: ObservableObject {
                         properties = nil
                     }
                 }
-                
+
                 enum CodingKeys: String, CodingKey {
                     case page_id, properties, archived
                 }
@@ -1884,15 +2052,15 @@ class ChatViewModel: ObservableObject {
                     output = "Error: Invalid JSON format for updateNotionPage."
                     break
                 }
-                
+
                 guard let pageId = argsJSON["page_id"] as? String else {
                     output = "Error: Missing page_id for updateNotionPage."
                     break
                 }
-                
+
                 let properties = argsJSON["properties"] as? [String: Any]
                 let archived = argsJSON["archived"] as? Bool
-                
+
                 logActivity("✏️ Updating Notion page \(pageId)")
                 let updateResult = try await NotionService.shared.updatePage(
                     pageId: pageId,
@@ -1903,16 +2071,16 @@ class ChatViewModel: ObservableObject {
             } catch {
                 output = "Error processing updateNotionPage: \(error.localizedDescription)"
             }
-            
+
         case "appendNotionBlocks":
             struct NotionAppendBlocksArgs: Decodable {
                 let page_id: String
                 let blocks: [[String: Any]]
-                
+
                 init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     page_id = try container.decode(String.self, forKey: .page_id)
-                    
+
                     if let blocksData = try? container.decode(Data.self, forKey: .blocks),
                        let blocksJSON = try? JSONSerialization.jsonObject(with: blocksData) as? [[String: Any]] {
                         blocks = blocksJSON
@@ -1920,7 +2088,7 @@ class ChatViewModel: ObservableObject {
                         blocks = []
                     }
                 }
-                
+
                 enum CodingKeys: String, CodingKey {
                     case page_id, blocks
                 }
@@ -1934,20 +2102,20 @@ class ChatViewModel: ObservableObject {
                     output = "Error: Invalid JSON format for appendNotionBlocks."
                     break
                 }
-                
+
                 guard let pageId = argsJSON["page_id"] as? String,
                       let blocks = argsJSON["blocks"] as? [[String: Any]] else {
                     output = "Error: Missing page_id or blocks for appendNotionBlocks."
                     break
                 }
-                
+
                 logActivity("📝 Appending blocks to Notion page \(pageId)")
                 let appendResult = try await NotionService.shared.appendBlocks(pageId: pageId, blocks: blocks)
                 output = try NotionService.shared.prettyJSONString(from: appendResult)
             } catch {
                 output = "Error processing appendNotionBlocks: \(error.localizedDescription)"
             }
-        
+
         #if canImport(EventKit)
         case "fetchAppleCalendarEvents":
             struct FetchCalendarArgs: Decodable {
@@ -1963,19 +2131,19 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(FetchCalendarArgs.self, from: argsData)
                 AppLogger.log("📅 [fetchAppleCalendarEvents] Date range: \(decodedArgs.startDate) to \(decodedArgs.endDate)", category: .network, level: .info)
                 logActivity("📅 Fetching Apple Calendar events")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let events = try await provider.listEvents(
                     startISO8601: decodedArgs.startDate,
                     endISO8601: decodedArgs.endDate,
                     calendarIdentifiers: decodedArgs.calendarIdentifiers
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(events)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [fetchAppleCalendarEvents] Found \(events.count) events", category: .network, level: .info)
                 logActivity("✅ Found \(events.count) calendar events")
             } catch {
@@ -1984,7 +2152,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Calendar fetch failed")
             }
-        
+
         case "fetchAppleReminders":
             struct FetchRemindersArgs: Decodable {
                 let startDate: String?
@@ -1999,7 +2167,7 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(FetchRemindersArgs.self, from: argsData)
                 AppLogger.log("✅ [fetchAppleReminders] Fetching reminders...", category: .network, level: .info)
                 logActivity("✅ Fetching Apple Reminders")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let reminders = try await provider.listReminders(
                     startISO8601: decodedArgs.startDate,
@@ -2007,12 +2175,12 @@ class ChatViewModel: ObservableObject {
                     completed: decodedArgs.completed,
                     listIdentifiers: nil
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(reminders)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [fetchAppleReminders] Found \(reminders.count) reminders", category: .network, level: .info)
                 logActivity("✅ Found \(reminders.count) reminders")
             } catch {
@@ -2021,7 +2189,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Reminders fetch failed")
             }
-        
+
         case "createAppleCalendarEvent":
             struct CreateEventArgs: Decodable {
                 let title: String
@@ -2039,7 +2207,7 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(CreateEventArgs.self, from: argsData)
                 AppLogger.log("📅 [createAppleCalendarEvent] Creating event: \(decodedArgs.title)", category: .network, level: .info)
                 logActivity("📅 Creating calendar event: \(decodedArgs.title)")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let event = try await provider.createEvent(
                     title: decodedArgs.title,
@@ -2049,12 +2217,12 @@ class ChatViewModel: ObservableObject {
                     notes: decodedArgs.notes,
                     calendarIdentifier: decodedArgs.calendarIdentifier
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(event)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [createAppleCalendarEvent] Created event successfully", category: .network, level: .info)
                 logActivity("✅ Created event: \(decodedArgs.title)")
             } catch {
@@ -2063,7 +2231,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Event creation failed")
             }
-        
+
         case "createAppleReminder":
             struct CreateReminderArgs: Decodable {
                 let title: String
@@ -2079,7 +2247,7 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(CreateReminderArgs.self, from: argsData)
                 AppLogger.log("📝 [createAppleReminder] Creating reminder: \(decodedArgs.title)", category: .network, level: .info)
                 logActivity("📝 Creating Apple Reminder: \(decodedArgs.title)")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let reminder = try await provider.createReminder(
                     title: decodedArgs.title,
@@ -2087,12 +2255,12 @@ class ChatViewModel: ObservableObject {
                     dueDateISO8601: decodedArgs.dueDate,
                     listIdentifier: nil  // TODO: Add priority support
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(reminder)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [createAppleReminder] Created reminder successfully", category: .network, level: .info)
                 logActivity("✅ Created reminder: \(decodedArgs.title)")
             } catch {
@@ -2101,7 +2269,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Reminder creation failed")
             }
-        
+
         case "searchAppleContacts":
             struct SearchContactsArgs: Decodable {
                 let query: String
@@ -2115,18 +2283,18 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(SearchContactsArgs.self, from: argsData)
                 AppLogger.log("📇 [searchAppleContacts] Query: \(decodedArgs.query)", category: .network, level: .info)
                 logActivity("📇 Searching Apple Contacts for '\(decodedArgs.query)'")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let contacts = try await provider.searchContacts(
                     query: decodedArgs.query,
                     limit: decodedArgs.limit ?? 50
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(contacts)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [searchAppleContacts] Found \(contacts.count) contacts", category: .network, level: .info)
                 logActivity("✅ Found \(contacts.count) contacts")
             } catch {
@@ -2135,7 +2303,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Contact search failed")
             }
-        
+
         case "getAppleContact":
             struct GetContactArgs: Decodable {
                 let identifier: String
@@ -2148,15 +2316,15 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(GetContactArgs.self, from: argsData)
                 AppLogger.log("📇 [getAppleContact] Identifier: \(decodedArgs.identifier)", category: .network, level: .info)
                 logActivity("📇 Fetching contact details")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let contact = try await provider.getContact(identifier: decodedArgs.identifier)
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(contact)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [getAppleContact] Retrieved contact details", category: .network, level: .info)
                 logActivity("✅ Retrieved contact details")
             } catch {
@@ -2165,7 +2333,7 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Contact fetch failed")
             }
-        
+
         case "createAppleContact":
             struct CreateContactArgs: Decodable {
                 let givenName: String?
@@ -2186,7 +2354,7 @@ class ChatViewModel: ObservableObject {
                 let contactName = [decodedArgs.givenName, decodedArgs.familyName].compactMap { $0 }.joined(separator: " ")
                 AppLogger.log("📇 [createAppleContact] Creating contact: \(contactName.isEmpty ? "Unknown" : contactName)", category: .network, level: .info)
                 logActivity("📇 Creating Apple Contact: \(contactName.isEmpty ? "Unknown" : contactName)")
-                
+
                 let provider = AppContainer.shared.appleProvider
                 let contact = try await provider.createContact(
                     givenName: decodedArgs.givenName,
@@ -2198,12 +2366,12 @@ class ChatViewModel: ObservableObject {
                     emailLabel: decodedArgs.emailLabel,
                     note: decodedArgs.note
                 )
-                
+
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let jsonData = try encoder.encode(contact)
                 output = String(data: jsonData, encoding: .utf8) ?? "{}"
-                
+
                 AppLogger.log("✅ [createAppleContact] Created contact successfully", category: .network, level: .info)
                 logActivity("✅ Created contact")
             } catch {
@@ -2213,7 +2381,7 @@ class ChatViewModel: ObservableObject {
                 logActivity("❌ Contact creation failed")
             }
         #endif
-        
+
         default:
             if activePrompt.enableCustomTool && functionName == activePrompt.customToolName {
                 output = await executeCustomTool(argumentsJSON: call.arguments)
@@ -2221,10 +2389,10 @@ class ChatViewModel: ObservableObject {
                 output = "Error: Unknown function '\(functionName)'"
             }
         }
-        
+
         return output
     }
-    
+
     /// Handles a function call from the API by executing the function and sending the result back.
     private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
         guard let functionName = call.name else {
@@ -2312,7 +2480,7 @@ class ChatViewModel: ObservableObject {
             // Execute using extracted switch logic
             output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
         }
-        
+
         // If execution returned an error instead of output, bail
         if output?.hasPrefix("Error:") == true && output?.contains("unknown function") == true {
             let errorMsg = ChatMessage(role: .system, text: output!)
@@ -2329,7 +2497,7 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("📤 [Function Call] Sending output back to OpenAI API", category: .ui, level: .info)
         AppLogger.log("📤 [Function Call] Output length: \(output.count) chars", category: .ui, level: .info)
         AppLogger.log("📤 [Function Call] Output preview: \(String(output.prefix(300)))...", category: .ui, level: .info)
-        
+
     var priorResponseId: String? = lastResponseId
         var reasoningReplay = priorResponseId.flatMap { reasoningBufferByResponseId[$0] }
         let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
@@ -2570,14 +2738,14 @@ class ChatViewModel: ObservableObject {
             return argumentsJSON ?? "{}"
         }
     }
-    
+
     /// Handles MCP approval request by sending mcp_approval_response to API
     func respondToMCPApproval(approvalRequestId: String, approve: Bool, reason: String?, messageId: UUID) {
         guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
             AppLogger.log("⚠️ [MCP] Could not find message for approval response", category: .openAI, level: .warning)
             return
         }
-        
+
         let trimmedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Update the approval status in the message
@@ -2591,15 +2759,15 @@ class ChatViewModel: ObservableObject {
             }
             messages[messageIndex].mcpApprovalRequests = approvalRequests
         }
-        
+
         // Log the decision
         AppLogger.log("🔒 [MCP] User \(approve ? "approved" : "rejected") approval request \(approvalRequestId)", category: .openAI, level: .info)
         if let trimmedReason, !trimmedReason.isEmpty, !approve {
             AppLogger.log("  Reason: \(trimmedReason)", category: .openAI, level: .debug)
         }
-        
+
         logActivity("MCP: \(approve ? "Approved" : "Rejected") tool call")
-        
+
         // Send the approval response to the API
         streamingTask?.cancel()
         streamingMessageId = messageId // Ensure approval stream updates the originating message
@@ -2673,19 +2841,19 @@ class ChatViewModel: ObservableObject {
 
         return payload
     }
-    
+
     /// Determines the current model to use from UserDefaults (or default).
     func currentModel() -> String {
         return activePrompt.openAIModel
     }
-    
+
     // MARK: - Active Prompt Management
-    
+
     /// Saves the current `activePrompt` to UserDefaults.
     func saveActivePrompt() {
         // Do not save if the active prompt is a temporary preset
         if activePrompt.isPreset { return }
-        
+
         if let encoded = try? JSONEncoder().encode(activePrompt) {
             UserDefaults.standard.set(encoded, forKey: "activePrompt")
             print("Active prompt saved.")
@@ -2739,14 +2907,14 @@ class ChatViewModel: ObservableObject {
         saveActivePrompt()
         print("Prompt reset to default and saved.")
     }
-    
+
     /// Loads the `activePrompt` from UserDefaults.
     private func loadActivePrompt() {
         if let data = UserDefaults.standard.data(forKey: "activePrompt"),
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
             var prompt = decoded
             var needsSave = false
-            
+
             // Ensure computer use stays aligned with model capabilities
             let compatibilityService = ModelCompatibilityService.shared
             let supportsComputerUse = compatibilityService.isToolSupported(
@@ -2779,14 +2947,14 @@ class ChatViewModel: ObservableObject {
                     needsSave = true
                 }
             }
-            
+
             // Migration: Update truncation from "disabled" to "auto" for better context management
             if prompt.truncationStrategy == "disabled" {
                 print("Migrating truncation strategy from 'disabled' to 'auto'")
                 prompt.truncationStrategy = "auto"
                 needsSave = true
             }
-            
+
             // Validate the model name - if it's a UUID or invalid, reset to default
             if isInvalidModelName(prompt.openAIModel) {
                 print("Invalid model name detected: \(prompt.openAIModel), resetting to default")
@@ -2796,11 +2964,11 @@ class ChatViewModel: ObservableObject {
 
             let reasoningChanged = enforceReasoningDefaults(for: &prompt, previousModelId: nil)
             activePrompt = prompt
-            
+
             if needsSave || reasoningChanged {
                 saveActivePrompt() // Save all migrations at once
             }
-            
+
             print("Active prompt loaded.")
         } else {
             // If no saved prompt is found, use the default
@@ -2808,22 +2976,22 @@ class ChatViewModel: ObservableObject {
             print("No saved prompt found, initialized with default.")
         }
     }
-    
+
     /// Checks if a model name is invalid (e.g., a UUID instead of a proper model name)
     private func isInvalidModelName(_ modelName: String) -> Bool {
         // Check if it's a UUID format
         if UUID(uuidString: modelName) != nil {
             return true
         }
-        
+
         // Check if it's empty or contains invalid characters for a model name
         if modelName.isEmpty || modelName.contains("Optional(") {
             return true
         }
-        
+
         return false
     }
-    
+
     // MARK: - Conversation Management
 
     func loadConversations() {
@@ -2877,7 +3045,7 @@ class ChatViewModel: ObservableObject {
     func selectConversation(_ conversation: Conversation) {
         activeConversation = conversation
     }
-    
+
 
     /// Schedules a flush for the buffered text deltas of this message.
     /// If immediate is true, flush right away; otherwise, debounce for a short interval.
@@ -2985,7 +3153,7 @@ class ChatViewModel: ObservableObject {
                         await MainActor.run { [weak self] in
                             self?.handleError(CancellationError())
                         }
-                        break 
+                        break
                     }
                     await MainActor.run { self.handleStreamChunk(chunk, for: messageId) }
                 }
@@ -3122,7 +3290,7 @@ class ChatViewModel: ObservableObject {
                 if actionToExecute.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
                     if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
                         AppLogger.log("[CUA] (streaming) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
-                        actionToExecute = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"]) 
+                        actionToExecute = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"])
                     } else {
                         AppLogger.log("[CUA] (streaming) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
                     }
@@ -3131,7 +3299,7 @@ class ChatViewModel: ObservableObject {
 
             // Note: We still execute the model-directed action; the above is a minimal preconditioning step.
             AppLogger.log("[CUA] Executing action type=\(actionToExecute.type) params=\(actionToExecute.parameters)", category: .openAI)
-            
+
             // Check for pending safety checks – pause and ask the user
             if let safetyChecks = pendingSafety, !safetyChecks.isEmpty {
                 AppLogger.log("[CUA] SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
@@ -3153,10 +3321,10 @@ class ChatViewModel: ObservableObject {
                 }
                 return // Wait for user decision
             }
-            
-            
+
+
             let result = try await computerService.executeAction(actionToExecute)
-            
+
             // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
             // so we can capture any screenshots or results first
             var abortAfterOutput = false
@@ -3193,32 +3361,32 @@ class ChatViewModel: ObservableObject {
                             } else {
                                 uiImage = rawImage
                             }
-                            
+
                             AppLogger.log("[CUA] (streaming) Screenshot decoded successfully - Image size: \(uiImage.size), data length: \(imageData.count) bytes", category: .openAI, level: .info)
                             AppLogger.log("[CUA] (streaming) CGImage present: \(uiImage.cgImage != nil), orientation: \(uiImage.imageOrientation.rawValue)", category: .openAI, level: .info)
-                            
+
                             if updatedMessage.images == nil { updatedMessage.images = [] }
                             updatedMessage.images?.removeAll()
                             updatedMessage.images?.append(uiImage)
-                            
+
                             AppLogger.log("[CUA] (streaming) About to update message with \(updatedMessage.images?.count ?? 0) images", category: .openAI, level: .info)
-                            
+
                             // Update the message in the messages array
                             var updatedMessages = self.messages
                             updatedMessages[index] = updatedMessage
                             self.messages = updatedMessages  // This triggers the setter and UI update
-                            
+
                             AppLogger.log("[CUA] (streaming) Message updated, now has \(self.messages[index].images?.count ?? 0) images", category: .openAI, level: .info)
-                            
+
                             // Force multiple UI refresh cycles
                             Task { @MainActor in
                                 self.objectWillChange.send()
                                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                                self.objectWillChange.send() 
+                                self.objectWillChange.send()
                                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                                 self.objectWillChange.send()
                             }
-                            
+
                             AppLogger.log("[CUA] (streaming) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
                         } else {
                             AppLogger.log("[CUA] (streaming) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
@@ -3234,12 +3402,12 @@ class ChatViewModel: ObservableObject {
                 ]
                 // Include acknowledged safety checks if they were present
                 let acknowledgedSafetyChecks = pendingSafety
-                
+
                 AppLogger.log("[CUA] Sending computer_call_output for call_id=\(finalCallId)", category: .openAI)
                 if let safetyChecks = acknowledgedSafetyChecks {
                     AppLogger.log("[CUA] Including \(safetyChecks.count) acknowledged safety checks", category: .openAI)
                 }
-                
+
                 do {
                     let response = try await api.sendComputerCallOutput(
                         callId: finalCallId,
@@ -3308,23 +3476,23 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Extracts computer action from a full response OutputItem (has complete action data)
     private func extractComputerActionFromOutputItem(_ item: OutputItem) -> ComputerAction? {
         guard item.type == "computer_call", let actionData = item.action else {
             return nil
         }
-        
+
         let actionDict = actionData.reduce(into: [String: Any]()) { result, entry in
             if let value = entry.value.value {
                 result[entry.key] = value
             }
         }
-        
+
         guard let actionType = actionDict["type"] as? String else {
             return nil
         }
-        
+
         return ComputerAction(type: actionType, parameters: actionDict)
     }
 
@@ -3656,21 +3824,21 @@ class ChatViewModel: ObservableObject {
         guard item.type == "computer_call", let actionDict = item.action else {
             return nil
         }
-        
+
         guard let actionType = actionDict["type"]?.value as? String else {
             return nil
         }
-        
+
         var parameters: [String: Any] = [:]
         for (key, anyCodableValue) in actionDict {
             if key != "type" {
                 parameters[key] = anyCodableValue.value
             }
         }
-        
+
         return ComputerAction(type: actionType, parameters: parameters)
     }
-    
+
     /// Sends computer call output back to OpenAI API
     private func sendComputerCallOutput(item: StreamingItem, output: Any, previousId: String, messageId: UUID) async {
         do {
@@ -3693,11 +3861,11 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Handles a screenshot received during streaming for computer use.
     func handleComputerScreenshot(_ chunk: StreamingEvent, for messageId: UUID) {
         AppLogger.log("[CUA] handleComputerScreenshot: Processing streaming screenshot event", category: .openAI, level: .info)
-        
+
         guard let item = chunk.item,
               let content = item.content?.first,
               let imageData = extractImageDataFromContent(content)
@@ -3705,7 +3873,7 @@ class ChatViewModel: ObservableObject {
             AppLogger.log("[CUA] handleComputerScreenshot: FAILED to extract image data from streaming chunk", category: .openAI, level: .error)
             return
         }
-        
+
         if let image = UIImage(data: imageData) {
             if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
                 var updatedMessages = messages
@@ -3719,7 +3887,7 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Helper method to extract image data from various content types
     private func extractImageDataFromContent(_ content: StreamingContentItem) -> Data? {
         // Try different ways to get image data based on content type
@@ -3730,7 +3898,7 @@ class ChatViewModel: ObservableObject {
         }
         return nil
     }
-    
+
     /// Handles the completion of a streaming item, such as an image or tool call.
     /// For gpt-image-1, the "completed" event often does not include the final image bytes in `item.content`.
     /// We primarily rely on partial_image updates for previews/finals and an existing fallback that fetches
@@ -3748,7 +3916,7 @@ class ChatViewModel: ObservableObject {
 
             AppLogger.log("🔔 [Function Call] Streaming item completed: id=\(item.id), callId=\(item.callId ?? "none"), name=\(item.name ?? "<unknown>")", category: .openAI, level: .info)
             let outputItem = OutputItem(streamingItem: item)
-            
+
             // Check if this is part of a parallel batch by looking at the response ID
             if let responseId = lastResponseId {
                 Task { [weak self] in
@@ -3839,11 +4007,11 @@ class ChatViewModel: ObservableObject {
                 messages = updatedMessages
             }
         }
-        
+
         // Note: For other image types like image_file/image_url, they would be handled by the annotation system
         // or the fallback mechanism that fetches the final response
     }
-    
+
     /// Handles partial image updates from gpt-image-1 model
     /// The base64 data for partial images is provided in `partial_image_b64` at the event level.
     /// We decode it and append/replace the latest preview image.
@@ -3855,14 +4023,14 @@ class ChatViewModel: ObservableObject {
               let image = UIImage(data: imageData) else {
             return
         }
-        
+
         // We'll track partial images using a different approach since UIImage doesn't have isPartial
         if let msgIndex = messages.firstIndex(where: { $0.id == messageId }) {
             var updatedMessages = messages
             if updatedMessages[msgIndex].images == nil {
                 updatedMessages[msgIndex].images = []
             }
-            
+
             // For partial image updates, we'll replace the last image if it exists
             // This assumes partial updates replace the previous partial image
             if !updatedMessages[msgIndex].images!.isEmpty {
@@ -3962,22 +4130,22 @@ class ChatViewModel: ObservableObject {
         }
         messages = updated
     }
-    
+
     /// Handles errors that occur during API calls or other operations.
     func handleError(_ error: Error) {
         let specificError = OpenAIServiceError.from(error: error)
         let errorText = specificError.userFriendlyDescription
-        
+
         if let streamingId = streamingMessageId {
             finalizeStreamingReasoning(for: streamingId)
         }
 
         // Log the error with analytics
         AnalyticsService.shared.trackError(specificError, context: "ChatViewModel")
-        
+
         // Set the error message to be displayed in an alert
         self.errorMessage = errorText
-        
+
         // Provide more user-friendly error messages for production
         let userFriendlyText: String
         switch specificError {
@@ -4006,11 +4174,11 @@ class ChatViewModel: ObservableObject {
         case .invalidRequest(let message):
             userFriendlyText = "⚠️ Invalid request: \(message)"
         }
-        
+
         // Also append a system message to the chat for context
         let errorMsg = ChatMessage(role: .system, text: userFriendlyText, images: nil)
         messages.append(errorMsg)
-        
+
         // If rate limited, disable input temporarily
         if case .rateLimited(let retryAfter, _) = specificError {
             isStreaming = true // Disable input
@@ -4019,13 +4187,13 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Resets the conversation by clearing messages and forgetting the last response ID.
     func clearConversation() {
         guard var conversation = activeConversation else { return }
         conversation.messages.removeAll()
         conversation.lastResponseId = nil
-        
+
         // Clear performance caches
         containerFileCache.removeAll()
         processedAnnotations.removeAll()
@@ -4037,10 +4205,10 @@ class ChatViewModel: ObservableObject {
         streamingReasoningTraceIdByMessageId.removeAll()
         reasoningBufferByResponseId.removeAll()
         functionCallResponseIds.removeAll()
-        
+
         updateActiveConversation(conversation)
     }
-    
+
     /// Deletes a specific message from the active conversation.
     func deleteMessage(_ message: ChatMessage) {
         guard var conversation = activeConversation,
@@ -4066,11 +4234,11 @@ class ChatViewModel: ObservableObject {
             stopImageGenerationHeartbeat(for: streamingId)
             finalizeStreamingReasoning(for: streamingId)
         }
-        
+
         // Update UI immediately
         isStreaming = false
         streamingStatus = .idle
-        
+
         // If there was a message being streamed, update its text to show it was cancelled
         if let streamingId = streamingMessageId, let msgIndex = messages.firstIndex(where: { $0.id == streamingId }) {
             var updatedMessages = messages
@@ -4083,10 +4251,10 @@ class ChatViewModel: ObservableObject {
             }
             messages = updatedMessages // Trigger UI update
         }
-        
+
         streamingMessageId = nil
     }
-    
+
     /// Updates the streaming status based on the event type and item context
     func updateStreamingStatus(for eventType: String, item: StreamingItem? = nil, messageId: UUID? = nil) {
         switch eventType {
@@ -4250,7 +4418,7 @@ class ChatViewModel: ObservableObject {
             break
         }
     }
-    
+
     /// Convenience method for updating status with just event type
     func updateStreamingStatus(for eventType: String) {
         updateStreamingStatus(for: eventType, item: nil, messageId: nil)
@@ -4298,11 +4466,11 @@ class ChatViewModel: ObservableObject {
         guard let conversation = activeConversation, !conversation.messages.isEmpty else {
             return "No conversation to export."
         }
-        
+
         var exportText = "# \(conversation.title)\n"
         exportText += "Exported from OpenResponses\n"
         exportText += "Date: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short))\n\n"
-        
+
         for message in conversation.messages {
             let rolePrefix: String
             switch message.role {
@@ -4313,25 +4481,25 @@ class ChatViewModel: ObservableObject {
             case .system:
                 rolePrefix = "⚙️ System:"
             }
-            
+
             exportText += "\(rolePrefix)\n"
             if let text = message.text, !text.isEmpty {
                 exportText += "\(text)\n"
             }
-            
+
             if let images = message.images, !images.isEmpty {
                 exportText += "[Contains \(images.count) image(s)]\n"
             }
-            
+
             if let artifacts = message.artifacts, !artifacts.isEmpty {
                 exportText += "[Contains \(artifacts.count) artifact(s): "
                 exportText += artifacts.map { "\($0.filename) (\($0.artifactType.rawValue))" }.joined(separator: ", ")
                 exportText += "]\n"
             }
-            
+
             exportText += "\n---\n\n"
         }
-        
+
         return exportText
     }
 }
@@ -4341,13 +4509,13 @@ extension ChatViewModel {
     /// Create an artifact from raw data based on file type
     func createArtifact(fileId: String, filename: String, containerId: String, data: Data) -> CodeInterpreterArtifact {
         let ext = (filename as NSString).pathExtension.lowercased()
-        
+
         // Determine MIME type from extension
         let mimeType = mimeTypeForExtension(ext)
-        
+
         // Create appropriate content based on file type
         let content: ArtifactContent
-        
+
         // Image types
         if ["jpg", "jpeg", "png", "gif"].contains(ext) {
             if let image = UIImage(data: data) {
@@ -4368,7 +4536,7 @@ extension ChatViewModel {
         else {
             content = .data(data)
         }
-        
+
         return CodeInterpreterArtifact(
             fileId: fileId,
             filename: filename,
@@ -4377,22 +4545,22 @@ extension ChatViewModel {
             content: content
         )
     }
-    
+
     /// Append an artifact to a message
     func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
-        
+
         if messages[index].artifacts == nil {
             messages[index].artifacts = []
         }
         messages[index].artifacts?.append(artifact)
-        
+
         // If it's an image artifact, also add to the legacy images array for backward compatibility
         if case .image(let image) = artifact.content {
             appendImage(image, to: messageId)
         }
     }
-    
+
     /// Get MIME type for file extension
     private func mimeTypeForExtension(_ ext: String) -> String {
         switch ext.lowercased() {
@@ -4775,42 +4943,42 @@ extension ChatViewModel {
         activityLines.removeAll()
         lastActivityLine = nil
     }
-    
+
     /// Starts a heartbeat task during image generation to show periodic progress updates
     private func startImageGenerationHeartbeat(for messageId: UUID) {
         // Cancel any existing heartbeat for this message
         imageHeartbeatTasks[messageId]?.cancel()
         imageHeartbeatCounters[messageId] = 0
-        
+
         imageHeartbeatTasks[messageId] = Task { [weak self] in
             guard let self = self else { return }
-            
+
             let heartbeatMessages = [
                 "🎨 Composing image",
-                "🖼️ Refining details", 
+                "🖼️ Refining details",
                 "✨ Adding lighting effects",
                 "🎨 Adjusting composition",
                 "🖼️ Enhancing quality",
                 "✨ Almost ready"
             ]
-            
+
             var counter = 0
             while !Task.isCancelled {
                 // Check if the streaming message is still active (without weak self here since we're in the capture)
                 guard self.streamingMessageId == messageId else { break }
-                
+
                 // Wait 3-5 seconds between heartbeats (randomized to feel more natural)
                 let delay = Double.random(in: 3.0...5.0)
                 try? await Task.sleep(for: .seconds(delay))
                 guard !Task.isCancelled else { break }
                 guard self.streamingMessageId == messageId else { break }
-                
+
                 await MainActor.run { [weak self] in
                     guard let self = self else { return }
                     let index = counter % heartbeatMessages.count
                     self.logActivity(heartbeatMessages[index])
                     self.imageHeartbeatCounters[messageId] = counter
-                    
+
                     // Update streaming status with progress indicator
                     if counter > 0 {
                         let progressText = heartbeatMessages[index]
@@ -4819,7 +4987,7 @@ extension ChatViewModel {
                 }
                 counter += 1
             }
-            
+
             // Cleanup
             await MainActor.run { [weak self] in
                 self?.imageHeartbeatTasks[messageId] = nil
@@ -4827,14 +4995,14 @@ extension ChatViewModel {
             }
         }
     }
-    
+
     /// Stops the image generation heartbeat for a specific message
     func stopImageGenerationHeartbeat(for messageId: UUID) {
         imageHeartbeatTasks[messageId]?.cancel()
         imageHeartbeatTasks[messageId] = nil
         imageHeartbeatCounters[messageId] = nil
     }
-    
+
     /// Periodic cleanup of performance caches to prevent memory bloat
     private func cleanupPerformanceCaches() {
         // Keep only the 20 most recent container file cache entries
@@ -4842,14 +5010,14 @@ extension ChatViewModel {
             let keysToRemove = containerFileCache.keys.prefix(containerFileCache.count - 20)
             keysToRemove.forEach { containerFileCache.removeValue(forKey: $0) }
         }
-        
+
         // Clear processed annotations older than current conversation
         let currentMessageIds = Set(messages.map { $0.id })
         processedAnnotations = processedAnnotations.filter { annotation in
             // Keep annotations that might still be relevant
             currentMessageIds.contains { $0.uuidString.contains(annotation.prefix(8)) }
         }
-        
+
         AppLogger.log("Cleaned performance caches: \(containerFileCache.count) files, \(processedAnnotations.count) annotations", category: .ui, level: .debug)
     }
 }
@@ -4915,12 +5083,12 @@ extension ChatViewModel {
         AppLogger.log("🎬 [handleNonStreamingResponse] Starting...", category: .openAI, level: .info)
         AppLogger.log("🎬 [handleNonStreamingResponse] Response ID: \(response.id)", category: .openAI, level: .info)
         AppLogger.log("🎬 [handleNonStreamingResponse] Message ID: \(messageId)", category: .openAI, level: .info)
-        
+
         guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else {
             AppLogger.log("❌ [handleNonStreamingResponse] Could not find message with ID \(messageId)", category: .openAI, level: .error)
             return
         }
-        
+
         AppLogger.log("✅ [handleNonStreamingResponse] Found message at index \(messageIndex)", category: .openAI, level: .info)
 
         // Persist response ID so the next request can continue the conversation.
@@ -4956,7 +5124,7 @@ extension ChatViewModel {
             .flatMap { $0 }
 
         AppLogger.log("📋 [handleNonStreamingResponse] Total content parts: \(allContents.count)", category: .openAI, level: .info)
-        
+
         for (index, content) in allContents.enumerated() {
             AppLogger.log("📋 [handleNonStreamingResponse] Content \(index): type=\(content.type), hasText=\(content.text != nil), textLength=\(content.text?.count ?? 0)", category: .openAI, level: .info)
         }
@@ -5030,7 +5198,7 @@ extension ChatViewModel {
                 "has_images": updatedMessage.images?.isEmpty == false
             ]
         )
-        
+
         AppLogger.log("✅ [handleNonStreamingResponse] Completed successfully", category: .openAI, level: .info)
 
         // Auto-resolve any computer calls that arrive in non-streaming mode to keep chains progressing.

@@ -3,11 +3,7 @@ import XCTest
 @testable import OpenResponses
 
 @MainActor
-final class StreamingEventDecodingTests: XCTestCase {
-    private func makeTestViewModel() -> ChatViewModel {
-        ChatViewModel(computerService: ComputerService(autoAttachWebView: false))
-    }
-
+final class StreamingEventDecodingTests: XCTestCase { 
     func testStreamingEventDecodesMCPListToolsWithNulls() throws {
         let json = """
         {
@@ -252,13 +248,13 @@ final class StreamingEventDecodingTests: XCTestCase {
         XCTAssertEqual(event.type, "response.completed")
         XCTAssertEqual(event.sequenceNumber, 7)
 
-        let viewModel = makeTestViewModel()
-        let requests = viewModel.extractApprovalRequests(from: event.response?.output)
+        let prompt = Prompt.defaultPrompt()
+        let requests = MCPApprovalUtils.extractApprovalRequests(from: event.response?.output, prompt: prompt).requests
         XCTAssertEqual(requests.count, 1)
         XCTAssertEqual(requests.first?.toolName, "list_messages")
         XCTAssertEqual(requests.first?.serverLabel, "Gmail")
 
-        let summary = viewModel.buildTextFromApprovalRequests(requests)
+        let summary = MCPApprovalUtils.buildTextFromApprovalRequests(requests)
         XCTAssertNotNil(summary)
         XCTAssertTrue(summary?.contains("Approval required") == true)
         XCTAssertTrue(summary?.contains("list_messages") == true)
@@ -268,8 +264,7 @@ final class StreamingEventDecodingTests: XCTestCase {
 
     @MainActor
     func testApprovalResponsePayloadOmitsReasonWhenApproving() {
-        let viewModel = makeTestViewModel()
-        let payload = viewModel.buildMCPApprovalResponsePayload(
+      let payload = MCPApprovalUtils.buildMCPApprovalResponsePayload(
             approvalRequestId: "mcpr_approve",
             approve: true,
             reason: "Looks good"
@@ -283,8 +278,7 @@ final class StreamingEventDecodingTests: XCTestCase {
 
     @MainActor
     func testApprovalResponsePayloadIncludesReasonWhenRejecting() {
-        let viewModel = makeTestViewModel()
-        let payload = viewModel.buildMCPApprovalResponsePayload(
+      let payload = MCPApprovalUtils.buildMCPApprovalResponsePayload(
             approvalRequestId: "mcpr_reject",
             approve: false,
             reason: "Insufficient scope"

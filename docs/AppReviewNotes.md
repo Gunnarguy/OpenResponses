@@ -1,18 +1,23 @@
 # App Review Notes – OpenResponses 1.0.0
 
-**Last updated:** 2025-11-11
+**Last updated:** 2025-11-14
 
 ## Reviewer access
 
-- No reviewer account is needed. The app runs entirely with the reviewer’s OpenAI API key.
-- On first launch the app prompts for the key; it is stored only in the iOS Keychain and never leaves the device.
-- OpenAI usage is billed through the reviewer’s own API key. Keep requests short to limit charges.
+- No reviewer account is needed. On first launch you can either start **Explore Demo** (offline, no API calls) or paste the limited-scope OpenAI API key from the App Store Connect review note (or your own key).
+- Once entered, the key is stored only in the iOS Keychain and never leaves the device.
+- Usage is billed directly to that limited-scope key. It has a low credit ceiling, so keep requests short.
 - The onboarding flow and chat composer both display an AI accuracy disclaimer reminding reviewers to double-check generated output.
+
+### Reviewer key details
+
+- The placeholder value lives in `AppStoreAssets/ReviewKeyInstructions.md`. Replace it right before submitting to App Store Connect, and copy the finalized value into the secure App Review note.
+- During QA, paste the reviewer key into Settings → Credentials and confirm you can remove it anytime using the **Delete Key** option.
 
 ## Primary review scenario (10 minutes)
 
 1. Launch the app.
-2. When prompted, enter an OpenAI API key (e.g., a limited-scope test key).
+2. On the Welcome sheet, tap **Add API Key** and paste the limited-scope reviewer key from the App Review note (or your own OpenAI API key).
 3. Send “Hello! Can you help me test this app?” and verify the response streams.
 4. Open Settings → Tools and enable **Code Interpreter**.
 5. Ask “Calculate the first 10 Fibonacci numbers.” The assistant will execute the code tool and stream back the result.
