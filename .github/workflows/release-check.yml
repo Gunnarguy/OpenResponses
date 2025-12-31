@@ -14,6 +14,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Select Xcode version
+        run: |
+          set -euo pipefail
+          if [ -d "/Applications/Xcode_16.1.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+          elif [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          else
+            echo "❌ No Xcode installation found under /Applications"
+            ls -la /Applications | sed -n '1,200p'
+            exit 1
+          fi
+
       - name: Extract version from project
         id: version
         run: |
@@ -61,7 +74,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          if [ -d "/Applications/Xcode_16.1.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+          elif [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          else
+            echo "❌ No Xcode installation found under /Applications"
+            ls -la /Applications | sed -n '1,200p'
+            exit 1
+          fi
 
       - name: Build archive (unsigned)
         run: |
@@ -74,7 +97,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee build.log || true
-          
+
           if [ -d "./build/OpenResponses.xcarchive" ]; then
             echo "✅ Archive created successfully"
           else
@@ -140,11 +163,11 @@ jobs:
               if [[ $link == http* ]] || [[ $link == #* ]]; then
                 continue
               fi
-              
+
               # Resolve relative path
               dir=$(dirname "$md")
               target="$dir/$link"
-              
+
               if [ ! -f "$target" ] && [ ! -d "$target" ]; then
                 echo "⚠️  Broken link in $md: $link"
               fi
@@ -184,7 +207,7 @@ jobs:
         run: |
           if [ -f "OpenResponses/Resources/Assets/Assets.xcassets/AppIcon.appiconset/Contents.json" ]; then
             echo "✅ AppIcon asset catalog found"
-            
+
             # Check if 1024x1024 icon exists
             if cat OpenResponses/Resources/Assets/Assets.xcassets/AppIcon.appiconset/Contents.json | grep -q "1024"; then
               echo "✅ 1024x1024 app icon specified"

@@ -16,7 +16,32 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          if [ -d "/Applications/Xcode_16.1.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+          elif [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+            # Fall back to the runner-default Xcode location.
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          else
+            echo "❌ No Xcode installation found under /Applications"
+            ls -la /Applications | sed -n '1,200p'
+            exit 1
+          fi
+
+      - name: Resolve iOS Simulator destination
+        id: destination
+        run: |
+          set -euo pipefail
+          # Pick the first available iPhone device name on the runner.
+          DEVICE_NAME=$(xcrun simctl list devices available | sed -n 's/^    \(iPhone[^()]*\) (.*/\1/p' | head -n 1)
+          if [ -z "${DEVICE_NAME}" ]; then
+            echo "❌ Could not find an available iPhone Simulator device"
+            xcrun simctl list devices available | sed -n '1,200p'
+            exit 1
+          fi
+          echo "✅ Using Simulator: ${DEVICE_NAME}"
+          echo "value=platform=iOS Simulator,name=${DEVICE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -35,7 +60,7 @@ jobs:
           xcodebuild build-for-testing \
             -project OpenResponses.xcodeproj \
             -scheme OpenResponses \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination '${{ steps.destination.outputs.value }}' \
             -derivedDataPath DerivedData
 
       - name: Run tests
@@ -43,7 +68,7 @@ jobs:
           xcodebuild test-without-building \
             -project OpenResponses.xcodeproj \
             -scheme OpenResponses \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination '${{ steps.destination.outputs.value }}' \
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult
 
@@ -57,7 +82,7 @@ jobs:
 
       - name: Check for build warnings
         run: |
-          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build 2>&1 | grep -q "warning:"; then
+          if xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -destination '${{ steps.destination.outputs.value }}' build 2>&1 | grep -q "warning:"; then
             echo "⚠️ Build completed with warnings"
             exit 0
           else
@@ -73,7 +98,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install SwiftLint
-        run: brew install swiftlint
+        run: |
+          set -euo pipefail
+          if brew list swiftlint >/dev/null 2>&1; then
+            echo "✅ SwiftLint already installed"
+          else
+            brew install swiftlint
+          fi
 
       - name: Run SwiftLint
         run: swiftlint lint --strict --reporter github-actions-logging
