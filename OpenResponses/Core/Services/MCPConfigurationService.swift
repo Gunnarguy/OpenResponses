@@ -14,6 +14,7 @@ final class MCPConfigurationService {
     ///   - mcpAllowedTools = "" (allow all tools = ubiquitous)
     ///   - mcpRequireApproval normalized to "never" when empty/"auto"/"allow"
     /// - Does not override an explicitly configured connector flow.
+    @MainActor
     func bootstrap(chatViewModel: ChatViewModel) {
         var prompt = chatViewModel.activePrompt
 
@@ -22,14 +23,14 @@ final class MCPConfigurationService {
         // Users with integration tokens (ntn_*) should use Direct Notion Integration instead.
         if prompt.mcpServerURL.lowercased().contains("mcp.notion.com") {
             AppLogger.log("🚨 Auto-clearing broken Notion MCP config (requires OAuth, not integration tokens)", category: .mcp, level: .warning)
-            
+
             // Clear all MCP configuration
             let label = prompt.mcpServerLabel
             if !label.isEmpty {
                 KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
                 KeychainService.shared.delete(forKey: "mcp_auth_\(label)")
             }
-            
+
             prompt.enableMCPTool = false
             prompt.mcpServerURL = ""
             prompt.mcpServerLabel = ""
@@ -37,10 +38,10 @@ final class MCPConfigurationService {
             prompt.mcpRequireApproval = "never"
             prompt.mcpIsConnector = false
             prompt.mcpConnectorId = nil
-            
+
             chatViewModel.replaceActivePrompt(with: prompt)
             chatViewModel.saveActivePrompt()
-            
+
             AppLogger.log("✅ Notion MCP config cleared. Use 'Direct Notion Integration' in Settings → MCP tab instead.", category: .mcp, level: .info)
             return
         }
