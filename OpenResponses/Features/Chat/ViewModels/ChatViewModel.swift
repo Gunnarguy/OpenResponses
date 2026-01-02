@@ -5064,15 +5064,22 @@ extension ChatViewModel {
     /// Overload that infers tool name from a streaming item.
     func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
         let tool: String
-        if item.type == "mcp_call" {
+        switch item.type {
+        case "mcp_call", "mcp_list_tools", "mcp_call_output": 
             tool = "mcp"
-        } else if item.type == "computer_call" {
+        case "computer_call", "computer_call_output":
             tool = "computer"
-        } else if item.type == "image_generation_call" {
-            tool = "image"
-        } else if item.type == "function_call" {
+        case "image_generation_call", "image_generation":
+            tool = "image_generation"
+        case "function_call", "function_call_output":
             tool = "function"
-        } else {
+        case "web_search_call", "web_search":
+            tool = "web_search"
+        case "file_search_call", "file_search":
+            tool = "file_search"
+        case "code_interpreter_call", "code_interpreter":
+            tool = "code_interpreter"
+        default:
             tool = item.type
         }
         trackToolUsage(for: messageId, tool: tool)

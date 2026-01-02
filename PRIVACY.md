@@ -8,21 +8,21 @@ OpenResponses runs entirely on your device until you decide to contact an extern
 
 - **API credentials:** Your OpenAI key and any MCP/Notion tokens are saved in the iOS Keychain and never leave your device.
 - **Conversations:** Message history, prompts, and tool results are stored locally. You can delete any thread or remove the app to erase the data.
-- **File handling:** Attachments are processed in memory, optionally converted on device, then sent only to the service you asked us to use. We do not persist extra copies.
+- **File handling:** Attachments are processed in memory, optionally converted on device, then sent only to the selected service. The app does not persist extra copies.
 
-## What we send when you ask us to
+## Data sent upon user request
 
 - **OpenAI Responses API:** User prompts, optional file snippets, and tool arguments are sent to OpenAI to generate a reply. Nothing is sent automatically.
-- **Computer Use bridge (optional):** When you approve an automation step, we stream the approved action, screenshot, and follow-up instructions to your trusted computer-use server on the local network.
+- **Computer Use bridge (optional):** When you approve an automation step, the app streams the approved action, screenshot, and follow-up instructions to your trusted computer-use server on the local network.
 - **MCP / Notion (optional):** If you connect external providers, the assistant forwards only the prompts and parameters needed for the action. Those services apply their own privacy policies.
 
-## Device permissions we request
+## Requested device permissions
 
 - **Photo library & Files:** Lets you attach screenshots, documents, and other files to a chat.
 - **Calendars, Reminders, Contacts:** Enables the assistant to create or update items you explicitly authorize.
 - **Local network:** Required to reach the computer-use bridge running on your network. No other local scanning occurs.
 
-We do not request camera, microphone, speech recognition, or precise location access in the 1.0.0 release.
+The app does not request camera, microphone, speech recognition, or precise location access in the 1.0.0 release.
 
 ## Computer Use safety
 

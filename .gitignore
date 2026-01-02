@@ -95,6 +95,9 @@ iOSInjectionProject/
 # macOS
 .DS_Store
 
+# Editor/backup artifacts
+*.backup
+
 # API Keys and Secrets (just in case)
 *.env
 .env

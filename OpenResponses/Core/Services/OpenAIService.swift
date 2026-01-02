@@ -18,7 +18,24 @@ import Contacts
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService: OpenAIServiceProtocol {
     private let apiURL = URL(string: "https://api.openai.com/v1/responses")!
-    
+
+    /// Normalizes non-API aliases (often used in docs/system cards) to API model IDs.
+    ///
+    /// This is intentionally conservative: it only rewrites known alias patterns that
+    /// can appear in saved presets or imported configs.
+    private func normalizeModelIdForAPI(_ modelId: String) -> String {
+        switch modelId {
+        case "gpt-5-thinking":
+            return "gpt-5"
+        case "gpt-5-thinking-mini":
+            return "gpt-5-mini"
+        case "gpt-5-thinking-nano":
+            return "gpt-5-nano"
+        default:
+            return modelId
+        }
+    }
+
     private struct ErrorResponse: Decodable {
         let error: ErrorDetail
     }
@@ -26,7 +43,7 @@ class OpenAIService: OpenAIServiceProtocol {
     private struct ErrorDetail: Decodable {
         let message: String
     }
-    
+
     /// Sends a chat request to the OpenAI Responses API with the given user message and parameters.
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
@@ -60,9 +77,9 @@ class OpenAIService: OpenAIServiceProtocol {
 
         // Serialize JSON payload
     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-        
+
     // Don't print raw JSON here; AnalyticsService handles sanitized/omitted logging centrally
-        
+
         // Prepare URLRequest with authorization header
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120 // Increased timeout
@@ -70,7 +87,7 @@ class OpenAIService: OpenAIServiceProtocol {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         // Log the API request with detailed information
         AnalyticsService.shared.logAPIRequest(
             url: apiURL,
@@ -88,12 +105,12 @@ class OpenAIService: OpenAIServiceProtocol {
                 AnalyticsParameter.streamingEnabled: false
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         // Check for non-200 status codes and handle errors gracefully
         if httpResponse.statusCode != 200 {
             // Attempt to decode the structured error response from OpenAI
@@ -104,14 +121,14 @@ class OpenAIService: OpenAIServiceProtocol {
                 // Fallback to a generic status code message if decoding fails
                 errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             }
-            
+
             // Specifically handle rate limiting (429)
             if httpResponse.statusCode == 429 {
                 // Extract the retry-after header value if available
                 let retryAfterSeconds = httpResponse.value(forHTTPHeaderField: "retry-after").flatMap(Int.init) ?? 60
                 throw OpenAIServiceError.rateLimited(retryAfterSeconds, errorMessage)
             }
-            
+
             // Log the detailed error
             AnalyticsService.shared.logAPIResponse(
                 url: apiURL,
@@ -128,11 +145,11 @@ class OpenAIService: OpenAIServiceProtocol {
                     AnalyticsParameter.errorDomain: "OpenAIAPI"
                 ]
             )
-            
+
             // Throw a specific error with the decoded message
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         // Log the successful response
         AnalyticsService.shared.logAPIResponse(
             url: apiURL,
@@ -149,7 +166,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 AnalyticsParameter.model: prompt.openAIModel
             ]
         )
-        
+
         // Decode JSON data into OpenAIResponse model
         do {
             let apiResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
@@ -159,7 +176,7 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Sends a chat request and streams the response back.
     /// - Parameters:
     ///   - userMessage: The user's input prompt.
@@ -179,7 +196,7 @@ class OpenAIService: OpenAIServiceProtocol {
                     guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
                         throw OpenAIServiceError.missingAPIKey
                     }
-                    
+
                     // Build the request JSON payload from the prompt object
                     let requestObject = buildRequestObject(
                         for: prompt,
@@ -193,18 +210,18 @@ class OpenAIService: OpenAIServiceProtocol {
                         conversationId: conversationId,
                         stream: true
                     )
-                    
+
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
-                    
+
                     // Avoid printing the full JSON directly to console; it's captured via AnalyticsService with sanitization
-                    
+
                     var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = jsonData
-                    
+
                     // Log the streaming API request
                     AnalyticsService.shared.logAPIRequest(
                         url: apiURL,
@@ -222,13 +239,13 @@ class OpenAIService: OpenAIServiceProtocol {
                             AnalyticsParameter.streamingEnabled: true
                         ]
                     )
-                    
+
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    
+
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw OpenAIServiceError.invalidResponseData
                     }
-                    
+
                     // Check status code and provide detailed error information
                     if httpResponse.statusCode != 200 {
                         // Collect error response data by reading the bytes
@@ -236,7 +253,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         for try await byte in bytes {
                             errorData.append(byte)
                         }
-                        
+
                         // Try to decode structured error message
                         var errorMessage: String
                         if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: errorData) {
@@ -244,13 +261,13 @@ class OpenAIService: OpenAIServiceProtocol {
                         } else {
                             errorMessage = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
                         }
-                        
+
                         // Specifically handle rate limiting (429)
                         if httpResponse.statusCode == 429 {
                             let retryAfterSeconds = httpResponse.value(forHTTPHeaderField: "retry-after").flatMap(Int.init) ?? 60
                             throw OpenAIServiceError.rateLimited(retryAfterSeconds, errorMessage)
                         }
-                        
+
                         // Log the error response
                         AnalyticsService.shared.logAPIResponse(
                             url: apiURL,
@@ -268,10 +285,10 @@ class OpenAIService: OpenAIServiceProtocol {
                                 AnalyticsParameter.errorDomain: "OpenAIStreamingAPI"
                             ]
                         )
-                        
+
                         throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
                     }
-                    
+
                     // Log the initial successful response headers
                     AnalyticsService.shared.trackEvent(
                         name: AnalyticsEvent.apiResponseReceived,
@@ -282,7 +299,7 @@ class OpenAIService: OpenAIServiceProtocol {
                             AnalyticsParameter.model: prompt.openAIModel
                         ]
                     )
-                    
+
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: ") {
                             let dataString = String(line.dropFirst(6))
@@ -296,18 +313,18 @@ class OpenAIService: OpenAIServiceProtocol {
                                 continuation.finish()
                                 return
                             }
-                            
+
                             guard let data = dataString.data(using: .utf8) else { continue }
-                            
+
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
-                                
+
                                 // Optimized logging: Only log structured events for important types
                                 let importantEventTypes = [
                                     "response.created", "response.completed", "response.failed",
                                     "response.image_generation_call.completed", "response.computer_call.completed"
                                 ]
-                                
+
                                 if importantEventTypes.contains(decodedChunk.type) {
                                     AnalyticsService.shared.logStreamingEvent(
                                         eventType: decodedChunk.type,
@@ -315,7 +332,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                         parsedEvent: decodedChunk
                                     )
                                 }
-                                
+
                                 // Track analytics only for milestone events to reduce overhead
                                 if ["response.created", "response.completed", "response.failed"].contains(decodedChunk.type) {
                                     AnalyticsService.shared.trackEvent(
@@ -326,7 +343,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                         ]
                                     )
                                 }
-                                
+
                                 continuation.yield(decodedChunk)
                             } catch {
                                 // Use the structured logging format for decoding errors
@@ -335,7 +352,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                     category: .streaming,
                                     level: .warning
                                 )
-                                
+
                                 // Still log via analytics service for consistency
                                 AnalyticsService.shared.logStreamingEvent(
                                     eventType: "decoding_error",
@@ -363,22 +380,22 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             return try JSONDecoder().decode(OpenAIResponse.self, from: data)
         } catch {
@@ -386,7 +403,7 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Builds default system instructions that are aware of computer use capabilities
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
         if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
@@ -405,7 +422,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             return "You are a helpful assistant."
         }
     }
-    
+
     /// Builds system instructions; for computer-use-preview we prefer action-only loops and omit instructions unless explicitly provided
     private func buildInstructions(prompt: Prompt) -> String {
         // For CUA, default to no system instructions unless user explicitly set them
@@ -418,13 +435,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if !userInstructions.isEmpty && userInstructions != "You are a helpful assistant." {
             return userInstructions
         }
-        
+
         // Build dynamic instructions based on enabled tools
         var instructions: [String] = []
-        
+
         // Base instruction
         instructions.append("You are a helpful assistant.")
-        
+
         // Add MCP-specific guidance if MCP is enabled
         // Note: The model automatically receives tool schemas from OpenAI's framework
         // We just need to encourage proactive usage
@@ -444,12 +461,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 instructions.append("\n\nYou have access to an MCP server (\(prompt.mcpServerLabel)). The available tools are automatically provided to you. \(searchGuidance)")
             }
         }
-        
+
         // Add file search guidance if enabled
         if prompt.enableFileSearch, let vectorStoreIds = prompt.selectedVectorStoreIds, !vectorStoreIds.isEmpty {
             instructions.append("\n\nYou have access to file_search to query uploaded documents. Use it when the user's question relates to the available files.")
         }
-        
+
         // Add code interpreter guidance if enabled
         if prompt.enableCodeInterpreter {
             instructions.append("\n\nYou can run Python code via code_interpreter for analysis, calculations, and file processing.")
@@ -485,7 +502,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 instructions.append("\n\nWeb search guidance:\n" + webGuidance.joined(separator: " "))
             }
         }
-        
+
         return instructions.joined()
     }
 
@@ -494,7 +511,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
     private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
         var requestObject = baseRequestMetadata(for: prompt, stream: stream)
-        
+
         // If customInput is provided (e.g., for MCP approval response), use it directly
         if let customInput = customInput {
             requestObject["input"] = customInput
@@ -535,7 +552,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let prevId = previousResponseId {
             requestObject["previous_response_id"] = prevId
         }
-        
+
         if let convId = conversationId {
             requestObject["conversation_id"] = convId
         }
@@ -594,26 +611,24 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
     /// Builds base metadata for a request, adding instructions, store flag, and stream options.
     private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
+        let apiModelId = normalizeModelIdForAPI(prompt.openAIModel)
         var metadata: [String: Any] = [
-            "model": prompt.openAIModel,
+            "model": apiModelId,
             "store": prompt.storeResponses
         ]
 
         let instructions = buildInstructions(prompt: prompt)
-        if !instructions.isEmpty, !(prompt.openAIModel == "computer-use-preview" && instructions == "You are a helpful assistant.") {
+        if !instructions.isEmpty, !(apiModelId == "computer-use-preview" && instructions == "You are a helpful assistant.") { 
             metadata["instructions"] = instructions
         }
 
         if stream {
             metadata["stream"] = true
-            var streamOptions: [String: Bool] = [
+            // Responses API only supports include_obfuscation in stream_options
+            // Note: include_usage is NOT supported in Responses API (unlike Chat Completions)
+            let streamOptions: [String: Bool] = [
                 "include_obfuscation": prompt.streamIncludeObfuscation
             ]
-
-            if prompt.streamIncludeUsage {
-                streamOptions["include_usage"] = true
-            }
-
             metadata["stream_options"] = streamOptions
         }
 
@@ -853,16 +868,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// Constructs the `input` array for the request, including developer instructions and user content.
     private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
-        
+
         // Add developer instructions if provided
         if !prompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             inputMessages.append(["role": "developer", "content": prompt.developerInstructions])
         }
-        
+
         // Handle user message with attachments and/or images
     // Always use structured content array with input_text to match API guidance
     var userContent: Any = [["type": "input_text", "text": userMessage]]
-        
+
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
@@ -870,7 +885,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         let hasUploadedFileIds = fileIds?.isEmpty == false
         if hasFileAttachments || hasImageAttachments || hasDirectFileData || hasUploadedFileIds {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
-            
+
             // Add file attachments (file_id references)
             if let attachments = attachments, !attachments.isEmpty {
                 let validatedAttachments = attachments.compactMap { attachment -> [String: Any]? in
@@ -880,12 +895,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     }
                     return ["type": "input_file", "file_id": fileId]
                 }
-                
+
                 if !validatedAttachments.isEmpty {
                     contentArray.append(contentsOf: validatedAttachments)
                 }
             }
-            
+
             // Add uploaded file IDs (from Files API upload)
             if let fileIds = fileIds, !fileIds.isEmpty {
                 for fileId in fileIds {
@@ -896,7 +911,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     contentArray.append(fileContent)
                 }
             }
-            
+
             // Add direct file uploads (file_data) - only for small files
             if let fileData = fileData, let fileNames = fileNames, !fileData.isEmpty, !fileNames.isEmpty {
                 for (index, data) in fileData.enumerated() {
@@ -904,7 +919,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         AppLogger.log("File data and names count mismatch", category: .openAI, level: .warning)
                         break
                     }
-                    
+
                     let base64String = data.base64EncodedString()
                     let fileContent: [String: Any] = [
                         "type": "input_file",
@@ -914,7 +929,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     contentArray.append(fileContent)
                 }
             }
-            
+
             // Add image attachments
             if let imageAttachments = imageAttachments, !imageAttachments.isEmpty {
                 let imageContentArray = imageAttachments.compactMap { inputImage -> [String: Any]? in
@@ -922,7 +937,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         "type": "input_image",
                         "detail": inputImage.detail
                     ]
-                    
+
                     if let imageUrl = inputImage.imageUrl {
                         imageContent["image_url"] = imageUrl
                     } else if let fileId = inputImage.fileId {
@@ -931,18 +946,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         AppLogger.log("InputImage missing both image_url and file_id", category: .openAI, level: .warning)
                         return nil
                     }
-                    
+
                     return imageContent
                 }
-                
+
                 if !imageContentArray.isEmpty {
                     contentArray.append(contentsOf: imageContentArray)
                 }
             }
-            
+
             userContent = contentArray
         }
-        
+
         inputMessages.append(["role": "user", "content": userContent])
         return inputMessages
     }
@@ -950,7 +965,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// Assembles the `tools` array for the request, checking for model compatibility.
     private func buildTools(for prompt: Prompt, userMessage: String, isStreaming: Bool) -> [APICapabilities.Tool] {
         var tools: [APICapabilities.Tool] = []
-        
+
         AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
         let compatibilityService = ModelCompatibilityService.shared
         let isDeepResearch = prompt.openAIModel.contains("deep-research")
@@ -1005,7 +1020,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
 
                 let filters = parseFileSearchFilters(from: prompt.fileSearchFiltersJSON)
-                
+
                 tools.append(.fileSearch(
                     vectorStoreIds: vectorStoreIds,
                     maxNumResults: prompt.fileSearchMaxResults,
@@ -1027,7 +1042,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             #else
             environment = "browser"  // Default to browser for other platforms
             #endif
-            
+
             // Get screen dimensions (use reasonable defaults to avoid main thread issues)
             let screenSize: CGSize
             #if os(iOS)
@@ -1037,7 +1052,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             #else
             screenSize = CGSize(width: 1920, height: 1080) // Default size
             #endif
-            
+
             tools.append(.computer(
                 environment: environment,
                 displayWidth: Int(screenSize.width),
@@ -1056,7 +1071,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             } else {
                 schema = APICapabilities.JSONSchema(["type": "object", "properties": [:], "additionalProperties": true])
             }
-            
+
             let function = APICapabilities.Function(
                 name: prompt.customToolName,
                 description: prompt.customToolDescription,
@@ -1065,7 +1080,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             )
             tools.append(.function(function: function))
         }
-        
+
         // Add Notion tools only when the integration is enabled and a token is present
         let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
         if prompt.enableNotionIntegration && hasNotionToken {
@@ -1090,7 +1105,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: searchNotionFunc))
-            
+
             // Get database tool (returns data_sources)
             let getDatabaseFunc = APICapabilities.Function(
                 name: "getNotionDatabase",
@@ -1108,7 +1123,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: getDatabaseFunc))
-            
+
             // Get data source tool (returns schema/properties)
             let getDataSourceFunc = APICapabilities.Function(
                 name: "getNotionDataSource",
@@ -1126,7 +1141,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: getDataSourceFunc))
-            
+
             // Create page tool
             let createPageFunc = APICapabilities.Function(
                 name: "createNotionPage",
@@ -1160,7 +1175,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: createPageFunc))
-            
+
             // Update page tool
             let updatePageFunc = APICapabilities.Function(
                 name: "updateNotionPage",
@@ -1186,7 +1201,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: updatePageFunc))
-            
+
             // Append blocks tool
             let appendBlocksFunc = APICapabilities.Function(
                 name: "appendNotionBlocks",
@@ -1216,7 +1231,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 level: .info
             )
         }
-        
+
         // Add Apple Calendar, Reminders, and Contacts only when enabled in the prompt
         if prompt.enableAppleIntegrations {
             let calendarStatus = EventKitPermissionManager.shared.authorizationStatus(for: .event)
@@ -1260,7 +1275,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: listEventsFunc))
-            
+
             // Create calendar event
             let createEventFunc = APICapabilities.Function(
                 name: "createAppleCalendarEvent",
@@ -1299,7 +1314,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             )
             tools.append(.function(function: createEventFunc))
             }
-            
+
             if hasRemindersAccess {
                 // List reminders
                 let listRemindersFunc = APICapabilities.Function(
@@ -1326,7 +1341,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: listRemindersFunc))
-            
+
             // Create reminder
             let createReminderFunc = APICapabilities.Function(
                 name: "createAppleReminder",
@@ -1357,12 +1372,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             )
             tools.append(.function(function: createReminderFunc))
             }
-            
+
             // Apple Contacts Integration
             #if canImport(Contacts)
             let contactsStatus = CNContactStore.authorizationStatus(for: .contacts)
             let hasContactsAccess = contactsStatus == .authorized
-            
+
             if hasContactsAccess {
                 // Search contacts
                 let searchContactsFunc = APICapabilities.Function(
@@ -1386,7 +1401,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: searchContactsFunc))
-            
+
             // Get contact details
             let getContactFunc = APICapabilities.Function(
                 name: "getAppleContact",
@@ -1404,7 +1419,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 strict: false
             )
             tools.append(.function(function: getContactFunc))
-            
+
             // Create contact
             let createContactFunc = APICapabilities.Function(
                 name: "createAppleContact",
@@ -1455,14 +1470,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         } else {
             AppLogger.log("Skipping Apple system tools: integrations disabled in prompt", category: .openAI, level: .info)
         }
-        
+
         // MCP Tool (Connector or Remote Server)
         if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
             // Check if this is a connector (OpenAI-maintained) or remote server (custom)
             if prompt.mcpIsConnector {
                 // Connector path: requires connector_id and OAuth token from keychain
                 if let connectorId = prompt.mcpConnectorId, !connectorId.isEmpty {
-                    
+
                     // BULLETPROOF CHECK: Verify this is a REAL OpenAI connector
                     // Derive IDs from MCPConnector.library to avoid drift with hardcoded lists.
                     let validConnectors = Set(
@@ -1470,13 +1485,25 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             .filter { $0.requiresRemoteServer == false }
                             .map { $0.id }
                     )
-                    
+
                     if validConnectors.contains(connectorId) {
                         // Valid connector - proceed with configuration
                         // Load OAuth token from keychain with pattern: "mcp_connector_{connectorId}"
                         let authKey = "mcp_connector_\(connectorId)"
-                        let authorization = KeychainService.shared.load(forKey: authKey)
-                        
+                        let authorization = KeychainService.shared.load(forKey: authKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        // OpenAI API requirement: when using connector_id, the tool must include top-level `authorization`.
+                        // If we don't have it yet, skip adding the connector tool to avoid a hard 400 for the whole request.
+                        guard let authorization, !authorization.isEmpty else {
+                            let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
+                            AppLogger.log(
+                                "MCP connector '\(connectorName)' enabled but missing authorization token. Skipping connector tool.",
+                                category: .openAI,
+                                level: .warning
+                            )
+                            return tools
+                        }
+
                         // Parse allowed tools if specified
                         var allowedTools: [String]? = nil
                         if !prompt.mcpAllowedTools.isEmpty {
@@ -1485,13 +1512,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                                 .filter { !$0.isEmpty }
                         }
-                        
+
                         // Get approval setting (default to "never") and normalize for API
                         let requireApproval = normalizeMCPApproval(prompt.mcpRequireApproval)
-                        
+
                         // Get connector name from library for logging
                         let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
-                        
+
                         tools.append(.mcp(
                             serverLabel: connectorName,
                             serverURL: nil, // Connectors use connector_id, not server_url
@@ -1502,7 +1529,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             allowedTools: allowedTools,
                             serverDescription: nil
                         ))
-                        
+
                         AppLogger.log("Added MCP connector: \(connectorName) (id: \(connectorId))", category: .openAI, level: .info)
                     } else {
                         // Invalid connector ID - log error and skip
@@ -1552,7 +1579,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
             }
         }
-        
+
         // Ensure deep-research models always include at least one of the required tools
         // per API: one of 'web_search_preview' or 'file_search' must be present.
         if isDeepResearch {
@@ -1788,32 +1815,32 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         // Verbosity moved under text.verbosity in latest API. Handled in buildTextConfiguration.
 
-        if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel) {
+        if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) { 
             parameters["temperature"] = prompt.temperature
         }
-        
-        if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel) {
+
+        if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) { 
             parameters["top_p"] = prompt.topP
         }
-        
+
         if compatibilityService.isParameterSupported("parallel_tool_calls", for: prompt.openAIModel) {
             parameters["parallel_tool_calls"] = prompt.parallelToolCalls
         }
-        
+
         if compatibilityService.isParameterSupported("max_output_tokens", for: prompt.openAIModel) && prompt.maxOutputTokens > 0 {
             parameters["max_output_tokens"] = prompt.maxOutputTokens
         }
-        
+
         if compatibilityService.isParameterSupported("truncation", for: prompt.openAIModel) && !prompt.truncationStrategy.isEmpty {
             parameters["truncation"] = prompt.truncationStrategy
         }
-        
+
         // Add missing parameters that exist in UI but weren't in request
         if compatibilityService.isParameterSupported("service_tier", for: prompt.openAIModel) && !prompt.serviceTier.isEmpty {
             parameters["service_tier"] = prompt.serviceTier
         }
-        
-        if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel) && prompt.topLogprobs > 0 {
+
+        if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort), prompt.topLogprobs > 0 { 
             // Avoid logprobs on reasoning models to prevent API errors
             let caps = compatibilityService.getCapabilities(for: prompt.openAIModel)
             if caps?.supportsReasoningEffort == true {
@@ -1822,15 +1849,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 parameters["top_logprobs"] = prompt.topLogprobs
             }
         }
-        
+
         if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel) && !prompt.userIdentifier.isEmpty {
             parameters["user"] = prompt.userIdentifier
         }
-        
+
         if compatibilityService.isParameterSupported("max_tool_calls", for: prompt.openAIModel) && prompt.maxToolCalls > 0 {
             parameters["max_tool_calls"] = prompt.maxToolCalls
         }
-        
+
         // Parse metadata JSON string into a dictionary
         if let metadataString = prompt.metadata, !metadataString.isEmpty {
             do {
@@ -1842,7 +1869,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 print("Invalid metadata JSON format, skipping: \(error)")
             }
         }
-        
+
         return parameters
     }
 
@@ -1869,22 +1896,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         return reasoningObject
     }
-    
+
     /// Constructs the `include` array from boolean properties in the prompt.
     /// - Parameters:
     ///   - prompt: The active prompt settings.
     ///   - hasComputerTool: Whether the current request includes the computer tool.
     private func buildIncludeArray(for prompt: Prompt, hasComputerTool: Bool) -> [String] {
         var includeArray: [String] = []
-        
+
         if prompt.includeCodeInterpreterOutputs {
             includeArray.append("code_interpreter_call.outputs")
         }
-        
+
         if prompt.includeFileSearchResults {
             includeArray.append("file_search_call.results")
         }
-        
+
         if prompt.includeWebSearchResults {
             includeArray.append("web_search_call.results")
         }
@@ -1892,7 +1919,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if prompt.includeWebSearchSources {
             includeArray.append("web_search_call.action.sources")
         }
-        
+
         if prompt.includeOutputLogprobs {
             // Some reasoning-capable models do not support returning logprobs in the include payload
             // (API returns 400: "logprobs are not supported with reasoning models.")
@@ -1904,7 +1931,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AppLogger.log("Omitting include for output logprobs due to reasoning model: \(prompt.openAIModel)", category: .openAI, level: .info)
             }
         }
-        
+
         if prompt.includeReasoningContent {
             // Only reasoning-capable models support encrypted reasoning content include
             let caps = ModelCompatibilityService.shared.getCapabilities(for: prompt.openAIModel)
@@ -1914,7 +1941,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AppLogger.log("Omitting include for reasoning.encrypted_content (unsupported by model: \(prompt.openAIModel))", category: .openAI, level: .info)
             }
         }
-        
+
         // Include computer tool outputs only when the computer tool is actually added for this request
         // or when using the dedicated computer-use model (which always uses the computer tool).
         if hasComputerTool || prompt.openAIModel == "computer-use-preview" {
@@ -1925,14 +1952,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 includeArray.append("computer_call_output.output.image_url")
             }
         }
-        
+
         if prompt.includeInputImageUrls {
             includeArray.append("message.input_image.image_url")
         }
-        
+
         return includeArray
     }
-    
+
     /// Constructs the `text` configuration object, including structured output schema and verbosity.
     private func buildTextConfiguration(for prompt: Prompt) -> [String: Any]? {
         var textConfiguration: [String: Any] = [:]
@@ -1970,21 +1997,21 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         return textConfiguration.isEmpty ? nil : textConfiguration
     }
-    
+
     /// Constructs the `prompt` object for published prompts if enabled.
     private func buildPromptObject(for prompt: Prompt) -> [String: Any]? {
         guard prompt.enablePublishedPrompt && !prompt.publishedPromptId.isEmpty else {
             return nil
         }
-        
+
         var promptObject: [String: Any] = [
             "id": prompt.publishedPromptId
         ]
-        
+
         if !prompt.publishedPromptVersion.isEmpty {
             promptObject["version"] = prompt.publishedPromptVersion
         }
-        
+
         return promptObject
     }
 
@@ -2010,12 +2037,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AppLogger.log("🔄 [sendFunctionOutput] Output length: \(output.count) chars", category: .openAI, level: .info)
         AppLogger.log("🔄 [sendFunctionOutput] Model: \(model)", category: .openAI, level: .info)
         AppLogger.log("🔄 [sendFunctionOutput] Previous Response ID: \(previousResponseId ?? "none")", category: .openAI, level: .info)
-        
+
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             AppLogger.log("❌ [sendFunctionOutput] Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let jsonData = try buildFunctionOutputRequestData(
             call: call,
             output: output,
@@ -2048,19 +2075,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.model: model
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         AppLogger.log("📥 [sendFunctionOutput] Received response", category: .openAI, level: .info)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             AppLogger.log("❌ [sendFunctionOutput] Invalid response type", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         AppLogger.log("📥 [sendFunctionOutput] HTTP Status: \(httpResponse.statusCode)", category: .openAI, level: .info)
         AppLogger.log("📥 [sendFunctionOutput] Response size: \(data.count) bytes", category: .openAI, level: .info)
-        
+
         // Log the response
         AnalyticsService.shared.logAPIResponse(
             url: apiURL,
@@ -2068,11 +2095,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             headers: httpResponse.allHeaderFields,
             body: data
         )
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             AppLogger.log("❌ [sendFunctionOutput] Error response: \(errorMessage)", category: .openAI, level: .error)
-            
+
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
                 parameters: [
@@ -2082,12 +2109,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.errorDomain: "OpenAIFunctionAPI"
                 ]
             )
-            
+
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         AppLogger.log("✅ [sendFunctionOutput] Success response (200)", category: .openAI, level: .info)
-        
+
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -2097,14 +2124,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.model: model
             ]
         )
-        
+
         do {
             AppLogger.log("🔄 [sendFunctionOutput] Decoding OpenAIResponse...", category: .openAI, level: .info)
             let decodedResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
             AppLogger.log("✅ [sendFunctionOutput] Successfully decoded response", category: .openAI, level: .info)
             AppLogger.log("✅ [sendFunctionOutput] Response ID: \(decodedResponse.id)", category: .openAI, level: .info)
             AppLogger.log("✅ [sendFunctionOutput] Output items: \(decodedResponse.output.count)", category: .openAI, level: .info)
-            
+
             for (index, item) in decodedResponse.output.enumerated() {
                 AppLogger.log("📋 [sendFunctionOutput] Output[\(index)]: type=\(item.type), id=\(item.id)", category: .openAI, level: .info)
                 if let content = item.content {
@@ -2114,7 +2141,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     }
                 }
             }
-            
+
             return decodedResponse
         } catch {
             AppLogger.log("❌ [sendFunctionOutput] Decoding error: \(error)", category: .openAI, level: .error)
@@ -2142,7 +2169,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
                         return
                     }
-                    
+
                     // Build input array with function_call_output items
                     // NOTE: Do NOT include reasoning items here - they belong to the previous turn
                     // and the API expects reasoning to be followed by its corresponding message/output.
@@ -2153,7 +2180,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     for output in outputs {
                         // Use consistent call identifier logic: callId if present, otherwise id
                         let callIdentifier = output.callId.isEmpty ? (output.callItem?.id ?? output.callId) : output.callId
-                        
+
                         if let callItem = output.callItem {
                             if appendedCallIds.insert(callIdentifier).inserted {
                                 let encodedCall = encodeFunctionCallItem(callItem)
@@ -2167,26 +2194,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             "call_id": callIdentifier,
                             "output": output.output
                         ]
-                        
+
                         AppLogger.log("📤 [streamFunctionOutputs] Adding function_call_output for call_id: \(callIdentifier)", category: .openAI, level: .info)
                         inputArray.append(functionOutputMessage)
                     }
-                    
+
                     var requestObject: [String: Any] = [
                         "model": model,
                         "store": true,
                         "input": inputArray,
                         "stream": true
                     ]
-                    
+
                     if let prevId = previousResponseId, !prevId.isEmpty {
                         requestObject["previous_response_id"] = prevId
                     }
-                    
+
                     if let convId = conversationId, !convId.isEmpty {
                         requestObject["conversation_id"] = convId
                     }
-                    
+
                     // Add tools
                     let tools = buildTools(for: prompt, userMessage: "", isStreaming: true)
                     if !tools.isEmpty {
@@ -2195,18 +2222,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             requestObject["tools"] = toolsArray
                         }
                     }
-                    
+
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-                    
+
                     var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = jsonData
-                    
+
                     AppLogger.log("📤 [streamFunctionOutputs] Sending \(outputs.count) function outputs", category: .openAI, level: .info)
-                    
+
                     AnalyticsService.shared.trackEvent(
                         name: AnalyticsEvent.apiRequestSent,
                         parameters: [
@@ -2216,14 +2243,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             AnalyticsParameter.model: model
                         ]
                     )
-                    
+
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    
+
                     guard let httpResponse = response as? HTTPURLResponse else {
                         continuation.finish(throwing: OpenAIServiceError.invalidResponseData)
                         return
                     }
-                    
+
                     if httpResponse.statusCode != 200 {
                         var errorData = Data()
                         for try await byte in bytes {
@@ -2234,7 +2261,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         continuation.finish(throwing: OpenAIServiceError.requestFailed(httpResponse.statusCode, message))
                         return
                     }
-                    
+
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: ") {
                             let dataString = String(line.dropFirst(6))
@@ -2243,9 +2270,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                                 continuation.finish()
                                 return
                             }
-                            
+
                             guard let data = dataString.data(using: .utf8) else { continue }
-                            
+
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
                                 continuation.yield(decodedChunk)
@@ -2254,7 +2281,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             }
                         }
                     }
-                    
+
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -2396,7 +2423,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         return result
     }
-    
+
     /// Sends an MCP approval response back to the API to continue execution after user authorization.
     /// - Parameters:
     ///   - approvalResponse: The approval response dictionary with type, approval_request_id, approve, and optional reason.
@@ -2413,7 +2440,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         // Build request with approval response as input
         let requestObject = buildRequestObject(
             for: prompt,
@@ -2428,16 +2455,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             stream: false,
             customInput: [approvalResponse] // Pass approval response as input
         )
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-        
+
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 120
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         AnalyticsService.shared.logAPIRequest(
             url: apiURL,
             method: "POST",
@@ -2453,22 +2480,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.model: model
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         AnalyticsService.shared.logAPIResponse(
             url: apiURL,
             statusCode: httpResponse.statusCode,
             headers: httpResponse.allHeaderFields,
             body: data
         )
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            
+
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
                 parameters: [
@@ -2478,10 +2505,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.errorDomain: "OpenAI_MCP_API"
                 ]
             )
-            
+
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -2491,7 +2518,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.model: model
             ]
         )
-        
+
         do {
             return try JSONDecoder().decode(OpenAIResponse.self, from: data)
         } catch {
@@ -2499,7 +2526,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Streams an MCP approval response to continue execution after user authorization.
     func streamMCPApprovalResponse(
         approvalResponse: [String: Any],
@@ -2514,7 +2541,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
                         return
                     }
-                    
+
                     // Build request with approval response as input
                     let requestObject = buildRequestObject(
                         for: prompt,
@@ -2529,16 +2556,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         stream: true,
                         customInput: [approvalResponse]
                     )
-                    
+
                     let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
-                    
+
                     var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = jsonData
-                    
+
                     AnalyticsService.shared.trackEvent(
                         name: AnalyticsEvent.apiRequestSent,
                         parameters: [
@@ -2547,14 +2574,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             AnalyticsParameter.model: model
                         ]
                     )
-                    
+
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    
+
                     guard let httpResponse = response as? HTTPURLResponse else {
                         continuation.finish(throwing: OpenAIServiceError.invalidResponseData)
                         return
                     }
-                    
+
                     if httpResponse.statusCode != 200 {
                         var errorData = Data()
                         for try await byte in bytes {
@@ -2564,7 +2591,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         continuation.finish(throwing: OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage))
                         return
                     }
-                    
+
                     // Parse SSE stream
                     for try await line in bytes.lines {
                         if line.hasPrefix("data: ") {
@@ -2573,7 +2600,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                                 continuation.finish()
                                 return
                             }
-                            
+
                             if let data = jsonString.data(using: .utf8) {
                                 do {
                                     let event = try JSONDecoder().decode(StreamingEvent.self, from: data)
@@ -2584,9 +2611,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             }
                         }
                     }
-                    
+
                     continuation.finish()
-                    
+
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -2657,7 +2684,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             conversationId: nil
         )
     }
-    
+
     /// Probes MCP list_tools by initiating a lightweight streaming turn and returning the discovered tool count.
     /// This avoids mutating chat state and completes as soon as the list_tools event arrives or times out.
     func probeMCPListTools(prompt: Prompt) async throws -> (label: String, count: Int) {
@@ -2665,11 +2692,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // Ensure MCP is enabled and do not force a particular tool so the platform performs list_tools handshake
         derived.enableMCPTool = true
         derived.toolChoice = "auto"
-        
+
         // Use a minimal directive; platform should perform list_tools when MCP tool is configured
         let targetLabel = derived.mcpServerLabel
         let userMessage = "MCP health probe: list available tools for '\(targetLabel)' and then stop."
-        
+
         let stream = streamChatRequest(
             userMessage: userMessage,
             prompt: derived,
@@ -2681,11 +2708,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             previousResponseId: nil,
             conversationId: nil
         )
-        
+
         var foundLabel = targetLabel
         var toolsCount: Int?
         let start = Date()
-        
+
         do {
             for try await event in stream {
                 // Capture label if provided by event
@@ -2724,7 +2751,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         } catch {
             throw error
         }
-        
+
         if let c = toolsCount {
             AppLogger.log("🧪 MCP probe success: '\(foundLabel)' listed \(c) tools", category: .mcp, level: .info)
             return (label: foundLabel, count: c)
@@ -2733,7 +2760,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.requestFailed(0, "MCP list_tools did not complete in time")
         }
     }
-    
+
     /// Sends a computer-use call output back to the API to continue an agentic turn.
     /// Per OpenAI's CUA docs, the follow-up should include a single `computer_call_output`
     /// item with a screenshot payload and must keep the computer tool configured.
@@ -2776,7 +2803,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "call_id": callId,
             "output": output
         ]
-        
+
         // Add acknowledged safety checks if provided
         if let safetyChecks = acknowledgedSafetyChecks, !safetyChecks.isEmpty {
             computerOutputMessage["acknowledged_safety_checks"] = safetyChecks.map { safetyCheck in
@@ -2787,7 +2814,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 ]
             }
         }
-        
+
         // Add current URL if provided (helps with safety checks)
         if let url = currentUrl {
             computerOutputMessage["current_url"] = url
@@ -2882,9 +2909,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     // MARK: - Backward compatibility methods for computer use
-    
+
     /// Convenience method for backward compatibility - delegates to main method with default parameters
     func sendComputerCallOutput(
         call: StreamingItem,
@@ -2901,7 +2928,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             currentUrl: nil
         )
     }
-    
+
     /// Convenience method for backward compatibility - delegates to main method with default parameters
     func sendComputerCallOutput(
         callId: String,
@@ -2918,7 +2945,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             currentUrl: nil
         )
     }
-    
+
     /// Fetches image data either from an OpenAI file ID or a direct URL.
     /// - Parameter imageContent: The content object containing either a file_id or url.
     /// - Returns: Raw image data.
@@ -2989,7 +3016,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AnalyticsService.shared.logAPIResponse(url: url, statusCode: status, headers: (response as? HTTPURLResponse)?.allHeaderFields ?? [:], body: data)
         return data
     }
-    
+
     /// Prepares file attachment objects for inclusion in API requests
     /// - Parameters:
     ///   - fileIds: Array of file IDs to attach
@@ -3005,13 +3032,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             ]
         }
     }
-    
+
     /// Creates a properly formatted tool configuration based on current API requirements
     /// - Parameters:
     ///   - toolType: The type of tool ("web_search_preview", "code_interpreter", etc.)
     ///   - vectorStoreId: Optional vector store ID for file_search tool
     /// - Returns: A dictionary representing the tool configuration
-    /// 
+    ///
     /// Note: Tool configurations have been simplified to avoid API parameter errors.
     /// The OpenAI API is strict about which parameters are accepted for each tool type.
     private func createToolConfiguration(for toolType: String, vectorStoreId: String? = nil) -> [String: Any] {
@@ -3052,10 +3079,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             return [:]
         }
     }
-    
-    
+
+
     // Calculator tool configuration removed
-    
+
     /// Creates the configuration for the MCP tool
     /// - Returns: A dictionary representing the MCP tool configuration
     private func createMCPToolConfiguration(from prompt: Prompt) -> [String: Any] {
@@ -3074,14 +3101,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             default: return prompt.mcpRequireApproval // pass through in case it's already API-compliant
             }
         }()
-        
+
         // Sanitize server_label: must start with a letter and contain only letters, digits, '-', '_'
         // Replace spaces with underscores and filter out invalid characters
         let sanitizedLabel = prompt.mcpServerLabel
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "-", with: "_")
             .filter { $0.isLetter || $0.isNumber || $0 == "_" }
-        
+
         // Ensure it starts with a letter (if not, prepend "mcp_")
         let finalLabel = sanitizedLabel.first?.isLetter == true ? sanitizedLabel : "mcp_\(sanitizedLabel)"
 
@@ -3134,7 +3161,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "strict": false
         ]
     }
-    
+
     /// Creates the configuration for the file search tool
     /// - Parameter vectorStoreIds: Array of vector store IDs to search
     /// - Returns: A dictionary representing the file search tool configuration
@@ -3144,16 +3171,16 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "vector_store_ids": vectorStoreIds
         ]
     }
-    
+
     /// Creates the configuration for the web search tool
     /// - Returns: A dictionary representing the web search tool configuration
     private func createWebSearchToolConfiguration(from prompt: Prompt) -> [String: Any] {
         var config: [String: Any] = ["type": "web_search"]
-        
+
         if let searchContextSize = prompt.searchContextSize, !searchContextSize.isEmpty {
             config["search_context_size"] = searchContextSize
         }
-        
+
         var userLocation: [String: String] = [:]
         if let userLocationCity = prompt.userLocationCity, !userLocationCity.isEmpty {
             userLocation["city"] = userLocationCity
@@ -3167,15 +3194,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let userLocationTimezone = prompt.userLocationTimezone, !userLocationTimezone.isEmpty {
             userLocation["timezone"] = userLocationTimezone
         }
-        
+
         if !userLocation.isEmpty {
             userLocation["type"] = "approximate"
             config["user_location"] = userLocation
         }
-        
+
         return config
     }
-    
+
     /// Checks if a tool is supported by the given model
     /// - Parameters:
     ///   - toolType: The type of tool to check
@@ -3204,9 +3231,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             return false
         }
     }
-    
+
     // MARK: - File Management Functions
-    
+
     /// Uploads a file to OpenAI for use with assistants, fine-tuning, or vector stores
     /// - Parameters:
     ///   - fileData: The file data to upload
@@ -3215,19 +3242,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     /// - Returns: The uploaded file information
     func uploadFile(fileData: Data, filename: String, purpose: String = "assistants") async throws -> OpenAIFile {
         AppLogger.log("📤 Starting file upload: \(filename) (\(formatBytes(fileData.count)))", category: .openAI, level: .info)
-        
+
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             AppLogger.log("❌ Upload failed: Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/files")!
-        
+
         AppLogger.log("   🌐 Endpoint: POST \(url.absoluteString)", category: .openAI, level: .debug)
         AppLogger.log("   📋 Purpose: \(purpose)", category: .openAI, level: .debug)
         AppLogger.log("   📦 Boundary: \(boundary)", category: .openAI, level: .debug)
-        
+
         // Create a dedicated URLSession configuration for large uploads
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300 // 5 minutes
@@ -3235,22 +3262,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         config.waitsForConnectivity = true
         config.allowsCellularAccess = true
         let session = URLSession(configuration: config)
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         // Prevent connection reuse that might be causing issues
         request.setValue("close", forHTTPHeaderField: "Connection")
-        
+
         // Create multipart form data
         var body = Data()
-        
+
         // Add purpose field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"purpose\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(purpose)\r\n".data(using: .utf8)!)
-        
+
         // Add file field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
@@ -3258,21 +3285,21 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         body.append(fileData)
         body.append("\r\n".data(using: .utf8)!)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        
+
         request.httpBody = body
-        
+
         AppLogger.log("   ⏫ Sending \(formatBytes(body.count)) to OpenAI...", category: .openAI, level: .info)
-        
+
         do {
             let (data, response) = try await session.data(for: request)
-            
+
             guard let httpResponse = response as? HTTPURLResponse else {
                 AppLogger.log("❌ Invalid HTTP response received", category: .openAI, level: .error)
                 throw OpenAIServiceError.invalidResponseData
             }
-            
+
             AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
-            
+
             if httpResponse.statusCode != 200 {
                 if let responseString = String(data: data, encoding: .utf8) {
                     AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
@@ -3287,11 +3314,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
                 throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
             }
-            
+
             let file = try JSONDecoder().decode(OpenAIFile.self, from: data)
             AppLogger.log("✅ File uploaded successfully! ID: \(file.id), Size: \(formatBytes(file.bytes))", category: .openAI, level: .info)
             return file
-            
+
         } catch let urlError as URLError {
             // Handle network-specific errors with more context
             let errorDescription: String
@@ -3316,14 +3343,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Helper to format byte counts
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     /// Lists all files uploaded to OpenAI
     /// - Parameter purpose: Optional filter by purpose
     /// - Returns: List of files
@@ -3331,25 +3358,25 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var urlString = "https://api.openai.com/v1/files"
         if let purpose = purpose {
             urlString += "?purpose=\(purpose)"
         }
-        
+
         guard let url = URL(string: urlString) else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error listing files: \(responseString)")
@@ -3362,7 +3389,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             let response = try JSONDecoder().decode(FileListResponse.self, from: data)
             return response.data
@@ -3371,26 +3398,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Deletes a file from OpenAI
     /// - Parameter fileId: The ID of the file to delete
     func deleteFile(fileId: String) async throws {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/files/\(fileId)")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error deleting file: \(responseString)")
@@ -3404,9 +3431,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
     }
-    
+
     // MARK: - Vector Store Management Functions
-    
+
     /// Creates a new vector store
     /// - Parameters:
     ///   - name: Optional name for the vector store
@@ -3417,39 +3444,39 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores")!
-        
+
         var requestObject: [String: Any] = [:]
-        
+
         if let name = name {
             requestObject["name"] = name
         }
-        
+
         if let fileIds = fileIds, !fileIds.isEmpty {
             requestObject["file_ids"] = fileIds
         }
-        
+
         if let days = expiresAfterDays {
             requestObject["expires_after"] = [
                 "anchor": "last_active_at",
                 "days": days
             ]
         }
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error creating vector store: \(responseString)")
@@ -3462,7 +3489,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             return try JSONDecoder().decode(VectorStore.self, from: data)
         } catch {
@@ -3470,18 +3497,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Lists all vector stores
     /// - Returns: List of vector stores
     func listVectorStores() async throws -> [VectorStore] {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var allVectorStores: [VectorStore] = []
         var after: String? = nil
         var hasMore = true
-        
+
         // Pagination loop to fetch all vector stores
         while hasMore {
             var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
@@ -3492,20 +3519,20 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 queryItems.append(URLQueryItem(name: "after", value: after))
             }
             urlComponents.queryItems = queryItems
-            
+
             guard let url = urlComponents.url else {
                 throw OpenAIServiceError.invalidResponseData
             }
-            
+
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-            
+
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw OpenAIServiceError.invalidResponseData
             }
-            
+
             if httpResponse.statusCode != 200 {
                 if let responseString = String(data: data, encoding: .utf8) {
                     print("Error listing vector stores: \(responseString)")
@@ -3518,7 +3545,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
                 throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
             }
-            
+
             do {
                 let response = try JSONDecoder().decode(VectorStoreListResponse.self, from: data)
                 allVectorStores.append(contentsOf: response.data)
@@ -3529,10 +3556,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 throw OpenAIServiceError.invalidResponseData
             }
         }
-        
+
         return allVectorStores
     }
-    
+
     /// Lists vector stores with pagination support
     /// - Parameters:
     ///   - limit: Number of results to return (max 100)
@@ -3542,7 +3569,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "limit", value: String(min(limit, 100))) // Ensure we don't exceed API limit
@@ -3551,20 +3578,20 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             queryItems.append(URLQueryItem(name: "after", value: after))
         }
         urlComponents.queryItems = queryItems
-        
+
         guard let url = urlComponents.url else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error listing vector stores: \(responseString)")
@@ -3577,7 +3604,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             let response = try JSONDecoder().decode(VectorStoreListResponse.self, from: data)
             return response
@@ -3586,26 +3613,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Deletes a vector store
     /// - Parameter vectorStoreId: The ID of the vector store to delete
     func deleteVectorStore(vectorStoreId: String) async throws {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error deleting vector store: \(responseString)")
@@ -3619,7 +3646,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
     }
-    
+
     /// Updates a vector store
     /// - Parameters:
     ///   - vectorStoreId: The ID of the vector store to update
@@ -3631,45 +3658,45 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)")!
-        
+
         var requestObject: [String: Any] = [:]
-        
+
         if let name = name, !name.isEmpty {
             requestObject["name"] = name
         }
-        
+
         if let expiresAfter = expiresAfter {
             requestObject["expires_after"] = [
                 "anchor": expiresAfter.anchor,
                 "days": expiresAfter.days
             ]
         }
-        
+
         if let metadata = metadata {
             requestObject["metadata"] = metadata
         }
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
-        
+
         // Debug: Print the update request
         if let jsonString = String(data: jsonData, encoding: .utf8) {
             print("Vector Store Update Request JSON: \(jsonString)")
         }
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 120 // Increased timeout
         request.httpMethod = "POST"  // OpenAI uses POST for vector store updates
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error updating vector store: \(responseString)")
@@ -3682,7 +3709,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             return try JSONDecoder().decode(VectorStore.self, from: data)
         } catch {
@@ -3690,7 +3717,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Adds a file to a vector store
     /// - Parameters:
     ///   - vectorStoreId: The ID of the vector store
@@ -3707,19 +3734,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AppLogger.log("🔗 Adding file to vector store", category: .openAI, level: .info)
         AppLogger.log("   📁 File ID: \(fileId)", category: .openAI, level: .debug)
         AppLogger.log("   📦 Vector Store ID: \(vectorStoreId)", category: .openAI, level: .debug)
-        
+
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             AppLogger.log("❌ Missing API key", category: .openAI, level: .error)
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)/files")!
         AppLogger.log("   🌐 Endpoint: POST \(url.absoluteString)", category: .openAI, level: .debug)
-        
+
         var requestObject: [String: Any] = [
             "file_id": fileId
         ]
-        
+
         // Add chunking strategy if provided
         if let chunkingStrategy = chunkingStrategy {
             let encoder = JSONEncoder()
@@ -3743,35 +3770,35 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         } else {
             AppLogger.log("   ⚙️ Using default chunking strategy", category: .openAI, level: .debug)
         }
-        
+
         // Add attributes if provided
         if let attributes = attributes, !attributes.isEmpty {
             requestObject["attributes"] = attributes
             AppLogger.log("   🏷️ File attributes: \(attributes)", category: .openAI, level: .debug)
         }
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: [])
-        
+
         if let prettyJSON = String(data: jsonData, encoding: .utf8) {
             AppLogger.log("   📤 Request body: \(prettyJSON)", category: .openAI, level: .debug)
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         AppLogger.log("   ⏫ Sending request to OpenAI...", category: .openAI, level: .info)
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             AppLogger.log("❌ Invalid HTTP response", category: .openAI, level: .error)
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         AppLogger.log("   📡 Response: HTTP \(httpResponse.statusCode)", category: .openAI, level: .debug)
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 AppLogger.log("❌ Error response: \(responseString)", category: .openAI, level: .error)
@@ -3786,17 +3813,17 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             let vectorStoreFile = try JSONDecoder().decode(VectorStoreFile.self, from: data)
             AppLogger.log("✅ File successfully added to vector store!", category: .openAI, level: .info)
             AppLogger.log("   📊 Status: \(vectorStoreFile.status)", category: .openAI, level: .debug)
             AppLogger.log("   📈 Usage bytes: \(vectorStoreFile.usageBytes)", category: .openAI, level: .debug)
-            
+
             if let responseString = String(data: data, encoding: .utf8) {
                 AppLogger.log("   📥 Full response: \(responseString)", category: .openAI, level: .debug)
             }
-            
+
             return vectorStoreFile
         } catch {
             AppLogger.log("❌ Failed to decode response: \(error)", category: .openAI, level: .error)
@@ -3804,7 +3831,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Lists files in a vector store
     /// - Parameter vectorStoreId: The ID of the vector store
     /// - Returns: List of files in the vector store
@@ -3812,18 +3839,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)/files")!
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error listing vector store files: \(responseString)")
@@ -3836,7 +3863,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             let response = try JSONDecoder().decode(VectorStoreFileListResponse.self, from: data)
             return response.data
@@ -3845,7 +3872,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Removes a file from a vector store
     /// - Parameters:
     ///   - vectorStoreId: The ID of the vector store
@@ -3854,19 +3881,19 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/vector_stores/\(vectorStoreId)/files/\(fileId)")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 120 // Increased timeout
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
                 print("Error removing file from vector store: \(responseString)")
@@ -3880,7 +3907,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
     }
-    
+
     /// Uploads a file to OpenAI from a local URL
     /// - Parameter url: The URL of the file to upload.
     /// - Returns: The ID of the uploaded file.
@@ -3888,9 +3915,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let uploadURL = URL(string: "https://api.openai.com/v1/files")!
-        
+
         // Prepare multipart form data
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: uploadURL)
@@ -3898,42 +3925,42 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
+
         var body = Data()
-        
+
         // Add purpose field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"purpose\"\r\n\r\n".data(using: .utf8)!)
         body.append("user_data\r\n".data(using: .utf8)!)
-        
+
         // Add file data
         let filename = url.lastPathComponent
         let fileData = try Data(contentsOf: url)
-        
+
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
         body.append(fileData)
         body.append("\r\n".data(using: .utf8)!)
-        
+
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        
+
         request.httpBody = body
-        
+
         // Perform the request
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(statusCode, "File upload failed: \(errorMessage)")
         }
-        
+
         // Decode the response to get the file ID
         struct FileUploadResponse: Decodable {
             let id: String
         }
-        
+
         do {
             let decodedResponse = try JSONDecoder().decode(FileUploadResponse.self, from: data)
             return decodedResponse.id
@@ -3941,7 +3968,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     private func createWebSearchConfiguration() -> [String: Any] {
         // The API seems to have changed and no longer accepts these detailed parameters.
         // Simplified to basic configuration to avoid "unknown parameter" errors.
@@ -3961,40 +3988,40 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "output_format": defaults.string(forKey: "imageGenerationOutputFormat") ?? "png",
             "moderation": defaults.string(forKey: "imageGenerationModeration") ?? "auto"
         ]
-        
+
         let partialImages = defaults.integer(forKey: "imageGenerationPartialImages")
         if partialImages > 0 {
             config["partial_images"] = partialImages
         }
-        
+
         return config
     }
-    
+
     /// Lists available models from the OpenAI API.
     /// - Returns: An array of OpenAIModel objects representing available models.
     func listModels() async throws -> [OpenAIModel] {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/models")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         do {
             let modelsResponse = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
             return modelsResponse.data.sorted { $0.id < $1.id }
@@ -4003,58 +4030,58 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     // MARK: - Conversations API
-    
+
     /// Lists conversations with optional limit and ordering.
     func listConversations(limit: Int?, order: String?) async throws -> ConversationListResponse {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var urlComponents = URLComponents(string: "https://api.openai.com/v1/conversations")!
         var queryItems: [URLQueryItem] = []
-        
+
         if let limit = limit {
             queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
         }
         if let order = order {
             queryItems.append(URLQueryItem(name: "order", value: order))
         }
-        
+
         if !queryItems.isEmpty {
             urlComponents.queryItems = queryItems
         }
-        
+
         guard let url = urlComponents.url else {
             throw OpenAIServiceError.invalidRequest("Invalid URL for listConversations")
         }
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         return try JSONDecoder().decode(ConversationListResponse.self, from: data)
     }
-    
+
     /// Creates a new conversation.
     func createConversation(title: String?, metadata: [String: String]?, store: Bool?) async throws -> ConversationDetail {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var body: [String: Any] = [:]
         if let title = title {
             body["title"] = title
@@ -4065,9 +4092,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let store = store {
             body["store"] = store
         }
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: body)
-        
+
         let url = URL(string: "https://api.openai.com/v1/conversations")!
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
@@ -4075,53 +4102,53 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         return try JSONDecoder().decode(ConversationDetail.self, from: data)
     }
-    
+
     /// Gets details for a specific conversation.
     func getConversation(conversationId: String) async throws -> ConversationDetail {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         return try JSONDecoder().decode(ConversationDetail.self, from: data)
     }
-    
+
     /// Updates an existing conversation.
     func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?, store: Bool?) async throws -> ConversationDetail {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         var body: [String: Any] = [:]
         if let title = title {
             body["title"] = title
@@ -4135,9 +4162,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let store = store {
             body["store"] = store
         }
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: body)
-        
+
         let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
@@ -4145,39 +4172,39 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         return try JSONDecoder().decode(ConversationDetail.self, from: data)
     }
-    
+
     /// Deletes a conversation.
     func deleteConversation(conversationId: String) async throws {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/conversations/\(conversationId)")!
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         if httpResponse.statusCode != 200 && httpResponse.statusCode != 204 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
@@ -4185,7 +4212,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     }
 
     // Removed: computer_use_preview probe utility
-    
+
     /// Creates a new vector store (protocol conformance method)
     /// - Parameters:
     ///   - name: Name for the vector store
@@ -4195,9 +4222,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return try await createVectorStore(name: name, fileIds: fileIds, expiresAfterDays: nil)
     }
 
-    
+
     // MARK: - Missing Response Management Endpoints
-    
+
     /// Deletes a model response with the given ID.
     /// - Parameter responseId: The ID of the response to delete.
     /// - Returns: DeleteResponseResult indicating success.
@@ -4205,14 +4232,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         // Log the delete request
         AnalyticsService.shared.logAPIRequest(
             url: url,
@@ -4228,13 +4255,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 "response_id": responseId
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         // Log the response
         AnalyticsService.shared.logAPIResponse(
             url: url,
@@ -4242,10 +4269,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             headers: httpResponse.allHeaderFields,
             body: data
         )
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            
+
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
                 parameters: [
@@ -4255,10 +4282,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.errorDomain: "OpenAIDeleteAPI"
                 ]
             )
-            
+
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -4267,7 +4294,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.responseSize: data.count
             ]
         )
-        
+
         do {
             return try JSONDecoder().decode(DeleteResponseResult.self, from: data)
         } catch {
@@ -4275,7 +4302,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Cancels a model response that is in progress.
     /// - Parameter responseId: The ID of the response to cancel.
     /// - Returns: The updated OpenAIResponse with cancelled status.
@@ -4283,15 +4310,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)/cancel")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         // Log the cancel request
         AnalyticsService.shared.logAPIRequest(
             url: url,
@@ -4307,13 +4334,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 "response_id": responseId
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         // Log the response
         AnalyticsService.shared.logAPIResponse(
             url: url,
@@ -4321,10 +4348,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             headers: httpResponse.allHeaderFields,
             body: data
         )
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            
+
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
                 parameters: [
@@ -4334,10 +4361,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.errorDomain: "OpenAICancelAPI"
                 ]
             )
-            
+
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -4346,7 +4373,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.responseSize: data.count
             ]
         )
-        
+
         do {
             return try JSONDecoder().decode(OpenAIResponse.self, from: data)
         } catch {
@@ -4354,7 +4381,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
     /// Returns a list of input items for a given response.
     /// - Parameter responseId: The ID of the response to retrieve input items for.
     /// - Returns: InputItemsResponse containing the list of input items.
@@ -4362,14 +4389,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
-        
+
         let url = URL(string: "https://api.openai.com/v1/responses/\(responseId)/input_items")!
-        
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
+
         // Log the input items request
         AnalyticsService.shared.logAPIRequest(
             url: url,
@@ -4385,13 +4412,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 "response_id": responseId
             ]
         )
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIServiceError.invalidResponseData
         }
-        
+
         // Log the response
         AnalyticsService.shared.logAPIResponse(
             url: url,
@@ -4399,10 +4426,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             headers: httpResponse.allHeaderFields,
             body: data
         )
-        
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            
+
             AnalyticsService.shared.trackEvent(
                 name: AnalyticsEvent.networkError,
                 parameters: [
@@ -4412,10 +4439,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.errorDomain: "OpenAIInputItemsAPI"
                 ]
             )
-            
+
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
-        
+
         AnalyticsService.shared.trackEvent(
             name: AnalyticsEvent.apiResponseReceived,
             parameters: [
@@ -4424,7 +4451,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.responseSize: data.count
             ]
         )
-        
+
         do {
             return try JSONDecoder().decode(InputItemsResponse.self, from: data)
         } catch {
@@ -4432,5 +4459,5 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-    
+
 }

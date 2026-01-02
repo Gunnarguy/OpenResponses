@@ -4,9 +4,9 @@ import Foundation
 class ModelCompatibilityService {
     static let shared = ModelCompatibilityService()
     private init() {}
-    
+
     // MARK: - Compatibility Types
-    
+
     /// Represents a tool's compatibility and usage status
     public struct ToolCompatibility {
         public let name: String
@@ -16,7 +16,7 @@ class ModelCompatibilityService {
         public let supportedModels: [String]
         public let restrictions: [String]
         public let description: String
-        
+
         public init(name: String, isSupported: Bool, isEnabled: Bool, isUsed: Bool, supportedModels: [String], restrictions: [String], description: String) {
             self.name = name
             self.isSupported = isSupported
@@ -27,7 +27,7 @@ class ModelCompatibilityService {
             self.description = description
         }
     }
-    
+
     /// Represents parameter compatibility for a model
     public struct ParameterCompatibility {
         public let name: String
@@ -35,7 +35,7 @@ class ModelCompatibilityService {
         public let supportedModels: [String]
         public let defaultValue: Any?
         public let restrictions: [String]
-        
+
         public init(name: String, isSupported: Bool, supportedModels: [String], defaultValue: Any?, restrictions: [String]) {
             self.name = name
             self.isSupported = isSupported
@@ -44,9 +44,9 @@ class ModelCompatibilityService {
             self.restrictions = restrictions
         }
     }
-    
+
     // MARK: - Tool Overrides
-    
+
     /// Overrides for specific tools, allowing fine-grained control over their availability.
     public struct ToolOverrides: Codable {
         public var webSearch: ToolOverride?
@@ -55,13 +55,13 @@ class ModelCompatibilityService {
         public var fileSearch: ToolOverride?
         public var computer: ToolOverride?
     }
-    
+
     /// Defines the override setting for a tool (either `enabled` or `disabled`).
     public enum ToolOverride: String, Codable {
         case enabled
         case disabled
     }
-    
+
     /// Defines the coding keys for tool overrides, mapping to the API's expected keys.
     private enum ToolCodingKeys: String, CodingKey {
         case webSearch = "web_search"
@@ -70,7 +70,7 @@ class ModelCompatibilityService {
         case fileSearch = "file_search"
         case computer = "computer"
     }
-    
+
     /// Model capability information
     public struct ModelCapabilities: Codable {
         public let streaming: Bool
@@ -80,7 +80,7 @@ class ModelCompatibilityService {
         public let category: ModelCategory
         public let supportsReasoningEffort: Bool
         public let supportsTemperature: Bool
-        
+
         public init(streaming: Bool, tools: [APICapabilities.ToolType], parameters: [String], toolOverrides: ToolOverrides? = nil, category: ModelCategory = .standard, supportsReasoningEffort: Bool = false, supportsTemperature: Bool = true) {
             self.streaming = streaming
             self.tools = tools
@@ -90,11 +90,11 @@ class ModelCompatibilityService {
             self.supportsReasoningEffort = supportsReasoningEffort
             self.supportsTemperature = supportsTemperature
         }
-        
+
         /// For backward compatibility
         public var supportsStreaming: Bool { streaming }
     }
-    
+
     /// Model category enumeration
     public enum ModelCategory: String, Codable {
         case reasoning // o-series models
@@ -103,7 +103,7 @@ class ModelCompatibilityService {
         case preview // experimental models
         case deepResearch // long-running deep research models
     }
-    
+
     /// A dictionary mapping model identifiers to their specific API capabilities.
     private var modelCapabilities: [String: ModelCapabilities] = [
     "gpt-4o": ModelCapabilities(
@@ -235,21 +235,99 @@ class ModelCompatibilityService {
             supportsReasoningEffort: true,
             supportsTemperature: false
         ),
-        "gpt-5-turbo": ModelCapabilities(
+        // GPT-5 family (per OpenAI model docs)
+        // Note: For gpt-5.2 and gpt-5.1, temperature/top_p/logprobs are only supported when reasoning effort is `none`.
+        "gpt-5.2": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp], // Added .mcp support
-            parameters: ["temperature", "top_p", "reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+            parameters: [
+                "reasoning_effort",
+                // Conditionally supported (see isParameterSupported gating):
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "user_identifier", "max_tool_calls", "metadata", "tool_choice",
+            ],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
                 codeInterpreter: .enabled,
                 imageGeneration: .enabled,
                 fileSearch: .enabled,
-                computer: .disabled // Disabled until OpenAI supports computer use with gpt-5-turbo
+                computer: .disabled
             ),
             category: .latest,
             supportsReasoningEffort: true,
             supportsTemperature: true
         ),
+        "gpt-5.2-pro": ModelCapabilities(
+                streaming: true,
+                tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+                parameters: [
+                    "reasoning_effort",
+                    "temperature", "top_p", "top_logprobs",
+                    "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                    "user_identifier", "max_tool_calls", "metadata", "tool_choice",
+                ],
+                toolOverrides: ToolOverrides(
+                    webSearch: .enabled,
+                    codeInterpreter: .enabled,
+                    imageGeneration: .enabled,
+                    fileSearch: .enabled,
+                    computer: .disabled
+                ),
+                category: .latest,
+                supportsReasoningEffort: true,
+                supportsTemperature: true
+            ),
+        "gpt-5.1": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+            parameters: [
+                    "reasoning_effort",
+                    "temperature", "top_p", "top_logprobs",
+                    "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                    "user_identifier", "max_tool_calls", "metadata", "tool_choice",
+                ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
+        "gpt-5-mini": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: false
+        ),
+        "gpt-5-nano": ModelCapabilities(
+                streaming: true,
+                tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+                parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
+                toolOverrides: ToolOverrides(
+                    webSearch: .enabled,
+                    codeInterpreter: .enabled,
+                    imageGeneration: .enabled,
+                    fileSearch: .enabled,
+                    computer: .disabled
+                ),
+                category: .latest,
+                supportsReasoningEffort: true,
+                supportsTemperature: false
+            ),
         "gpt-4.1": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
@@ -312,7 +390,7 @@ class ModelCompatibilityService {
         ),
         "gpt-5": ModelCapabilities(
             streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp, .computer], // Added .computer and .mcp support
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             // Note: temperature and top_p are not supported for gpt-5 per API; use reasoning_effort instead
             parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "user_identifier", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
@@ -333,16 +411,16 @@ class ModelCompatibilityService {
         // Current naming pattern used in logs: o4-mini-deep-research-YYYY-MM-DD
         return modelId.contains("deep-research") || modelId == "o4-mini-deep-research" || modelId.hasPrefix("o4-mini-deep-research-")
     }
-    
+
     // MARK: - Public API
-    
+
     /// Returns the capabilities for a given model.
     /// - Parameter modelId: The model identifier.
     /// - Returns: The model capabilities, or nil if the model is not supported.
     public func getCapabilities(for modelId: String) -> ModelCapabilities? {
         return modelCapabilities[modelId]
     }
-    
+
     /// Checks if a tool is supported by a given model.
     /// - Parameters:
     ///   - toolType: The tool type to check.
@@ -353,16 +431,16 @@ class ModelCompatibilityService {
         guard let capabilities = modelCapabilities[modelId] else {
             return false
         }
-        
+
         // Check if the tool is in the supported tools list
         guard capabilities.tools.contains(toolType) else {
             return false
         }
-        
+
         // Image generation streaming: supported via Responses API with partial previews.
         // Previously disabled; now allowed when the model supports streaming.
         // Keep default flow – do not early-return false here.
-        
+
         // Check for specific tool overrides for the given model
         if let toolOverrides = capabilities.toolOverrides {
             switch toolType {
@@ -382,23 +460,50 @@ class ModelCompatibilityService {
                 break // No override for MCP tool currently
             }
         }
-        
+
         // Default to supported if no specific override is found
         return true
     }
-    
+
     /// Checks if a parameter is supported by a given model.
     /// - Parameters:
     ///   - parameter: The parameter name.
     ///   - modelId: The model identifier.
     /// - Returns: True if the parameter is supported, false otherwise.
     public func isParameterSupported(_ parameter: String, for modelId: String) -> Bool {
+        return isParameterSupported(parameter, for: modelId, reasoningEffort: nil)
+    }
+
+    /// Checks if a parameter is supported by a given model, optionally considering reasoning effort.
+    ///
+    /// GPT-5.2 and GPT-5.1 have API-level restrictions where some parameters (e.g., temperature/top_p/logprobs)
+    /// are only valid when reasoning effort is `none`.
+    public func isParameterSupported(_ parameter: String, for modelId: String, reasoningEffort: String?) -> Bool { 
         guard let capabilities = modelCapabilities[modelId] else {
             return false
         }
-        return capabilities.parameters.contains(parameter)
+
+        guard capabilities.parameters.contains(parameter) else {
+            return false
+        }
+
+        let normalizedEffort = reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isGPT52Family = (modelId == "gpt-5.2") || (modelId == "gpt-5.2-pro") || modelId.hasPrefix("gpt-5.2-")
+        let isGPT51Family = (modelId == "gpt-5.1") || modelId.hasPrefix("gpt-5.1-")
+
+        if isGPT52Family || isGPT51Family {
+            switch parameter {
+            case "temperature", "top_p", "top_logprobs":
+                // Conservative default: only treat as supported when the caller explicitly sets effort=none.
+                return normalizedEffort == "none"
+            default:
+                break
+            }
+        }
+
+        return true
     }
-    
+
     /// Updates the model capabilities with the provided dictionary, merging with existing capabilities.
     /// - Parameter capabilities: A dictionary of model capabilities to update.
     public func updateCapabilities(_ capabilities: [String: ModelCapabilities]) {
@@ -409,7 +514,7 @@ class ModelCompatibilityService {
                 updatedTools.append(contentsOf: newCapabilities.tools)
                 var updatedParameters = existingCapabilities.parameters
                 updatedParameters.append(contentsOf: newCapabilities.parameters)
-                
+
                 let mergedOverrides = mergeToolOverrides(existingCapabilities.toolOverrides, newCapabilities.toolOverrides)
 
                 let updatedCapabilities = ModelCapabilities(
@@ -418,7 +523,7 @@ class ModelCompatibilityService {
                     parameters: updatedParameters,
                     toolOverrides: mergedOverrides
                 )
-                
+
                 modelCapabilities[modelId] = updatedCapabilities
             } else {
                 // Add new capabilities
@@ -426,7 +531,7 @@ class ModelCompatibilityService {
             }
         }
     }
-    
+
     /// Merges two sets of tool overrides, giving precedence to the first set.
     /// - Parameters:
     ///   - existing: The existing tool overrides.
@@ -435,7 +540,7 @@ class ModelCompatibilityService {
     private func mergeToolOverrides(_ existing: ToolOverrides?, _ new: ToolOverrides?) -> ToolOverrides? {
         guard let existing = existing else { return new }
         guard let new = new else { return existing }
-        
+
         return ToolOverrides(
             webSearch: existing.webSearch ?? new.webSearch,
             codeInterpreter: existing.codeInterpreter ?? new.codeInterpreter,
@@ -444,9 +549,9 @@ class ModelCompatibilityService {
             computer: existing.computer ?? new.computer
         )
     }
-    
+
     // MARK: - Additional Compatibility Methods
-    
+
     /// Gets tool compatibility information for a specific model and prompt configuration
     /// - Parameters:
     ///   - modelId: The model identifier
@@ -455,7 +560,7 @@ class ModelCompatibilityService {
     /// - Returns: Array of tool compatibility information
     public func getCompatibleTools(for modelId: String, prompt: Prompt, isStreaming: Bool) -> [ToolCompatibility] {
         guard modelCapabilities[modelId] != nil else { return [] }
-        
+
         let allTools: [(APICapabilities.ToolType, String, String, Bool)] = [
             (.webSearch, "Web Search", "Search the internet for current information", prompt.enableWebSearch),
             (.codeInterpreter, "Code Interpreter", "Run Python code and analyze data", prompt.enableCodeInterpreter),
@@ -464,18 +569,18 @@ class ModelCompatibilityService {
             (.computer, "Computer Use", "Interact with the computer", prompt.enableComputerUse),
             (.function, "Custom Functions", "Call custom functions", prompt.enableCustomTool)
         ]
-        
+
         return allTools.map { toolType, name, description, isEnabled in
             let isSupported = isToolSupported(toolType, for: modelId, isStreaming: isStreaming)
             let supportedModels = modelCapabilities.compactMap { key, value in
                 value.tools.contains(toolType) ? key : nil
             }
-            
+
             var restrictions: [String] = []
             if toolType == .imageGeneration && isStreaming {
                 restrictions.append("Not available during streaming")
             }
-            
+
             return ToolCompatibility(
                 name: name,
                 isSupported: isSupported,
@@ -487,13 +592,13 @@ class ModelCompatibilityService {
             )
         }
     }
-    
+
     /// Gets parameter compatibility information for a specific model
     /// - Parameter modelId: The model identifier
     /// - Returns: Array of parameter compatibility information
     public func getParameterCompatibility(for modelId: String) -> [ParameterCompatibility] {
         guard let capabilities = modelCapabilities[modelId] else { return [] }
-        
+
         let allParameters: [(String, Any?, String)] = [
             ("temperature", 1.0, "Controls randomness in responses"),
             ("top_p", 1.0, "Controls diversity via nucleus sampling"),
@@ -506,13 +611,13 @@ class ModelCompatibilityService {
             ("tool_choice", "auto", "Controls which tools the model can use"),
             ("metadata", nil, "Custom metadata for requests")
         ]
-        
+
         return allParameters.map { name, defaultValue, description in
             let isSupported = isParameterSupported(name, for: modelId)
             let supportedModels = modelCapabilities.compactMap { key, value in
                 value.parameters.contains(name) ? key : nil
             }
-            
+
             var restrictions: [String] = []
             if name == "temperature" && capabilities.category == .reasoning {
                 restrictions.append("Not available for reasoning models")
@@ -520,7 +625,7 @@ class ModelCompatibilityService {
             if name == "reasoning_effort" && capabilities.category != .reasoning {
                 restrictions.append("Only available for reasoning models")
             }
-            
+
             return ParameterCompatibility(
                 name: name,
                 isSupported: isSupported,

@@ -14,21 +14,21 @@ import UIKit
 class ComputerService: NSObject, WKNavigationDelegate {
     private let autoAttachWebView: Bool
     private var webView: WKWebView?
-    
+
     // Track attach lifecycle to avoid noisy logs and enable automatic retry when a key window appears.
     private var hasLoggedNoKeyWindow: Bool = false
     private var attachObservers: [NSObjectProtocol] = []
     private var didAttachToWindow: Bool {
         webView?.superview != nil
     }
-    
+
     // Continuations to bridge delegate-based asynchronous operations with async/await.
     private var navigationContinuation: CheckedContinuation<Void, Error>?
     private var javascriptContinuation: CheckedContinuation<Any?, Error>?
     // Suppresses model-originated clicks for a brief window after we programmatically submit a search.
     // This helps avoid the model immediately clicking promo/suggestion tiles before results finish loading.
     private var suppressClicksUntil: Date?
-    
+
     init(autoAttachWebView: Bool = ComputerService.shouldAutoAttachWebView()) {
         self.autoAttachWebView = autoAttachWebView
         super.init()
@@ -64,7 +64,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         guard let url = webView?.url?.absoluteString else { return true }
         return url.isEmpty || url == "about:blank"
     }
-    
+
     /// Configures and sets up the off-screen `WKWebView`.
     private func setupWebView() {
         let configuration = WKWebViewConfiguration()
@@ -72,12 +72,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
         configuration.userContentController = userContentController
         configuration.suppressesIncrementalRendering = false
         configuration.defaultWebpagePreferences.preferredContentMode = .mobile
-        
+
         // Match the configured tool display to reduce scaling artifacts (default 440x956 from tool)
         let width: CGFloat = 440
         let height: CGFloat = 956
         let webViewFrame = CGRect(x: 0, y: 0, width: width, height: height)
-        
+
         webView = WKWebView(frame: webViewFrame, configuration: configuration)
         webView?.navigationDelegate = self
         webView?.isOpaque = false
@@ -86,29 +86,29 @@ class ComputerService: NSObject, WKNavigationDelegate {
         webView?.scrollView.isScrollEnabled = true
         // Present as iPhone Safari to encourage mobile layouts that match our tool display
         webView?.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-        
+
         // Attempt immediate attach; if not possible, set up observers to retry when app/window becomes active.
         attachToWindowHierarchy()
         if !(didAttachToWindow) {
             registerAttachObservers()
         }
     }
-    
+
     /// Attempts to attach the WebView to the window hierarchy for proper rendering
     private func attachToWindowHierarchy() {
         guard let webView = webView else { return }
-        
+
         // Skip if already attached
         if webView.superview != nil {
             // Once attached, we can safely remove any observers.
             unregisterAttachObservers()
             return
         }
-        
+
         // Try to find key window in all connected scenes
         let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let keyWindow = windowScenes.compactMap { $0.windows.first(where: { $0.isKeyWindow }) }.first
-        
+
         if let window = keyWindow {
             // IMPORTANT: Keep the webView within window bounds so WebKit renders paint frames.
             // Position it completely off-screen but still in the window hierarchy for reliable rendering.
@@ -118,11 +118,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
             webView.isUserInteractionEnabled = false // Do not intercept touches
             webView.accessibilityElementsHidden = true // Keep it out of accessibility focus
             window.addSubview(webView)
-            
+
             // Force layout after adding to window
             webView.setNeedsLayout()
             webView.layoutIfNeeded()
-            
+
             AppLogger.log("✅ [WebView Setup] Successfully attached WebView to key window (off-screen)", category: .general, level: .info)
             unregisterAttachObservers()
         } else {
@@ -153,14 +153,14 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         attachObservers.append(contentsOf: [didBecomeActive, didConnectScene, windowBecameKey])
     }
-    
+
     /// Unregister attach observers once we have successfully attached or when deinitializing.
     private func unregisterAttachObservers() {
         let center = NotificationCenter.default
         for token in attachObservers { center.removeObserver(token) }
         attachObservers.removeAll()
     }
-    
+
     /// Executes a given `ComputerAction` and returns the result.
     ///
     /// This is the main entry point for the service. It takes an action decoded from a tool call,
@@ -171,31 +171,31 @@ class ComputerService: NSObject, WKNavigationDelegate {
         guard let webView = webView else {
             throw ComputerUseError.webViewNotAvailable
         }
-        
+
         // Ensure WebView is attached to window hierarchy before any actions
         // Wait up to 2 seconds for window to become available
         await MainActor.run {
             attachToWindowHierarchy()
         }
-        
+
         // If still not attached after first attempt, wait and retry once
         if !didAttachToWindow {
             try? await Task.sleep(for: .seconds(1))
             await MainActor.run {
                 attachToWindowHierarchy()
             }
-            
+
             // Final check - if still no window, we can proceed but log the issue
             if !didAttachToWindow {
                 AppLogger.log("⚠️ [WebView Setup] Proceeding without window attachment - rendering may be suboptimal", category: .general, level: .warning)
             }
         }
-        
+
         // Verify WebView is now properly set up
         if webView.superview == nil {
             throw ComputerUseError.webViewNotAvailable
         }
-        
+
         // Perform the requested action.
         switch action.type {
         case "navigate":
@@ -203,7 +203,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 throw ComputerUseError.invalidParameters
             }
             try await navigate(to: url)
-            
+
         case "click":
             // Accept Int/Double (or numeric strings) for coordinates.
             guard let x = Self.valueAsDouble(action.parameters["x"]),
@@ -211,7 +211,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 throw ComputerUseError.invalidParameters
             }
             try await click(at: CGPoint(x: x, y: y))
-            
+
         case "double_click":
             // Double click at coordinates
             guard let x = Self.valueAsDouble(action.parameters["x"]),
@@ -219,7 +219,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 throw ComputerUseError.invalidParameters
             }
             try await doubleClick(at: CGPoint(x: x, y: y))
-            
+
         case "move":
             // Move mouse to coordinates (simulate hover)
             guard let x = Self.valueAsDouble(action.parameters["x"]),
@@ -227,32 +227,32 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 throw ComputerUseError.invalidParameters
             }
             try await moveMouse(to: CGPoint(x: x, y: y))
-            
+
         case "type":
             guard let text = action.parameters["text"] as? String else {
                 throw ComputerUseError.invalidParameters
             }
             try await type(text: text)
-            
+
         case "keypress":
             guard let keys = action.parameters["keys"] as? [String] else {
                 throw ComputerUseError.invalidParameters
             }
             try await keypress(keys: keys)
-            
+
         case "drag":
             // Handle drag actions with path coordinates
             guard let pathArray = action.parameters["path"] as? [[String: Any]] else {
                 throw ComputerUseError.invalidParameters
             }
             try await drag(path: pathArray)
-            
+
         case "scroll":
             // Support both "scrollY" and shorthand "y"; default X to 0.
             let scrollY = Self.valueAsDouble(action.parameters["scrollY"]) ?? Self.valueAsDouble(action.parameters["y"]) ?? 0
             let scrollX = Self.valueAsDouble(action.parameters["scrollX"]) ?? Self.valueAsDouble(action.parameters["x"]) ?? 0
             try await scroll(x: scrollX, y: scrollY)
-            
+
         case "screenshot":
             // Strict mode: do not inject help pages. If about:blank, just capture the current state.
             // If the model wants to navigate, it should issue a navigate action.
@@ -279,11 +279,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
             let milliseconds: Double = msParam ?? (secParam != nil ? (secParam! * 1000.0) : 1000.0)
             let nanos = UInt64(milliseconds * 1_000_000)
             try? await Task.sleep(nanoseconds: nanos)
-            
+
         default:
             // Instead of throwing an error for unknown actions, log and gracefully handle
             AppLogger.log("⚠️ [ComputerService] Unknown action type: '\(action.type)'. Attempting graceful handling.", category: .general, level: .warning)
-            
+
             // Try to handle some common action variations that might not be in our switch
             switch action.type.lowercased() {
             case "doubleclick", "double-click":
@@ -306,27 +306,27 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 // Don't throw - just continue to screenshot to show current state
             }
         }
-        
+
         // After any action, wait for content to be ready and then take a screenshot.
         // For click actions, give extra time for JavaScript frameworks to respond
         var extraWaitTime: UInt64 = 150_000_000 // default 150ms
         if action.type == "click" {
             extraWaitTime = 500_000_000 // 500ms for clicks
         }
-        
+
         // Ensure the web view has rendered at least once before snapshot
         try await ensureWebViewReady()
         try await waitForDomReadyAndPaint()
         try? await Task.sleep(nanoseconds: extraWaitTime)
-        
+
         let screenshot = try await takeScreenshot()
         let currentURL = webView.url?.absoluteString
-        
+
         return ComputerActionResult(screenshot: screenshot, currentURL: currentURL, output: "Action '\(action.type)' completed successfully.")
     }
-    
+
     // MARK: - Private Action Implementations
-    
+
     /// Navigates the web view to the specified URL.
     private func navigate(to url: URL) async throws {
         // Ensure a valid scheme; default to https if missing
@@ -343,7 +343,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         AppLogger.log("🌐 [Navigation] Completed: \(webView?.url?.absoluteString ?? "unknown")", category: .general, level: .debug)
     }
-    
+
     /// Simulates a click at a specific point on the web page.
     /// Uses multiple strategies to ensure clicks work on modern JavaScript-heavy sites.
     private func click(at point: CGPoint) async throws {
@@ -519,7 +519,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         """
         let clickResult = try await evaluateJavaScript(script)
         AppLogger.log("🖱️ Click result: \(clickResult ?? "No result")", category: .general, level: .info)
-        
+
         // Give JavaScript frameworks time to process the click
         try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
     }
@@ -578,7 +578,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         return nil
     }
-    
+
     /// Simulates a double-click at a specific point on the web page.
     private func doubleClick(at point: CGPoint) async throws {
         let script = """
@@ -610,7 +610,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         """
         _ = try await evaluateJavaScript(script)
     }
-    
+
     /// Simulates moving the mouse to a specific point (hover effect).
     private func moveMouse(to point: CGPoint) async throws {
         let script = """
@@ -633,7 +633,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     clientY: py
                 });
                 el.dispatchEvent(event);
-                
+
                 var moveEvent = new MouseEvent('mousemove', {
                     bubbles: true,
                     cancelable: true,
@@ -641,7 +641,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     clientY: py
                 });
                 el.dispatchEvent(moveEvent);
-                
+
                 return "Moved mouse to element: " + el.tagName;
             }
             return "No element found at point for mouse move.";
@@ -649,7 +649,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         """
         _ = try await evaluateJavaScript(script)
     }
-    
+
     /// Types the given text into the currently focused editable element.
     private func type(text: String) async throws {
         let script = """
@@ -664,14 +664,14 @@ class ComputerService: NSObject, WKNavigationDelegate {
         """
         _ = try await evaluateJavaScript(script)
     }
-    
+
     /// Simulates key press combinations like Ctrl+A, Ctrl+C, etc.
     private func keypress(keys: [String]) async throws {
         // Handle common keyboard shortcuts via JavaScript
         let keyCombo = keys.joined(separator: "+").uppercased()
-        
+
         var script = ""
-        
+
         switch keyCombo {
         case "CTRL+A", "CMD+A":
             script = """
@@ -801,16 +801,16 @@ class ComputerService: NSObject, WKNavigationDelegate {
             })();
             """
         }
-        
+
         _ = try await evaluateJavaScript(script)
     }
-    
+
     /// Performs a drag gesture along the specified path
     private func drag(path: [[String: Any]]) async throws {
         guard path.count >= 2 else {
             throw ComputerUseError.invalidParameters
         }
-        
+
         // Extract start and end points from path
         guard let startDict = path.first,
               let endDict = path.last,
@@ -820,7 +820,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
               let endY = Self.valueAsDouble(endDict["y"]) else {
             throw ComputerUseError.invalidParameters
         }
-        
+
         let script = """
         (function() {
             var startX = \(startX); var startY = \(startY); var endX = \(endX); var endY = \(endY);
@@ -831,12 +831,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
             function normY(v){ if (v>vh||v<0) v = v/dpr; return Math.max(0, Math.min(vh-1, v)); }
             startX = normX(startX); startY = normY(startY);
             endX = normX(endX); endY = normY(endY);
-            
+
             var startElement = document.elementFromPoint(startX, startY);
             if (!startElement) {
                 return "No element found at start point (" + startX + ", " + startY + ")";
             }
-            
+
             // Create mouse events for drag operation
             var mouseDownEvent = new MouseEvent('mousedown', {
                 bubbles: true,
@@ -845,7 +845,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 clientY: startY,
                 button: 0
             });
-            
+
             var mouseMoveEvent = new MouseEvent('mousemove', {
                 bubbles: true,
                 cancelable: true,
@@ -853,7 +853,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 clientY: endY,
                 button: 0
             });
-            
+
             var mouseUpEvent = new MouseEvent('mouseup', {
                 bubbles: true,
                 cancelable: true,
@@ -861,10 +861,10 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 clientY: endY,
                 button: 0
             });
-            
+
             // Execute drag sequence
             startElement.dispatchEvent(mouseDownEvent);
-            
+
             // Simulate movement with multiple intermediate points for smoother drag
             var steps = 5;
             for (var i = 1; i <= steps; i++) {
@@ -879,21 +879,21 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 });
                 document.dispatchEvent(moveEvent);
             }
-            
+
             var endElement = document.elementFromPoint(endX, endY);
             if (endElement) {
                 endElement.dispatchEvent(mouseUpEvent);
             } else {
                 document.dispatchEvent(mouseUpEvent);
             }
-            
+
             return "Drag from (" + startX + ", " + startY + ") to (" + endX + ", " + endY + ") completed";
         })();
         """
-        
+
         _ = try await evaluateJavaScript(script)
     }
-    
+
     /// Scrolls the web page vertically by a given amount.
     private func scroll(x: Double, y: Double) async throws {
         let script = "window.scrollBy(\(x), \(y));"
@@ -918,41 +918,41 @@ class ComputerService: NSObject, WKNavigationDelegate {
         try? await Task.sleep(nanoseconds: 250_000_000)
         try await waitForDomReadyAndPaint()
     }
-    
+
     /// Captures a screenshot of the web view's visible content.
     private func takeScreenshot() async throws -> String? {
         guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
-        
+
         // Debug: Log webview state before screenshot
         print("📸 [Screenshot Debug] WebView state: frame=\(webView.frame), url=\(webView.url?.absoluteString ?? "nil"), isLoading=\(webView.isLoading)")
         print("📸 [Screenshot Debug] WebView estimated progress: \(webView.estimatedProgress)")
-        
+
         // Critical: Temporarily restore alpha to 1.0 for screenshot capture
         let originalAlpha = webView.alpha
         webView.alpha = 1.0
-        
+
         // Critical: Verify WebView has proper dimensions before screenshot
         if webView.frame.width <= 0 || webView.frame.height <= 0 {
             print("📸 [Screenshot Debug] WebView has invalid frame dimensions: \(webView.frame)")
-            
+
             // Try to fix the frame
             let width: CGFloat = 440
             let height: CGFloat = 956
             webView.frame = CGRect(x: 0, y: 0, width: width, height: height)
             webView.setNeedsLayout()
             webView.layoutIfNeeded()
-            
+
             print("📸 [Screenshot Debug] Fixed WebView frame to: \(webView.frame)")
-            
+
             // Wait a moment for layout to complete
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
         }
-        
+
         let config = WKSnapshotConfiguration()
         config.afterScreenUpdates = true
         // Match the view's width to reduce rescaling artifacts
         config.snapshotWidth = NSNumber(value: Float(webView.bounds.width))
-        
+
         // Retry snapshot a few times if the WebKit content process is still getting ready
         for attempt in 1...5 {
             do {
@@ -978,7 +978,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                         }
                     }
                 }
-                
+
                 // Restore alpha and return successful result
                 webView.alpha = originalAlpha
                 return result
@@ -990,13 +990,13 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     print("📸 [Screenshot Debug] All attempts failed, generating fallback")
                     // Restore original alpha before returning fallback
                     webView.alpha = originalAlpha
-                    
+
                     // Provide a larger, more visible fallback image with diagnostic info
                     let renderer = UIGraphicsImageRenderer(size: CGSize(width: 440, height: 100))
                     let img = renderer.image { ctx in
                         UIColor.systemRed.setFill()
                         ctx.fill(CGRect(x: 0, y: 0, width: 440, height: 100))
-                        
+
                         let text = "WebView Screenshot Failed\nFrame: \(webView.frame)\nURL: \(webView.url?.absoluteString ?? "None")"
                         let attrs: [NSAttributedString.Key: Any] = [
                             .foregroundColor: UIColor.white,
@@ -1008,7 +1008,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 }
             }
         }
-        
+
         // Restore original alpha before returning
         webView.alpha = originalAlpha
         return nil
@@ -1105,7 +1105,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         try? await Task.sleep(nanoseconds: 700_000_000) // 700ms
         try await waitForDomReadyAndPaint()
     }
-    
+
     /// Evaluates a JavaScript string in the web view.
     private func evaluateJavaScript(_ script: String) async throws -> Any? {
         try await withCheckedThrowingContinuation { continuation in
@@ -1120,7 +1120,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             }
         }
     }
-    
+
     /// Ensures the WKWebView has loaded at least a minimal document so snapshots succeed reliably.
     private func ensureWebViewReady() async throws {
         guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
@@ -1161,12 +1161,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     self.webView?.evaluateJavaScript(js) { result, error in
                         if let error = error { 
                             print("⏳ [DOM Debug] JS error: \(error)")
-                            cont.resume(returning: false) 
+                            cont.resume(returning: false)
                         }
                         else { 
                             let isReady = (result as? Bool) ?? false
                             print("⏳ [DOM Debug] DOM ready result: \(isReady)")
-                            cont.resume(returning: isReady) 
+                            cont.resume(returning: isReady)
                         }
                     }
                 }
@@ -1185,21 +1185,21 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         print("⏳ [DOM Debug] Timeout reached after \(timeoutMs)ms")
     }
-    
+
     // MARK: - WKNavigationDelegate
-    
+
     /// Called when a web view navigation finishes. Resumes the continuation for the `navigate` action.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         navigationContinuation?.resume(returning: ())
         navigationContinuation = nil
     }
-    
+
     /// Called when a web view navigation fails. Resumes the continuation by throwing an error.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         navigationContinuation?.resume(throwing: ComputerUseError.navigationFailed(error))
         navigationContinuation = nil
     }
-    
+
     /// Called when a provisional navigation fails. Resumes the continuation by throwing an error.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         navigationContinuation?.resume(throwing: ComputerUseError.navigationFailed(error))
@@ -1212,7 +1212,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
 private extension ComputerService {
     /// Determines whether the service should automatically attach a WebView.
     /// We disable auto-attach when running inside XCTest to avoid simulator crashes during CI.
-    nonisolated(unsafe) static func shouldAutoAttachWebView() -> Bool {
+    nonisolated static func shouldAutoAttachWebView() -> Bool { 
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
     }
 }

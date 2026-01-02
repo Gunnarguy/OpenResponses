@@ -4,20 +4,20 @@
 
 ## Reviewer access
 
-- No reviewer account is needed. On first launch you can either start **Explore Demo** (offline, no API calls) or paste the limited-scope OpenAI API key from the App Store Connect review note (or your own key).
+- No reviewer account is needed. On first launch you can either start **Explore Demo** (offline, no API calls) or paste an OpenAI API key (from the App Store Connect review note, if provided, or your own key).
 - Once entered, the key is stored only in the iOS Keychain and never leaves the device.
-- Usage is billed directly to that limited-scope key. It has a low credit ceiling, so keep requests short.
+- Usage is billed directly to the API key used for testing.
 - The onboarding flow and chat composer both display an AI accuracy disclaimer reminding reviewers to double-check generated output.
 
 ### Reviewer key details
 
-- The placeholder value lives in `AppStoreAssets/ReviewKeyInstructions.md`. Replace it right before submitting to App Store Connect, and copy the finalized value into the secure App Review note.
+- Reviewer-key staging notes live in `AppStoreAssets/ReviewKeyInstructions.md`. If providing a reviewer key, copy it into the secure App Review note in App Store Connect.
 - During QA, paste the reviewer key into Settings → Credentials and confirm you can remove it anytime using the **Delete Key** option.
 
 ## Primary review scenario (10 minutes)
 
 1. Launch the app.
-2. On the Welcome sheet, tap **Add API Key** and paste the limited-scope reviewer key from the App Review note (or your own OpenAI API key).
+2. On the Welcome sheet, tap **Add API Key** and paste an OpenAI API key (from the App Review note if provided, or your own OpenAI API key).
 3. Send “Hello! Can you help me test this app?” and verify the response streams.
 4. Open Settings → Tools and enable **Code Interpreter**.
 5. Ask “Calculate the first 10 Fibonacci numbers.” The assistant will execute the code tool and stream back the result.
@@ -35,11 +35,11 @@
 
 - API keys (OpenAI, MCP, Notion) are user-supplied and saved only in the iOS Keychain.
 - Conversations and attachments remain on device unless the user explicitly uploads them to OpenAI or an MCP tool.
-- We do not request camera, microphone, speech recognition, or precise location permissions in this release.
+- The app does not request camera, microphone, speech recognition, or precise location permissions in this release.
 - Optional analytics are disabled by default and contain no conversation content.
 
 ## Support contact
 
 - Email: [support@gunnarguy.com](mailto:support@gunnarguy.com) (monitored daily)
 - Issues: <https://github.com/Gunnarguy/OpenResponses/issues>
-- Demo bridge & assets: Local computer-use bridge instructions live in `docs/computerusepreview/Documentation/computeruse.md` along with sample files included in the repo under `AppStoreAssets/DemoFiles/`.
+- Computer-use bridge: Local computer-use bridge instructions live in `docs/computerusepreview/Documentation/computeruse.md`.

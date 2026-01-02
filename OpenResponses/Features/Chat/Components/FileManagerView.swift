@@ -12,28 +12,28 @@ import Combine
 struct FileManagerView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var files: [OpenAIFile] = []
     @State private var vectorStores: [VectorStore] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedTab: FileManagerTab = .quickActions
-    
+
     // Initialize with a specific tab (useful for deep linking)
     init(initialTab: FileManagerTab = .quickActions) {
         _selectedTab = State(initialValue: initialTab)
     }
-    
+
     // Vector store selection state
     @State private var multiSelectVectorStores: Set<String> = []
     @State private var showSaveMultiSelect: Bool = false
     @State private var multiStoreInit: Bool = false
     @State private var multiStoreMode: Bool = false
-    
+
     // Search and filter state
     @State private var searchText: String = ""
     @State private var showOnlyActiveStores: Bool = false
-    
+
     // Sheet presentation state - consolidated to prevent conflicts
     @State private var showingFilePicker = false
     @State private var showingCreateVectorStore = false
@@ -43,103 +43,103 @@ struct FileManagerView: View {
     @State private var vectorStoreToEdit: VectorStore?
     @State private var vectorStoreFiles: [VectorStoreFile] = []
     @State private var targetVectorStoreForUpload: VectorStore?
-    
+
     // Presentation coordination to prevent conflicts
     @State private var isPresentingAnySheet = false
     @State private var pendingFilePickerRequest: VectorStore? = nil
-    
+
     // Pagination state for vector stores
     @State private var isLoadingMore = false
     @State private var hasMoreVectorStores = false
     @State private var vectorStoreAfterCursor: String?
-    
+
     // DocumentPicker state
     @State private var selectedFileData: [Data] = []
     @State private var selectedFilenames: [String] = []
-    
+
     // Delete confirmation state
     @State private var fileToDelete: OpenAIFile?
     @State private var vectorStoreToDelete: VectorStore?
     @State private var showingDeleteFileConfirmation = false
     @State private var showingDeleteVectorStoreConfirmation = false
-    
+
     // Upload feedback state
     @State private var uploadSuccessMessage: String?
     @State private var showingUploadSuccess = false
-    
+
     // Upload summary state
     @State private var uploadSummary: UploadSummary?
     @State private var showingUploadSummary = false
-    
+
     // Real-time upload progress tracking
     @State private var isUploading = false
     @State private var currentUploadProgress: [UploadProgressItem] = []
-    
+
     // Refresh debouncing
     @State private var pendingRefreshTask: Task<Void, Never>?
-    
+
     private let api = OpenAIService()
-    
+
     // Presentation coordination
     @State private var isPresentationLocked = false
-    
+
     // Computed property to check if any presentation is active
     private var isAnySheetPresented: Bool {
-        showingFilePicker || showingCreateVectorStore || showingEditVectorStore || 
+        showingFilePicker || showingCreateVectorStore || showingEditVectorStore ||
         showingQuickUpload || selectedVectorStore != nil || vectorStoreToEdit != nil ||
-        showingDeleteFileConfirmation || showingDeleteVectorStoreConfirmation || 
+        showingDeleteFileConfirmation || showingDeleteVectorStoreConfirmation ||
         showingUploadSummary || isPresentationLocked || (errorMessage != nil)
     }
-    
+
     /// Safely presents the file picker with debouncing
     @MainActor
     private func presentFilePicker(for vectorStore: VectorStore? = nil, needsDelay: Bool = false) {
         // Check current state BEFORE making any changes
-        let currentlyPresented = showingFilePicker || showingCreateVectorStore || showingEditVectorStore || 
+        let currentlyPresented = showingFilePicker || showingCreateVectorStore || showingEditVectorStore ||
                                 showingQuickUpload || selectedVectorStore != nil || vectorStoreToEdit != nil
-        
+
         guard !currentlyPresented && !isPresentationLocked else {
             AppLogger.log("⚠️ Cannot present file picker - another sheet is already presented (currentlyPresented: \(currentlyPresented), locked: \(isPresentationLocked))", category: .fileManager, level: .warning)
             return
         }
-        
+
         // Lock presentations immediately to prevent race conditions
         isPresentationLocked = true
-        
+
         AppLogger.log("📂 Preparing to present file picker for vector store: \(vectorStore?.name ?? "none") (needsDelay: \(needsDelay))", category: .fileManager, level: .info)
-        
+
         // Set target immediately
         targetVectorStoreForUpload = vectorStore
-        
+
         Task { @MainActor in
             // Only delay if transitioning from another sheet
             if needsDelay {
                 try? await Task.sleep(for: .milliseconds(300)) // Reduced from 500ms
             }
-            
+
             // Double-check state
-            guard !showingFilePicker && !showingCreateVectorStore && !showingEditVectorStore && 
+            guard !showingFilePicker && !showingCreateVectorStore && !showingEditVectorStore &&
                   !showingQuickUpload && selectedVectorStore == nil && vectorStoreToEdit == nil else {
                 AppLogger.log("⚠️ Cannot present file picker - another sheet became active", category: .fileManager, level: .warning)
                 isPresentationLocked = false
                 return
             }
-            
+
             AppLogger.log("📂 Presenting file picker now", category: .fileManager, level: .info)
             showingFilePicker = true
-            
+
             // Reduced lock time
             try? await Task.sleep(for: .milliseconds(800)) // Reduced from 2000ms
             isPresentationLocked = false
             AppLogger.log("🔓 Presentation lock released", category: .fileManager, level: .debug)
         }
     }
-    
+
     enum FileManagerTab: String, CaseIterable {
         case quickActions = "Quick Actions"
         case files = "Files"
         case vectorStores = "Vector Stores"
-        
+
         var icon: String {
             switch self {
             case .quickActions: return "bolt.fill"
@@ -148,29 +148,85 @@ struct FileManagerView: View {
             }
         }
     }
-    
+
     // MARK: - Quick Actions Tab
-    
+
     private var quickActionsView: some View {
         List {
+            // MARK: Quick Stats Dashboard
             Section {
-                VStack(spacing: 16) {
-                    Text("Quick Actions")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    Text("Common workflows for managing files and vector stores")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                HStack(spacing: 20) {
+                    StatCard(
+                        title: "Files",
+                        value: "\(files.count)",
+                        icon: "doc.fill",
+                        color: .blue
+                    )
+                    StatCard(
+                        title: "Vector Stores",
+                        value: "\(vectorStores.count)",
+                        icon: "folder.fill",
+                        color: .purple
+                    )
+                    StatCard(
+                        title: "Active",
+                        value: "\(selectedVectorStoresList.count)",
+                        icon: "checkmark.circle.fill",
+                        color: .green
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
                 .listRowBackground(Color.clear)
+.listRowInsets(EdgeInsets())
             }
-            
-            Section("File Search Configuration") {
+
+            // MARK: One-Click Workflows
+
+            Section {
+                // Smart Upload - File to new or existing vector store
+                Button {
+                    guard !isAnySheetPresented else { return }
+                    showingQuickUpload = true
+                } label: {
+                    WorkflowRow(
+                        icon: "doc.badge.plus",
+                        iconColor: .blue,
+                        title: "Smart Upload",
+                        subtitle: "Upload files and automatically add to vector store"
+                    )
+                }
+
+                // Create Vector Store
+                Button {
+                    showingCreateVectorStore = true
+                } label: {
+                    WorkflowRow(
+                        icon: "folder.badge.plus",
+                        iconColor: .purple,
+                        title: "New Vector Store",
+                        subtitle: "Create an empty vector store for file search"
+                    )
+                }
+
+                // Upload file only (for code interpreter)
+                Button {
+                    presentFilePicker()
+                } label: {
+                    WorkflowRow(
+                        icon: "arrow.up.doc",
+                        iconColor: .orange,
+                        title: "Upload for Code Interpreter",
+                        subtitle: "Upload files for Python sandbox access"
+                    )
+                }
+                .disabled(isAnySheetPresented)
+            } header: {
+                Label("Quick Workflows", systemImage: "bolt.fill")
+            }
+
+            // MARK: File Search Configuration
+
+            Section { 
                 Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                    .accessibilityHint("Enables the AI to search through uploaded files and documents")
                     .onChange(of: viewModel.activePrompt.enableFileSearch) { _, newValue in
                         if !newValue {
                             viewModel.activePrompt.selectedVectorStoreIds = nil
@@ -178,134 +234,187 @@ struct FileManagerView: View {
                         }
                         viewModel.saveActivePrompt()
                     }
-                
+
                 if viewModel.activePrompt.enableFileSearch {
-                    Toggle("Multi-Store Search (Max 2)", isOn: $multiStoreMode)
-                        .accessibilityHint("Search across multiple vector stores simultaneously")
-                        .onChange(of: multiStoreMode) { _, newValue in
-                            if newValue {
-                                if let savedIds = viewModel.activePrompt.selectedVectorStoreIds, !savedIds.isEmpty {
-                                    let ids = Set(savedIds.split(separator: ",").map { String($0) })
-                                    multiSelectVectorStores = ids
-                                }
-                            } else {
-                                multiSelectVectorStores.removeAll()
-                                viewModel.activePrompt.selectedVectorStoreIds = nil
-                                viewModel.saveActivePrompt()
-                            }
-                        }
-                }
-            }
-            
-            Section("Active Vector Stores") {
-                if !viewModel.activePrompt.enableFileSearch {
-                    Text("Enable File Search to select vector stores")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                } else if vectorStores.isEmpty {
-                    Text("No vector stores available")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(selectedVectorStoresList, id: \.id) { store in
+                    // Max results slider
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(store.name ?? "Unnamed Store")
-                                    .font(.headline)
-                                Text("\(store.fileCounts.total) files")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
+                            Text("Max Results")
                             Spacer()
-                            Button {
-                                if multiStoreMode {
-                                    multiSelectVectorStores.remove(store.id)
-                                    showSaveMultiSelect = true
-                                } else {
-                                    viewModel.activePrompt.selectedVectorStoreIds = nil
-                                    viewModel.saveActivePrompt()
+                            Text("\(viewModel.activePrompt.fileSearchMaxResults ?? 10)")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { Double(viewModel.activePrompt.fileSearchMaxResults ?? 10) },
+                                set: { viewModel.activePrompt.fileSearchMaxResults = Int($0); viewModel.saveActivePrompt() }
+                            ),
+                            in: 1 ... 50,
+                            step: 1
+                        )
+                        Text("Number of chunks to retrieve per search (1-50)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    // Ranking options
+                    Picker("Ranker", selection: Binding(
+                        get: { viewModel.activePrompt.fileSearchRanker ?? "" },
+                        set: { viewModel.activePrompt.fileSearchRanker = $0.isEmpty ? nil : $0; viewModel.saveActivePrompt() }
+                    )) {
+                        Text("Auto").tag("")
+                        Text("Default 2024-08-21").tag("default_2024_08_21")
+                    }
+.pickerStyle(.menu)
+
+// Score threshold
+if let ranker = viewModel.activePrompt.fileSearchRanker, !ranker.isEmpty {
+    VStack(alignment: .leading, spacing: 4) {
+        HStack {
+            Text("Score Threshold")
+            Spacer()
+            Text(String(format: "%.2f", viewModel.activePrompt.fileSearchScoreThreshold ?? 0.0))
+                .foregroundColor(.secondary)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { viewModel.activePrompt.fileSearchScoreThreshold ?? 0.0 },
+                                    set: { viewModel.activePrompt.fileSearchScoreThreshold = $0; viewModel.saveActivePrompt() }
+                                ),
+                                in: 0 ... 1,
+                                step: 0.05
+                            )
+                            Text("Minimum relevance score (0 = all results, 1 = exact match only)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Label("File Search Settings", systemImage: "doc.text.magnifyingglass")
+            } footer: {
+                Text("Configure how the AI searches through your uploaded documents.")
+            }
+
+            // MARK: Active Vector Stores
+
+            if viewModel.activePrompt.enableFileSearch {
+                Section {
+                    if vectorStores.isEmpty {
+                        Text("No vector stores available")
+                            .foregroundColor(.secondary)
+                    } else if selectedVectorStoresList.isEmpty {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.blue)
+                            Text("Select vector stores in the Vector Stores tab")
+.font(.caption)
+.foregroundColor(.secondary)
+                        }
+                    } else {
+                        ForEach(selectedVectorStoresList, id: \.id) { store in
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(store.name ?? "Unnamed Store")
+.font(.subheadline)
+    .fontWeight(.medium)
+HStack(spacing: 8) {
+    Label("\(store.fileCounts.total)", systemImage: "doc.fill")
+    Text("•")
+    Text(formatBytes(store.usageBytes))
+}
+.font(.caption2)
+                                    .foregroundColor(.secondary)
                                 }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.red)
+                                Spacer()
+                                Button { 
+                                    removeVectorStore(store.id)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+.foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
-                    
-                    if multiStoreMode && showSaveMultiSelect {
-                        Button("Save Changes") {
-                            viewModel.activePrompt.selectedVectorStoreIds = multiSelectVectorStores.isEmpty ? nil : multiSelectVectorStores.joined(separator: ",")
-                            viewModel.saveActivePrompt()
-                            showSaveMultiSelect = false
+
+                    if selectedVectorStoresList.count >= 2 {
+                        Text("Maximum 2 vector stores per request")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                } header: {
+                    Label("Active Vector Stores (\(selectedVectorStoresList.count)/2)", systemImage: "folder.badge.gearshape")
+                }
+            }
+
+            // MARK: Code Interpreter Configuration
+
+            Section {
+                Toggle("Enable Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                    .onChange(of: viewModel.activePrompt.enableCodeInterpreter) { _, newValue in
+                        if !newValue {
+                            viewModel.activePrompt.codeInterpreterPreloadFileIds = nil
                         }
-                        .foregroundColor(.accentColor)
-                        .font(.headline)
+                        viewModel.saveActivePrompt()
+                    }
+
+                if viewModel.activePrompt.enableCodeInterpreter {
+                    let preloadCount = (viewModel.activePrompt.codeInterpreterPreloadFileIds ?? "")
+                        .split(separator: ",")
+                        .filter { !$0.isEmpty }
+                        .count
+
+                    HStack { 
+                        Image(systemName: "doc.on.doc")
+                            .foregroundColor(.orange)
+                        Text("\(preloadCount) files pre-loaded")
+                            .font(.caption)
+                        Spacer()
+                        Text("Configure in Tools tab")
+                            .font(.caption2)
+.foregroundColor(.secondary)
                     }
                 }
+            } header: {
+                Label("Code Interpreter", systemImage: "terminal")
+            } footer: {
+                Text("Execute Python code with access to uploaded files.")
             }
-            
-            Section("Quick Upload") {
-                Button {
-                    guard !isAnySheetPresented else { return }
-                    showingQuickUpload = true
-                } label: {
-                    Label("Upload File to Vector Store", systemImage: "doc.badge.plus")
+
+            // MARK: API Info
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    InfoRow(label: "File Search", value: "Max 2 vector stores, 1-50 results per query")
+                    InfoRow(label: "Supported Files", value: "PDF, TXT, MD, DOCX, JSON, CSV, and more")
+                    InfoRow(label: "Vector Store Limit", value: "Up to 10,000 files per store")
+                    InfoRow(label: "File Size Limit", value: "512 MB per file")
                 }
-                .foregroundColor(.accentColor)
-                
-                Button {
-                    presentFilePicker()
-                } label: {
-                    Label("Upload File Only", systemImage: "doc.fill")
-                }
-                .foregroundColor(.accentColor)
-                .disabled(isAnySheetPresented)
-                
-                Button {
-                    showingCreateVectorStore = true
-                } label: {
-                    Label("Create New Vector Store", systemImage: "folder.badge.plus")
-                }
-                .foregroundColor(.accentColor)
-            }
-            
-            Section("Statistics") {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("Total Files")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("\(files.count)")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                    }
-                    Spacer()
-                    VStack(alignment: .leading) {
-                        Text("Vector Stores")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("\(vectorStores.count)")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                    }
-                    Spacer()
-                    VStack(alignment: .leading) {
-                        Text("Active")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("\(selectedVectorStoresList.count)")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.green)
-                    }
-                }
+            } header: {
+                Label("API Limits", systemImage: "info.circle")
             }
         }
     }
-    
+
+    // Helper to remove vector store
+    private func removeVectorStore(_ id: String) {
+        let currentIds = (viewModel.activePrompt.selectedVectorStoreIds ?? "")
+            .split(separator: ",")
+            .map { String($0) }
+            .filter { $0 != id }
+        viewModel.activePrompt.selectedVectorStoreIds = currentIds.isEmpty ? nil : currentIds.joined(separator: ",")
+        viewModel.saveActivePrompt()
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
     // MARK: - Files Tab
-    
+
     private var filesView: some View {
         List {
             Section {
@@ -322,7 +431,7 @@ struct FileManagerView: View {
                     }
                 }
             }
-            
+
             Section(header: Text("Uploaded Files (\(filteredFiles.count))")) {
                 if filteredFiles.isEmpty {
                     if isLoading {
@@ -362,7 +471,7 @@ struct FileManagerView: View {
                     }
                 }
             }
-            
+
             Section {
                 Button {
                     presentFilePicker()
@@ -376,9 +485,9 @@ struct FileManagerView: View {
             }
         }
     }
-    
+
     // MARK: - Vector Stores Tab
-    
+
     private var vectorStoresView: some View {
         List {
             Section {
@@ -394,13 +503,13 @@ struct FileManagerView: View {
                         }
                     }
                 }
-                
+
                 if viewModel.activePrompt.enableFileSearch {
                     Toggle("Show Only Active Stores", isOn: $showOnlyActiveStores)
                         .font(.caption)
                 }
             }
-            
+
             Section(header: Text("Vector Stores (\(filteredVectorStores.count))")) {
                 if filteredVectorStores.isEmpty {
                     if isLoading {
@@ -463,7 +572,7 @@ struct FileManagerView: View {
                             }
                         }
                     }
-                    
+
                     // Show loading indicator when loading more
                     if isLoadingMore {
                         HStack {
@@ -479,7 +588,7 @@ struct FileManagerView: View {
                     }
                 }
             }
-            
+
             Section {
                 Button {
                     showingCreateVectorStore = true
@@ -492,18 +601,19 @@ struct FileManagerView: View {
             }
         }
     }
-    
+
     // MARK: - Helper Properties
-    
+
     private var selectedVectorStoresList: [VectorStore] {
-        if multiStoreMode {
-            return vectorStores.filter { multiSelectVectorStores.contains($0.id) }
-        } else if let selectedId = viewModel.activePrompt.selectedVectorStoreIds {
-            return vectorStores.filter { $0.id == selectedId }
+        // Get the comma-separated IDs from the prompt
+        guard let selectedIds = viewModel.activePrompt.selectedVectorStoreIds, !selectedIds.isEmpty else {
+            return []
         }
-        return []
+        // Split into individual IDs and filter vector stores
+        let idSet = Set(selectedIds.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+        return vectorStores.filter { idSet.contains($0.id) }
     }
-    
+
     private var filteredFiles: [OpenAIFile] {
         if searchText.isEmpty {
             return files
@@ -512,34 +622,34 @@ struct FileManagerView: View {
             file.filename.localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     private var filteredVectorStores: [VectorStore] {
         var result = vectorStores
-        
+
         // Apply search filter
         if !searchText.isEmpty {
             result = result.filter { store in
                 (store.name ?? "Unnamed").localizedCaseInsensitiveContains(searchText)
             }
         }
-        
+
         // Apply active filter
         if showOnlyActiveStores {
             result = result.filter { isStoreSelected($0) }
         }
-        
+
         return result
     }
-    
+
     // Check if any vector stores have files that are processing
     private var hasProcessingFiles: Bool {
         return vectorStores.contains { store in
             store.status == "in_progress" || store.fileCounts.inProgress > 0
         }
     }
-    
+
     // MARK: - Helper Methods
-    
+
     private func isStoreSelected(_ store: VectorStore) -> Bool {
         if multiStoreMode {
             return multiSelectVectorStores.contains(store.id)
@@ -547,10 +657,10 @@ struct FileManagerView: View {
             return store.id == viewModel.activePrompt.selectedVectorStoreIds
         }
     }
-    
+
     private func handleStoreSelection(_ store: VectorStore) {
         guard viewModel.activePrompt.enableFileSearch else { return }
-        
+
         if multiStoreMode {
             if multiSelectVectorStores.contains(store.id) {
                 multiSelectVectorStores.remove(store.id)
@@ -569,11 +679,11 @@ struct FileManagerView: View {
             viewModel.saveActivePrompt()
         }
     }
-    
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Tab Picker  
+                // Tab Picker
                 Picker("View", selection: $selectedTab) {
                     ForEach(FileManagerTab.allCases, id: \.self) { tab in
                         Label(tab.rawValue, systemImage: tab.icon)
@@ -582,7 +692,7 @@ struct FileManagerView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding()
-                
+
                 // Processing indicator banner
                 if hasProcessingFiles {
                     HStack(spacing: 12) {
@@ -618,7 +728,7 @@ struct FileManagerView: View {
                     .padding(.horizontal)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
+
                 // Tab Content
                 Group {
                     switch selectedTab {
@@ -637,7 +747,7 @@ struct FileManagerView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Done") { dismiss() }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await loadData() }
@@ -788,22 +898,22 @@ struct FileManagerView: View {
         }
         .onChange(of: isAnySheetPresented) { _, newValue in
             AppLogger.log("🎯 isAnySheetPresented changed to: \(newValue)", category: .fileManager, level: .debug)
-            
+
             // Handle pending file picker requests when all sheets are dismissed
             if !newValue, let pendingStore = pendingFilePickerRequest {
                 AppLogger.log("🎯 All sheets dismissed, processing pending file picker request for: \(pendingStore.name ?? "unknown")", category: .fileManager, level: .info)
                 pendingFilePickerRequest = nil
-                
+
                 Task { @MainActor in
                     // Small delay to ensure animations complete
                     try? await Task.sleep(for: .milliseconds(300))
-                    
+
                     // Double-check that nothing else started presenting
                     guard !isAnySheetPresented && !isPresentationLocked else {
                         AppLogger.log("⚠️ Cannot process pending file picker - state changed", category: .fileManager, level: .warning)
                         return
                     }
-                    
+
                     AppLogger.log("📂 Presenting file picker for pending request", category: .fileManager, level: .info)
                     targetVectorStoreForUpload = pendingStore
                     showingFilePicker = true
@@ -840,61 +950,61 @@ struct FileManagerView: View {
             }
         }
     }
-    
+
     // MARK: - Data Loading
-    
+
     @MainActor
     private func loadData() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
             // Load files and first page of vector stores concurrently
             async let filesTask = api.listFiles(purpose: "assistants")
             async let vectorStoresTask = api.listVectorStoresPaginated(limit: 20, after: nil)
-            
+
             files = try await filesTask
             let vectorStoresResponse = try await vectorStoresTask
-            
+
             // Reset pagination state and load first page
             vectorStores = vectorStoresResponse.data
             hasMoreVectorStores = vectorStoresResponse.hasMore
             vectorStoreAfterCursor = vectorStoresResponse.lastId
-            
+
             AppLogger.log("📊 Loaded \(vectorStores.count) vector stores (hasMore: \(hasMoreVectorStores))", category: .fileManager, level: .info)
-            
+
         } catch {
             errorMessage = "Failed to load data: \(error.localizedDescription)"
             AppLogger.log("❌ Failed to load data: \(error.localizedDescription)", category: .fileManager, level: .error)
         }
-        
+
         isLoading = false
     }
-    
+
     @MainActor
     private func loadMoreVectorStores() async {
         guard hasMoreVectorStores, !isLoadingMore, let cursor = vectorStoreAfterCursor else { return }
-        
+
         isLoadingMore = true
-        
+
         do {
             let response = try await api.listVectorStoresPaginated(limit: 20, after: cursor)
-            
+
             // Append new data
             vectorStores.append(contentsOf: response.data)
             hasMoreVectorStores = response.hasMore
             vectorStoreAfterCursor = response.lastId
-            
+
             AppLogger.log("📊 Loaded \(response.data.count) more vector stores. Total: \(vectorStores.count) (hasMore: \(hasMoreVectorStores))", category: .fileManager, level: .info)
-            
+
         } catch {
             errorMessage = "Failed to load more vector stores: \(error.localizedDescription)"
             AppLogger.log("❌ Failed to load more vector stores: \(error.localizedDescription)", category: .fileManager, level: .error)
         }
-        
+
         isLoadingMore = false
     }
-    
+
     @MainActor
     private func loadVectorStoreFiles(_ vectorStoreId: String) async {
         do {
@@ -903,65 +1013,65 @@ struct FileManagerView: View {
             errorMessage = "Failed to load vector store files: \(error.localizedDescription)"
         }
     }
-    
+
     /// Debounced refresh to prevent multiple rapid refreshes during batch operations
     @MainActor
     private func scheduleRefresh(for vectorStoreId: String, delay: TimeInterval = 0.5) {
         // Cancel any pending refresh
         pendingRefreshTask?.cancel()
-        
+
         // Schedule a new refresh after the delay
         pendingRefreshTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            
+
             // Only proceed if not cancelled
             guard !Task.isCancelled else { return }
-            
+
             AppLogger.log("🔄 Executing debounced refresh for vector store \(vectorStoreId)", category: .fileManager, level: .info)
             await loadVectorStoreFiles(vectorStoreId)
         }
     }
-    
+
     /// Polls for file processing completion and refreshes the UI when done
     @MainActor
     private func pollForFileCompletion(vectorStoreId: String, fileId: String, progressIndex: Int, maxAttempts: Int = 30, interval: TimeInterval = 2.0) async {
         var attempts = 0
-        
+
         while attempts < maxAttempts {
             attempts += 1
-            
+
             do {
                 // Small delay before checking
                 try await Task.sleep(for: .seconds(interval))
-                
+
                 // Check if the file has completed processing
                 let files = try await api.listVectorStoreFiles(vectorStoreId: vectorStoreId)
                 if let file = files.first(where: { $0.id == fileId }) {
                     AppLogger.log("📊 Polling attempt \(attempts): File \(fileId) status = \(file.status)", category: .fileManager, level: .debug)
-                    
+
                     if file.status == "completed" {
                         AppLogger.log("✅ File processing completed! Refreshing UI...", category: .fileManager, level: .info)
-                        
+
                         // Update progress overlay to show completion (only if using progress tracking)
                         if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
                             currentUploadProgress[progressIndex].status = .completed
                             currentUploadProgress[progressIndex].statusMessage = "Complete!"
                             currentUploadProgress[progressIndex].progress = 1.0
                         }
-                        
+
                         await loadVectorStoreFiles(vectorStoreId)
                         await loadData() // Also refresh the main file list
                         return
                     } else if file.status == "failed" {
                         AppLogger.log("❌ File processing failed: \(file.lastError?.message ?? "Unknown error")", category: .fileManager, level: .error)
-                        
+
                         // Update progress overlay to show failure (only if using progress tracking)
                         if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
                             currentUploadProgress[progressIndex].status = .failed
                             currentUploadProgress[progressIndex].statusMessage = "Processing failed"
                             currentUploadProgress[progressIndex].progress = 0.0
                         }
-                        
+
                         await loadVectorStoreFiles(vectorStoreId)
                         await loadData()
                         return
@@ -974,30 +1084,30 @@ struct FileManagerView: View {
                 AppLogger.log("⚠️ Polling attempt \(attempts) failed: \(error.localizedDescription)", category: .fileManager, level: .warning)
             }
         }
-        
+
         AppLogger.log("⏰ Polling timed out after \(maxAttempts) attempts. Refreshing UI anyway...", category: .fileManager, level: .warning)
-        
+
         // Update progress overlay on timeout - mark as completed so overlay can close (only if using progress tracking)
         if progressIndex >= 0 && progressIndex < currentUploadProgress.count {
             currentUploadProgress[progressIndex].status = .completed
             currentUploadProgress[progressIndex].statusMessage = "Processing (check status)"
             currentUploadProgress[progressIndex].progress = 1.0
         }
-        
+
         // Refresh UI even on timeout so user can see current state
         await loadVectorStoreFiles(vectorStoreId)
         await loadData()
     }
-    
+
     // MARK: - File Operations
-    
+
     /// Handler for fileImporter with proper security-scoped resource management
     @MainActor
     private func handleFileImporterResult(_ result: Result<[URL], Error>) async {
         switch result {
         case .success(let urls):
             errorMessage = nil
-            
+
             // Initialize real-time progress tracking
             isUploading = true
             currentUploadProgress = urls.map { url in
@@ -1008,39 +1118,39 @@ struct FileManagerView: View {
                     progress: 0.0
                 )
             }
-            
+
             // Track upload results for summary
             var uploadResults: [UploadResult] = []
             let startTime = Date()
-            
+
             for (index, url) in urls.enumerated() {
                 // Start accessing the security-scoped resource
                 let isAccessing = url.startAccessingSecurityScopedResource()
-                
+
                 defer {
                     // Always stop accessing when done
                     if isAccessing {
                         url.stopAccessingSecurityScopedResource()
                     }
                 }
-                
+
                 do {
                     AppLogger.log("📤 Processing file for upload: \(url.lastPathComponent)", category: .fileManager, level: .info)
-                    
+
                     // Update progress: Converting
                     currentUploadProgress[index].status = .converting
                     currentUploadProgress[index].statusMessage = "Validating & converting..."
                     currentUploadProgress[index].progress = 0.2
-                    
+
                     // IMPORTANT: Use FileConverterService for validation and conversion
                     // If uploading to a vector store, use stricter validation
                     let isForVectorStore = targetVectorStoreForUpload != nil
                     AppLogger.log("   🔍 Validating and converting file (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
                     let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
-                    
+
                     let fileData = conversionResult.convertedData
                     let filename = conversionResult.filename
-                    
+
                     if conversionResult.wasConverted {
                         AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(filename)", category: .fileManager, level: .info)
                         AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
@@ -1050,42 +1160,42 @@ struct FileManagerView: View {
                         currentUploadProgress[index].statusMessage = "Validated"
                     }
                     currentUploadProgress[index].progress = 0.4
-                    
+
                     // Update progress: Uploading
                     currentUploadProgress[index].status = .uploading
                     currentUploadProgress[index].statusMessage = "Uploading to OpenAI..."
                     currentUploadProgress[index].progress = 0.5
-                    
+
                     // Upload the file (possibly converted)
                     AppLogger.log("   ☁️ Uploading to OpenAI...", category: .fileManager, level: .info)
                     let uploadedFile = try await api.uploadFile(fileData: fileData, filename: filename)
                     AppLogger.log("   ✅ Upload complete! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
-                    
+
                     currentUploadProgress[index].statusMessage = "Uploaded!"
                     currentUploadProgress[index].progress = 0.7
-                    
+
                     var vectorStoreStatus: String?
                     var vectorStoreFile: VectorStoreFile?
-                    
+
                     // If we have a target vector store, add the file to it
                     if let vectorStoreId = targetVectorStoreForUpload?.id {
                         // Update progress: Adding to vector store
                         currentUploadProgress[index].status = .addingToVectorStore
                         currentUploadProgress[index].statusMessage = "Adding to vector store..."
                         currentUploadProgress[index].progress = 0.8
-                        
+
                         AppLogger.log("   🔗 Adding file to vector store...", category: .fileManager, level: .info)
                         vectorStoreFile = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
                         AppLogger.log("   ✅ File added to vector store (Status: \(vectorStoreFile!.status))", category: .fileManager, level: .info)
-                        
+
                         vectorStoreStatus = vectorStoreFile?.status
-                        
+
                         // If the file is still processing, start polling for completion
                         if vectorStoreFile?.status == "in_progress" {
                             currentUploadProgress[index].status = .processing
                             currentUploadProgress[index].statusMessage = "Processing chunks..."
                             currentUploadProgress[index].progress = 0.9
-                            
+
                             AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
                             Task {
                                 await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
@@ -1100,7 +1210,7 @@ struct FileManagerView: View {
                         currentUploadProgress[index].statusMessage = "Complete!"
                         currentUploadProgress[index].progress = 1.0
                     }
-                    
+
                     // Record successful upload with comprehensive metadata
                     uploadResults.append(UploadResult(
                         originalFilename: conversionResult.originalFilename,
@@ -1118,17 +1228,17 @@ struct FileManagerView: View {
                         lastErrorCode: vectorStoreFile?.lastError?.code,
                         lastErrorMessage: vectorStoreFile?.lastError?.message
                     ))
-                    
+
                     AppLogger.log("🎉 Successfully processed: \(conversionResult.originalFilename)", category: .fileManager, level: .info)
-                    
+
                 } catch {
                     AppLogger.log("❌ Failed to process '\(url.lastPathComponent)': \(error.localizedDescription)", category: .fileManager, level: .error)
-                    
+
                     // Update progress: Failed
                     currentUploadProgress[index].status = .failed
                     currentUploadProgress[index].statusMessage = "Failed"
                     currentUploadProgress[index].progress = 0.0
-                    
+
                     // Extract user-friendly error message
                     let errorDescription: String
                     if let serviceError = error as? OpenAIServiceError {
@@ -1136,7 +1246,7 @@ struct FileManagerView: View {
                     } else {
                         errorDescription = error.localizedDescription
                     }
-                    
+
                     // Record failed upload
                     uploadResults.append(UploadResult(
                         originalFilename: url.lastPathComponent,
@@ -1154,41 +1264,41 @@ struct FileManagerView: View {
                         lastErrorCode: nil,
                         lastErrorMessage: nil
                     ))
-                    
+
                     errorMessage = "Failed to upload '\(url.lastPathComponent)': \(errorDescription)"
                     break // Stop processing on first error
                 }
             }
-            
+
             // Calculate total time
             let totalTime = Date().timeIntervalSince(startTime)
-            
+
             // Refresh data after all uploads
             if let vectorStoreId = targetVectorStoreForUpload?.id {
                 await loadVectorStoreFiles(vectorStoreId)
             }
             await loadData()
-            
+
             // Wait for all files to finish processing before showing summary
             // Check if any files are still processing
             let hasProcessingFiles = currentUploadProgress.contains { $0.status == .processing }
-            
+
             if hasProcessingFiles {
                 // Wait for all processing to complete
                 AppLogger.log("⏳ Waiting for \(currentUploadProgress.filter { $0.status == .processing }.count) file(s) to finish processing...", category: .fileManager, level: .info)
-                
+
                 // Poll until all files are no longer in processing state
                 while currentUploadProgress.contains(where: { $0.status == .processing }) {
                     try? await Task.sleep(for: .seconds(1))
                 }
-                
+
                 AppLogger.log("✅ All files completed processing!", category: .fileManager, level: .info)
-                
+
                 // NOW update the uploadResults with final status from vector store
                 if let vectorStoreId = targetVectorStoreForUpload?.id {
                     do {
                         let updatedFiles = try await api.listVectorStoreFiles(vectorStoreId: vectorStoreId)
-                        
+
                         // Update each result with the final status
                         for i in 0..<uploadResults.count {
                             if let fileId = uploadResults[i].success ? uploadResults[i].fileId : nil,
@@ -1198,7 +1308,7 @@ struct FileManagerView: View {
                                 uploadResults[i].chunkingStrategy = updatedFile.chunkingStrategy
                                 uploadResults[i].lastErrorCode = updatedFile.lastError?.code
                                 uploadResults[i].lastErrorMessage = updatedFile.lastError?.message
-                                
+
                                 AppLogger.log("   📊 Updated \(uploadResults[i].originalFilename): status=\(updatedFile.status)", category: .fileManager, level: .debug)
                             }
                         }
@@ -1207,10 +1317,10 @@ struct FileManagerView: View {
                     }
                 }
             }
-            
+
             // Hide progress overlay
             isUploading = false
-            
+
             // Show upload summary
             let summary = UploadSummary(
                 results: uploadResults,
@@ -1219,61 +1329,61 @@ struct FileManagerView: View {
             )
             uploadSummary = summary
             showingUploadSummary = true
-            
+
             // Stay on the main FileManagerView so user can see in_progress status
             // Clear the target without navigating away
             AppLogger.log("✅ Upload complete, showing summary and staying on main view", category: .fileManager, level: .info)
             targetVectorStoreForUpload = nil
-            
+
         case .failure(let error):
             isUploading = false // Hide progress on error too
             AppLogger.log("❌ File selection failed: \(error.localizedDescription)", category: .fileManager, level: .error)
             errorMessage = "Failed to select files: \(error.localizedDescription)"
         }
     }
-    
+
     /// Universal multi-file upload handler with FileConverterService integration
     /// Handles Data-based uploads by writing to temporary files for validation and conversion
     @MainActor
     private func handleMultipleFileUploads() async {
         guard !selectedFileData.isEmpty else { return }
-        
+
         errorMessage = nil
         let totalFiles = selectedFileData.count
         AppLogger.log("📤 Processing \(totalFiles) file(s) for upload with FileConverterService", category: .fileManager, level: .info)
-        
+
         var successCount = 0
         var failedCount = 0
-        
+
         // Upload all selected files with conversion support
         for (index, fileData) in selectedFileData.enumerated() {
             let filename = selectedFilenames[safe: index] ?? "document_\(index + 1)"
-            
+
             AppLogger.log("   📄 [\(index + 1)/\(totalFiles)] Processing: \(filename)", category: .fileManager, level: .info)
-            
+
             // Write Data to temporary file for FileConverterService processing
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            
+
             do {
                 try fileData.write(to: tempURL)
                 AppLogger.log("   💾 Wrote to temp file: \(tempURL.lastPathComponent)", category: .fileManager, level: .debug)
-                
+
                 // Process with FileConverterService
                 // IMPORTANT: Check if uploading to vector store for proper validation
                 let isForVectorStore = targetVectorStoreForUpload != nil
                 AppLogger.log("   🔍 Validating and converting if needed (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
                 let conversionResult = try await FileConverterService.processFile(url: tempURL, forVectorStore: isForVectorStore)
-                
+
                 if conversionResult.wasConverted {
                     AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(conversionResult.filename)", category: .fileManager, level: .info)
                     AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
-                    
+
                     // Show conversion feedback to user
                     uploadSuccessMessage = "Converted: \(conversionResult.conversionMethod)"
                 } else {
                     AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
                 }
-                
+
                 // Upload the converted file
                 AppLogger.log("   ☁️ Uploading to OpenAI...", category: .fileManager, level: .info)
                 let uploadedFile = try await api.uploadFile(
@@ -1281,17 +1391,17 @@ struct FileManagerView: View {
                     filename: conversionResult.filename
                 )
                 AppLogger.log("   ✅ Upload complete! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
-                
+
                 // If we have a target vector store, add the file to it
                 if let vectorStoreId = targetVectorStoreForUpload?.id {
                     AppLogger.log("   🔗 Adding file to vector store...", category: .fileManager, level: .info)
                     _ = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
                     AppLogger.log("   ✅ File added to vector store", category: .fileManager, level: .info)
                 }
-                
+
                 successCount += 1
                 AppLogger.log("🎉 [\(index + 1)/\(totalFiles)] Successfully processed: \(conversionResult.filename)", category: .fileManager, level: .info)
-                
+
                 // Show success feedback
                 if successCount == totalFiles {
                     showingUploadSuccess = true
@@ -1301,71 +1411,71 @@ struct FileManagerView: View {
                         uploadSuccessMessage = nil
                     }
                 }
-                
+
             } catch {
                 failedCount += 1
                 AppLogger.log("❌ [\(index + 1)/\(totalFiles)] Failed to process '\(filename)': \(error.localizedDescription)", category: .fileManager, level: .error)
             }
-            
+
             // Clean up temp file
             try? FileManager.default.removeItem(at: tempURL)
             AppLogger.log("   🗑️ Cleaned up temp file", category: .fileManager, level: .debug)
         }
-        
+
         AppLogger.log("🏁 Batch upload complete: \(successCount) succeeded, \(failedCount) failed", category: .fileManager, level: .info)
-        
+
         // Clear the selections and target
         selectedFileData.removeAll()
         selectedFilenames.removeAll()
-        
+
         // Refresh data
         if let vectorStoreId = targetVectorStoreForUpload?.id {
             await loadVectorStoreFiles(vectorStoreId)
         }
         await loadData()
-        
+
         targetVectorStoreForUpload = nil
-        
+
         // Show success message if any files succeeded
         if successCount > 0 {
             // You can add a success alert here if desired
         }
     }
-    
+
     @MainActor
     private func handleFileSelection(_ result: Result<[URL], Error>, for vectorStoreId: String? = nil) async {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            
+
             let isAccessing = url.startAccessingSecurityScopedResource()
             defer {
                 if isAccessing {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
-            
+
             do {
                 AppLogger.log("📤 Processing file: \(url.lastPathComponent)", category: .fileManager, level: .info)
-                
+
                 // Use FileConverterService for validation and conversion
                 // IMPORTANT: Check if uploading to vector store for proper validation
                 let isForVectorStore = vectorStoreId != nil
                 let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
-                
+
                 if conversionResult.wasConverted {
                     AppLogger.log("   🔄 Converted: \(conversionResult.originalFilename) → \(conversionResult.filename)", category: .fileManager, level: .info)
                 }
-                
+
                 // Upload the processed file
                 let uploadedFile = try await api.uploadFile(fileData: conversionResult.convertedData, filename: conversionResult.filename)
                 AppLogger.log("   ✅ Uploaded! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
-                
+
                 if let vectorStoreId = vectorStoreId {
                     // If a vector store is specified, add the file directly to it
                     let vectorStoreFile = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
                     AppLogger.log("   ✅ Added to vector store (Status: \(vectorStoreFile.status))", category: .fileManager, level: .info)
-                    
+
                     // If the file is still processing, start polling for completion
                     if vectorStoreFile.status == "in_progress" {
                         AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
@@ -1374,7 +1484,7 @@ struct FileManagerView: View {
                             await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: -1)
                         }
                     }
-                    
+
                     // Refresh the files for that specific vector store
                     await loadVectorStoreFiles(vectorStoreId)
                 } else {
@@ -1385,13 +1495,13 @@ struct FileManagerView: View {
                 AppLogger.log("❌ Failed to process file: \(error.localizedDescription)", category: .fileManager, level: .error)
                 errorMessage = "Failed to upload and process file: \(error.localizedDescription)"
             }
-            
+
         case .failure(let error):
             AppLogger.log("❌ File selection failed: \(error.localizedDescription)", category: .fileManager, level: .error)
             errorMessage = "Failed to select file: \(error.localizedDescription)"
         }
     }
-    
+
     @MainActor
     private func deleteFile(_ file: OpenAIFile) async {
         do {
@@ -1417,7 +1527,7 @@ struct FileManagerView: View {
             }
         }
     }
-    
+
     @MainActor
     private func addFileToVectorStore(_ file: OpenAIFile, vectorStore: VectorStore) async {
         do {
@@ -1428,9 +1538,9 @@ struct FileManagerView: View {
             errorMessage = "Failed to add file to vector store: \(error.localizedDescription)"
         }
     }
-    
+
     // MARK: - Vector Store Operations
-    
+
     @MainActor
     private func createVectorStore(name: String, fileIds: [String], expiresAfterDays: Int?) async {
         do {
@@ -1445,7 +1555,7 @@ struct FileManagerView: View {
             errorMessage = "Failed to create vector store: \(error.localizedDescription)"
         }
     }
-    
+
     @MainActor
     private func updateVectorStore(_ store: VectorStore) async {
         do {
@@ -1463,13 +1573,13 @@ struct FileManagerView: View {
             errorMessage = "Failed to update vector store: \(error.localizedDescription)"
         }
     }
-    
+
     @MainActor
     private func deleteVectorStore(_ store: VectorStore) async {
         do {
             try await api.deleteVectorStore(vectorStoreId: store.id)
             vectorStores.removeAll { $0.id == store.id }
-            
+
             // Clear selection if this was the selected store
             if viewModel.activePrompt.selectedVectorStoreIds == store.id {
                 viewModel.activePrompt.selectedVectorStoreIds = nil
@@ -1479,13 +1589,13 @@ struct FileManagerView: View {
             errorMessage = "Failed to delete vector store: \(error.localizedDescription)"
         }
     }
-    
+
     @MainActor
     private func removeFileFromVectorStore(_ vectorStoreId: String, fileId: String) async {
         do {
             try await api.removeFileFromVectorStore(vectorStoreId: vectorStoreId, fileId: fileId)
             AppLogger.log("✅ Successfully removed file \(fileId) from vector store \(vectorStoreId)", category: .fileManager, level: .info)
-            
+
             // Use debounced refresh to handle batch deletions gracefully
             scheduleRefresh(for: vectorStoreId)
         } catch {
@@ -1513,7 +1623,7 @@ struct QuickUploadView: View {
     @Binding var isPresented: Bool
     let onUpload: (VectorStore) -> Void
     @State private var searchText = ""
-    
+
     private var filteredStores: [VectorStore] {
         if searchText.isEmpty {
             return vectorStores
@@ -1522,7 +1632,7 @@ struct QuickUploadView: View {
             (store.name ?? "Unnamed").localizedCaseInsensitiveContains(searchText)
         }
     }
-    
+
     var body: some View {
         NavigationView {
             List {
@@ -1543,7 +1653,7 @@ struct QuickUploadView: View {
                     .padding()
                     .listRowBackground(Color.clear)
                 }
-                
+
                 Section {
                     HStack {
                         Image(systemName: "magnifyingglass")
@@ -1551,7 +1661,7 @@ struct QuickUploadView: View {
                         TextField("Search vector stores...", text: $searchText)
                     }
                 }
-                
+
                 Section(header: Text("Select Vector Store")) {
                     if filteredStores.isEmpty {
                         Text("No vector stores found")
@@ -1597,7 +1707,7 @@ struct ImprovedFileRow: View {
     let vectorStores: [VectorStore]
     let onDelete: () -> Void
     let onAddToVectorStore: (VectorStore) -> Void
-    
+
     // Extract OCR metadata from filename patterns
     // Files converted by FileConverterService have metadata embedded in the filename
     private var fileMetadata: FileProcessingMetadata? {
@@ -1613,7 +1723,7 @@ struct ImprovedFileRow: View {
         }
         return nil
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -1621,17 +1731,17 @@ struct ImprovedFileRow: View {
                     Text(file.filename)
                         .font(.headline)
                         .lineLimit(2)
-                    
+
                     HStack(spacing: 12) {
                         Label(formatBytes(file.bytes), systemImage: "doc.fill")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         Label(formatDate(file.createdAt), systemImage: "calendar")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     // NEW: Show conversion badge if file was processed
                     if let metadata = fileMetadata {
                         HStack(spacing: 8) {
@@ -1642,7 +1752,7 @@ struct ImprovedFileRow: View {
                                 .padding(.vertical, 2)
                                 .background(Color.blue.opacity(0.1))
                                 .cornerRadius(4)
-                            
+
                             if metadata.hasOCRIndicators {
                                 Label("OCR Processed", systemImage: "text.viewfinder")
                                     .font(.caption2)
@@ -1657,7 +1767,7 @@ struct ImprovedFileRow: View {
                     }
                 }
                 Spacer()
-                
+
                 Menu {
                     Menu("Add to Vector Store") {
                         ForEach(vectorStores) { store in
@@ -1668,9 +1778,9 @@ struct ImprovedFileRow: View {
                             }
                         }
                     }
-                    
+
                     Divider()
-                    
+
                     Button(role: .destructive) {
                         onDelete()
                     } label: {
@@ -1685,13 +1795,13 @@ struct ImprovedFileRow: View {
         }
         .padding(.vertical, 4)
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let formatter = DateFormatter()
@@ -1717,7 +1827,7 @@ struct ImprovedVectorStoreRow: View {
     let onViewDetails: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with selection indicator
@@ -1727,18 +1837,18 @@ struct ImprovedVectorStoreRow: View {
                         .foregroundColor(.green)
                         .font(.title3)
                 }
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(store.name ?? "Unnamed Vector Store")
                         .font(.headline)
-                    
+
                     HStack(spacing: 12) {
                         Label("\(store.fileCounts.total) files", systemImage: "doc.fill")
                             .font(.caption)
-                        
+
                         Label(formatBytes(store.usageBytes), systemImage: "externaldrive")
                             .font(.caption)
-                        
+
                         Text(store.status)
                             .font(.caption)
                             .padding(.horizontal, 6)
@@ -1749,9 +1859,9 @@ struct ImprovedVectorStoreRow: View {
                     }
                     .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 Button {
                     onSelect()
                 } label: {
@@ -1760,7 +1870,7 @@ struct ImprovedVectorStoreRow: View {
                         .foregroundColor(isSelected ? .accentColor : .secondary)
                 }
             }
-            
+
             // Quick Actions
             HStack(spacing: 12) {
                 Button {
@@ -1774,7 +1884,7 @@ struct ImprovedVectorStoreRow: View {
                         .foregroundColor(.accentColor)
                         .cornerRadius(8)
                 }
-                
+
                 Button {
                     onViewDetails()
                 } label: {
@@ -1786,18 +1896,18 @@ struct ImprovedVectorStoreRow: View {
                         .foregroundColor(.blue)
                         .cornerRadius(8)
                 }
-                
+
                 Spacer()
-                
+
                 Menu {
                     Button {
                         onEdit()
                     } label: {
                         Label("Edit", systemImage: "pencil")
                     }
-                    
+
                     Divider()
-                    
+
                     Button(role: .destructive) {
                         onDelete()
                     } label: {
@@ -1811,13 +1921,13 @@ struct ImprovedVectorStoreRow: View {
         }
         .padding(.vertical, 8)
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":
@@ -1841,7 +1951,7 @@ struct VectorStoreRow: View {
     let onDelete: () -> Void
     let onEdit: () -> Void
     let onViewFiles: () -> Void
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -1886,7 +1996,7 @@ struct VectorStoreRow: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -1907,41 +2017,41 @@ struct VectorStoreRow: View {
 
 struct EditVectorStoreView: View {
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var name: String
     @State private var expiresAfterDays: String
     // Basic metadata editing (key-value pairs)
     @State private var metadata: [String: String]
-    
+
     let store: VectorStore
     let onUpdate: (VectorStore) -> Void
-    
+
     init(store: VectorStore, onUpdate: @escaping (VectorStore) -> Void) {
         self.store = store
         self.onUpdate = onUpdate
-        
+
         _name = State(initialValue: store.name ?? "")
         _expiresAfterDays = State(initialValue: store.expiresAfter.map { String($0.days) } ?? "")
-        
+
         // For simplicity, this example handles string values.
         // A more robust implementation would handle different value types.
         _metadata = State(initialValue: store.metadata?.compactMapValues { value in
             return String(describing: value)
         } ?? [:])
     }
-    
+
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("Vector Store Name")) {
                     TextField("Optional name", text: $name)
                 }
-                
+
                 Section(header: Text("Expiration (days, optional)"), footer: Text("Leave blank for no expiration.")) {
                     TextField("e.g. 30", text: $expiresAfterDays)
                         .keyboardType(.numberPad)
                 }
-                
+
                 Section(header: Text("Metadata")) {
                     // A simple way to edit metadata. For a real app, you might want a more complex UI.
                     ForEach(metadata.keys.sorted(), id: \.self) { key in
@@ -1959,12 +2069,12 @@ struct EditVectorStoreView: View {
                         metadata[newKey] = "value"
                     }
                 }
-                
+
                 Section {
                     Button("Update") {
                         let days = Int(expiresAfterDays.trimmingCharacters(in: .whitespacesAndNewlines))
                         let expiresAfter = days.map { ExpiresAfter(anchor: "last_active_at", days: $0) }
-                        
+
                         let updatedStore = VectorStore(
                             id: store.id,
                             object: store.object,
@@ -1978,7 +2088,7 @@ struct EditVectorStoreView: View {
                             lastActiveAt: store.lastActiveAt,
                             metadata: metadata.isEmpty ? nil : metadata
                         )
-                        
+
                         onUpdate(updatedStore)
                         dismiss()
                     }
@@ -2006,30 +2116,30 @@ struct VectorStoreDetailView: View {
     let onUpdate: ((VectorStore) -> Void)?
     let onDelete: (() -> Void)?
     let onAddExistingFiles: (([String]) -> Void)?
-    
+
     @Environment(\.dismiss) private var dismiss
-    
+
     // State for editing
     @State private var showingEditSheet = false
     @State private var showingDeleteConfirmation = false
     @State private var showingAssociateFiles = false
-    
+
     // State for adding existing files
     @State private var selectedExistingFiles: Set<String> = []
-    
+
     private func getFilename(for fileId: String) -> String {
         if let file = allFiles.first(where: { $0.id == fileId }) {
             return file.filename
         }
         return fileId // Fallback to ID
     }
-    
+
     // Get files that are NOT already in this vector store
     private var availableFiles: [OpenAIFile] {
         let currentFileIds = Set(files.map { $0.id })
         return allFiles.filter { !currentFileIds.contains($0.id) }
     }
-    
+
     var body: some View {
         NavigationView {
             List {
@@ -2041,7 +2151,7 @@ struct VectorStoreDetailView: View {
                         Label("Edit Settings", systemImage: "slider.horizontal.3")
                             .foregroundColor(.accentColor)
                     }
-                    
+
                     Button(role: .destructive) {
                         showingDeleteConfirmation = true
                     } label: {
@@ -2050,7 +2160,7 @@ struct VectorStoreDetailView: View {
                 } header: {
                     Text("Management")
                 }
-                
+
                 // MARK: - Info Section
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -2067,9 +2177,9 @@ struct VectorStoreDetailView: View {
                                 .foregroundColor(statusColor(vectorStore.status))
                                 .cornerRadius(8)
                         }
-                        
+
                         Divider()
-                        
+
                         HStack {
                             Label("\(files.count) files", systemImage: "doc.fill")
                                 .font(.subheadline)
@@ -2079,7 +2189,7 @@ struct VectorStoreDetailView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         if let expiresAfter = vectorStore.expiresAfter {
                             Text("Expires after: \(expiresAfter.days) days (\(expiresAfter.anchor))")
                                 .font(.caption)
@@ -2090,7 +2200,7 @@ struct VectorStoreDetailView: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
-                        
+
                         if let metadata = vectorStore.metadata, !metadata.isEmpty {
                             Divider()
                             Text("Metadata")
@@ -2113,7 +2223,7 @@ struct VectorStoreDetailView: View {
                 } header: {
                     Text("Information")
                 }
-                
+
                 // MARK: - File Management Section
                 Section {
                     Button {
@@ -2123,7 +2233,7 @@ struct VectorStoreDetailView: View {
                             .foregroundColor(.accentColor)
                             .font(.headline)
                     }
-                    
+
                     Button {
                         showingAssociateFiles = true
                     } label: {
@@ -2141,7 +2251,7 @@ struct VectorStoreDetailView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
+
                 // MARK: - Files List Section
                 Section {
                     if files.isEmpty {
@@ -2212,7 +2322,7 @@ struct VectorStoreDetailView: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -2251,22 +2361,22 @@ struct FileRow: View {
     let onDelete: () -> Void
     let onAddToVectorStore: (VectorStore) -> Void
     let vectorStores: [VectorStore]
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(file.filename)
                     .font(.headline)
-                
+
                 Text("\(formatBytes(file.bytes)) • \(file.purpose)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 Text("Created: \(formatDate(file.createdAt))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
         }
         .contextMenu {
@@ -2277,19 +2387,19 @@ struct FileRow: View {
                     }
                 }
             }
-            
+
             Button("Delete", role: .destructive) {
                 onDelete()
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let formatter = DateFormatter()
@@ -2304,7 +2414,7 @@ struct FileRow: View {
 class FileManagerStore: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     @Published var files: [OpenAIFile]
-    
+
     init(files: [OpenAIFile]) {
         self.files = files
     }
@@ -2313,13 +2423,13 @@ class FileManagerStore: ObservableObject {
 struct CreateVectorStoreView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var fileStore: FileManagerStore
-    
+
     @State private var vectorStoreName = ""
     @State private var selectedFileIds: Set<String> = []
     @State private var expiresAfterDays: String = "" // For expiration
-    
+
     let onCreate: (String, [String], Int?) -> Void
-    
+
     var body: some View {
         NavigationView {
             Form {
@@ -2381,7 +2491,7 @@ struct CreateVectorStoreView: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -2395,17 +2505,17 @@ struct AssociateExistingFilesView: View {
     let availableFiles: [OpenAIFile]
     @Binding var selectedFileIds: Set<String>
     let onAssociate: () -> Void
-    
+
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
-    
+
     private var filteredFiles: [OpenAIFile] {
         if searchText.isEmpty {
             return availableFiles
         }
         return availableFiles.filter { $0.filename.localizedCaseInsensitiveContains(searchText) }
     }
-    
+
     var body: some View {
         List {
             Section {
@@ -2422,7 +2532,7 @@ struct AssociateExistingFilesView: View {
                     }
                 }
             }
-            
+
             Section {
                 if filteredFiles.isEmpty {
                     HStack {
@@ -2445,20 +2555,20 @@ struct AssociateExistingFilesView: View {
                                 Text(file.filename)
                                     .font(.headline)
                                     .lineLimit(2)
-                                
+
                                 HStack(spacing: 12) {
                                     Label(formatBytes(file.bytes), systemImage: "doc.fill")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                    
+
                                     Label(formatDate(file.createdAt), systemImage: "calendar")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            
+
                             Spacer()
-                            
+
                             if selectedFileIds.contains(file.id) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundColor(.accentColor)
@@ -2503,13 +2613,13 @@ struct AssociateExistingFilesView: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let formatter = DateFormatter()
@@ -2523,9 +2633,9 @@ struct AssociateExistingFilesView: View {
 struct VectorStoreSelectorView: View {
     let vectorStores: [VectorStore]
     let onSelect: (VectorStore) -> Void
-    
+
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationView {
             List {
@@ -2534,10 +2644,10 @@ struct VectorStoreSelectorView: View {
                         Image(systemName: "folder.badge.questionmark")
                             .font(.system(size: 50))
                             .foregroundColor(.secondary)
-                        
+
                         Text("No Available Vector Stores")
                             .font(.headline)
-                        
+
                         Text("All vector stores are already active, or you haven't created any yet.")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -2554,17 +2664,17 @@ struct VectorStoreSelectorView: View {
                                 Text(store.name ?? "Unnamed Vector Store")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                
+
                                 HStack(spacing: 12) {
                                     Label("\(store.fileCounts.total) files", systemImage: "doc.fill")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                    
+
                                     Label(formatBytes(store.usageBytes), systemImage: "externaldrive")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
-                                
+
                                 Text(store.status)
                                     .font(.caption)
                                     .padding(.horizontal, 8)
@@ -2589,13 +2699,13 @@ struct VectorStoreSelectorView: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":
@@ -2622,18 +2732,18 @@ struct VectorStoreFileRow: View {
     let file: VectorStoreFile
     let filename: String
     let onRemove: () -> Void
-    
+
     // Parse OCR quality from filename or attributes
     private var processingInfo: FileProcessingInfo? {
         // Check filename for conversion/OCR indicators
         let lowerFilename = filename.lowercased()
-        
+
         // Detect if file was converted
         let isConverted = lowerFilename.contains("converted") || lowerFilename.contains("_ocr") || lowerFilename.hasSuffix(".txt")
-        
+
         // Check for OCR-specific patterns
         let hasOCR = lowerFilename.contains("ocr") || lowerFilename.contains("scanned")
-        
+
         // Parse quality indicators from attributes if available
         var quality: OCRQuality? = nil
         if let attributes = file.attributes {
@@ -2644,7 +2754,7 @@ struct VectorStoreFileRow: View {
                 }
             }
         }
-        
+
         if isConverted || hasOCR || quality != nil {
             return FileProcessingInfo(
                 isConverted: isConverted,
@@ -2652,10 +2762,10 @@ struct VectorStoreFileRow: View {
                 quality: quality
             )
         }
-        
+
         return nil
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Main file info row
@@ -2663,9 +2773,9 @@ struct VectorStoreFileRow: View {
                 Text(filename)
                     .font(.headline)
                     .lineLimit(2)
-                
+
                 Spacer()
-                
+
                 // Show processing indicator for in_progress files
                 if file.status == "in_progress" {
                     HStack(spacing: 4) {
@@ -2687,13 +2797,13 @@ struct VectorStoreFileRow: View {
                         .cornerRadius(6)
                 }
             }
-            
+
             // File metadata row
             HStack(spacing: 12) {
                 Label(formatBytes(file.usageBytes), systemImage: "doc.fill")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 if let error = file.lastError {
                     Label(error.message, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -2701,7 +2811,7 @@ struct VectorStoreFileRow: View {
                         .lineLimit(1)
                 }
             }
-            
+
             // NEW: Processing indicators
             if let info = processingInfo {
                 HStack(spacing: 8) {
@@ -2714,7 +2824,7 @@ struct VectorStoreFileRow: View {
                             .background(Color.blue.opacity(0.1))
                             .cornerRadius(4)
                     }
-                    
+
                     if info.hasOCR {
                         Label("OCR Processed", systemImage: "text.viewfinder")
                             .font(.caption2)
@@ -2724,7 +2834,7 @@ struct VectorStoreFileRow: View {
                             .background(Color.green.opacity(0.1))
                             .cornerRadius(4)
                     }
-                    
+
                     if let quality = info.quality {
                         HStack(spacing: 4) {
                             Text(quality.emoji)
@@ -2756,13 +2866,13 @@ struct VectorStoreFileRow: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":
@@ -2796,7 +2906,7 @@ enum UploadProgressStatus {
     case processing
     case completed
     case failed
-    
+
     var icon: String {
         switch self {
         case .pending: return "clock.fill"
@@ -2808,7 +2918,7 @@ enum UploadProgressStatus {
         case .failed: return "xmark.circle.fill"
         }
     }
-    
+
     var color: Color {
         switch self {
         case .pending: return .secondary
@@ -2835,7 +2945,7 @@ struct UploadResult {
     var vectorStoreStatus: String? // Mutable - updated after processing
     let success: Bool
     let errorMessage: String?
-    
+
     // Enhanced vector store metadata (mutable - updated after processing completes)
     let chunkCount: Int?
     var usageBytes: Int?
@@ -2849,28 +2959,28 @@ struct UploadSummary {
     let results: [UploadResult]
     let vectorStoreName: String?
     let totalTime: TimeInterval
-    
+
     var successCount: Int {
         results.filter { $0.success }.count
     }
-    
+
     var failureCount: Int {
         results.filter { !$0.success }.count
     }
-    
+
     var totalSize: Int {
         results.reduce(0) { $0 + $1.fileSize }
     }
-    
+
     var convertedCount: Int {
         results.filter { $0.wasConverted }.count
     }
-    
+
     var totalVectorStoreUsage: Int? {
         let usages = results.compactMap { $0.usageBytes }
         return usages.isEmpty ? nil : usages.reduce(0, +)
     }
-    
+
     var hasVectorStoreData: Bool {
         results.contains { $0.usageBytes != nil }
     }
@@ -2882,7 +2992,7 @@ struct UploadSummary {
 struct UploadSummaryView: View {
     let summary: UploadSummary
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -2892,11 +3002,11 @@ struct UploadSummaryView: View {
                         Image(systemName: summary.failureCount == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.system(size: 60))
                             .foregroundColor(summary.failureCount == 0 ? .green : .orange)
-                        
+
                         Text("Upload Complete")
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         if let vectorStore = summary.vectorStoreName {
                             Text("to \(vectorStore)")
                                 .font(.subheadline)
@@ -2904,7 +3014,7 @@ struct UploadSummaryView: View {
                         }
                     }
                     .padding(.top)
-                    
+
                     // Statistics
                     HStack(spacing: 16) {
                         UploadStatCard(
@@ -2913,7 +3023,7 @@ struct UploadSummaryView: View {
                             label: "Uploaded",
                             color: .green
                         )
-                        
+
                         if summary.convertedCount > 0 {
                             UploadStatCard(
                                 icon: "arrow.triangle.2.circlepath",
@@ -2922,14 +3032,14 @@ struct UploadSummaryView: View {
                                 color: .blue
                             )
                         }
-                        
+
                         UploadStatCard(
                             icon: "clock.fill",
                             value: String(format: "%.1fs", summary.totalTime),
                             label: "Time",
                             color: .purple
                         )
-                        
+
                         UploadStatCard(
                             icon: "doc.fill",
                             value: formatBytes(summary.totalSize),
@@ -2938,7 +3048,7 @@ struct UploadSummaryView: View {
                         )
                     }
                     .padding(.horizontal)
-                    
+
                     // Show vector store usage if available
                     if let totalUsage = summary.totalVectorStoreUsage {
                         HStack(spacing: 16) {
@@ -2951,7 +3061,7 @@ struct UploadSummaryView: View {
                         }
                         .padding(.horizontal)
                     }
-                    
+
                     if summary.failureCount > 0 {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -2962,13 +3072,13 @@ struct UploadSummaryView: View {
                         }
                         .padding(.horizontal)
                     }
-                    
+
                     // File list
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Files")
                             .font(.headline)
                             .padding(.horizontal)
-                        
+
                         ForEach(Array(summary.results.enumerated()), id: \.offset) { index, result in
                             UploadResultRow(result: result)
                         }
@@ -2989,7 +3099,7 @@ struct UploadSummaryView: View {
             }
         }
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
@@ -3005,17 +3115,17 @@ struct UploadStatCard: View {
     let value: String
     let label: String
     let color: Color
-    
+
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.title3)
                 .foregroundColor(color)
-            
+
             Text(value)
                 .font(.headline)
                 .fontWeight(.bold)
-            
+
             Text(label)
                 .font(.caption2)
                 .foregroundColor(.secondary)
@@ -3031,7 +3141,7 @@ struct UploadStatCard: View {
 struct UploadResultRow: View {
     let result: UploadResult
     @State private var isExpanded = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -3044,14 +3154,14 @@ struct UploadResultRow: View {
                     Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.title3)
                         .foregroundColor(result.success ? .green : .red)
-                    
+
                     // File info
                     VStack(alignment: .leading, spacing: 4) {
                         Text(result.originalFilename)
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
-                        
+
                         HStack(spacing: 4) {
                             if result.wasConverted {
                                 Image(systemName: "arrow.triangle.2.circlepath")
@@ -3064,12 +3174,12 @@ struct UploadResultRow: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            
+
                             if result.success {
                                 Text(formatBytes(result.fileSize))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                
+
                                 if let status = result.vectorStoreStatus {
                                     Text("•")
                                         .font(.caption)
@@ -3085,9 +3195,9 @@ struct UploadResultRow: View {
                             }
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     // Expand indicator
                     Image(systemName: "chevron.right")
                         .font(.caption)
@@ -3099,33 +3209,33 @@ struct UploadResultRow: View {
                 .cornerRadius(12)
             }
             .buttonStyle(.plain)
-            
+
             // Expanded details
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
                     Divider()
                         .padding(.horizontal)
-                    
+
                     if result.success {
                         UploadDetailRow(label: "File ID", value: result.fileId, monospaced: true)
-                        
+
                         if result.finalFilename != result.originalFilename {
                             UploadDetailRow(label: "Final Name", value: result.finalFilename)
                         }
-                        
+
                         if result.wasConverted {
                             UploadDetailRow(label: "Conversion", value: result.conversionMethod)
                         }
-                        
+
                         if let status = result.vectorStoreStatus {
                             UploadDetailRow(label: "Vector Store", value: statusLabel(status))
                         }
-                        
+
                         // Show vector store metadata if available
                         if let usageBytes = result.usageBytes {
                             UploadDetailRow(label: "Storage Used", value: formatBytes(usageBytes))
                         }
-                        
+
                         if let strategy = result.chunkingStrategy {
                             if let staticStrategy = strategy.static {
                                 UploadDetailRow(
@@ -3136,20 +3246,20 @@ struct UploadResultRow: View {
                                 UploadDetailRow(label: "Chunking", value: "Auto (default)")
                             }
                         }
-                        
+
                         // Show error details if the file failed in vector store processing
                         if let errorCode = result.lastErrorCode, let errorMsg = result.lastErrorMessage {
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
                                     .font(.caption)
-                                
+
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Vector Store Error")
                                         .font(.caption)
                                         .fontWeight(.semibold)
                                         .foregroundColor(.orange)
-                                    
+
                                     Text("[\(errorCode)] \(errorMsg)")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
@@ -3157,19 +3267,19 @@ struct UploadResultRow: View {
                             }
                             .padding(.horizontal)
                         }
-                        
+
                     } else if let error = result.errorMessage {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.red)
                                 .font(.caption)
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Error")
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.red)
-                                
+
                                 Text(error)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
@@ -3185,13 +3295,13 @@ struct UploadResultRow: View {
         }
         .padding(.horizontal)
     }
-    
+
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .memory
         return formatter.string(fromByteCount: Int64(bytes))
     }
-    
+
     private func statusLabel(_ status: String) -> String {
         switch status.lowercased() {
         case "completed": return "Ready"
@@ -3200,7 +3310,7 @@ struct UploadResultRow: View {
         default: return status
         }
     }
-    
+
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed": return .green
@@ -3216,19 +3326,19 @@ struct UploadDetailRow: View {
     let label: String
     let value: String
     var monospaced: Bool = false
-    
+
     var body: some View {
         HStack(alignment: .top) {
             Text(label)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .frame(width: 100, alignment: .leading)
-            
+
             Text(value)
                 .font(monospaced ? .caption.monospaced() : .caption)
                 .foregroundColor(.primary)
                 .textSelection(.enabled)
-            
+
             Spacer()
         }
         .padding(.horizontal)
@@ -3240,13 +3350,13 @@ struct UploadDetailRow: View {
 /// Live progress overlay showing upload status for each file
 struct UploadProgressOverlay: View {
     let progressItems: [UploadProgressItem]
-    
+
     var body: some View {
         ZStack {
             // Semi-transparent background
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
-            
+
             // Progress card
             VStack(spacing: 0) {
                 // Header
@@ -3254,26 +3364,26 @@ struct UploadProgressOverlay: View {
                     Image(systemName: "arrow.up.doc.fill")
                         .font(.title2)
                         .foregroundColor(.blue)
-                    
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Uploading Files")
                             .font(.headline)
                             .fontWeight(.bold)
-                        
+
                         let completedCount = progressItems.filter { $0.status == .completed }.count
                         let totalCount = progressItems.count
                         Text("\(completedCount) of \(totalCount) complete")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     Spacer()
                 }
                 .padding()
                 .background(Color(.systemBackground))
-                
+
                 Divider()
-                
+
                 // Progress list
                 ScrollView {
                     VStack(spacing: 12) {
@@ -3300,7 +3410,7 @@ struct UploadProgressOverlay: View {
 /// Individual file progress row
 struct UploadProgressRow: View {
     let item: UploadProgressItem
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
@@ -3310,20 +3420,20 @@ struct UploadProgressRow: View {
                     .foregroundColor(item.status.color)
                     .frame(width: 24, height: 24)
                     .symbolEffect(.pulse, isActive: item.status == .uploading || item.status == .processing || item.status == .converting)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.filename)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .lineLimit(1)
-                    
+
                     Text(item.statusMessage)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 // Checkmark or spinner
                 if item.status == .completed {
                     Image(systemName: "checkmark.circle.fill")
@@ -3339,7 +3449,7 @@ struct UploadProgressRow: View {
                         .scaleEffect(0.8)
                 }
             }
-            
+
             // Progress bar
             if item.status != .completed && item.status != .failed {
                 GeometryReader { geometry in
@@ -3348,7 +3458,7 @@ struct UploadProgressRow: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.secondary.opacity(0.2))
                             .frame(height: 4)
-                        
+
                         // Progress fill
                         RoundedRectangle(cornerRadius: 2)
                             .fill(item.status.color)
@@ -3374,7 +3484,7 @@ struct FileProcessingInfo {
 
 struct OCRQuality {
     let percentage: Int
-    
+
     var emoji: String {
         switch percentage {
         case 80...:
@@ -3385,7 +3495,7 @@ struct OCRQuality {
             return "❌"
         }
     }
-    
+
     var color: Color {
         switch percentage {
         case 80...:
@@ -3396,7 +3506,7 @@ struct OCRQuality {
             return .red
         }
     }
-    
+
     var label: String {
         switch percentage {
         case 85...:
@@ -3411,7 +3521,84 @@ struct OCRQuality {
     }
 }
 
+// MARK: - Quick Actions Helper Views
 
+/// Compact stat card for dashboard
+private struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
 
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+            Text(value)
+                .font(.title)
+                .fontWeight(.bold)
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(color.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
 
+/// Workflow action row
+private struct WorkflowRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
 
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(iconColor)
+                .frame(width: 36, height: 36)
+                .background(iconColor.opacity(0.15))
+                .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// Info row for API limits section
+private struct InfoRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundColor(.primary)
+        }
+    }
+}

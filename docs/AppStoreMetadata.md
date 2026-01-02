@@ -16,7 +16,7 @@ Launch-ready reference for populating every App Store Connect field for OpenResp
 - **Availability:** Worldwide
 - **Primary Language:** English (U.S.)
 - **Release Type:** Manual release with 7-day phased rollout
-- **Model Coverage:** GPT-5 & GPT-5 Thinking, GPT-4.1 family, GPT-4o & GPT-4o mini, o-series reasoning models, gpt-image-1, computer-use-preview
+- **Model Coverage:** GPT-5 family (with configurable reasoning effort), GPT-4.1 family, GPT-4o & GPT-4o mini, o-series reasoning models, gpt-image-1, computer-use-preview
 
 ## Promotional Text (≤170 characters)
 
@@ -28,7 +28,7 @@ OpenResponses puts the OpenAI Responses API in your pocket. Built in SwiftUI for
 
 ### Why You'll Love It
 
-- Dynamic model gallery covering GPT-5, GPT-5 Thinking, GPT-4.1, GPT-4.1 mini/nano, GPT-4o, GPT-4o mini, o1, o3, o4-mini, GPT-4 Turbo, and GPT-3.5 fallback models—plus gpt-image-1 for visuals and computer-use-preview for automation
+- Dynamic model gallery covering GPT-5 family (with configurable reasoning effort), GPT-4.1, GPT-4.1 mini/nano, GPT-4o, GPT-4o mini, o1, o3, o4-mini, GPT-4 Turbo, and GPT-3.5 fallback models—plus gpt-image-1 for visuals and computer-use-preview for automation
 - Pro controls for temperature, reasoning effort, max tokens, tool routing, and moderation—all in one place
 - Built-in compatibility guidance so every model and tool combination stays within OpenAI and App Store policies
 - Save, organize, and reuse prompt setups across projects with the Prompt Library
@@ -74,7 +74,7 @@ AI-generated output can be inaccurate or outdated—always review critical infor
 ### Requirements
 
 - iOS 17.0 or later
-- OpenAI API key (setup instructions appear in-app; reviewer key provided in App Review notes)
+- OpenAI API key (setup instructions appear in-app; reviewers may use their own key or a key provided in App Review notes)
 - Active OpenAI billing for that key—usage charges accrue directly to the reviewer or user
 - Optional MCP server URLs or credentials for external integrations
 
@@ -87,7 +87,7 @@ openai,gpt,gpt5,gpt41,reasoning,aiassistant,mcp,codeinterpreter,websearch,devtoo
 Welcome to the first release of OpenResponses! Highlights:
 
 - Full OpenAI Responses API client with streaming and request inspection
-- Access to GPT-5 & GPT-5 Thinking, GPT-4.1 family, GPT-4o & GPT-4o mini, o1 and o3 reasoning models, gpt-image-1, and computer-use-preview
+- Access to GPT-5 family (with configurable reasoning effort), GPT-4.1 family, GPT-4o & GPT-4o mini, o1 and o3 reasoning models, gpt-image-1, and computer-use-preview
 - Built-in tools: Code Interpreter, Web Search, Image Generation, File Search, Computer Use
 - Vector store file management with previews and metadata controls
 - MCP integration with connector gallery and secure credential storage
@@ -152,7 +152,7 @@ Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simu
 
 ## Review Information
 
-- **Demo Account:** Not required (review build includes a limited-scope OpenAI API key; you may also use your own)
+- **Demo Account:** Not required (reviewers can use their own OpenAI API key; a limited-scope key may be provided in App Review notes)
 - **Contact Name:** Gunnar Hostetler
 - **Contact Email:** <mailto:review@openresponses.app> *(create forwarding alias to primary inbox)*
 - **Contact Phone:** +1 (206) 555-0183 *(dedicated review line or VOIP forwarding number)*
@@ -160,19 +160,19 @@ Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simu
 
 ### Reviewer Walkthrough
 
-1. Launch OpenResponses and paste the limited-scope reviewer key from the App Store Connect note into Settings > Credentials (or enter your own OpenAI API key).
-2. Open Settings > Model and select **GPT-5 Thinking** (or any available GPT-4.1/GPT-4o model).
+1. Launch OpenResponses and paste the OpenAI API key from the App Store Connect note into Settings > Credentials (or enter your own OpenAI API key).
+2. Open Settings > Model and select **GPT-5** (then set Reasoning Effort to High), or select any available GPT-4.1/GPT-4o model.
 3. Send “Summarize the WWDC 2025 keynote” to verify streaming responses and reasoning traces.
 4. Enable Code Interpreter under Settings > Tools and run “Plot the first 12 Fibonacci numbers.”
-5. Upload the bundled sample PDF via Settings > Files and ask “Summarize the attached whitepaper.”
-6. Open Settings > MCP > Connector Gallery, connect the demo Notion server, and run “List the tasks due today.”
+5. Attach a PDF from the Files picker and ask “Summarize the attached document.”
+6. (Optional) Open Settings > MCP > Connector Gallery and connect an MCP server you control to verify tool calls. MCP is not required for review.
 7. Inspect the API payload using the Request Inspector (tap ⋯ menu > View Request).
 
 ### Demo Content Provided
 
 - Sample API key instructions sheet (`AppStoreAssets/ReviewKeyInstructions.md`)
-- Demo MCP credentials (`docs/MCP/DemoCredentials.md`)
-- Sample dataset (sales.csv, notes.md) in `AppStoreAssets/DemoFiles/`
+
+Note: Any API keys and connector credentials are provided separately (for example, in the App Review notes). The app does not ship with built-in service credentials.
 
 ## Export Compliance
 
@@ -225,10 +225,10 @@ Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simu
 ## Launch-Day Marketing Copy
 
 **Tweet/X (280 chars):**
-"OpenResponses 1.0 is here 🎉 Native iPhone control for GPT-5 Thinking, GPT-4.1, GPT-4o, o1, gpt-image-1, and computer-use. Stream responses, run Python, browse the web, manage files, connect MCP servers—privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
+"OpenResponses 1.0 is here 🎉 Native iPhone control for GPT-5, GPT-4.1, GPT-4o, o1, gpt-image-1, and computer-use. Stream responses, run Python, browse the web, manage files, connect MCP servers—privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **LinkedIn Post (700 chars):**
-"Thrilled to launch OpenResponses 1.0—our pro-grade iOS client for modern Responses APIs. Drive GPT-5 Thinking, GPT-4.1, GPT-4o, o1 reasoning, gpt-image-1, and computer-use-preview from a native SwiftUI app. Stream responses, execute Python, connect MCP servers, and manage vector-backed files—all on-device with your own API key. No accounts, no tracking. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
+"Thrilled to launch OpenResponses 1.0—a pro-grade iOS client for modern Responses APIs. Drive GPT-5, GPT-4.1, GPT-4o, o1 reasoning, gpt-image-1, and computer-use-preview from a native SwiftUI app. Stream responses, execute Python, connect MCP servers, and manage vector-backed files—all on-device with your own API key. No accounts, no tracking. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **Press Release Headline:**
 "OpenResponses Launches the First Pro-Grade AI Studio for iPhone"
@@ -238,7 +238,7 @@ Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simu
 
 ## FAQ for Support Team
 
-- **Do I need an AI provider subscription?** An API key with pay-as-you-go credits is required. The app does not include usage credits.
+- **Do I need an AI provider subscription?** You must provide your own OpenAI API key. Usage fees are paid directly to OpenAI; this app is free and does not charge for usage. Note: A ChatGPT Plus subscription does not cover API usage.
 - **Can I use GPT-4o mini only?** Yes—select it in Settings > Model.
 - **Does the app store my data?** All data remains on your device unless you export it.
 - **Will you add iPad or Mac support?** On the roadmap (see `docs/ROADMAP.md`, Phase 2).

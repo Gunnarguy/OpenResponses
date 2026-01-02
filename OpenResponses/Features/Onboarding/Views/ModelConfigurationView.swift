@@ -11,7 +11,7 @@ struct ModelConfigurationView: View {
     @Binding var activePrompt: Prompt
     let openAIService: any OpenAIServiceProtocol
     let onSave: () -> Void
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             modelSelectionSection
@@ -23,15 +23,15 @@ struct ModelConfigurationView: View {
             responseSettingsSection
         }
     }
-    
+
     // MARK: - Model Selection
-    
+
     private var modelSelectionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("AI Model")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
+
             DynamicModelSelector(
                 selectedModel: $activePrompt.openAIModel,
                 openAIService: openAIService
@@ -68,20 +68,20 @@ struct ModelConfigurationView: View {
 
                 onSave()
             }
-            
+
             modelInfoRow
         }
     }
-    
+
     @ViewBuilder
     private var modelInfoRow: some View {
         HStack {
             Text("Current: \(activePrompt.openAIModel)")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             Spacer()
-            
+
             Button("Reset to Default") {
                 activePrompt.openAIModel = "gpt-4o"
                 activePrompt.enableComputerUse = false
@@ -91,19 +91,19 @@ struct ModelConfigurationView: View {
             .foregroundColor(.orange)
         }
     }
-    
+
     // MARK: - System Instructions
-    
+
     private var systemInstructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("System Instructions")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
+
             Text("Guide the assistant's behavior and personality")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             TextEditor(text: $activePrompt.systemInstructions)
                 .frame(minHeight: 80)
                 .padding(.horizontal, 8)
@@ -112,11 +112,11 @@ struct ModelConfigurationView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.secondary.opacity(0.2))
                 )
-            
+
             systemInstructionsPlaceholder
         }
     }
-    
+
     @ViewBuilder
     private var systemInstructionsPlaceholder: some View {
         if activePrompt.systemInstructions.isEmpty {
@@ -126,19 +126,19 @@ struct ModelConfigurationView: View {
                 .italic()
         }
     }
-    
+
     // MARK: - Developer Instructions
-    
+
     private var developerInstructionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Developer Instructions")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
+
             Text("Advanced model guidance (optional)")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             TextEditor(text: $activePrompt.developerInstructions)
                 .frame(minHeight: 60)
                 .padding(.horizontal, 8)
@@ -149,35 +149,35 @@ struct ModelConfigurationView: View {
                 )
         }
     }
-    
+
     // MARK: - Model Parameters
-    
+
     private var modelParametersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Model Parameters")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
+
             modelParametersControls
         }
     }
-    
+
     @ViewBuilder
     private var modelParametersControls: some View {
-        if ModelCompatibilityService.shared.isParameterSupported("temperature", for: activePrompt.openAIModel) {
+        if ModelCompatibilityService.shared.isParameterSupported("temperature", for: activePrompt.openAIModel, reasoningEffort: activePrompt.reasoningEffort) { 
             temperatureControl
         }
-        
+
         if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: activePrompt.openAIModel) {
             reasoningEffortControl
             modelParametersReasoningSummary
         }
-        
-        if ModelCompatibilityService.shared.isParameterSupported("top_p", for: activePrompt.openAIModel) {
+
+        if ModelCompatibilityService.shared.isParameterSupported("top_p", for: activePrompt.openAIModel, reasoningEffort: activePrompt.reasoningEffort) { 
             topPControl
         }
     }
-    
+
     private var temperatureControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -187,14 +187,14 @@ struct ModelConfigurationView: View {
                     .foregroundColor(.secondary)
             }
             .font(.subheadline)
-            
+
             Slider(value: $activePrompt.temperature, in: 0...2, step: 0.01)
                 .onChange(of: activePrompt.temperature) { _, _ in
                     onSave()
                 }
         }
     }
-    
+
     private var reasoningEffortControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -204,11 +204,11 @@ struct ModelConfigurationView: View {
                     .foregroundColor(.secondary)
             }
             .font(.subheadline)
-            
+
             Picker("Reasoning Effort", selection: $activePrompt.reasoningEffort) {
-                Text("Low").tag("low")
-                Text("Medium").tag("medium")
-                Text("High").tag("high")
+                ForEach(reasoningEffortOptions(for: activePrompt.openAIModel), id: \.self) { option in
+                    Text(optionDisplayName(option)).tag(option)
+                }
             }
             .pickerStyle(.segmented)
             .onChange(of: activePrompt.reasoningEffort) { _, _ in
@@ -216,7 +216,30 @@ struct ModelConfigurationView: View {
             }
         }
     }
-    
+
+    private func reasoningEffortOptions(for modelId: String) -> [String] {
+        let id = modelId.lowercased()
+        if id == "gpt-5.2" || id == "gpt-5.2-pro" || id.hasPrefix("gpt-5.2-") {
+            return ["none", "low", "medium", "high", "xhigh"]
+        }
+        if id == "gpt-5.1" || id.hasPrefix("gpt-5.1-") {
+            return ["none", "low", "medium", "high"]
+        }
+        // Default for other reasoning-capable models in this app.
+        return ["low", "medium", "high"]
+    }
+
+    private func optionDisplayName(_ option: String) -> String {
+        switch option {
+        case "none": return "None"
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        case "xhigh": return "XHigh"
+        default: return option
+        }
+    }
+
     private var topPControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -226,48 +249,48 @@ struct ModelConfigurationView: View {
                     .foregroundColor(.secondary)
             }
             .font(.subheadline)
-            
+
             Slider(value: $activePrompt.topP, in: 0...1, step: 0.01)
                 .onChange(of: activePrompt.topP) { _, _ in
                     onSave()
                 }
         }
     }
-    
+
     @ViewBuilder
     private var modelParametersReasoningSummary: some View {
         if !activePrompt.reasoningSummary.isEmpty || ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: activePrompt.openAIModel) {
             reasoningSummaryField
         }
     }
-    
+
     private var reasoningSummaryField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Reasoning Summary")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             TextField("Optional reasoning approach guide", text: $activePrompt.reasoningSummary)
                 .textFieldStyle(.roundedBorder)
                 .disabled(activePrompt.enablePublishedPrompt)
                 .onChange(of: activePrompt.reasoningSummary) { _, _ in
                     onSave()
                 }
-            
+
             Text("Guide how the model should approach complex problems")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
     }
-    
+
     // MARK: - Response Settings
-    
+
     private var responseSettingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Response Settings")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
+
             textFormatTypePicker
             verbosityPicker
             maxOutputTokensControl
@@ -277,13 +300,13 @@ struct ModelConfigurationView: View {
             }
         }
     }
-    
+
     private var textFormatTypePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Text Format")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             Picker("Text Format", selection: $activePrompt.textFormatType) {
                 Text("Text").tag("text")
                 Text("JSON Schema").tag("json_schema")
@@ -294,7 +317,7 @@ struct ModelConfigurationView: View {
             }
         }
     }
-    
+
     private var maxOutputTokensControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -304,7 +327,7 @@ struct ModelConfigurationView: View {
                     .foregroundColor(.secondary)
             }
             .font(.subheadline)
-            
+
             Toggle("Limit Response Length", isOn: Binding(
                 get: { activePrompt.maxOutputTokens > 0 },
                 set: { enabled in

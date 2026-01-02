@@ -6,15 +6,15 @@ struct ModelCompatibilityView: View {
     let prompt: Prompt
     let isStreaming: Bool
     @State private var showDetails = false
-    
+
     private let compatibilityService = ModelCompatibilityService.shared
-    
+
     init(modelId: String, prompt: Prompt, isStreaming: Bool) {
         self.modelId = modelId
         self.prompt = prompt
         self.isStreaming = isStreaming
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with model info
@@ -24,21 +24,21 @@ struct ModelCompatibilityView: View {
                 Text("Model: \(modelId)")
                     .font(.headline)
                     .foregroundColor(.primary)
-                
+
                 Spacer()
-                
+
                 Button(action: { showDetails.toggle() }) {
                     Image(systemName: showDetails ? "chevron.up" : "chevron.down")
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             // Quick overview
             ModelOverviewCard(modelId: modelId, isStreaming: isStreaming)
-            
+
             // Tools status
             ToolsStatusGrid(modelId: modelId, prompt: prompt, isStreaming: isStreaming)
-            
+
             if showDetails {
                 // Detailed parameter compatibility
                 ParameterCompatibilitySection(modelId: modelId)
@@ -54,14 +54,14 @@ struct ModelCompatibilityView: View {
 struct ModelOverviewCard: View {
     let modelId: String
     let isStreaming: Bool
-    
+
     private let compatibilityService = ModelCompatibilityService.shared
-    
+
     init(modelId: String, isStreaming: Bool) {
         self.modelId = modelId
         self.isStreaming = isStreaming
     }
-    
+
     var body: some View {
         HStack(spacing: 16) {
             // Model category icon
@@ -73,9 +73,9 @@ struct ModelOverviewCard: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
-            
+
             Divider()
-            
+
             // Key capabilities
             VStack(alignment: .leading, spacing: 4) {
                 if let capabilities = compatibilityService.getCapabilities(for: modelId) {
@@ -85,14 +85,14 @@ struct ModelOverviewCard: View {
                         Text("Streaming")
                             .font(.caption)
                     }
-                    
+
                     HStack {
                         Image(systemName: capabilities.supportsReasoningEffort ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundColor(capabilities.supportsReasoningEffort ? .green : .red)
                         Text("Reasoning")
                             .font(.caption)
                     }
-                    
+
                     HStack {
                         Image(systemName: capabilities.supportsTemperature ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundColor(capabilities.supportsTemperature ? .green : .red)
@@ -105,7 +105,7 @@ struct ModelOverviewCard: View {
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             Spacer()
         }
         .padding(.horizontal, 12)
@@ -113,12 +113,12 @@ struct ModelOverviewCard: View {
         .background(Color(.systemBackground))
         .cornerRadius(8)
     }
-    
+
     private var categoryIcon: String {
         guard let capabilities = compatibilityService.getCapabilities(for: modelId) else {
             return "questionmark.circle"
         }
-        
+
         switch capabilities.category {
         case .reasoning:
             return "brain.head.profile"
@@ -132,12 +132,12 @@ struct ModelOverviewCard: View {
             return "magnifyingglass.circle"
         }
     }
-    
+
     private var categoryColor: Color {
         guard let capabilities = compatibilityService.getCapabilities(for: modelId) else {
             return .gray
         }
-        
+
         switch capabilities.category {
         case .reasoning:
             return .purple
@@ -151,12 +151,12 @@ struct ModelOverviewCard: View {
             return .teal
         }
     }
-    
+
     private var categoryName: String {
         guard let capabilities = compatibilityService.getCapabilities(for: modelId) else {
             return "Unknown"
         }
-        
+
         switch capabilities.category {
         case .reasoning:
             return "Reasoning"
@@ -177,21 +177,21 @@ struct ToolsStatusGrid: View {
     let modelId: String
     let prompt: Prompt
     let isStreaming: Bool
-    
+
     private let compatibilityService = ModelCompatibilityService.shared
-    
+
     init(modelId: String, prompt: Prompt, isStreaming: Bool) {
         self.modelId = modelId
         self.prompt = prompt
         self.isStreaming = isStreaming
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Tools")
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            
+
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: 8),
                 GridItem(.flexible(), spacing: 8)
@@ -207,27 +207,27 @@ struct ToolsStatusGrid: View {
 /// Individual tool status card
 struct ToolStatusCard: View {
     let tool: ModelCompatibilityService.ToolCompatibility
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: toolIcon)
                     .foregroundColor(statusColor)
                     .font(.caption)
-                
+
                 Text(displayName)
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 // Status indicator
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
             }
-            
+
             // Restrictions if any
             if !tool.restrictions.isEmpty {
                 ForEach(tool.restrictions, id: \.self) { restriction in
@@ -236,7 +236,7 @@ struct ToolStatusCard: View {
                         .foregroundColor(.orange)
                 }
             }
-            
+
             // Status text
             Text(statusText)
                 .font(.caption2)
@@ -250,7 +250,7 @@ struct ToolStatusCard: View {
                 .stroke(borderColor, lineWidth: 1)
         )
     }
-    
+
     private var toolIcon: String {
         switch tool.name {
         case "web_search_preview":
@@ -268,7 +268,7 @@ struct ToolStatusCard: View {
             return "wrench.and.screwdriver"
         }
     }
-    
+
     private var displayName: String {
         switch tool.name {
         case "web_search_preview":
@@ -286,7 +286,7 @@ struct ToolStatusCard: View {
             return tool.name.capitalized
         }
     }
-    
+
     private var statusColor: Color {
         if !tool.isSupported {
             return .red
@@ -298,7 +298,7 @@ struct ToolStatusCard: View {
             return .gray
         }
     }
-    
+
     private var backgroundColor: Color {
         if tool.isUsed {
             return .green.opacity(0.1)
@@ -308,7 +308,7 @@ struct ToolStatusCard: View {
             return Color(.systemBackground)
         }
     }
-    
+
     private var borderColor: Color {
         if tool.isUsed {
             return .green.opacity(0.3)
@@ -318,7 +318,7 @@ struct ToolStatusCard: View {
             return Color(.systemGray4)
         }
     }
-    
+
     private var statusText: String {
         if !tool.isSupported {
             return "Not supported"
@@ -335,19 +335,19 @@ struct ToolStatusCard: View {
 /// Detailed parameter compatibility section
 struct ParameterCompatibilitySection: View {
     let modelId: String
-    
+
     private let compatibilityService = ModelCompatibilityService.shared
-    
+
     init(modelId: String) {
         self.modelId = modelId
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Parameters")
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            
+
             VStack(spacing: 6) {
                 ForEach(compatibilityService.getParameterCompatibility(for: modelId), id: \.name) { parameter in
                     ParameterRow(parameter: parameter)
@@ -361,25 +361,25 @@ struct ParameterCompatibilitySection: View {
 /// Individual parameter row
 struct ParameterRow: View {
     let parameter: ModelCompatibilityService.ParameterCompatibility
-    
+
     var body: some View {
         HStack {
             Image(systemName: parameter.isSupported ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundColor(parameter.isSupported ? .green : .red)
                 .font(.caption)
-            
+
             Text(parameter.name)
                 .font(.caption)
                 .fontWeight(.medium)
-            
+
             if let defaultValue = parameter.defaultValue {
                 Text("(\(String(describing: defaultValue)))")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
-            
+
             if !parameter.restrictions.isEmpty {
                 Text(parameter.restrictions.first ?? "")
                     .font(.caption2)
@@ -399,15 +399,15 @@ struct CompactToolIndicator: View {
     let prompt: Prompt
     let isStreaming: Bool
     @EnvironmentObject private var viewModel: ChatViewModel
-    
+
     private let compatibilityService = ModelCompatibilityService.shared
-    
+
     init(modelId: String, prompt: Prompt, isStreaming: Bool) {
         self.modelId = modelId
         self.prompt = prompt
         self.isStreaming = isStreaming
     }
-    
+
     var body: some View {
         // Determine enabled tools from the current prompt ("on" state)
         let enabledTools: [String] = {
@@ -469,7 +469,7 @@ struct CompactToolIndicator: View {
             .cornerRadius(8)
         }
     }
-    
+
     private func toolIcon(for toolName: String) -> String {
         switch toolName {
         case "web_search_preview": return "globe"
@@ -495,14 +495,14 @@ struct CompactToolIndicator: View {
 struct ModelCompatibilityView_Previews: PreviewProvider {
     static var previews: some View {
         let samplePrompt = Prompt.defaultPrompt()
-        
+
         VStack(spacing: 16) {
             ModelCompatibilityView(
                 modelId: "gpt-4o",
                 prompt: samplePrompt,
                 isStreaming: false
             )
-            
+
             ModelCompatibilityView(
                 modelId: "o3",
                 prompt: samplePrompt,
@@ -518,74 +518,138 @@ struct ModelCompatibilityView_Previews: PreviewProvider {
 struct MessageToolIndicator: View {
     let message: ChatMessage
     @EnvironmentObject private var viewModel: ChatViewModel
-    
+
     var body: some View {
-        // Use actual tools tracked in the message, fallback to text-based detection
-        let toolsUsed = message.toolsUsed ?? detectToolsUsed(in: message.text ?? "")
-        
+        // Get unique tools, normalized and deduplicated
+        let toolsUsed = normalizedToolsUsed()
+
         if !toolsUsed.isEmpty {
             HStack(spacing: 6) {
                 ForEach(toolsUsed, id: \.self) { tool in
                     HStack(spacing: 4) {
                         Image(systemName: toolIcon(for: tool))
                             .font(.caption2)
-                            .foregroundColor(.blue)
+.foregroundColor(toolColor(for: tool))
                         Text(toolDisplayName(for: tool))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.1))
+.background(toolColor(for: tool).opacity(0.1))
                     .cornerRadius(4)
                 }
             }
         }
     }
-    
+
+    /// Normalizes and deduplicates tool names for display
+    private func normalizedToolsUsed() -> [String] {
+        // Start with actual tracked tools, fallback to text-based detection
+        let rawTools = message.toolsUsed ?? detectToolsUsed(in: message.text ?? "")
+
+        // Normalize tool names and deduplicate
+        var seen = Set<String>()
+        var result: [String] = []
+
+        for tool in rawTools {
+            let normalized = normalizeToolName(tool)
+            if !seen.contains(normalized), !normalized.isEmpty {
+                seen.insert(normalized)
+                result.append(normalized)
+            }
+        }
+
+        return result
+    }
+
+    /// Normalizes various tool name formats to canonical names
+    private func normalizeToolName(_ tool: String) -> String {
+        let lowered = tool.lowercased().trimmingCharacters(in: .whitespaces)
+
+        // Map various formats to canonical names
+        switch lowered {
+        case "web_search", "websearch", "web", "search":
+            return "web_search"
+        case "code_interpreter", "codeinterpreter", "code", "python", "interpreter":
+            return "code_interpreter"
+        case "file_search", "filesearch", "files", "retrieval", "rag":
+            return "file_search"
+        case "image_generation", "imagegeneration", "image", "dalle", "gpt-image", "gpt_image":
+            return "image_generation"
+        case "computer", "computer_use", "computeruse", "browser":
+            return "computer"
+        case "mcp", "mcp_call", "mcpcall":
+            return "mcp"
+        case "function", "function_call", "functioncall":
+            return "function"
+        default:
+            // Check for function names (keep as-is but mark as function)
+            if lowered.contains("apple") || lowered.contains("notion") || lowered.contains("fetch") || lowered.contains("create") {
+                return "function"
+            }
+            return tool // Keep original if unrecognized
+        }
+    }
+
     /// Detect which tools were used based on message content patterns
     private func detectToolsUsed(in text: String) -> [String] {
         var toolsUsed: [String] = []
-        
+
         // Check for web search patterns
         if text.contains("searched") || text.contains("found") || text.contains("according to") {
             toolsUsed.append("web_search")
         }
-        
+
         // Check for code execution patterns
         if text.contains("```python") || text.contains("executed") || text.contains("calculation") {
             toolsUsed.append("code_interpreter")
         }
-        
+
         // Check for file search patterns
-        if text.contains("document") || text.contains("file") || text.contains("based on the uploaded") {
+        if text.contains("document") || text.contains("based on the uploaded") { 
             toolsUsed.append("file_search")
         }
-        
+
         // Check for image generation patterns
         if text.contains("generated") && text.contains("image") {
             toolsUsed.append("image_generation")
         }
-        
+
         // Check for computer use patterns
-        if text.contains("computer") || text.contains("screen") || text.contains("clicked") || text.contains("typed") {
+        if text.contains("screen") || text.contains("clicked") || text.contains("typed") { 
             toolsUsed.append("computer")
         }
-        
+
         return toolsUsed
     }
-    
+
     private func toolIcon(for tool: String) -> String {
         switch tool {
         case "web_search": return "globe"
         case "code_interpreter": return "terminal"
         case "file_search": return "doc.text.magnifyingglass"
-        case "image_generation": return "photo"
-        case "computer": return "display"
-        default: return "wrench.and.screwdriver"
+        case "image_generation": return "photo.artframe"
+        case "computer": return "desktopcomputer"
+        case "mcp": return "server.rack"
+        case "function": return "function"
+        default: return "gearshape"
         }
     }
-    
+
+    private func toolColor(for tool: String) -> Color {
+        switch tool {
+        case "web_search": return .blue
+        case "code_interpreter": return .orange
+        case "file_search": return .purple
+        case "image_generation": return .pink
+        case "computer": return .indigo
+        case "mcp": return .green
+        case "function": return .teal
+        default: return .gray
+        }
+    }
+
     private func toolDisplayName(for tool: String) -> String {
         switch tool {
         case "web_search": return "Web"
@@ -593,7 +657,9 @@ struct MessageToolIndicator: View {
         case "file_search": return "Files"
         case "image_generation": return "Image"
         case "computer": return "Computer"
-        default: return "Tool"
+        case "mcp": return "MCP"
+        case "function": return "Function"
+        default: return tool.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 }

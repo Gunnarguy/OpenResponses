@@ -3,8 +3,8 @@
 //  OpenResponsesTests
 //
 
-import XCTest
 @testable import OpenResponses
+import XCTest
 
 final class OpenAIServiceTests: XCTestCase {
     private var service: OpenAIService!
@@ -55,6 +55,19 @@ final class OpenAIServiceTests: XCTestCase {
         } else {
             XCTFail("User content should use structured array")
         }
+    }
+
+    func testModelAliasNormalizationForAPI() {
+        var prompt = Prompt.defaultPrompt()
+
+        prompt.openAIModel = "gpt-5-thinking"
+        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5")
+
+        prompt.openAIModel = "gpt-5-thinking-mini"
+        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5-mini")
+
+        prompt.openAIModel = "gpt-5-thinking-nano"
+        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5-nano")
     }
 
     func testDeveloperInstructionsAppearBeforeUserMessage() {
@@ -119,6 +132,67 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertTrue(tools.contains { $0["type"] as? String == "code_interpreter" })
     }
 
+    func testMCPConnectorToolNotIncludedWhenAuthorizationMissing() {
+        // Regression test: OpenAI requires `authorization` whenever `connector_id` is specified.
+        // If missing, the whole request fails with HTTP 400.
+        let connectorId = "connector_dropbox"
+        let authKey = "mcp_connector_\(connectorId)"
+        _ = KeychainService.shared.delete(forKey: authKey)
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableMCPTool = true
+        prompt.mcpIsConnector = true
+        prompt.mcpConnectorId = connectorId
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableWebSearch = false
+        prompt.enableCodeInterpreter = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+
+        let request = buildRequest(prompt: prompt, message: "Use MCP tools")
+
+        // If the connector tool is skipped and there are no other enabled tools, the request may omit
+        // the `tools` field entirely. Treat missing tools as an empty list.
+        let tools = (request["tools"] as? [[String: Any]]) ?? []
+
+        let hasDropboxConnector = tools.contains { tool in
+            tool["type"] as? String == "mcp" && (tool["connector_id"] as? String == connectorId)
+        }
+        XCTAssertFalse(hasDropboxConnector)
+    }
+
+    func testMCPConnectorToolIncludedWhenAuthorizationPresent() {
+        let connectorId = "connector_dropbox"
+        let authKey = "mcp_connector_\(connectorId)"
+        XCTAssertTrue(KeychainService.shared.save(value: "test-oauth-token", forKey: authKey))
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableMCPTool = true
+        prompt.mcpIsConnector = true
+        prompt.mcpConnectorId = connectorId
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableWebSearch = false
+        prompt.enableCodeInterpreter = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+
+        let request = buildRequest(prompt: prompt, message: "Use MCP tools")
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+
+        guard let mcpTool = tools.first(where: { tool in
+            tool["type"] as? String == "mcp" && (tool["connector_id"] as? String == connectorId)
+        }) else {
+            return XCTFail("Expected mcp tool with connector_id=\(connectorId)")
+        }
+
+        XCTAssertEqual(mcpTool["authorization"] as? String, "test-oauth-token")
+    }
+
     func testFileSearchToolCarriesVectorStoreIds() {
         var prompt = Prompt.defaultPrompt()
         prompt.enableFileSearch = true
@@ -129,10 +203,11 @@ final class OpenAIServiceTests: XCTestCase {
 
         let request = buildRequest(prompt: prompt, message: "Search my docs")
 
-                guard let tools = request["tools"] as? [[String: Any]],
-                            let fileSearch = tools.first(where: { $0["type"] as? String == "file_search" }),
-                            let ids = fileSearch["vector_store_ids"] as? [String] else {
-                        return XCTFail("Expected file_search tool with vector store IDs")
+        guard let tools = request["tools"] as? [[String: Any]],
+              let fileSearch = tools.first(where: { $0["type"] as? String == "file_search" }),
+              let ids = fileSearch["vector_store_ids"] as? [String]
+        else {
+            return XCTFail("Expected file_search tool with vector store IDs")
         }
 
         XCTAssertEqual(ids, ["vs_123", "vs_456"])

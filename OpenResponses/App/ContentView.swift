@@ -43,6 +43,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .onboardingCompleted)) { _ in
             checkAPIKey()
         }
+.onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in
+    checkAPIKey()
+}
         .fullScreenCover(isPresented: $showingOnboarding) {
             OnboardingView(isPresented: $showingOnboarding)
         }
@@ -70,7 +73,7 @@ struct ContentView: View {
         if !hasCompletedOnboarding {
             // Show onboarding first
             showingOnboarding = true
-        } else if keychainService.load(forKey: "openAIKey") == nil, !viewModel.exploreModeEnabled {
+        } else if isMissingOpenAIKey, !viewModel.exploreModeEnabled { 
             // If onboarding is done but no API key, offer Explore Demo or Settings
             showingExploreWelcome = true
         }
@@ -79,11 +82,16 @@ struct ContentView: View {
     }
 
     private func checkAPIKey() {
-        if keychainService.load(forKey: "openAIKey") == nil, !viewModel.exploreModeEnabled {
+        if isMissingOpenAIKey, !viewModel.exploreModeEnabled { 
             self.showingExploreWelcome = true
         }
         // Re-apply MCP bootstrap after onboarding or API key updates
         MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
+    }
+
+    private var isMissingOpenAIKey: Bool {
+        let key = keychainService.load(forKey: "openAIKey")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key?.isEmpty != false
     }
 }
 
