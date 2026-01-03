@@ -5,10 +5,12 @@ struct MessageBubbleView: View {
     let onDelete: () -> Void
     var isStreaming: Bool = false
     var viewModel: ChatViewModel? = nil
-    
+
     @ScaledMetric private var bubblePadding: CGFloat = 12
     @ScaledMetric private var cornerRadius: CGFloat = 16
-    
+
+    @State private var showCopied: Bool = false
+
     var body: some View {
         HStack {
             if message.role == .assistant || message.role == .system {
@@ -17,7 +19,7 @@ struct MessageBubbleView: View {
             } else {
                 Spacer()  // User messages aligned to right
             }
-            
+
             // Bubble content
             VStack(alignment: .leading, spacing: 8) {
                 // Text content (formatted for Markdown and code if needed)
@@ -42,12 +44,18 @@ struct MessageBubbleView: View {
                         .padding(.vertical, 4)
                 }
 
+                // Quick actions (copy/share/etc.)
+                if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    bubbleQuickActions(text: text)
+                        .padding(.top, 2)
+                }
+
                 // Live/final token usage indicator for assistant messages
                 if message.role == .assistant, let usage = message.tokenUsage {
                     TokenUsageCaption(usage: usage)
                         .padding(.top, 2)
                 }
-                
+
                 if message.role == .assistant,
                    let reasoning = message.reasoning,
                    !reasoning.isEmpty {
@@ -58,15 +66,15 @@ struct MessageBubbleView: View {
                 if message.role == .assistant {
                     MessageToolIndicator(message: message)
                 }
-                
+
                 // Playground-style metadata (response_id, token breakdown, file_ids)
                 if message.role == .assistant {
                     MessageMetadataView(message: message)
                         .padding(.top, 4)
                 }
-                
+
                 // Show placeholder text for assistant messages with tools but no text
-                if message.role == .assistant, 
+                if message.role == .assistant,
                    (message.text?.isEmpty ?? true),
                    !(message.toolsUsed?.isEmpty ?? true) {
                     Text("Using tools...")
@@ -74,7 +82,7 @@ struct MessageBubbleView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 }
-                
+
                 // Image content (if any images in the message)
                 if let images = message.images, !images.isEmpty {
                     // Iterate by index to avoid relying on UIImage being Hashable/Identifiable
@@ -83,13 +91,13 @@ struct MessageBubbleView: View {
                             .padding(.vertical, 4)
                     }
                 }
-                
+
                 // Code interpreter artifacts (files, logs, data outputs)
                 if let artifacts = message.artifacts, !artifacts.isEmpty {
                     ArtifactsView(artifacts: artifacts)
                         .padding(.vertical, 4)
                 }
-                
+
                 // MCP approval requests
                 if let approvalRequests = message.mcpApprovalRequests, !approvalRequests.isEmpty {
                     ForEach(approvalRequests) { approval in
@@ -120,7 +128,7 @@ struct MessageBubbleView: View {
                         .padding(.vertical, 4)
                     }
                 }
-                
+
                 // Web content (if any URLs in the message)
                 if let webURLs = message.webURLs {
                     ForEach(webURLs, id: \.self) { url in
@@ -136,6 +144,31 @@ struct MessageBubbleView: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .leading)
             .contextMenu {
+                if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        copyToClipboard(text)
+                    } label: {
+                        Label {
+                            Text(showCopied ? "Copied" : "Copy")
+                        } icon: {
+                            Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                        }
+                    }
+
+                    ShareLink(item: text) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+
+                    if message.role == .assistant {
+                        Button {
+                            copyToClipboard(message.id.uuidString)
+                        } label: {
+                            Label("Copy Message ID", systemImage: "number")
+                        }
+                    }
+
+                    Divider()
+                }
                 Button(role: .destructive, action: onDelete) {
                     Label("Delete", systemImage: "trash")
                 }
@@ -143,7 +176,7 @@ struct MessageBubbleView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilityLabel(for: message))
             .accessibilityHint(accessibilityHint(for: message.role))
-            
+
             if message.role == .user {
                 Spacer().frame(width: 0)  // Preserve spacing for user-aligned bubble
             }
@@ -152,7 +185,83 @@ struct MessageBubbleView: View {
         .padding(.bottom, 2)
         .animation(.easeInOut(duration: 0.16), value: message.text)
     }
-    
+
+    // MARK: - Bubble Quick Actions
+
+    @ViewBuilder
+    private func bubbleQuickActions(text: String) -> some View {
+        HStack(spacing: 10) {
+            if message.role == .user {
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                copyToClipboard(text)
+            } label: {
+                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                    .font(.caption2)
+                    .foregroundColor(showCopied ? .green : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+                    .accessibilityLabel(Text(showCopied ? "Copied" : "Copy message"))
+            }
+            .buttonStyle(.plain)
+
+            ShareLink(item: text) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+                    .accessibilityLabel(Text("Share message"))
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                Button {
+                    copyToClipboard(text)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+
+                ShareLink(item: text) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+
+                if message.role == .assistant {
+                    Button {
+                        copyToClipboard(message.id.uuidString)
+                    } label: {
+                        Label("Copy Message ID", systemImage: "number")
+                    }
+                }
+
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+                    .accessibilityLabel(Text("More actions"))
+            }
+            .buttonStyle(.plain)
+
+            if message.role != .user {
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.top, 2)
+    }
+
     // Helper: choose bubble background color based on the message role
     private func backgroundColor(for role: ChatMessage.Role) -> Color {
         switch role {
@@ -164,7 +273,7 @@ struct MessageBubbleView: View {
             return Color.red.opacity(0.1)          // system messages (e.g., errors) with a very light red background
         }
     }
-    
+
     // Helper: choose text color based on role
     private func foregroundColor(for role: ChatMessage.Role) -> Color {
         switch role {
@@ -176,7 +285,7 @@ struct MessageBubbleView: View {
             return Color.red                    // system message text in red for emphasis
         }
     }
-    
+
     // Helper: choose font style based on role
     private func font(for role: ChatMessage.Role) -> Font {
         switch role {
@@ -186,7 +295,7 @@ struct MessageBubbleView: View {
             return .subheadline.italic()        // smaller italic font for system messages - supports Dynamic Type
         }
     }
-    
+
     // Helper: create accessibility label for message
     private func accessibilityLabel(for message: ChatMessage) -> String {
         let roleText: String
@@ -198,11 +307,11 @@ struct MessageBubbleView: View {
         case .system:
             roleText = "System message"
         }
-        
+
         let messageText = message.text ?? "Image content"
         return "\(roleText): \(messageText)"
     }
-    
+
     // Helper: create accessibility hint for message role
     private func accessibilityHint(for role: ChatMessage.Role) -> String {
         switch role {
@@ -212,6 +321,14 @@ struct MessageBubbleView: View {
             return "Response from the AI assistant"
         case .system:
             return "System notification or error message"
+        }
+    }
+
+    private func copyToClipboard(_ text: String) {
+        UIPasteboard.general.string = text
+        showCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            showCopied = false
         }
     }
 }

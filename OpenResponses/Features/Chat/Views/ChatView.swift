@@ -13,13 +13,13 @@ struct ChatView: View {
     @State private var showFileManager: Bool = false // To show file manager
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
     @FocusState private var inputFocused: Bool  // Focus state for the input field
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Playground-style compact status bar
             ChatStatusBar()
                 .environmentObject(viewModel)
-            
+
             // Inline vector store quick toggle (Playground-style)
             // Always show to allow users to select vector stores
             VectorStoreQuickToggle()
@@ -28,7 +28,7 @@ struct ChatView: View {
                 .padding(.vertical, 8)
                 .background(Color(uiColor: .systemBackground))
             Divider()
-            
+
             // Main content
             ScrollViewReader { proxy in
                 ScrollView { mainScrollContent }
@@ -153,7 +153,7 @@ struct ChatView: View {
             Text(viewModel.errorMessage ?? "An unknown error occurred.")
         })
     }
-    
+
     // MARK: - Subviews split for compiler performance
 
     @ViewBuilder
@@ -182,7 +182,7 @@ struct ChatView: View {
                 Spacer()
                 ActivityToggleButton()
             }
-            
+
             // Inline activity details when enabled
             if activityVisibility.isVisible {
                 ActivityFeedView(lines: viewModel.activityLines)
@@ -201,8 +201,6 @@ struct ChatView: View {
                 .environmentObject(viewModel)
 
             inputRow
-
-            imageSuggestions
         }
         .background(.ultraThinMaterial)
     }
@@ -248,21 +246,6 @@ struct ChatView: View {
         .padding(.top, 8)
     }
 
-    @ViewBuilder
-    private var imageSuggestions: some View {
-        // Show image suggestions when user types image-related keywords and input is focused
-        if inputFocused && shouldShowImageSuggestions(for: userInput) {
-            ImageSuggestionView(inputText: $userInput) { suggestion in
-                userInput = suggestion
-                // Auto-send the suggestion or let user edit
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    inputFocused = true
-                }
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
-        }
-    }
 
     @ViewBuilder
     private var aiSafetyNotice: some View {
@@ -325,14 +308,4 @@ struct ChatView: View {
         .padding(.top, 10)
     }
 
-    /// Determines if image suggestions should be shown based on user input
-    private func shouldShowImageSuggestions(for input: String) -> Bool {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let imageKeywords = ["image", "picture", "photo", "draw", "create", "generate", "make"]
-        
-        // Only show suggestions if input contains image-related keywords
-        return imageKeywords.contains { keyword in
-            trimmed.contains(keyword)
-        }
-    }
 }
