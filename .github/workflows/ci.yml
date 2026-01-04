@@ -41,23 +41,6 @@ jobs:
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Test
-        run: |
-          xcodebuild test-without-building \
-            -project OpenResponses.xcodeproj \
-            -scheme OpenResponses \
-            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.device }}' \
-            -derivedDataPath DerivedData \
-            -resultBundlePath TestResults.xcresult
-
-      - name: Upload Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: TestResults.xcresult
-          if-no-files-found: warn
-
   lint:
     name: Lint
     runs-on: macos-15

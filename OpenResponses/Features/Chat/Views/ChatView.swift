@@ -233,11 +233,6 @@ struct ChatView: View {
                     inputFocused = false        // Dismiss keyboard
                 },
                 onAttach: { showAttachmentMenu = true },
-                onImageGenerate: {
-                    // Quick image generation
-                    userInput = "Generate an image of "
-                    inputFocused = true
-                },
                 currentModel: viewModel.currentModel()
             )
             .disabled(viewModel.isAwaitingComputerOutput)

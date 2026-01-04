@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Consolidated Settings container aligned with OpenAI Responses API.
-/// Tabs: General, Model, Tools, MCP, Advanced
+/// Tabs: General, Model, Tools, Advanced
 struct SettingsHomeView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @StateObject private var promptLibrary = PromptLibrary()
@@ -17,8 +17,6 @@ struct SettingsHomeView: View {
     @State private var showingNotionQuickConnect = false
     @State private var showingFileManager = false
     @State private var showingPromptLibrary = false
-    @State private var showingMCPGallery = false
-    @State private var showingRemoteMCPSheet = false
 
     var body: some View {
         NavigationView {
@@ -47,10 +45,6 @@ struct SettingsHomeView: View {
                     case .tools: ToolsTab(
                         showingNotionQuickConnect: $showingNotionQuickConnect,
                         showingFileManager: $showingFileManager
-                    )
-                    case .mcp: MCPTab(
-                        showingConnectorGallery: $showingMCPGallery,
-                        showingRemoteSetup: $showingRemoteMCPSheet
                     )
                     case .advanced: AdvancedTab()
                     }
@@ -92,13 +86,6 @@ struct SettingsHomeView: View {
                 library: promptLibrary,
                 createPromptFromCurrentSettings: { viewModel.activePrompt }
             )
-        }
-        .sheet(isPresented: $showingMCPGallery) {
-            MCPConnectorGalleryView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $showingRemoteMCPSheet) {
-            RemoteMCPSetupSheet()
-                .environmentObject(viewModel)
         }
     }
 
@@ -151,14 +138,13 @@ private enum ApiKeySaveState: Equatable {
 // MARK: - Tabs
 
 private enum SettingsTab: CaseIterable {
-    case general, model, tools, mcp, advanced
+    case general, model, tools, advanced
 
     var title: String {
         switch self {
         case .general:  return "General"
         case .model:    return "Model"
         case .tools:    return "Tools"
-        case .mcp:      return "MCP"
         case .advanced: return "Advanced"
         }
     }

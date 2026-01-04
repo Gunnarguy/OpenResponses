@@ -8,22 +8,29 @@ struct ChatInputView: View {
     var onVectorStoreUpload: (() -> Void)? = nil // Callback for vector store file upload
     var vectorStoreCount: Int = 0 // Number of selected vector stores (0, 1, or 2)
     var fileSearchEnabled: Bool = false // Whether file search is enabled
-    var onImageGenerate: (() -> Void)? = nil // Optional callback for quick image generation
     var currentModel: String = "gpt-4o"
     
-    @ScaledMetric private var minTextHeight: CGFloat = 40
-    @ScaledMetric private var maxTextHeight: CGFloat = 100
     @ScaledMetric private var buttonPadding: CGFloat = 8
     @ScaledMetric private var containerPadding: CGFloat = 10
+    @ScaledMetric private var inputCornerRadius: CGFloat = 20
+    @ScaledMetric private var sendButtonSize: CGFloat = 32
+
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSend: Bool {
+        !trimmedText.isEmpty
+    }
     
     var body: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .bottom, spacing: 10) {
             // Attachment button
             Button(action: {
                 onAttach()
             }) {
                 Image(systemName: "paperclip")
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                     .padding(buttonPadding)
             }
             .accessibilityConfiguration(
@@ -40,58 +47,40 @@ struct ChatInputView: View {
                 )
             }
             
-            // Quick image generation button (if callback provided)
-            if let onImageGenerate = onImageGenerate {
-                Button(action: onImageGenerate) {
-                    Image(systemName: "photo.badge.plus")
-                        .foregroundColor(.blue)
-                        .padding(buttonPadding)
-                }
-                .accessibilityLabel("Quick image generation")
-                .accessibilityHint("Tap to start generating an image")
-            }
-            
             // Audio recording removed
             
-            ZStack(alignment: .leading) {
-                // Placeholder text
-                if text.isEmpty {
-                    Text("Message")
-                        .foregroundColor(.gray)
-                        .padding(.leading, 5)
+            TextField("Message", text: $text, axis: .vertical)
+                .lineLimit(1...6)
+                .textFieldStyle(.plain)
+                .focused(isFocused)
+                .submitLabel(.send)
+                .onSubmit {
+                    if canSend {
+                        onSend()
+                    }
                 }
-                // Multi-line text editor for user input
-                TextEditor(text: $text)
-                    .frame(minHeight: minTextHeight, maxHeight: maxTextHeight)  // allow TextEditor to grow dynamically
-                    .padding(5)
-                    .background(Color(white: 0.95))
-                    .cornerRadius(8)
-                    .focused(isFocused)
-                    .overlay(RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray.opacity(0.4), lineWidth: 1))
-                    .accessibilityConfiguration(
-                        label: "Message input",
-                        hint: AccessibilityUtils.Hint.chatInput,
-                        identifier: AccessibilityUtils.Identifier.chatInput
-                    )
-            }
+                .textInputAutocapitalization(.sentences)
+                .disableAutocorrection(false)
+                .padding(.vertical, 6)
+                .accessibilityConfiguration(
+                    label: "Message input",
+                    hint: AccessibilityUtils.Hint.chatInput,
+                    identifier: AccessibilityUtils.Identifier.chatInput
+                )
             
             Button(action: {
                 onSend()
             }) {
-                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    // Disabled state (no text to send)
-                    Image(systemName: "paperplane.fill")
-                        .foregroundColor(.gray)
-                } else {
-                    Image(systemName: "paperplane.fill")
-                        .foregroundColor(.white)
-                        .padding(buttonPadding)
-                        .background(Color.accentColor)
-                        .clipShape(Circle())
+                ZStack {
+                    Circle()
+                        .fill(canSend ? Color.accentColor : Color.secondary.opacity(0.15))
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(canSend ? .white : .secondary)
                 }
+                .frame(width: sendButtonSize, height: sendButtonSize)
             }
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!canSend)
             .accessibilityConfiguration(
                 label: "Send message",
                 hint: AccessibilityUtils.Hint.sendButton,
@@ -99,6 +88,14 @@ struct ChatInputView: View {
             )
         }
         .padding(.all, containerPadding)
+        .background(
+            RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
+                .fill(.thinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 

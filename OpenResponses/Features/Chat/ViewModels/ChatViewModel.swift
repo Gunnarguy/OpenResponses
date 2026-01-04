@@ -4041,10 +4041,16 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Resolves image links mentioned in assistant text and appends any fetched images to the message.
-    /// Supports data:image base64 and http(s) image URLs. sandbox:/ paths are noted but not fetched.
+    /// Resolves image links mentioned in assistant text and appends any fetched images or file artifacts to the message.
+    /// Supports data:image base64 and http(s) image URLs. sandbox:/ paths are resolved via container annotations when possible.
     func consumeImageLinks(_ links: [String], for messageId: UUID) async {
-        let sawSandbox = links.contains { $0.lowercased().hasPrefix("sandbox:/") }
+        let sandboxLinks = links.filter { $0.lowercased().hasPrefix("sandbox:/") }
+        let sawSandbox = !sandboxLinks.isEmpty
+        let sawSandboxImage = sandboxLinks.contains { link in
+            let normalized = link.replacingOccurrences(of: "sandbox:/", with: "sandbox://")
+            let ext = (URL(string: normalized)?.pathExtension ?? "").lowercased()
+            return ["png", "jpg", "jpeg", "gif", "webp"].contains(ext)
+        }
         // Decode inline data URLs first to provide instant previews
         for link in links {
             if link.lowercased().hasPrefix("data:image/") {
@@ -4074,35 +4080,62 @@ class ChatViewModel: ObservableObject {
 
         // If sandbox links were found, try to resolve them using container annotations (filename match) and fetch via container endpoint
         if sawSandbox {
+            var appendedSandboxArtifact = false
             // Extract lastPathComponent-like filenames from sandbox links
-            let filenames: [String] = links.compactMap { link in
+            let filenames: [String] = sandboxLinks.compactMap { link in
                 guard link.lowercased().hasPrefix("sandbox:/") else { return nil }
                 // Convert to a URL-compatible string to use URL parsing for path components
                 let normalized = link.replacingOccurrences(of: "sandbox:/", with: "sandbox://")
                 return URL(string: normalized)?.lastPathComponent
             }
+            let filenameSet = Set(filenames.map { $0.lowercased() })
             if let annos = containerAnnotationsByMessage[messageId], !annos.isEmpty {
-                for fname in filenames {
-                    let target = fname.lowercased()
-                    if let match = annos.first(where: { ($0.filename ?? "").lowercased() == target }) {
-                        do {
-                            let data = try await api.fetchContainerFileContent(containerId: match.containerId, fileId: match.fileId)
-                            if let image = UIImage(data: data) {
-                                await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
-                            }
-                        } catch {
-                            AppLogger.log("Sandbox link fallback fetch failed for \(fname): \(error)", category: .openAI, level: .warning)
+                for match in annos where filenameSet.contains((match.filename ?? "").lowercased()) {
+                    let annotationKey = "\(match.containerId)_\(match.fileId)"
+                    let alreadyHasArtifact = await MainActor.run { [weak self] in
+                        guard let self, let idx = self.messages.firstIndex(where: { $0.id == messageId }) else { return false }
+                        return self.messages[idx].artifacts?.contains(where: { $0.fileId == match.fileId }) == true
+                    }
+                    if alreadyHasArtifact {
+                        continue
+                    }
+                    do {
+                        let data: Data
+                        if let cached = containerFileCache[annotationKey] {
+                            data = cached
+                        } else {
+                            data = try await api.fetchContainerFileContent(containerId: match.containerId, fileId: match.fileId)
+                            containerFileCache[annotationKey] = data
                         }
+                        let artifact = createArtifact(
+                            fileId: match.fileId,
+                            filename: match.filename ?? match.fileId,
+                            containerId: match.containerId,
+                            data: data
+                        )
+                        await MainActor.run { [weak self] in
+                            self?.appendArtifact(artifact, to: messageId)
+                        }
+                        appendedSandboxArtifact = true
+                    } catch {
+                        AppLogger.log("Sandbox link fallback fetch failed for \(match.filename ?? match.fileId): \(error)", category: .openAI, level: .warning)
                     }
                 }
             }
-            // If after fallback we still have no images, add a one-time note
+            // If after fallback we still have no images or artifacts, add a one-time note
             await MainActor.run { [weak self] in
                 guard let self = self, let idx = self.messages.firstIndex(where: { $0.id == messageId }) else { return }
                 let hasImages = !(self.messages[idx].images?.isEmpty ?? true)
-                let alreadyNoted = self.messages.contains { $0.text?.contains("Note: The assistant referenced a sandbox image path.") == true }
-                if !hasImages && !alreadyNoted {
-                    let note = ChatMessage(role: .system, text: "Note: The assistant referenced a sandbox image path. These aren’t directly accessible in the app. Ask it to return the image as an image_file or http(s) link to preview it here.")
+                let hasArtifacts = !(self.messages[idx].artifacts?.isEmpty ?? true)
+                let alreadyNoted = self.messages.contains {
+                    $0.text?.contains("Note: The assistant referenced a sandbox file path.") == true
+                    || $0.text?.contains("Note: The assistant referenced a sandbox image path.") == true
+                }
+                if !hasImages && !hasArtifacts && !appendedSandboxArtifact && !alreadyNoted {
+                    let noteText = sawSandboxImage
+                        ? "Note: The assistant referenced a sandbox image path. These aren’t directly accessible in the app. Ask it to return the image as an image_file or http(s) link to preview it here."
+                        : "Note: The assistant referenced a sandbox file path. These aren’t directly accessible in the app. Ask it to attach the file (e.g., via code interpreter output) or provide an http(s) link."
+                    let note = ChatMessage(role: .system, text: noteText)
                     self.messages.append(note)
                 }
             }

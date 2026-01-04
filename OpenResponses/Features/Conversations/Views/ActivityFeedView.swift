@@ -10,14 +10,57 @@ final class ActivityVisibility: ObservableObject {
 /// A compact view that lists short lines describing what the app is doing under the hood.
 struct ActivityFeedView: View {
     let lines: [String]
+    @State private var isExpanded = false
+    private let maxVisibleLines = 5
+    private let maxExpandedHeight: CGFloat = 180
     var body: some View {
+        let visibleLines = Array(lines.suffix(maxVisibleLines))
+        let hasOverflow = lines.count > maxVisibleLines
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(lines.indices, id: \.self) { i in
-                Text("• \(lines[i])")
+            if isExpanded, hasOverflow {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(lines.indices, id: \.self) { i in
+                            Text("• \(lines[i])")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .textSelection(.disabled)
+                                .fontDesign(.monospaced)
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                        }
+                    }
+                }
+                .frame(maxHeight: maxExpandedHeight)
+            } else {
+                ForEach(visibleLines.indices, id: \.self) { i in
+                    Text("• \(visibleLines[i])")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .textSelection(.disabled)
+                        .fontDesign(.monospaced)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+
+            if hasOverflow {
+                Button(action: { isExpanded.toggle() }) {
+                    HStack(spacing: 4) {
+                        Text(isExpanded ? "Show less" : "Show more")
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    }
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !isExpanded, hasOverflow {
+                Text("… \(lines.count - maxVisibleLines) more")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .textSelection(.disabled)
-                    .fontDesign(.monospaced)
             }
         }
         .padding(8)

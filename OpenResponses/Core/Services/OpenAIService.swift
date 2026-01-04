@@ -1964,8 +1964,17 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func buildTextConfiguration(for prompt: Prompt) -> [String: Any]? {
         var textConfiguration: [String: Any] = [:]
 
-        if !prompt.verbosity.isEmpty {
-            textConfiguration["verbosity"] = prompt.verbosity
+        let normalizedVerbosity = prompt.verbosity
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if ["low", "medium", "high"].contains(normalizedVerbosity) {
+            textConfiguration["verbosity"] = normalizedVerbosity
+        } else if !normalizedVerbosity.isEmpty && normalizedVerbosity != "auto" {
+            AppLogger.log(
+                "Skipping unsupported text.verbosity '\(prompt.verbosity)'",
+                category: .openAI,
+                level: .info
+            )
         }
 
         if prompt.textFormatType == "json_schema" && !prompt.jsonSchemaName.isEmpty {

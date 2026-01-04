@@ -15,9 +15,10 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ChatView()
-                .navigationBarTitle(viewModel.activeConversation?.title ?? "Chat", displayMode: .inline)
+                .navigationTitle(viewModel.activeConversation?.title ?? "Chat")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: { showingConversationList = true }) {
