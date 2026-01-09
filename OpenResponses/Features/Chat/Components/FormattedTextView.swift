@@ -34,13 +34,78 @@ struct FormattedTextView: View {
     }
 
     /// Parses a string for inline markdown and returns a composed Text view.
+    /// Handles block elements (lists, paragraphs) by splitting into lines.
+    @ViewBuilder
     private func parseAndDisplayText(_ string: String) -> some View {
-        do {
-            let attributedString = try AttributedString(markdown: string)
-            // Optional: Customize inline code style if needed, but system default is usually fine.
-            return Text(attributedString)
-        } catch {
-            return Text(string)
+        let lines = string.components(separatedBy: "\n")
+
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // Empty line = paragraph break
+                    Spacer().frame(height: 8)
+                } else if let bulletContent = extractBulletContent(from: line) {
+                    // Bullet list item
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        renderInlineMarkdown(bulletContent)
+                    }
+                    .padding(.leading, 4)
+                } else if let (number, numberedContent) = extractNumberedContent(from: line) {
+                    // Numbered list item
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(number).")
+                            .foregroundColor(.secondary)
+                            .frame(minWidth: 20, alignment: .trailing)
+                        renderInlineMarkdown(numberedContent)
+                    }
+                    .padding(.leading, 4)
+                } else {
+                    // Regular paragraph line
+                    renderInlineMarkdown(line)
+                }
+            }
+        }
+    }
+
+    /// Extracts content after bullet markers (-, *, •)
+    private func extractBulletContent(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("- ") {
+            return String(trimmed.dropFirst(2))
+        } else if trimmed.hasPrefix("* ") {
+            return String(trimmed.dropFirst(2))
+        } else if trimmed.hasPrefix("• ") {
+            return String(trimmed.dropFirst(2))
+        }
+        return nil
+    }
+
+    /// Extracts content after numbered markers (1., 2., etc.)
+    private func extractNumberedContent(from line: String) -> (Int, String)? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let pattern = #"^(\d+)\.\s+(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+              let numberRange = Range(match.range(at: 1), in: trimmed),
+              let contentRange = Range(match.range(at: 2), in: trimmed),
+              let number = Int(trimmed[numberRange])
+        else {
+            return nil
+        }
+        return (number, String(trimmed[contentRange]))
+    }
+
+    /// Renders inline markdown (bold, italic, code) within a line
+    @ViewBuilder
+    private func renderInlineMarkdown(_ text: String) -> some View {
+        if let attributedString = try? AttributedString(markdown: text) {
+            Text(attributedString)
+                .textSelection(.enabled)
+        } else {
+            Text(text)
+                .textSelection(.enabled)
         }
     }
 

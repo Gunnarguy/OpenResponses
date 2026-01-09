@@ -322,7 +322,8 @@ class OpenAIService: OpenAIServiceProtocol {
                                 // Optimized logging: Only log structured events for important types
                                 let importantEventTypes = [
                                     "response.created", "response.completed", "response.failed",
-                                    "response.image_generation_call.completed", "response.computer_call.completed"
+                                    "response.image_generation_call.completed", "response.computer_call.completed",
+                                    "response.output_text.delta" // Added for debugging
                                 ]
 
                                 if importantEventTypes.contains(decodedChunk.type) {
@@ -2284,6 +2285,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
                             do {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
+                                // Log ALL events for debugging function output streaming
+                                AppLogger.log("📨 [streamFunctionOutputs] Event: \(decodedChunk.type) seq:\(decodedChunk.sequenceNumber) delta:\(decodedChunk.delta?.prefix(50) ?? "<none>")", category: .openAI, level: .info)
                                 continuation.yield(decodedChunk)
                             } catch {
                                 AppLogger.log("⚠️ [streamFunctionOutputs] Decoding error: \(error)", category: .openAI, level: .warning)

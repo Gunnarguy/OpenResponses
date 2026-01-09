@@ -95,7 +95,7 @@ struct ToolConnectionsView: View {
                         Label("Browse Connector Gallery", systemImage: "square.grid.2x2.fill")
                     }
                 }
-                
+
                 Section(header: Text("Advanced")) {
                     Button(action: { viewModel.showingCustomMCPSheet = true }) {
                         Label("Connect to Custom Backend Server (MCP)", systemImage: "server.rack")
@@ -147,7 +147,7 @@ class ToolConnectionsViewModel: ObservableObject {
     @Published var notionDataSourceId: String = ""
     @Published var notionTitleEquals: String = ""
     @Published var notionTitleProperty: String = "Project Name"
-    
+
     struct GoogleProviderState: Identifiable {
         var id: ToolKind { kind }
         let kind: ToolKind
@@ -155,7 +155,7 @@ class ToolConnectionsViewModel: ObservableObject {
         var icon: String
         var color: Color
     }
-    
+
     @Published var googleProviders: [GoogleProviderState] = [
         .init(kind: .gmail, isConnected: false, icon: "envelope.fill", color: .red),
         .init(kind: .gcal, isConnected: false, icon: "calendar", color: .blue),
@@ -174,7 +174,7 @@ class ToolConnectionsViewModel: ObservableObject {
         } else {
             isNotionConnected = false
         }
-        
+
         // Google Services
         for i in 0..<googleProviders.count {
             let key = "oauth.\(googleProviders[i].kind.rawValue).tokens"
@@ -206,12 +206,13 @@ class ToolConnectionsViewModel: ObservableObject {
             }
         }
     }
-    
+
     #if DEBUG
     func loadNotionTokenFromDevFile() {
+        // Only check relative paths - never hardcode usernames
         let candidates: [String] = [
-            "/Users/gunnarhostetler/Documents/GitHub/OpenResponses/test.env",
-            NSHomeDirectory() + "/Documents/GitHub/OpenResponses/test.env"
+            NSHomeDirectory() + "/Documents/GitHub/OpenResponses/test.env",
+            Bundle.main.bundlePath + "/../../../test.env" // For Xcode run from project dir
         ]
         var token: String?
         for p in candidates {
@@ -266,7 +267,7 @@ class ToolConnectionsViewModel: ObservableObject {
             }
         }
     }
-    
+
     func quickSmokeTest() {
         Task {
             guard self.isNotionConnected else {
@@ -289,11 +290,11 @@ class ToolConnectionsViewModel: ObservableObject {
                         return
                     }
                 }
-                
+
                 let dsOverride = self.notionDataSourceId.trimmingCharacters(in: .whitespacesAndNewlines)
                 let dsParam: String? = dsOverride.isEmpty ? nil : dsOverride
                 let filter = self.notionTitleEquals.trimmingCharacters(in: .whitespacesAndNewlines)
-                
+
                 let pages: [NotionPageSummary]
                 if !filter.isEmpty {
                     let prop = self.notionTitleProperty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -303,7 +304,7 @@ class ToolConnectionsViewModel: ObservableObject {
                 } else {
                     pages = try await ToolHub.shared.notion.listPages(inDatabase: db, dataSourceId: dsParam, pageSize: 10)
                 }
-                
+
                 let titles = pages.prefix(10).map { $0.title.isEmpty ? "(untitled)" : $0.title }
                 let dsNote = dsParam == nil ? "" : " [DS override used]"
                 setStatus("Quick test OK: \(pages.count) page(s). " + titles.joined(separator: ", ") + dsNote, isError: false)
@@ -312,7 +313,7 @@ class ToolConnectionsViewModel: ObservableObject {
             }
         }
     }
-    
+
     func connectGoogleProvider(_ kind: ToolKind) {
         Task {
             do {
@@ -339,7 +340,7 @@ class ToolConnectionsViewModel: ObservableObject {
             setStatus("Failed to disconnect \(kind.rawValue.capitalized).", isError: true)
         }
     }
-    
+
     // Resolve Database ID from a Page URL or Page ID
     func resolveNotionDatabaseId() {
         let input = notionPageInput.trimmingCharacters(in: .whitespacesAndNewlines)

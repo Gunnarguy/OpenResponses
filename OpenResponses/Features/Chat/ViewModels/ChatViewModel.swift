@@ -103,6 +103,21 @@ class ChatViewModel: ObservableObject {
         return pendingFunctionCallIds.contains(callId)
     }
 
+    /// Returns true if there are pending function calls awaiting output streaming
+    var hasPendingFunctionCalls: Bool {
+        return !pendingFunctionCallIds.isEmpty || !pendingParallelCalls.isEmpty
+    }
+
+    /// Returns count of pending function call IDs (for logging)
+    var pendingFunctionCallCount: Int {
+        return pendingFunctionCallIds.count
+    }
+
+    /// Returns count of pending parallel call batches (for logging)
+    var pendingParallelCallCount: Int {
+        return pendingParallelCalls.count
+    }
+
     @MainActor
     private func canonicalIdentifier(for call: OutputItem) -> String? {
         let callId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1199,13 +1214,20 @@ class ChatViewModel: ObservableObject {
                     )
                 }
 
-                self.streamingMessageId = nil
-                self.isStreaming = false // Re-enable input
+                // Only clear streaming state if no pending work
+                if !self.hasPendingFunctionCalls { 
+                    self.streamingMessageId = nil
+                    self.isStreaming = false // Re-enable input
+                } else {
+                    AppLogger.log("🔄 [Streaming] Keeping streamingMessageId active for pending function calls", category: .streaming, level: .info)
+                }
                 // Stop any image generation heartbeats
                 self.stopImageGenerationHeartbeat(for: assistantMsgId)
-                // Mark as done and reset after a delay, unless we're awaiting computer output
+                // Mark as done and reset after a delay, unless we're awaiting computer output or pending function calls
                 if self.isAwaitingComputerOutput {
                     self.streamingStatus = .usingComputer
+                } else if self.hasPendingFunctionCalls {
+                    self.streamingStatus = .runningTool("Function")
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     self.logActivity("Done")
@@ -1816,12 +1838,15 @@ class ChatViewModel: ObservableObject {
         attemptLoop: while attemptsRemaining > 0 && !followUpCompleted {
             do {
                 if shouldStreamFollowUp {
-                    AppLogger.log("📤 [Batch] Streaming batch to OpenAI", category: .openAI, level: .info)
+                    AppLogger.log("📤 [Batch] Streaming batch to OpenAI. messageId=\(messageId), attemptsRemaining=\(attemptsRemaining), prevId=\(previousResponseIdForAttempt ?? "nil")", category: .openAI, level: .info)
                     if attemptsRemaining == (previousResponseIdForAttempt == nil ? 1 : 2) {
                         streamingMessageId = messageId
+                        AppLogger.log("📤 [Batch] Set streamingMessageId=\(messageId)", category: .openAI, level: .info)
                         isStreaming = true
                         streamingStatus = .connecting
                         resetStreamingReasoning(for: messageId)
+                    } else {
+                        AppLogger.log("⚠️ [Batch] Did NOT set streamingMessageId because condition was false", category: .openAI, level: .warning)
                     }
 
                     // NOTE: We do NOT send reasoning items with function outputs.
@@ -3238,10 +3263,17 @@ class ChatViewModel: ObservableObject {
                         ]
                     )
                 }
-                self.streamingMessageId = nil
-                self.isStreaming = false
+                // Only clear streaming state if no pending work
+                if !self.hasPendingFunctionCalls { 
+                    self.streamingMessageId = nil
+                    self.isStreaming = false
+                } else {
+                    AppLogger.log("🔄 [Streaming] Keeping streamingMessageId active for pending function calls (retry path)", category: .streaming, level: .info)
+                }
                 if self.isAwaitingComputerOutput {
                     self.streamingStatus = .usingComputer
+                } else if self.hasPendingFunctionCalls {
+                    self.streamingStatus = .runningTool("Function")
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
