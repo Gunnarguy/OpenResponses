@@ -118,6 +118,12 @@ class ChatViewModel: ObservableObject {
         return pendingParallelCalls.count
     }
 
+    /// Clears all pending function call tracking (called when AI returns a final message response)
+    func clearAllPendingFunctionCalls() {
+        pendingFunctionCallIds.removeAll()
+        pendingParallelCalls.removeAll()
+    }
+
     @MainActor
     private func canonicalIdentifier(for call: OutputItem) -> String? {
         let callId = call.callId?.trimmingCharacters(in: .whitespacesAndNewlines)

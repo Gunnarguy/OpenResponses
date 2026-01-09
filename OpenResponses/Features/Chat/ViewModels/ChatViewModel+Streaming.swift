@@ -419,6 +419,16 @@ extension ChatViewModel {
 
         applyReasoningTraces(responseId: chunk.response?.id, to: messageId)
 
+        // If the response contains a message-type output (not just function_call), the AI has finished
+        // the function calling cycle and we should clear pending function call tracking
+        if let outputItems = chunk.response?.output {
+            let hasMessageOutput = outputItems.contains { $0.type == "message" }
+            if hasMessageOutput {
+                AppLogger.log("✅ [Streaming] Response contains message output - clearing pending function calls", category: .streaming, level: .info)
+                clearAllPendingFunctionCalls()
+            }
+        }
+
         // Check if we have pending function calls that will stream their outputs
         AppLogger.log("🔄 [Streaming] Completion state check: pendingFunctionCallCount=\(pendingFunctionCallCount), pendingParallelCallCount=\(pendingParallelCallCount), isAwaitingComputerOutput=\(isAwaitingComputerOutput), hasPendingFunctionCalls=\(hasPendingFunctionCalls)", category: .streaming, level: .info)
 
