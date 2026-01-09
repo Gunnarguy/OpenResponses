@@ -142,6 +142,23 @@ final class MyNewTests: XCTestCase {
 }
 ```
 
+## App Store Metadata Automation (Fastlane)
+
+Use Fastlane Deliver to push App Store metadata without manual copy/paste.
+
+```bash
+# One-time install (macOS)
+brew install fastlane
+
+# One-command upload (syncs metadata, then uploads)
+./scripts/upload_app_store_metadata.sh
+```
+
+Notes:
+- Set `DELIVER_SCREENSHOTS=1` to upload screenshots from `fastlane/screenshots/en-US`.
+- Set `FASTLANE_USER` if you want to avoid prompts; Fastlane will handle 2FA as needed.
+- For API key auth, fill in `fastlane/.env.example` and export those variables before running.
+
 ## Continuous Deployment (Future)
 
 ### TestFlight Deployment (Planned)

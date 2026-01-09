@@ -50,12 +50,6 @@ struct MessageBubbleView: View {
                         .padding(.top, 2)
                 }
 
-                // Live/final token usage indicator for assistant messages
-                if message.role == .assistant, let usage = message.tokenUsage {
-                    TokenUsageCaption(usage: usage)
-                        .padding(.top, 2)
-                }
-
                 if message.role == .assistant,
                    let reasoning = message.reasoning,
                    !reasoning.isEmpty {

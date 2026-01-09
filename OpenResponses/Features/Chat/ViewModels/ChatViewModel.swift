@@ -383,30 +383,87 @@ class ChatViewModel: ObservableObject {
         let lower = t.lowercased()
 
         if lower.contains("swiftui") || lower.contains("swift") || lower.contains("code") {
-            return "(Demo) I *would* generate code here and stream it token-by-token.\n\nIn real mode, you can ask for SwiftUI components, refactors, tests, and architecture advice.\n\nTo enable: add an OpenAI API key in Settings."
-        }
-        if lower.contains("pdf") || lower.contains("file") || lower.contains("document") {
-            return "(Demo) OpenResponses supports file uploads (PDF/text) and can summarize, extract structured data, and answer questions about attachments.\n\nThis demo won’t upload files. Add an API key to enable real file handling."
-        }
-        if lower.contains("image") || lower.contains("generate") || lower.contains("picture") {
-            return "(Demo) The app can generate images with supported models and show them inline.\n\nThis demo won’t call image generation. Add an API key, then enable Image Generation in Settings → Tools."
-        }
-        if lower.contains("web search") || lower.contains("browse") || lower.contains("latest") || lower.contains("news") {
-            return "(Demo) With Web Search enabled, the assistant can fetch up-to-date information and cite sources.\n\nThis demo is offline. Add an API key and enable Web Search in Settings → Tools."
-        }
-        if lower.contains("mcp") || lower.contains("notion") || lower.contains("connector") {
-            return "(Demo) OpenResponses can connect to MCP servers and OpenAI-hosted connectors (e.g., Google Workspace, Dropbox).\n\nIn real mode, you’ll connect a service (OAuth/token) in Settings → MCP, then the assistant can call those tools with your approval."
-        }
-        if lower.contains("computer") || lower.contains("click") || lower.contains("browser") {
-            return "(Demo) Computer Use lets the assistant drive a web view (navigate, click, type) with safety approvals and throttles.\n\nThis demo won’t execute actions. Add an API key and enable Computer Use in Settings → Tools."
+            return "(Demo) In the full version, I can write, debug, and explain code for you. Here is an example of what that looks like:\n\n```swift\nimport SwiftUI\n\nstruct DemoLoginView: View {\n    @State private var email = \"\"\n    @State private var password = \"\"\n    \n    var body: some View {\n        VStack(spacing: 20) {\n            Image(systemName: \"lock.shield\")\n                .font(.system(size: 60))\n                .foregroundStyle(.blue)\n                \n            TextField(\"Email\", text: $email)\n                .textFieldStyle(.roundedBorder)\n                .textContentType(.emailAddress)\n                \n            SecureField(\"Password\", text: $password)\n                .textFieldStyle(.roundedBorder)\n            \n            Button(\"Log In\") {\n                // Handle login\n            }\n            .buttonStyle(.borderedProminent)\n            .controlSize(.large)\n        }\n        .padding()\n    }\n}\n```\n\nTo unlock real-time coding assistance, just add your API key in **Settings**."
         }
 
-        return "(Demo) I’m running in Explore Demo mode, so I’m not calling the OpenAI API.\n\nTo unlock real responses:\n1) Open Settings → General\n2) Paste your OpenAI API key (sk-...)\n3) Come back and send the same message again."
+        if lower.contains("pdf") || lower.contains("file") || lower.contains("document") {
+            return """
+            (Demo) You can attach PDFs, text files, or images, and I can analyze them.
+
+            **What I can do with files:**
+            1. **Summarize** long academic papers or contracts.
+            2. **Extract data** into JSON or tables.
+            3. **Answer questions** based purely on the document's content.
+
+            *Try adding your API key to upload your own files!*
+            """
+        }
+
+        if lower.contains("image") || lower.contains("generate") || lower.contains("picture") {
+            return """
+            (Demo) I can generate images using DALL·E 3 compatible models.
+
+            For example, if you asked for *"a futuristic city with flying cars"*, I would display the high-resolution image right here in the chat.
+
+            You can verify generated images in the **Media** tab later. Enable Image Generation in **Settings → Tools** (requires API key).
+            """
+        }
+
+        if lower.contains("web search") || lower.contains("browse") || lower.contains("latest") || lower.contains("news") {
+            return """
+            (Demo) I can browse the live web to find current information.
+
+            **Example Query:** "What is the stock price of Apple right now?"
+
+            **My Response would be:**
+            > **Apple Inc. (AAPL)** is trading at **$225.40**, up 1.2% today. (Source: Finance News, 10 mins ago)
+
+            This allows me to answer questions about recent events that aren't in my training data.
+            """
+        }
+
+        if lower.contains("mcp") || lower.contains("notion") || lower.contains("connector") {
+            return """
+            (Demo) I support the **Model Context Protocol (MCP)**. This means you can connect me to your personal tools like:
+
+            - **Notion** (read/write pages for you)
+            - **Google Drive** (search files)
+            - **Local Filesystem** (safe local access)
+
+            Once connected in **Settings → MCP**, I can read your notes and answer questions like *"What is on my reading list in Notion?"*
+            """
+        }
+
+        if lower.contains("computer") || lower.contains("click") || lower.contains("browser") {
+            return """
+            (Demo) **Computer Use** is an advanced feature where I can view and interact with websites like a human.
+
+            **How it works:**
+            1. You ask: *"Find a flight to NYC under $300"*
+            2. I launch a secure browser.
+            3. I navigate to travel sites, click buttons, input dates, and screenshot the results for you.
+
+            *Safety Note:* I will always ask for approval before taking sensitive actions.
+            """
+        }
+
+        return """
+        (Demo) Hi! I’m currently in **Demo Mode**.
+
+        I can't call OpenAI without an API Key, but I'm ready to help once you set one up.
+
+        **To unlock the full experience:**
+        1. Get a key at [platform.openai.com](https://platform.openai.com/api-keys).
+        2. Go to **Settings** (top right).
+        3. Paste your **OpenAI API Key**.
+
+        *Your key is stored securely in the iOS Keychain and is never shared with us.*
+        """
     }
 
     private func chunkDemoText(_ text: String) -> [String] {
         // Chunk on sentence-ish boundaries for a more "streaming" feel.
-        let separators = CharacterSet(charactersIn: ".!?\n")
+        let separators = CharacterSet(charactersIn: ".!?\\n")
         var chunks: [String] = []
         var buffer = ""
         for ch in text {
@@ -5098,7 +5155,7 @@ extension ChatViewModel {
     func trackToolUsage(_ item: StreamingItem, for messageId: UUID) {
         let tool: String
         switch item.type {
-        case "mcp_call", "mcp_list_tools", "mcp_call_output": 
+        case "mcp_call", "mcp_list_tools", "mcp_call_output":
             tool = "mcp"
         case "computer_call", "computer_call_output":
             tool = "computer"

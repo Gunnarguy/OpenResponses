@@ -5,8 +5,8 @@ Launch-ready reference for populating every App Store Connect field for OpenResp
 ## Quick Reference
 
 - **Name:** OpenResponses
-- **Subtitle:** Intelligent AI Assistant
-- **Marketing Tagline:** The pro-grade AI workspace built natively for iPhone.
+- **Subtitle:** Native GPT-5.2 Client
+- **Marketing Tagline:** GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
 - **Bundle ID:** Gunndamental.OpenResponses
 - **Version:** 1.0.0 (Build 1)
 - **Primary Category:** Productivity
@@ -16,11 +16,11 @@ Launch-ready reference for populating every App Store Connect field for OpenResp
 - **Availability:** Worldwide
 - **Primary Language:** English (U.S.)
 - **Release Type:** Manual release with 7-day phased rollout
-- **Model Coverage:** GPT-5 family (with configurable reasoning effort), GPT-4.1 family, GPT-4o & GPT-4o mini, o-series reasoning models, gpt-image-1, computer-use-preview
+- **Model Coverage:** GPT-5.2, GPT-5.1, GPT-5, o3, o4-mini, GPT-4.1 family, GPT-4o
 
 ## Promotional Text (≤170 characters)
 
-Master advanced AI workflows on iPhone. Stream GPT-4o, run Python, search the web, and connect MCP tools with pro-grade controls designed for builders and power users.
+GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
 
 ## Full Description (≤4000 characters)
 
@@ -80,27 +80,25 @@ AI-generated output can be inaccurate or outdated—always review critical infor
 
 ## Keywords (≤100 characters)
 
-openai,gpt,gpt5,gpt41,reasoning,aiassistant,mcp,codeinterpreter,websearch,devtools,productivity,api
+gpt5,gpt52,reasoning,o3,ai,assistant,websearch,imagegen,native,api,byok,streaming,ios
 
 ## What's New in 1.0.0
 
-Welcome to the first release of OpenResponses! Highlights:
+First release of OpenResponses.
 
-- Full OpenAI Responses API client with streaming and request inspection
-- Access to GPT-5 family (with configurable reasoning effort), GPT-4.1 family, GPT-4o & GPT-4o mini, o1 and o3 reasoning models, gpt-image-1, and computer-use-preview
-- Built-in tools: Code Interpreter, Web Search, Image Generation, File Search, Computer Use
-- Vector store file management with previews and metadata controls
-- MCP integration with connector gallery and secure credential storage
-- Prompt Library for reusable configurations across projects
-- Native Apple integrations (Calendar, Contacts, Reminders) with granular permissions
-- Comprehensive accessibility support, Dark Mode polish, and Dynamic Type compliance
-- MIT-licensed transparency with on-device storage and zero analytics
+- GPT-5.2, o3, o4-mini, and full model gallery
+- Web Search, Image Generation, Code Interpreter, File Search
+- Real-time streaming with Request Inspector
+- Prompt Library for saved configurations
+- Calendar, Contacts, Reminders integration
+- API keys stored securely in Keychain
+- Dark Mode, Dynamic Type, VoiceOver support
 
 ## URLs
 
-- **Marketing URL:** <https://github.com/gunnarhostetler/OpenResponses>
-- **Support URL:** <https://github.com/gunnarhostetler/OpenResponses/issues>
-- **Privacy Policy URL:** <https://github.com/gunnarhostetler/OpenResponses/blob/main/PRIVACY.md>
+- **Marketing URL:** <https://github.com/Gunnarguy/OpenResponses>
+- **Support URL:** <https://github.com/Gunnarguy/OpenResponses/issues>
+- **Privacy Policy URL:** <https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md>
 - **Press Kit (optional landing page suggestion):** <https://openresponses.app/press> *(create before launch)*
 
 ## App Privacy Summary
@@ -130,25 +128,25 @@ Deliver at least six screenshots for both 6.9" and 6.7" iPhones. Capture in simu
 ### Caption & Overlay Text
 
 1. **Hero Conversation:** “Real-time AI that thinks with you”
-2. **Tools Carousel:** “Run Python, browse the web, generate images”
-3. **Model Controls:** “Tune every model parameter on the fly”
-4. **File Intelligence:** “Upload docs and search with vector precision”
-5. **MCP Connectors:** “Bring Notion, Google, GitHub, and more”
-6. **Request Inspector:** “See exactly what your AI is doing”
-7. **Dark Mode Variant:** “Beautiful day or night”
-8. **Prompt Library:** “Save the workflows you reuse most”
+2. **Tools Carousel:** "Web Search, Image Gen, Code Interpreter"
+3. **Model Controls:** "Tune every model parameter on the fly"
+4. **File Intelligence:** "Upload docs and search with vector precision"
+5. **Request Inspector:** "See exactly what your AI is doing"
+6. **Dark Mode Variant:** "Beautiful day or night"
+7. **Prompt Library:** "Save the workflows you reuse most"
+8. **Apple Integration:** "Calendar, Contacts, Reminders built in"
 
 ## App Preview Video (30 seconds)
 
 | Time | Visual | Voiceover / On-screen copy |
 |------|--------|-----------------------------|
-| 0-3s | Logo animation > Hero conversation | "Meet OpenResponses, the pro-grade AI workspace for iPhone." |
-| 3-8s | Streaming conversation with code execution | "Stream GPT-4o, run Python, and see results instantly." |
-| 8-13s | Tools drawer enabling Code Interpreter, Web Search, Image Generation | "Enable powerful tools with a tap—code, web search, images, computer use." |
-| 13-18s | Model settings screen with sliders | "Control every parameter: temperature, reasoning effort, tokens, safety." |
-| 18-23s | File manager with vector store preview | "Upload files, build vector stores, and search your knowledge." |
-| 23-27s | MCP connector gallery | "Connect Notion, Google Drive, GitHub, and custom MCP servers." |
-| 27-30s | Dark mode hero, closing CTA | "Privacy-first, MIT-licensed, built for builders. Download OpenResponses." |
+| 0-3s | Logo animation > Hero conversation | "Meet OpenResponses, GPT-5.2 on your iPhone." |
+| 3-8s | Streaming conversation with reasoning | "Stream responses in real time with reasoning indicators." |
+| 8-13s | Tools drawer enabling Web Search, Image Generation | "Enable Web Search, Image Generation, and more." |
+| 13-18s | Model settings screen with sliders | "Full control: temperature, reasoning effort, max tokens." |
+| 18-23s | File manager with vector store preview | "Upload files and search with vector precision." |
+| 23-27s | Prompt Library | "Save and reuse your favorite configurations." |
+| 27-30s | Dark mode hero, closing CTA | "Your key. Your data. Download OpenResponses." |
 
 ## Review Information
 
@@ -225,16 +223,16 @@ Note: Any API keys and connector credentials are provided separately (for exampl
 ## Launch-Day Marketing Copy
 
 **Tweet/X (280 chars):**
-"OpenResponses 1.0 is here 🎉 Native iPhone control for GPT-5, GPT-4.1, GPT-4o, o1, gpt-image-1, and computer-use. Stream responses, run Python, browse the web, manage files, connect MCP servers—privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
+"OpenResponses 1.0 is here 🎉 GPT-5.2 and o3 on iPhone. Web Search, Image Generation, full API control. Bring your own key, no middleman, privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **LinkedIn Post (700 chars):**
-"Thrilled to launch OpenResponses 1.0—a pro-grade iOS client for modern Responses APIs. Drive GPT-5, GPT-4.1, GPT-4o, o1 reasoning, gpt-image-1, and computer-use-preview from a native SwiftUI app. Stream responses, execute Python, connect MCP servers, and manage vector-backed files—all on-device with your own API key. No accounts, no tracking. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
+"Launching OpenResponses 1.0—a native iOS client for GPT-5.2 and reasoning models. Stream responses in real time, use Web Search and Image Generation, and keep full control with your own API key. No accounts, no tracking, no middleman. Built in SwiftUI for speed. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **Press Release Headline:**
-"OpenResponses Launches the First Pro-Grade AI Studio for iPhone"
+"OpenResponses Brings GPT-5.2 to iPhone with Full API Control"
 
 **Press Release Subhead:**
-"MIT-licensed SwiftUI app delivers real-time GPT-4o streaming, Code Interpreter, web search, and Model Context Protocol integrations in a privacy-first package."
+"Native SwiftUI app delivers real-time streaming, Web Search, Image Generation, and bring-your-own-key privacy."
 
 ## FAQ for Support Team
 
@@ -246,6 +244,6 @@ Note: Any API keys and connector credentials are provided separately (for exampl
 
 ---
 
-**Last Updated:** 2025-11-14
+**Last Updated:** 2026-01-08
 **Maintainer:** Gunnar Hostetler
-**Document Version:** 1.1
+**Document Version:** 1.2

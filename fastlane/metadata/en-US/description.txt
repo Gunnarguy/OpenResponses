@@ -1,0 +1,45 @@
+A native iOS client for GPT-5.2 and reasoning models. Bring your own API key, stream responses in real time, and access built-in tools--all in a fast, privacy-focused app.
+
+Models
+
+- GPT-5.2, GPT-5.2-pro, GPT-5.1, GPT-5, and GPT-5-mini
+- o3 and o4-mini reasoning models with configurable effort
+- GPT-4.1 family, GPT-4o, and legacy fallbacks
+
+Built-in Tools
+
+- Web Search: Live answers with clickable citations
+- Image Generation: Create visuals with gpt-image-1
+- Code Interpreter: Run Python in a sandboxed cloud environment
+- File Search: Query vector stores and uploaded documents
+
+Streaming & Inspection
+
+- Token-by-token streaming with reasoning indicators
+- Request Inspector shows every API payload and tool call
+- Local conversation history with export support
+
+Pro Controls
+
+- Temperature, max tokens, reasoning effort, and tool routing
+- Prompt Library to save and reuse configurations
+- Model compatibility guidance built in
+
+Apple Integration
+
+- Access Calendar, Contacts, and Reminders via AI tools
+- SwiftUI interface with Dark Mode and Dynamic Type
+- VoiceOver and reduced motion fully supported
+
+Privacy
+
+- API keys stored in the iOS Keychain--never leave your device
+- No accounts, no analytics, no tracking
+- All data stays local unless you export it
+
+AI output can be inaccurate--always verify important information.
+
+Requirements
+
+- iOS 17.0 or later
+- Your own API key with active billing

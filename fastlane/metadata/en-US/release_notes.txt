@@ -1,0 +1,9 @@
+First release of OpenResponses.
+
+- GPT-5.2, o3, o4-mini, and full model gallery
+- Web Search, Image Generation, Code Interpreter, File Search
+- Real-time streaming with Request Inspector
+- Prompt Library for saved configurations
+- Calendar, Contacts, Reminders integration
+- API keys stored securely in Keychain
+- Dark Mode, Dynamic Type, VoiceOver support

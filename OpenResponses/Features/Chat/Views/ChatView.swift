@@ -185,7 +185,9 @@ struct ChatView: View {
 
             // Inline activity details when enabled
             if activityVisibility.isVisible {
-                ActivityFeedView(lines: viewModel.activityLines)
+                ActivityFeedView(lines: viewModel.activityLines, onClear: {
+                    viewModel.clearActivity()
+                })
             }
         }
         .padding(.horizontal)

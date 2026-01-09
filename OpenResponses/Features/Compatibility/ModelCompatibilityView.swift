@@ -545,8 +545,9 @@ struct MessageToolIndicator: View {
 
     /// Normalizes and deduplicates tool names for display
     private func normalizedToolsUsed() -> [String] {
-        // Start with actual tracked tools, fallback to text-based detection
-        let rawTools = message.toolsUsed ?? detectToolsUsed(in: message.text ?? "")
+        // Only use explicitly tracked tools.
+        // Heuristic detection has been removed to avoid false positives (e.g. text containing "screen").
+        let rawTools = message.toolsUsed ?? []
 
         // Normalize tool names and deduplicate
         var seen = Set<String>()
@@ -593,35 +594,9 @@ struct MessageToolIndicator: View {
     }
 
     /// Detect which tools were used based on message content patterns
+    /// Deprecated: This method was causing false positives. Now returns empty unless specific needs arise.
     private func detectToolsUsed(in text: String) -> [String] {
-        var toolsUsed: [String] = []
-
-        // Check for web search patterns
-        if text.contains("searched") || text.contains("found") || text.contains("according to") {
-            toolsUsed.append("web_search")
-        }
-
-        // Check for code execution patterns
-        if text.contains("```python") || text.contains("executed") || text.contains("calculation") {
-            toolsUsed.append("code_interpreter")
-        }
-
-        // Check for file search patterns
-        if text.contains("document") || text.contains("based on the uploaded") { 
-            toolsUsed.append("file_search")
-        }
-
-        // Check for image generation patterns
-        if text.contains("generated") && text.contains("image") {
-            toolsUsed.append("image_generation")
-        }
-
-        // Check for computer use patterns
-        if text.contains("screen") || text.contains("clicked") || text.contains("typed") { 
-            toolsUsed.append("computer")
-        }
-
-        return toolsUsed
+        return []
     }
 
     private func toolIcon(for tool: String) -> String {

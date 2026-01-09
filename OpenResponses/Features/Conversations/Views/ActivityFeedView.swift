@@ -4,18 +4,22 @@ import Combine
 /// Global visibility toggle holder for the activity feed; persists only in-memory.
 final class ActivityVisibility: ObservableObject {
     static let shared = ActivityVisibility()
-    @Published var isVisible: Bool = true
+    @Published var isVisible: Bool = false // Collapsed by default for cleaner UI
 }
 
 /// A compact view that lists short lines describing what the app is doing under the hood.
 struct ActivityFeedView: View {
     let lines: [String]
+    var onClear: (() -> Void)?
     @State private var isExpanded = false
-    private let maxVisibleLines = 5
-    private let maxExpandedHeight: CGFloat = 180
+    private let maxVisibleLines = 3
+    private let maxExpandedHeight: CGFloat = 120
+
     var body: some View {
         let visibleLines = Array(lines.suffix(maxVisibleLines))
         let hasOverflow = lines.count > maxVisibleLines
+        let overflowCount = lines.count - maxVisibleLines
+
         VStack(alignment: .leading, spacing: 4) {
             if isExpanded, hasOverflow {
                 ScrollView {
@@ -44,29 +48,35 @@ struct ActivityFeedView: View {
                 }
             }
 
-            if hasOverflow {
-                Button(action: { isExpanded.toggle() }) {
-                    HStack(spacing: 4) {
-                        Text(isExpanded ? "Show less" : "Show more")
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            // Compact action row: expand/collapse + clear
+            HStack(spacing: 12) { 
+                if hasOverflow {
+                    Button(action: { isExpanded.toggle() }) { 
+                        HStack(spacing: 2) {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            Text(isExpanded ? "Less" : "+\(overflowCount)")
+                        }
+                        .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-            }
 
-            if !isExpanded, hasOverflow {
-                Text("… \(lines.count - maxVisibleLines) more")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .textSelection(.disabled)
+                Spacer()
+
+                if let onClear {
+                    Button(action: onClear) {
+                        Image(systemName: "xmark.circle")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        .padding(8)
-        .background(Color(.systemGray6))
-        .cornerRadius(8)
-    // Avoid complex transitions during frequent updates to prevent flicker
+        .padding(6)
+            .background(Color(.systemGray6).opacity(0.6))
+            .cornerRadius(6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Activity details")
         .animation(.default, value: lines.count)
