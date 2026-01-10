@@ -3,9 +3,9 @@ import SwiftUI
 struct OnboardingView: View {
     @Binding var isPresented: Bool
     @State private var currentPage = 0
-    
+
     private let keychainService = KeychainService.shared
-    
+
     let pages = [
         OnboardingPage(
             title: "Welcome to OpenResponses",
@@ -26,7 +26,7 @@ struct OnboardingView: View {
             color: .orange
         )
     ]
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Page content
@@ -38,7 +38,7 @@ struct OnboardingView: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             .animation(.easeInOut, value: currentPage)
-            
+
             // Custom page indicator and buttons
             VStack(spacing: 20) {
                 // Page dots
@@ -52,12 +52,16 @@ struct OnboardingView: View {
                     }
                 }
 
-                Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                
+                VStack(spacing: 8) { 
+                    Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
+
+                    Text("By using this app, you agree to the [Terms of Use (EULA)](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) and confirm you are 17+.")
+                }
+.font(.footnote)
+    .foregroundColor(.secondary)
+    .multilineTextAlignment(.center)
+    .padding(.horizontal)
+
                 // Action buttons
                 HStack(spacing: 16) {
                     if currentPage > 0 {
@@ -68,15 +72,15 @@ struct OnboardingView: View {
                         }
                         .foregroundColor(.secondary)
                     }
-                    
+
                     Spacer()
-                    
+
                     Button(currentPage == pages.count - 1 ? "Get Started" : "Next") {
                         if currentPage == pages.count - 1 {
                             // Mark onboarding as completed
                             UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
                             isPresented = false
-                            
+
                             // Post notification to check API key after onboarding dismisses
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                 NotificationCenter.default.post(name: .onboardingCompleted, object: nil)
@@ -113,24 +117,24 @@ struct OnboardingPage {
 
 struct OnboardingPageView: View {
     let page: OnboardingPage
-    
+
     var body: some View {
         VStack(spacing: 40) {
             Spacer()
-            
+
             // Icon
             Image(systemName: page.imageName)
                 .font(.system(size: 80, weight: .light))
                 .foregroundStyle(page.color.gradient)
                 .symbolEffect(.pulse.wholeSymbol, options: .repeating)
-            
+
             // Content
             VStack(spacing: 16) {
                 Text(page.title)
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
-                
+
                 Text(page.description)
                     .font(.title3)
                     .foregroundColor(.secondary)
@@ -138,7 +142,7 @@ struct OnboardingPageView: View {
                     .lineLimit(nil)
             }
             .padding(.horizontal, 40)
-            
+
             Spacer()
         }
     }

@@ -10,6 +10,7 @@ struct MessageBubbleView: View {
     @ScaledMetric private var cornerRadius: CGFloat = 16
 
     @State private var showCopied: Bool = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         HStack {
@@ -163,6 +164,17 @@ struct MessageBubbleView: View {
 
                     Divider()
                 }
+
+                Button(role: .destructive) {
+                    let subject = "Report Content"
+                    let body = "I would like to report the following message (ID: \(message.id)):\n\nIf possible, please describe why this content is objectionable."
+                    if let url = URL(string: "mailto:support@gunnarguy.com?subject=\(subject)&body=\(body)") {
+                        openURL(url)
+                    }
+                } label: {
+                    Label("Report Issue", systemImage: "exclamationmark.bubble")
+                }
+
                 Button(role: .destructive, action: onDelete) {
                     Label("Delete", systemImage: "trash")
                 }
