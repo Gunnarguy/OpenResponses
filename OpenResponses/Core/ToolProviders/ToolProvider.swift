@@ -48,10 +48,15 @@ public protocol ContactsReadable {
 
 // MARK: - Token Store (Keychain)
 
+/// Lightweight keychain wrapper matching KeychainService's service name for cross-compatibility.
 enum TokenStore {
+    /// Must match KeychainService.keychainServiceName for tokens to be shared between the two APIs.
+    private static let serviceName = "OpenResponses"
+
     static func save(_ data: Data, account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
             kSecValueData as String: data
         ]
@@ -62,6 +67,7 @@ enum TokenStore {
     static func read(account: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
             kSecReturnData as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitOne
@@ -78,10 +84,11 @@ enum TokenStore {
     static func readString(account: String) -> String? {
         read(account: account).flatMap { String(data: $0, encoding: .utf8) }
     }
-    
+
     static func delete(account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account
         ]
         return SecItemDelete(query as CFDictionary) == errSecSuccess
@@ -107,7 +114,7 @@ final class HttpClient {
                 metrics.attempts = attempt + 1
                 metrics.durationMs = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
                 metrics.status = (resp as? HTTPURLResponse)?.statusCode ?? -1
-                
+
                 if let http = resp as? HTTPURLResponse, (http.statusCode == 429 || http.statusCode >= 500), attempt < retries {
                     try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 0.25 * 1_000_000_000)) // 250ms, 500ms
                     continue

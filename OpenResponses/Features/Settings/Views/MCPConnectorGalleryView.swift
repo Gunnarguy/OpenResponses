@@ -5,31 +5,33 @@ struct MCPConnectorGalleryView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ChatViewModel
     @State private var selectedConnector: MCPConnector?
+    @State private var selectedRemoteServer: RemoteMCPServer?
     @State private var showingConnectorSetup = false
     @State private var showingRemoteServerSetup = false
+    @State private var showingRemoteServerTemplateSetup = false
     @State private var searchText = ""
     @State private var selectedCategory: MCPConnector.ConnectorCategory?
-    
+
     init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
     }
-    
+
     private var filteredConnectors: [MCPConnector] {
         var connectors = MCPConnector.library
-        
+
         // Filter by category
         if let category = selectedCategory {
             connectors = connectors.filter { $0.category == category }
         }
-        
+
         // Filter by search
         if !searchText.isEmpty {
             connectors = MCPConnector.search(searchText)
         }
-        
+
         return connectors
     }
-    
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -74,15 +76,29 @@ struct MCPConnectorGalleryView: View {
                     EmptyView()
                 }
             }
+.sheet(isPresented: $showingRemoteServerTemplateSetup) {
+    if let server = selectedRemoteServer {
+        RemoteServerTemplateSetupSheet(
+            template: server,
+            viewModel: viewModel,
+            onComplete: {
+                showingRemoteServerTemplateSetup = false
+                dismiss()
+            }
+        )
+    } else {
+        EmptyView()
+    }
+}
         }
     }
-    
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Connect Your Apps")
                 .font(.largeTitle)
                 .fontWeight(.bold)
-            
+
             Text("Give AI access to your favorite services. All connections are secure and you control what data is shared.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
@@ -95,7 +111,7 @@ struct MCPConnectorGalleryView: View {
         }
         .padding(.horizontal)
     }
-    
+
     private var searchBar: some View {
         HStack {
             Image(systemName: "magnifyingglass")
@@ -108,7 +124,7 @@ struct MCPConnectorGalleryView: View {
         .cornerRadius(12)
         .padding(.horizontal)
     }
-    
+
     private var categoryFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
@@ -117,7 +133,7 @@ struct MCPConnectorGalleryView: View {
                     isSelected: selectedCategory == nil,
                     action: { selectedCategory = nil }
                 )
-                
+
                 ForEach(MCPConnector.ConnectorCategory.allCases, id: \.self) { category in
                     CategoryPill(
                         title: category.rawValue,
@@ -129,34 +145,96 @@ struct MCPConnectorGalleryView: View {
             .padding(.horizontal)
         }
     }
-    
+
     private var connectorGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible()),
-            GridItem(.flexible())
-        ], spacing: 16) {
-            ForEach(filteredConnectors) { connector in
-                ConnectorCard(connector: connector, viewModel: viewModel) {
-                    // SAFETY: Block Notion MCP setup - redirect to Direct Integration
-                    if connector.id == "connector_notion" {
-                        // This should never happen since connector_notion is removed from library,
-                        // but adding as a safety guard.
-                        return
-                    }
-                    
-                    selectedConnector = connector
-                    // Show different setup flow based on connector type
-                    if connector.requiresRemoteServer {
-                        showingRemoteServerSetup = true
-                    } else {
-                        showingConnectorSetup = true
+        VStack(alignment: .leading, spacing: 24) {
+            // OpenAI Hosted Connectors
+            VStack(alignment: .leading, spacing: 12) {
+                Text("OpenAI Hosted Connectors")
+                    .font(.headline)
+                    .padding(.horizontal)
+
+                Text("Official integrations managed by OpenAI. Connect with OAuth.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible()),
+                ], spacing: 16) {
+                    ForEach(filteredConnectors) { connector in
+                        ConnectorCard(connector: connector, viewModel: viewModel) { 
+                            selectedConnector = connector
+                            if connector.requiresRemoteServer {
+                                showingRemoteServerSetup = true
+                            } else {
+                                showingConnectorSetup = true
+                            }
+                        }
                     }
                 }
+                .padding(.horizontal)
+            }
+
+            Divider()
+                .padding(.horizontal)
+
+            // Official Third-Party MCP Servers
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Official MCP Servers")
+                    .font(.headline)
+                    .padding(.horizontal)
+
+                Text("Verified servers hosted by service providers. Requires OAuth or API token.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible()),
+                ], spacing: 16) {
+                    ForEach(RemoteMCPServer.officialServers, id: \.id) { server in
+                        RemoteServerCard(server: server, viewModel: viewModel) {
+                            selectedRemoteServer = server
+                            showingRemoteServerTemplateSetup = true
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+
+            Divider()
+                .padding(.horizontal)
+
+            // Community/Self-Hosted Servers
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Community & Self-Hosted")
+                    .font(.headline)
+                    .padding(.horizontal)
+
+                Text("Templates for popular services. Requires your own MCP server deployment.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible()),
+                ], spacing: 16) {
+                    ForEach(RemoteMCPServer.communityServers, id: \.id) { server in
+                        RemoteServerCard(server: server, viewModel: viewModel) {
+                            selectedRemoteServer = server
+                            showingRemoteServerTemplateSetup = true
+                        }
+                    }
+                }
+                .padding(.horizontal)
             }
         }
-        .padding(.horizontal)
     }
-    
+
     private var footerNote: some View {
         Text("🔒 All connections use OAuth and are securely stored in your device's Keychain. OpenResponses never stores your credentials.")
             .font(.caption)
@@ -171,7 +249,7 @@ private struct ConnectorCard: View {
     let connector: MCPConnector
     let viewModel: ChatViewModel
     let action: () -> Void
-    
+
     // Check if this connector is currently configured
     private var isConnected: Bool {
         if connector.requiresRemoteServer {
@@ -189,9 +267,9 @@ private struct ConnectorCard: View {
             return KeychainService.shared.load(forKey: keychainKey) != nil
         }
     }
-    
+
     @State private var showingDisconnectAlert = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Icon with colored background
@@ -199,11 +277,11 @@ private struct ConnectorCard: View {
                 Circle()
                     .fill(Color(hex: connector.color).opacity(0.15))
                     .frame(width: 56, height: 56)
-                
+
                 Image(systemName: connector.icon)
                     .font(.system(size: 24))
                     .foregroundColor(Color(hex: connector.color))
-                
+
                 // Connected indicator
                 if isConnected {
                     Circle()
@@ -216,21 +294,21 @@ private struct ConnectorCard: View {
                         .offset(x: 20, y: 20)
                 }
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(connector.name)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    
+
                     if connector.requiresRemoteServer {
                         Image(systemName: "server.rack")
                             .font(.caption2)
                             .foregroundColor(.orange)
                     }
-                    
+
                     Spacer()
-                    
+
                     // Connection status badge
                     if isConnected {
                         Text("Connected")
@@ -243,16 +321,16 @@ private struct ConnectorCard: View {
                             .cornerRadius(4)
                     }
                 }
-                
+
                 Text(connector.description)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            
+
             Spacer()
-            
+
             // Action buttons
             HStack(spacing: 8) {
                 // Connect/Setup button
@@ -270,7 +348,7 @@ private struct ConnectorCard: View {
                     .background(Color.blue.opacity(0.1))
                     .cornerRadius(8)
                 }
-                
+
                 // Disconnect button (only show if connected)
                 if isConnected {
                     Button(action: { showingDisconnectAlert = true }) {
@@ -303,7 +381,7 @@ private struct ConnectorCard: View {
             Text("This will remove your saved credentials and configuration for \(connector.name).")
         }
     }
-    
+
     private func disconnectConnector() {
         if connector.requiresRemoteServer {
             // Clear active prompt configuration if it matches this connector
@@ -335,7 +413,7 @@ private struct CategoryPill: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -356,31 +434,31 @@ struct ConnectorSetupView: View {
     let connector: MCPConnector
     @ObservedObject var viewModel: ChatViewModel
     let onComplete: () -> Void
-    
+
     @State private var oauthToken = ""
     @State private var requireApproval = true
     @State private var allowedToolsText = ""
     @State private var showingSuccess = false
-    
+
     private var isValid: Bool {
         let trimmed = oauthToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        
+
         // Reject authorization codes (they start with "4/0")
         if trimmed.hasPrefix("4/0") {
             return false
         }
-        
+
         return true
     }
-    
+
     private var allowedToolList: [String] {
         allowedToolsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
-    
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -391,17 +469,17 @@ struct ConnectorSetupView: View {
                             Circle()
                                 .fill(Color(hex: connector.color).opacity(0.15))
                                 .frame(width: 64, height: 64)
-                            
+
                             Image(systemName: connector.icon)
                                 .font(.system(size: 28))
                                 .foregroundColor(Color(hex: connector.color))
                         }
-                        
+
                         VStack(alignment: .leading, spacing: 4) {
                             Text(connector.name)
                                 .font(.title2)
                                 .fontWeight(.bold)
-                            
+
                             Text(connector.description)
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
@@ -411,15 +489,15 @@ struct ConnectorSetupView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
-                    
+
                     // Step-by-step instructions
                     VStack(alignment: .leading, spacing: 16) {
                         StepHeader(number: 1, title: "Get OAuth Token", isCompleted: !oauthToken.isEmpty)
-                        
+
                         Text(connector.oauthInstructions)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                        
+
                         // Link to OAuth Playground for easy testing
                         Link(destination: URL(string: "https://developers.google.com/oauthplayground/")!) {
                             HStack {
@@ -439,7 +517,7 @@ struct ConnectorSetupView: View {
                             .foregroundColor(.green)
                             .cornerRadius(12)
                         }
-                        
+
                         if let setupURL = connector.setupURL {
                             Link(destination: URL(string: setupURL)!) {
                                 HStack {
@@ -454,14 +532,14 @@ struct ConnectorSetupView: View {
                                 .cornerRadius(12)
                             }
                         }
-                        
+
                         // Required scopes
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Required Scopes:")
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
-                            
+
                             ForEach(connector.oauthScopes, id: \.self) { scope in
                                 Text("• \(scope)")
                                     .font(.caption)
@@ -473,13 +551,13 @@ struct ConnectorSetupView: View {
                         .cornerRadius(8)
                     }
                     .padding(.bottom)
-                    
+
                     Divider()
-                    
+
                     // Token input
                     VStack(alignment: .leading, spacing: 16) {
                         StepHeader(number: 2, title: "Enter Access Token", isCompleted: isValid)
-                        
+
                         // Critical warning about token type
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
@@ -490,7 +568,7 @@ struct ConnectorSetupView: View {
                                     .fontWeight(.semibold)
                                     .foregroundColor(.orange)
                             }
-                            
+
                             Text("• Access tokens start with 'ya29.' for Google services")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
@@ -504,13 +582,13 @@ struct ConnectorSetupView: View {
                         .padding()
                         .background(Color.orange.opacity(0.1))
                         .cornerRadius(8)
-                        
+
                         SecureField("Paste your OAuth ACCESS TOKEN here (ya29...)", text: $oauthToken)
                             .textFieldStyle(.roundedBorder)
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(12)
-                        
+
                         if !oauthToken.isEmpty {
                             let tokenPrefix = String(oauthToken.prefix(4))
                             if tokenPrefix == "4/0A" || tokenPrefix == "4/0_" {
@@ -547,13 +625,13 @@ struct ConnectorSetupView: View {
                         }
                     }
                     .padding(.bottom)
-                    
+
                     Divider()
-                    
+
                     // Settings
                     VStack(alignment: .leading, spacing: 16) {
                         StepHeader(number: 3, title: "Configure Settings", isCompleted: true)
-                        
+
                         Toggle(isOn: $requireApproval) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Require Approval")
@@ -566,7 +644,7 @@ struct ConnectorSetupView: View {
                         .padding()
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
-                        
+
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Allowed Tools (Optional)")
                                 .font(.caption)
@@ -589,13 +667,13 @@ struct ConnectorSetupView: View {
                         .padding()
                         .background(Color(.systemGray6))
                         .cornerRadius(8)
-                        
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Popular Tools")
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
-                            
+
                             ForEach(connector.popularTools, id: \.self) { tool in
                                 HStack {
                                     Image(systemName: "wrench.and.screwdriver.fill")
@@ -621,7 +699,7 @@ struct ConnectorSetupView: View {
                         onComplete()
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Connect") {
                         saveConnector()
@@ -642,7 +720,7 @@ struct ConnectorSetupView: View {
             }
         }
     }
-    
+
     private func saveConnector() {
         // Confirm the connector exists and does not require remote hosting
         guard let catalogConnector = MCPConnector.connector(for: connector.id) else {
@@ -650,26 +728,26 @@ struct ConnectorSetupView: View {
             onComplete()
             return
         }
-        
+
         guard catalogConnector.requiresRemoteServer == false else {
             AppLogger.log("⚠️ Attempted to configure '\(connector.name)' via connector flow, but it requires remote server setup", category: .general, level: .warning)
             onComplete()
             return
         }
-        
+
         // Save OAuth token to keychain
         let keychainKey = "mcp_connector_\(connector.id)"
         KeychainService.shared.save(value: oauthToken, forKey: keychainKey)
-        
+
         // Update prompt model to use connector (not remote server)
         viewModel.activePrompt.enableMCPTool = true
         viewModel.activePrompt.mcpIsConnector = true
         viewModel.activePrompt.mcpConnectorId = connector.id
         viewModel.activePrompt.mcpServerLabel = connector.name
-        
+
         // Set approval mode (convert bool to string for Prompt model)
         viewModel.activePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
-        
+
         // Set allowed tools if specified
         if !allowedToolList.isEmpty {
             let sanitizedAllowedTools = allowedToolList.joined(separator: ", ")
@@ -679,14 +757,14 @@ struct ConnectorSetupView: View {
             viewModel.activePrompt.mcpAllowedTools = ""
             allowedToolsText = ""
         }
-        
+
         // Clear any remote server config to avoid confusion
         viewModel.activePrompt.mcpServerURL = ""
         viewModel.saveActivePrompt()
-        
+
         // Show success
         showingSuccess = true
-        
+
         AppLogger.log("✅ Connected to \(connector.name) connector (id: \(connector.id))", category: .openAI, level: .info)
     }
 
@@ -968,20 +1046,20 @@ private struct RemoteServerSetupSheet: View {
         dismiss()
     }
 }
- 
+
 /// Step header for setup flow
 private struct StepHeader: View {
     let number: Int
     let title: String
     let isCompleted: Bool
-    
+
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
                     .fill(isCompleted ? Color.green : Color.blue)
                     .frame(width: 28, height: 28)
-                
+
                 if isCompleted {
                     Image(systemName: "checkmark")
                         .font(.caption)
@@ -994,10 +1072,301 @@ private struct StepHeader: View {
                         .foregroundColor(.white)
                 }
             }
-            
+
             Text(title)
                 .font(.headline)
         }
+    }
+}
+
+// MARK: - Remote Server Card
+
+/// Card for displaying a remote MCP server template
+private struct RemoteServerCard: View {
+    let server: RemoteMCPServer
+    let viewModel: ChatViewModel
+    let action: () -> Void
+
+    private var isConfigured: Bool {
+        let prompt = viewModel.activePrompt
+        guard prompt.enableMCPTool, !prompt.mcpIsConnector else { return false }
+        return prompt.mcpServerLabel == server.label
+    }
+
+    private var iconName: String {
+        switch server.label {
+        case "github": return "chevron.left.forwardslash.chevron.right"
+        case "stripe": return "creditcard.fill"
+        case "deepwiki": return "book.fill"
+        case "cloudflare": return "cloud.fill"
+        case "sentry": return "ant.fill"
+        case "linear": return "squares.leading.rectangle"
+        case "figma": return "paintpalette.fill"
+        case "slack": return "number.square.fill"
+        case "asana": return "list.bullet.circle.fill"
+        case "jira": return "ticket.fill"
+        case "airtable": return "tablecells.fill"
+        case "todoist": return "checkmark.circle.fill"
+        default: return "server.rack"
+        }
+    }
+
+    private var iconColor: Color {
+        switch server.label {
+        case "github": return .black
+        case "stripe": return Color(hex: "#635BFF")
+        case "deepwiki": return Color(hex: "#4A90D9")
+        case "cloudflare": return Color(hex: "#F38020")
+        case "sentry": return Color(hex: "#362D59")
+        case "linear": return Color(hex: "#5E6AD2")
+        case "figma": return Color(hex: "#F24E1E")
+        case "slack": return Color(hex: "#4A154B")
+        case "asana": return Color(hex: "#F06A6A")
+        case "jira": return Color(hex: "#0052CC")
+        case "airtable": return Color(hex: "#18BFFF")
+        case "todoist": return Color(hex: "#E44332")
+        default: return .blue
+        }
+    }
+
+    private var isOfficialServer: Bool {
+        RemoteMCPServer.officialServers.contains(where: { $0.label == server.label })
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(iconColor.opacity(0.15))
+                        .frame(width: 50, height: 50)
+
+                    Image(systemName: iconName)
+                        .font(.title2)
+                        .foregroundColor(iconColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(server.displayLabel ?? server.label)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+
+                        if isOfficialServer {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                        }
+                    }
+
+                    Text(server.serverDescription ?? "MCP Server")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                if isConfigured {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Configured")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                } else {
+                    Text(isOfficialServer ? "Connect" : "Set Up")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, minHeight: 160, alignment: .topLeading)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isConfigured ? Color.green.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Remote Server Template Setup Sheet
+
+/// Setup sheet for configuring a remote MCP server from a template
+private struct RemoteServerTemplateSetupSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let template: RemoteMCPServer
+    @ObservedObject var viewModel: ChatViewModel
+    let onComplete: () -> Void
+
+    @State private var serverURL: String = ""
+    @State private var authToken: String = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var isOfficialServer: Bool {
+        RemoteMCPServer.officialServers.contains(where: { $0.label == template.label })
+    }
+
+    private var isURLValid: Bool {
+        guard let url = URL(string: serverURL) else { return false }
+        return url.scheme == "https" || url.scheme == "http"
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(template.displayLabel ?? template.label)
+                            .font(.title2)
+                            .fontWeight(.bold)
+
+                        if isOfficialServer {
+                            HStack {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundColor(.blue)
+                                Text("Official Server")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+
+                        Text(template.serverDescription ?? "")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section(header: Text("Server URL")) {
+                    TextField("https://...", text: $serverURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+
+                    if !isOfficialServer {
+                        Text("Enter your self-hosted MCP server URL")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Section(header: Text("Authentication")) {
+                    SecureField("OAuth Token or API Key", text: $authToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    Text(authInstructions)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                if let errorMessage {
+                    Section {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(errorMessage)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+
+                Section {
+                    Button {
+                        saveConfiguration()
+                    } label: {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                            }
+                            Text(isSaving ? "Saving..." : "Connect")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .disabled(!isURLValid || authToken.isEmpty || isSaving)
+                }
+            }
+            .navigationTitle("Set Up \(template.displayLabel ?? template.label)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .onAppear {
+                // Pre-fill URL for official servers
+                if isOfficialServer {
+                    serverURL = template.serverURL
+                }
+            }
+        }
+    }
+
+    private var authInstructions: String {
+        switch template.label {
+        case "github":
+            return "Generate a GitHub personal access token or use GitHub OAuth."
+        case "stripe":
+            return "Use a Stripe OAuth access token from your Stripe dashboard."
+        case "deepwiki":
+            return "DeepWiki doesn't require authentication. Leave empty or use 'none'."
+        case "cloudflare":
+            return "Use a Cloudflare API token with appropriate permissions."
+        case "sentry":
+            return "Generate a Sentry auth token from your account settings."
+        case "linear":
+            return "Use a Linear OAuth token or personal API key."
+        default:
+            return "Enter the authentication token required by this MCP server."
+        }
+    }
+
+    private func saveConfiguration() {
+        isSaving = true
+        errorMessage = nil
+
+        // Build the authorization header
+        var headers: [String: String] = [:]
+        if !authToken.isEmpty, authToken.lowercased() != "none" {
+            let token = authToken.hasPrefix("Bearer ") ? authToken : "Bearer \(authToken)"
+            headers["Authorization"] = token
+        }
+
+        // Save to keychain
+        let keychainKey = "mcp_manual_\(template.label)"
+        if let headersData = try? JSONEncoder().encode(headers),
+           let headersString = String(data: headersData, encoding: .utf8)
+        {
+            _ = KeychainService.shared.save(value: headersString, forKey: keychainKey)
+        }
+
+        // Update prompt configuration
+        var prompt = viewModel.activePrompt
+        prompt.enableMCPTool = true
+        prompt.mcpIsConnector = false
+        prompt.mcpConnectorId = nil
+        prompt.mcpServerLabel = template.label
+        prompt.mcpServerURL = serverURL
+        prompt.mcpRequireApproval = template.requireApproval == .never ? "never" : "always"
+        prompt.mcpAllowedTools = template.allowedTools?.joined(separator: ", ") ?? ""
+        prompt.mcpAuthHeaderKey = "Authorization"
+        prompt.mcpKeepAuthInHeaders = false
+
+        viewModel.replaceActivePrompt(with: prompt)
+        viewModel.saveActivePrompt()
+        viewModel.lastMCPServerLabel = template.label
+
+        isSaving = false
+        onComplete()
     }
 }
 
@@ -1018,7 +1387,7 @@ extension Color {
         default:
             (a, r, g, b) = (1, 1, 1, 0)
         }
-        
+
         self.init(
             .sRGB,
             red: Double(r) / 255,

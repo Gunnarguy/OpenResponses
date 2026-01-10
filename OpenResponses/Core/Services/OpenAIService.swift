@@ -1,18 +1,19 @@
 import Foundation
+
 // Import the StreamingEvent model
-import SwiftUI  // This should already be there for access to UI types
+import SwiftUI // This should already be there for access to UI types
 #if os(iOS)
-import UIKit
+    import UIKit
 #elseif os(macOS)
-import AppKit
+    import AppKit
 #endif
 
 #if canImport(EventKit)
-import EventKit
+    import EventKit
 #endif
 
 #if canImport(Contacts)
-import Contacts
+    import Contacts
 #endif
 
 /// A service class responsible for communicating with the OpenAI API.
@@ -76,9 +77,9 @@ class OpenAIService: OpenAIServiceProtocol {
         )
 
         // Serialize JSON payload
-    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+        let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
 
-    // Don't print raw JSON here; AnalyticsService handles sanitized/omitted logging centrally
+        // Don't print raw JSON here; AnalyticsService handles sanitized/omitted logging centrally
 
         // Prepare URLRequest with authorization header
         var request = URLRequest(url: apiURL)
@@ -102,7 +103,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 AnalyticsParameter.requestMethod: "POST",
                 AnalyticsParameter.requestSize: jsonData.count,
                 AnalyticsParameter.model: prompt.openAIModel,
-                AnalyticsParameter.streamingEnabled: false
+                AnalyticsParameter.streamingEnabled: false,
             ]
         )
 
@@ -142,7 +143,7 @@ class OpenAIService: OpenAIServiceProtocol {
                     AnalyticsParameter.endpoint: "responses",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAIAPI"
+                    AnalyticsParameter.errorDomain: "OpenAIAPI",
                 ]
             )
 
@@ -163,7 +164,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 AnalyticsParameter.endpoint: "responses",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
                 AnalyticsParameter.responseSize: data.count,
-                AnalyticsParameter.model: prompt.openAIModel
+                AnalyticsParameter.model: prompt.openAIModel,
             ]
         )
 
@@ -236,7 +237,7 @@ class OpenAIService: OpenAIServiceProtocol {
                             AnalyticsParameter.requestMethod: "POST",
                             AnalyticsParameter.requestSize: jsonData.count,
                             AnalyticsParameter.model: prompt.openAIModel,
-                            AnalyticsParameter.streamingEnabled: true
+                            AnalyticsParameter.streamingEnabled: true,
                         ]
                     )
 
@@ -282,7 +283,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                 AnalyticsParameter.statusCode: httpResponse.statusCode,
                                 AnalyticsParameter.streamingEnabled: true,
                                 AnalyticsParameter.errorCode: httpResponse.statusCode,
-                                AnalyticsParameter.errorDomain: "OpenAIStreamingAPI"
+                                AnalyticsParameter.errorDomain: "OpenAIStreamingAPI",
                             ]
                         )
 
@@ -296,7 +297,7 @@ class OpenAIService: OpenAIServiceProtocol {
                             AnalyticsParameter.endpoint: "responses",
                             AnalyticsParameter.statusCode: httpResponse.statusCode,
                             AnalyticsParameter.streamingEnabled: true,
-                            AnalyticsParameter.model: prompt.openAIModel
+                            AnalyticsParameter.model: prompt.openAIModel,
                         ]
                     )
 
@@ -323,7 +324,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                 let importantEventTypes = [
                                     "response.created", "response.completed", "response.failed",
                                     "response.image_generation_call.completed", "response.computer_call.completed",
-                                    "response.output_text.delta" // Added for debugging
+                                    "response.output_text.delta", // Added for debugging
                                 ]
 
                                 if importantEventTypes.contains(decodedChunk.type) {
@@ -340,7 +341,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                         name: AnalyticsEvent.streamingEventReceived,
                                         parameters: [
                                             AnalyticsParameter.eventType: decodedChunk.type,
-                                            AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber
+                                            AnalyticsParameter.sequenceNumber: decodedChunk.sequenceNumber,
                                         ]
                                     )
                                 }
@@ -409,16 +410,16 @@ class OpenAIService: OpenAIServiceProtocol {
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
         if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
             return """
-You are a precise assistant using a 440x956 iPhone-like screen. Do exactly what the user asks—no guesses.
+            You are a precise assistant using a 440x956 iPhone-like screen. Do exactly what the user asks—no guesses.
 
-Core rules:
-- If current_url is blank or "about:blank", do not screenshot/wait first. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
-- Take one small, precise action at a time, then screenshot to reassess. Click only clear, visible targets at their center. If you can’t find it, say so (don’t guess).
-- Never do more than 2 consecutive waits. If nothing changes, take a concrete step (navigate/scroll/click) instead.
-- If a cookie/consent banner blocks content, click the visible "Accept all" (or equivalent) before proceeding.
+            Core rules:
+            - If current_url is blank or "about:blank", do not screenshot/wait first. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
+            - Take one small, precise action at a time, then screenshot to reassess. Click only clear, visible targets at their center. If you can’t find it, say so (don’t guess).
+            - Never do more than 2 consecutive waits. If nothing changes, take a concrete step (navigate/scroll/click) instead.
+            - If a cookie/consent banner blocks content, click the visible "Accept all" (or equivalent) before proceeding.
 
-Available actions: click, double_click, scroll, type, keypress, wait, screenshot, move, drag.
-"""
+            Available actions: click, double_click, scroll, type, keypress, wait, screenshot, move, drag.
+            """
         } else {
             return "You are a helpful assistant."
         }
@@ -579,47 +580,47 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return requestObject
     }
 
-#if DEBUG
-    /// Lightweight test hook so unit tests can validate request assembly without exposing internals in production builds.
-    func testing_buildRequestObject(
-        for prompt: Prompt,
-        userMessage: String?,
-        attachments: [[String: Any]]? = nil,
-        fileData: [Data]? = nil,
-        fileNames: [String]? = nil,
-        fileIds: [String]? = nil,
-        imageAttachments: [InputImage]? = nil,
-        previousResponseId: String? = nil,
-        conversationId: String? = nil,
-        stream: Bool = false,
-        customInput: [[String: Any]]? = nil
-    ) -> [String: Any] {
-        buildRequestObject(
-            for: prompt,
-            userMessage: userMessage,
-            attachments: attachments,
-            fileData: fileData,
-            fileNames: fileNames,
-            fileIds: fileIds,
-            imageAttachments: imageAttachments,
-            previousResponseId: previousResponseId,
-            conversationId: conversationId,
-            stream: stream,
-            customInput: customInput
-        )
-    }
-#endif
+    #if DEBUG
+        /// Lightweight test hook so unit tests can validate request assembly without exposing internals in production builds.
+        func testing_buildRequestObject(
+            for prompt: Prompt,
+            userMessage: String?,
+            attachments: [[String: Any]]? = nil,
+            fileData: [Data]? = nil,
+            fileNames: [String]? = nil,
+            fileIds: [String]? = nil,
+            imageAttachments: [InputImage]? = nil,
+            previousResponseId: String? = nil,
+            conversationId: String? = nil,
+            stream: Bool = false,
+            customInput: [[String: Any]]? = nil
+        ) -> [String: Any] {
+            buildRequestObject(
+                for: prompt,
+                userMessage: userMessage,
+                attachments: attachments,
+                fileData: fileData,
+                fileNames: fileNames,
+                fileIds: fileIds,
+                imageAttachments: imageAttachments,
+                previousResponseId: previousResponseId,
+                conversationId: conversationId,
+                stream: stream,
+                customInput: customInput
+            )
+        }
+    #endif
 
     /// Builds base metadata for a request, adding instructions, store flag, and stream options.
     private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
         let apiModelId = normalizeModelIdForAPI(prompt.openAIModel)
         var metadata: [String: Any] = [
             "model": apiModelId,
-            "store": prompt.storeResponses
+            "store": prompt.storeResponses,
         ]
 
         let instructions = buildInstructions(prompt: prompt)
-        if !instructions.isEmpty, !(apiModelId == "computer-use-preview" && instructions == "You are a helpful assistant.") { 
+        if !instructions.isEmpty, !(apiModelId == "computer-use-preview" && instructions == "You are a helpful assistant.") {
             metadata["instructions"] = instructions
         }
 
@@ -628,7 +629,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             // Responses API only supports include_obfuscation in stream_options
             // Note: include_usage is NOT supported in Responses API (unlike Chat Completions)
             let streamOptions: [String: Bool] = [
-                "include_obfuscation": prompt.streamIncludeObfuscation
+                "include_obfuscation": prompt.streamIncludeObfuscation,
             ]
             metadata["stream_options"] = streamOptions
         }
@@ -641,22 +642,22 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: isStreaming)
         var forceImageToolChoice = false
 
-        if prompt.openAIModel == "computer-use-preview" && !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
+        if prompt.openAIModel == "computer-use-preview", !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
             let environment: String
             #if os(iOS)
-            environment = "browser"
+                environment = "browser"
             #elseif os(macOS)
-            environment = "mac"
+                environment = "mac"
             #else
-            environment = "browser"
+                environment = "browser"
             #endif
             let screenSize: CGSize
             #if os(iOS)
-            screenSize = CGSize(width: 440, height: 956)
+                screenSize = CGSize(width: 440, height: 956)
             #elseif os(macOS)
-            screenSize = CGSize(width: 1920, height: 1080)
+                screenSize = CGSize(width: 1920, height: 1080)
             #else
-            screenSize = CGSize(width: 1920, height: 1080)
+                screenSize = CGSize(width: 1920, height: 1080)
             #endif
             tools.append(.computer(
                 environment: environment,
@@ -829,7 +830,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
     /// Applies explicit or inferred tool choice values.
     private func applyToolChoice(for prompt: Prompt, forceImageToolChoice: Bool, into request: inout [String: Any]) {
-        if !prompt.toolChoice.isEmpty && prompt.toolChoice != "auto" {
+        if !prompt.toolChoice.isEmpty, prompt.toolChoice != "auto" {
             request["tool_choice"] = prompt.toolChoice
             return
         }
@@ -856,7 +857,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         let positiveHints = [
             "generate an image", "generate a picture", "create an image", "create a picture", "draw ", "sketch ",
             "make an image", "make a picture", "illustration", "poster", "logo", "icon", "wallpaper", "artwork",
-            "render ", "paint ", "photorealistic", "photo of ", "image of ", "picture of ", "cover art", "thumbnail"
+            "render ", "paint ", "photorealistic", "photo of ", "image of ", "picture of ", "cover art", "thumbnail",
         ]
         // Phrases that imply analysis rather than generation
         let negativeHints = ["analyze this image", "describe this image", "caption this image", "what is in this image"]
@@ -876,8 +877,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
 
         // Handle user message with attachments and/or images
-    // Always use structured content array with input_text to match API guidance
-    var userContent: Any = [["type": "input_text", "text": userMessage]]
+        // Always use structured content array with input_text to match API guidance
+        var userContent: Any = [["type": "input_text", "text": userMessage]]
 
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
@@ -907,7 +908,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 for fileId in fileIds {
                     let fileContent: [String: Any] = [
                         "type": "input_file",
-                        "file_id": fileId
+                        "file_id": fileId,
                     ]
                     contentArray.append(fileContent)
                 }
@@ -925,7 +926,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     let fileContent: [String: Any] = [
                         "type": "input_file",
                         "file_data": base64String,
-                        "filename": fileNames[index]
+                        "filename": fileNames[index],
                     ]
                     contentArray.append(fileContent)
                 }
@@ -936,7 +937,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 let imageContentArray = imageAttachments.compactMap { inputImage -> [String: Any]? in
                     var imageContent: [String: Any] = [
                         "type": "input_image",
-                        "detail": inputImage.detail
+                        "detail": inputImage.detail,
                     ]
 
                     if let imageUrl = inputImage.imageUrl {
@@ -964,7 +965,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     }
 
     /// Assembles the `tools` array for the request, checking for model compatibility.
-    private func buildTools(for prompt: Prompt, userMessage: String, isStreaming: Bool) -> [APICapabilities.Tool] {
+    private func buildTools(for prompt: Prompt, userMessage _: String, isStreaming: Bool) -> [APICapabilities.Tool] {
         var tools: [APICapabilities.Tool] = []
 
         AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
@@ -1016,7 +1017,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 // Build ranking options if configured
                 var rankingOptions: RankingOptions? = nil
                 if let ranker = prompt.fileSearchRanker, !ranker.isEmpty,
-                   let threshold = prompt.fileSearchScoreThreshold {
+                   let threshold = prompt.fileSearchScoreThreshold
+                {
                     rankingOptions = RankingOptions(ranker: ranker, scoreThreshold: threshold)
                 }
 
@@ -1037,21 +1039,21 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             // Detect environment based on platform
             let environment: String
             #if os(iOS)
-            environment = "browser"  // Use browser environment for iOS
+                environment = "browser" // Use browser environment for iOS
             #elseif os(macOS)
-            environment = "mac"      // Use mac environment for macOS
+                environment = "mac" // Use mac environment for macOS
             #else
-            environment = "browser"  // Default to browser for other platforms
+                environment = "browser" // Default to browser for other platforms
             #endif
 
             // Get screen dimensions (use reasonable defaults to avoid main thread issues)
             let screenSize: CGSize
             #if os(iOS)
-            screenSize = CGSize(width: 440, height: 956) // Default iPhone size
+                screenSize = CGSize(width: 440, height: 956) // Default iPhone size
             #elseif os(macOS)
-            screenSize = CGSize(width: 1920, height: 1080) // Default Mac size
+                screenSize = CGSize(width: 1920, height: 1080) // Default Mac size
             #else
-            screenSize = CGSize(width: 1920, height: 1080) // Default size
+                screenSize = CGSize(width: 1920, height: 1080) // Default size
             #endif
 
             tools.append(.computer(
@@ -1067,7 +1069,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if prompt.enableCustomTool, compatibilityService.isToolSupported(APICapabilities.ToolType.function, for: prompt.openAIModel, isStreaming: isStreaming) {
             let schema: APICapabilities.JSONSchema
             if let data = prompt.customToolParametersJSON.data(using: .utf8),
-               let parsedDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+               let parsedDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            {
                 schema = APICapabilities.JSONSchema(parsedDict)
             } else {
                 schema = APICapabilities.JSONSchema(["type": "object", "properties": [:], "additionalProperties": true])
@@ -1084,7 +1087,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         // Add Notion tools only when the integration is enabled and a token is present
         let hasNotionToken = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
-        if prompt.enableNotionIntegration && hasNotionToken {
+        if prompt.enableNotionIntegration, hasNotionToken {
             // Search tool
             let searchNotionFunc = APICapabilities.Function(
                 name: "searchNotion",
@@ -1094,14 +1097,14 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "query": [
                             "type": "string",
-                            "description": "The search term to find pages or databases."
+                            "description": "The search term to find pages or databases.",
                         ],
                         "filter_type": [
                             "type": "string",
-                            "description": "Optional filter: 'page' or 'database' or 'data_source'. Omit to search all."
-                        ]
+                            "description": "Optional filter: 'page' or 'database' or 'data_source'. Omit to search all.",
+                        ],
                     ],
-                    "required": ["query"]
+                    "required": ["query"],
                 ]),
                 strict: false
             )
@@ -1116,10 +1119,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "database_id": [
                             "type": "string",
-                            "description": "The ID of the database to retrieve."
-                        ]
+                            "description": "The ID of the database to retrieve.",
+                        ],
                     ],
-                    "required": ["database_id"]
+                    "required": ["database_id"],
                 ]),
                 strict: false
             )
@@ -1134,10 +1137,10 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "data_source_id": [
                             "type": "string",
-                            "description": "The ID of the data source to retrieve."
-                        ]
+                            "description": "The ID of the data source to retrieve.",
+                        ],
                     ],
-                    "required": ["data_source_id"]
+                    "required": ["data_source_id"],
                 ]),
                 strict: false
             )
@@ -1152,26 +1155,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "data_source_id": [
                             "type": "string",
-                            "description": "The ID of the data source to create the page in (optional if database_id is provided)."
+                            "description": "The ID of the data source to create the page in (optional if database_id is provided).",
                         ],
                         "database_id": [
                             "type": "string",
-                            "description": "The ID of the database (will auto-resolve to a data source if only one exists)."
+                            "description": "The ID of the database (will auto-resolve to a data source if only one exists).",
                         ],
                         "data_source_name": [
                             "type": "string",
-                            "description": "Optional name to disambiguate if multiple data sources exist."
+                            "description": "Optional name to disambiguate if multiple data sources exist.",
                         ],
                         "properties": [
                             "type": "object",
-                            "description": "Page properties matching the data source schema (e.g., title, rich_text, number, etc.)."
+                            "description": "Page properties matching the data source schema (e.g., title, rich_text, number, etc.).",
                         ],
                         "children": [
                             "type": "array",
                             "description": "Optional array of block objects to include as page content.",
-                            "items": ["type": "object"]
-                        ]
-                    ]
+                            "items": ["type": "object"],
+                        ],
+                    ],
                 ]),
                 strict: false
             )
@@ -1186,18 +1189,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "page_id": [
                             "type": "string",
-                            "description": "The ID of the page to update."
+                            "description": "The ID of the page to update.",
                         ],
                         "properties": [
                             "type": "object",
-                            "description": "Page properties to update."
+                            "description": "Page properties to update.",
                         ],
                         "archived": [
                             "type": "boolean",
-                            "description": "Set to true to archive (delete) the page."
-                        ]
+                            "description": "Set to true to archive (delete) the page.",
+                        ],
                     ],
-                    "required": ["page_id"]
+                    "required": ["page_id"],
                 ]),
                 strict: false
             )
@@ -1212,15 +1215,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     "properties": [
                         "page_id": [
                             "type": "string",
-                            "description": "The ID of the page or block to append to."
+                            "description": "The ID of the page or block to append to.",
                         ],
                         "blocks": [
                             "type": "array",
                             "description": "Array of block objects to append.",
-                            "items": ["type": "object"]
-                        ]
+                            "items": ["type": "object"],
+                        ],
                     ],
-                    "required": ["page_id", "blocks"]
+                    "required": ["page_id", "blocks"],
                 ]),
                 strict: false
             )
@@ -1252,221 +1255,221 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             if hasCalendarAccess {
                 // List calendar events
                 let listEventsFunc = APICapabilities.Function(
-                name: "fetchAppleCalendarEvents",
-                description: "List calendar events from Apple Calendar within a date range. Useful for checking schedules, finding meetings, or viewing upcoming appointments.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "startDate": [
-                            "type": "string",
-                            "description": "Start date in ISO 8601 format (e.g., '2024-01-15T00:00:00Z'). Defaults to now if omitted."
+                    name: "fetchAppleCalendarEvents",
+                    description: "List calendar events from Apple Calendar within a date range. Useful for checking schedules, finding meetings, or viewing upcoming appointments.",
+                    parameters: APICapabilities.JSONSchema([
+                        "type": "object",
+                        "properties": [
+                            "startDate": [
+                                "type": "string",
+                                "description": "Start date in ISO 8601 format (e.g., '2024-01-15T00:00:00Z'). Defaults to now if omitted.",
+                            ],
+                            "endDate": [
+                                "type": "string",
+                                "description": "End date in ISO 8601 format (e.g., '2024-01-22T23:59:59Z'). Defaults to 7 days from start if omitted.",
+                            ],
+                            "calendarIdentifiers": [
+                                "type": "array",
+                                "description": "Optional array of specific calendar IDs to filter by. Omit to search all calendars.",
+                                "items": ["type": "string"],
+                            ],
                         ],
-                        "endDate": [
-                            "type": "string",
-                            "description": "End date in ISO 8601 format (e.g., '2024-01-22T23:59:59Z'). Defaults to 7 days from start if omitted."
-                        ],
-                        "calendarIdentifiers": [
-                            "type": "array",
-                            "description": "Optional array of specific calendar IDs to filter by. Omit to search all calendars.",
-                            "items": ["type": "string"]
-                        ]
-                    ],
-                    "required": []
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: listEventsFunc))
+                        "required": [],
+                    ]),
+                    strict: false
+                )
+                tools.append(.function(function: listEventsFunc))
 
-            // Create calendar event
-            let createEventFunc = APICapabilities.Function(
-                name: "createAppleCalendarEvent",
-                description: "Create a new event in Apple Calendar with title, start/end times, location, and notes.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "title": [
-                            "type": "string",
-                            "description": "Event title or name."
+                // Create calendar event
+                let createEventFunc = APICapabilities.Function(
+                    name: "createAppleCalendarEvent",
+                    description: "Create a new event in Apple Calendar with title, start/end times, location, and notes.",
+                    parameters: APICapabilities.JSONSchema([
+                        "type": "object",
+                        "properties": [
+                            "title": [
+                                "type": "string",
+                                "description": "Event title or name.",
+                            ],
+                            "startDate": [
+                                "type": "string",
+                                "description": "Event start date/time in ISO 8601 format (e.g., '2024-01-15T14:00:00Z').",
+                            ],
+                            "endDate": [
+                                "type": "string",
+                                "description": "Event end date/time in ISO 8601 format (e.g., '2024-01-15T15:00:00Z').",
+                            ],
+                            "location": [
+                                "type": "string",
+                                "description": "Optional event location or address.",
+                            ],
+                            "notes": [
+                                "type": "string",
+                                "description": "Optional event notes or description.",
+                            ],
+                            "calendarIdentifier": [
+                                "type": "string",
+                                "description": "Optional specific calendar ID. Uses default calendar if omitted.",
+                            ],
                         ],
-                        "startDate": [
-                            "type": "string",
-                            "description": "Event start date/time in ISO 8601 format (e.g., '2024-01-15T14:00:00Z')."
-                        ],
-                        "endDate": [
-                            "type": "string",
-                            "description": "Event end date/time in ISO 8601 format (e.g., '2024-01-15T15:00:00Z')."
-                        ],
-                        "location": [
-                            "type": "string",
-                            "description": "Optional event location or address."
-                        ],
-                        "notes": [
-                            "type": "string",
-                            "description": "Optional event notes or description."
-                        ],
-                        "calendarIdentifier": [
-                            "type": "string",
-                            "description": "Optional specific calendar ID. Uses default calendar if omitted."
-                        ]
-                    ],
-                    "required": ["title", "startDate", "endDate"]
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: createEventFunc))
+                        "required": ["title", "startDate", "endDate"],
+                    ]),
+                    strict: false
+                )
+                tools.append(.function(function: createEventFunc))
             }
 
             if hasRemindersAccess {
                 // List reminders
                 let listRemindersFunc = APICapabilities.Function(
-                name: "fetchAppleReminders",
-                description: "List reminders from Apple Reminders app. Can filter by completion status and date range.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "completed": [
-                            "type": "boolean",
-                            "description": "Filter by completion status. True shows completed reminders, false shows incomplete. Omit to show all."
+                    name: "fetchAppleReminders",
+                    description: "List reminders from Apple Reminders app. Can filter by completion status and date range.",
+                    parameters: APICapabilities.JSONSchema([
+                        "type": "object",
+                        "properties": [
+                            "completed": [
+                                "type": "boolean",
+                                "description": "Filter by completion status. True shows completed reminders, false shows incomplete. Omit to show all.",
+                            ],
+                            "startDate": [
+                                "type": "string",
+                                "description": "Optional start date for due date filtering in ISO 8601 format.",
+                            ],
+                            "endDate": [
+                                "type": "string",
+                                "description": "Optional end date for due date filtering in ISO 8601 format.",
+                            ],
                         ],
-                        "startDate": [
-                            "type": "string",
-                            "description": "Optional start date for due date filtering in ISO 8601 format."
-                        ],
-                        "endDate": [
-                            "type": "string",
-                            "description": "Optional end date for due date filtering in ISO 8601 format."
-                        ]
-                    ],
-                    "required": []
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: listRemindersFunc))
+                        "required": [],
+                    ]),
+                    strict: false
+                )
+                tools.append(.function(function: listRemindersFunc))
 
-            // Create reminder
-            let createReminderFunc = APICapabilities.Function(
-                name: "createAppleReminder",
-                description: "Create a new reminder in Apple Reminders app with title, notes, due date, and priority.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "title": [
-                            "type": "string",
-                            "description": "Reminder title or task name."
+                // Create reminder
+                let createReminderFunc = APICapabilities.Function(
+                    name: "createAppleReminder",
+                    description: "Create a new reminder in Apple Reminders app with title, notes, due date, and priority.",
+                    parameters: APICapabilities.JSONSchema([
+                        "type": "object",
+                        "properties": [
+                            "title": [
+                                "type": "string",
+                                "description": "Reminder title or task name.",
+                            ],
+                            "notes": [
+                                "type": "string",
+                                "description": "Optional reminder notes or details.",
+                            ],
+                            "dueDate": [
+                                "type": "string",
+                                "description": "Optional due date in ISO 8601 format (e.g., '2024-01-20T09:00:00Z').",
+                            ],
+                            "priority": [
+                                "type": "integer",
+                                "description": "Optional priority level: 1 (high), 5 (medium), 9 (low), 0 (none).",
+                            ],
                         ],
-                        "notes": [
-                            "type": "string",
-                            "description": "Optional reminder notes or details."
-                        ],
-                        "dueDate": [
-                            "type": "string",
-                            "description": "Optional due date in ISO 8601 format (e.g., '2024-01-20T09:00:00Z')."
-                        ],
-                        "priority": [
-                            "type": "integer",
-                            "description": "Optional priority level: 1 (high), 5 (medium), 9 (low), 0 (none)."
-                        ]
-                    ],
-                    "required": ["title"]
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: createReminderFunc))
+                        "required": ["title"],
+                    ]),
+                    strict: false
+                )
+                tools.append(.function(function: createReminderFunc))
             }
 
             // Apple Contacts Integration
             #if canImport(Contacts)
-            let contactsStatus = CNContactStore.authorizationStatus(for: .contacts)
-            let hasContactsAccess = contactsStatus == .authorized
+                let contactsStatus = CNContactStore.authorizationStatus(for: .contacts)
+                let hasContactsAccess = contactsStatus == .authorized
 
-            if hasContactsAccess {
-                // Search contacts
-                let searchContactsFunc = APICapabilities.Function(
-                name: "searchAppleContacts",
-                description: "Search for contacts in Apple Contacts by name, email, or phone. Returns matching contacts with their basic information.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "query": [
-                            "type": "string",
-                            "description": "Search term to match against contact names (e.g., 'John Smith', 'Acme Corp')."
-                        ],
-                        "limit": [
-                            "type": "integer",
-                            "description": "Maximum number of results to return. Defaults to 50 if omitted.",
-                            "default": 50
-                        ]
-                    ],
-                    "required": ["query"]
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: searchContactsFunc))
+                if hasContactsAccess {
+                    // Search contacts
+                    let searchContactsFunc = APICapabilities.Function(
+                        name: "searchAppleContacts",
+                        description: "Search for contacts in Apple Contacts by name, email, or phone. Returns matching contacts with their basic information.",
+                        parameters: APICapabilities.JSONSchema([
+                            "type": "object",
+                            "properties": [
+                                "query": [
+                                    "type": "string",
+                                    "description": "Search term to match against contact names (e.g., 'John Smith', 'Acme Corp').",
+                                ],
+                                "limit": [
+                                    "type": "integer",
+                                    "description": "Maximum number of results to return. Defaults to 50 if omitted.",
+                                    "default": 50,
+                                ],
+                            ],
+                            "required": ["query"],
+                        ]),
+                        strict: false
+                    )
+                    tools.append(.function(function: searchContactsFunc))
 
-            // Get contact details
-            let getContactFunc = APICapabilities.Function(
-                name: "getAppleContact",
-                description: "Get detailed information about a specific contact by identifier, including all phone numbers, emails, addresses, and notes.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "identifier": [
-                            "type": "string",
-                            "description": "The unique identifier of the contact to retrieve."
-                        ]
-                    ],
-                    "required": ["identifier"]
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: getContactFunc))
+                    // Get contact details
+                    let getContactFunc = APICapabilities.Function(
+                        name: "getAppleContact",
+                        description: "Get detailed information about a specific contact by identifier, including all phone numbers, emails, addresses, and notes.",
+                        parameters: APICapabilities.JSONSchema([
+                            "type": "object",
+                            "properties": [
+                                "identifier": [
+                                    "type": "string",
+                                    "description": "The unique identifier of the contact to retrieve.",
+                                ],
+                            ],
+                            "required": ["identifier"],
+                        ]),
+                        strict: false
+                    )
+                    tools.append(.function(function: getContactFunc))
 
-            // Create contact
-            let createContactFunc = APICapabilities.Function(
-                name: "createAppleContact",
-                description: "Create a new contact in Apple Contacts with name, phone, email, and other details.",
-                parameters: APICapabilities.JSONSchema([
-                    "type": "object",
-                    "properties": [
-                        "givenName": [
-                            "type": "string",
-                            "description": "First name of the contact."
-                        ],
-                        "familyName": [
-                            "type": "string",
-                            "description": "Last name of the contact."
-                        ],
-                        "organizationName": [
-                            "type": "string",
-                            "description": "Company or organization name."
-                        ],
-                        "phoneNumber": [
-                            "type": "string",
-                            "description": "Primary phone number."
-                        ],
-                        "phoneLabel": [
-                            "type": "string",
-                            "description": "Label for phone number (e.g., 'mobile', 'work', 'home'). Defaults to 'mobile'."
-                        ],
-                        "emailAddress": [
-                            "type": "string",
-                            "description": "Primary email address."
-                        ],
-                        "emailLabel": [
-                            "type": "string",
-                            "description": "Label for email (e.g., 'work', 'home', 'other'). Defaults to 'home'."
-                        ],
-                        "note": [
-                            "type": "string",
-                            "description": "Additional notes or information about the contact."
-                        ]
-                    ],
-                    "required": []
-                ]),
-                strict: false
-            )
-            tools.append(.function(function: createContactFunc))
-            }
+                    // Create contact
+                    let createContactFunc = APICapabilities.Function(
+                        name: "createAppleContact",
+                        description: "Create a new contact in Apple Contacts with name, phone, email, and other details.",
+                        parameters: APICapabilities.JSONSchema([
+                            "type": "object",
+                            "properties": [
+                                "givenName": [
+                                    "type": "string",
+                                    "description": "First name of the contact.",
+                                ],
+                                "familyName": [
+                                    "type": "string",
+                                    "description": "Last name of the contact.",
+                                ],
+                                "organizationName": [
+                                    "type": "string",
+                                    "description": "Company or organization name.",
+                                ],
+                                "phoneNumber": [
+                                    "type": "string",
+                                    "description": "Primary phone number.",
+                                ],
+                                "phoneLabel": [
+                                    "type": "string",
+                                    "description": "Label for phone number (e.g., 'mobile', 'work', 'home'). Defaults to 'mobile'.",
+                                ],
+                                "emailAddress": [
+                                    "type": "string",
+                                    "description": "Primary email address.",
+                                ],
+                                "emailLabel": [
+                                    "type": "string",
+                                    "description": "Label for email (e.g., 'work', 'home', 'other'). Defaults to 'home'.",
+                                ],
+                                "note": [
+                                    "type": "string",
+                                    "description": "Additional notes or information about the contact.",
+                                ],
+                            ],
+                            "required": [],
+                        ]),
+                        strict: false
+                    )
+                    tools.append(.function(function: createContactFunc))
+                }
             #endif
         } else {
             AppLogger.log("Skipping Apple system tools: integrations disabled in prompt", category: .openAI, level: .info)
@@ -1478,7 +1481,6 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             if prompt.mcpIsConnector {
                 // Connector path: requires connector_id and OAuth token from keychain
                 if let connectorId = prompt.mcpConnectorId, !connectorId.isEmpty {
-
                     // BULLETPROOF CHECK: Verify this is a REAL OpenAI connector
                     // Derive IDs from MCPConnector.library to avoid drift with hardcoded lists.
                     let validConnectors = Set(
@@ -1541,7 +1543,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 }
             } else {
                 // Remote server path: requires server_url and optional auth
-                if !prompt.mcpServerLabel.isEmpty && !prompt.mcpServerURL.isEmpty {
+                if !prompt.mcpServerLabel.isEmpty, !prompt.mcpServerURL.isEmpty {
                     let authResolution = resolveMCPAuthorization(for: prompt)
 
                     // Parse allowed tools if specified
@@ -1586,7 +1588,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if isDeepResearch {
             let hasPreviewSearch = tools.contains { if case .webSearchPreview = $0 { return true } else { return false } }
             let hasFileSearch = tools.contains { if case .fileSearch = $0 { return true } else { return false } }
-            if !hasPreviewSearch && !hasFileSearch {
+            if !hasPreviewSearch, !hasFileSearch {
                 tools.append(.webSearchPreview)
                 AppLogger.log("Deep-research model detected — auto-adding web_search_preview tool to satisfy API requirements", category: .openAI, level: .info)
             }
@@ -1607,9 +1609,17 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
             .joined(separator: "-")
 
-        // Identify official Notion HTTP MCP host
-        let isNotionHost = prompt.mcpServerURL.lowercased().contains("mcp.notion.com") || prompt.mcpServerLabel.lowercased().contains("notion")
+        // Identify official Notion HTTP MCP host.
+        // Note: Notion's hosted MCP is designed to be connected via OAuth (Notion app / supported AI tools).
+        // This app does not currently implement that OAuth flow for mcp.notion.com, so we do NOT attempt to
+        // inject integration tokens or rewrite auth into top-level fields.
+        let isNotionHost = prompt.mcpServerURL.lowercased().contains("mcp.notion.com")
         let sessionId = getOrCreateMCPSessionId(label: prompt.mcpServerLabel.isEmpty ? "default" : prompt.mcpServerLabel)
+
+        if isNotionHost {
+            AppLogger.log("Notion MCP (mcp.notion.com) is OAuth-based; skipping manual auth injection. Use Direct Notion Integration instead.", category: .mcp, level: .warning)
+            return (nil, ["mcp-session-id": sessionId])
+        }
 
         // Prefer structured secure headers so we can support multiple header values.
         let secureHeaders = prompt.secureMCPHeaders
@@ -1625,50 +1635,28 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 if let tokenVal = sanitizedHeaders["Authorization"] {
                     let tokenClean = ensureBearerPrefix(tokenVal)
 
-                    if isNotionHost {
-                        // Official Notion MCP requires top-level authorization only. Remove Authorization header and use top-level.
-                        sanitizedHeaders.removeValue(forKey: "Authorization")
-                        topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
-                        AppLogger.log("Using top-level Authorization for official Notion MCP (no Authorization header).", category: .mcp, level: .info)
+                    // Non-Notion servers:
+                    if prompt.mcpKeepAuthInHeaders {
+                        // Keep in headers only
+                        sanitizedHeaders["Authorization"] = tokenClean
+                        topLevelAuth = nil
                     } else {
-                        // Non-Notion servers:
-                        if prompt.mcpKeepAuthInHeaders {
-                            // Keep in headers only
-                            sanitizedHeaders["Authorization"] = tokenClean
-                            topLevelAuth = nil
-                        } else {
-                            // Use top-level to avoid API 400s; keep headers for session id
-                            topLevelAuth = tokenClean
-                            sanitizedHeaders.removeValue(forKey: "Authorization")
-                        }
+                        // Use top-level to avoid API 400s; keep headers for session id
+                        topLevelAuth = tokenClean
+                        sanitizedHeaders.removeValue(forKey: "Authorization")
                     }
                 }
-                } else {
-                    // Custom header key path
-                    if isNotionHost {
-                        // Official Notion MCP: move any provided token to top-level authorization, no auth headers
-                        if let moved = sanitizedHeaders.removeValue(forKey: "Authorization") {
-                            let tokenClean = ensureBearerPrefix(moved)
-                            topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
-                        } else if let val = sanitizedHeaders.removeValue(forKey: normalizedDesiredKey) {
-                            let tokenClean = ensureBearerPrefix(val)
-                            topLevelAuth = NotionAuthService.shared.stripBearer(tokenClean)
-                        } else {
-                            topLevelAuth = nil
-                        }
-                    } else {
-                        if let moved = sanitizedHeaders.removeValue(forKey: "Authorization"), sanitizedHeaders[normalizedDesiredKey] == nil {
-                            let tokenClean = ensureBearerPrefix(moved)
-                            sanitizedHeaders[normalizedDesiredKey] = tokenClean
-                        }
-                        topLevelAuth = nil
-                    }
+            } else {
+                // Custom header key path
+                if let moved = sanitizedHeaders.removeValue(forKey: "Authorization"), sanitizedHeaders[normalizedDesiredKey] == nil {
+                    let tokenClean = ensureBearerPrefix(moved)
+                    sanitizedHeaders[normalizedDesiredKey] = tokenClean
                 }
 
-            let headerKeys = sanitizedHeaders.keys.sorted().joined(separator: ", ")
-            if isNotionHost && topLevelAuth != nil {
-                AppLogger.log("Using top-level raw token (no Bearer) for official Notion MCP.", category: .mcp, level: .info)
+                topLevelAuth = nil
             }
+
+            let headerKeys = sanitizedHeaders.keys.sorted().joined(separator: ", ")
             AppLogger.log("Resolved MCP auth for '\(prompt.mcpServerLabel)': authHeaderKey=\(normalizedDesiredKey), topLevelAuth=\(topLevelAuth != nil), keepAuthInHeaders=\(prompt.mcpKeepAuthInHeaders), headerKeys=[\(headerKeys)]", category: .openAI, level: .debug)
             return (topLevelAuth, sanitizedHeaders.isEmpty ? nil : sanitizedHeaders)
         }
@@ -1687,31 +1675,18 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
             if normalizedDesiredKey == "Authorization" {
                 let tokenClean = ensureBearerPrefix(auth)
-                if isNotionHost {
-                    // Official Notion MCP requires top-level authorization only (no Authorization header)
-                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
-                    AppLogger.log("Resolved legacy MCP token for Notion official; using top-level authorization (no Authorization header).", category: .openAI, level: .debug)
-                    return (NotionAuthService.shared.stripBearer(tokenClean), sanitized)
-                } else {
-                    // Non-Notion: use top-level auth and keep session header in headers
-                    AppLogger.log("Resolved legacy MCP authorization token (top-level) for label \(prompt.mcpServerLabel)", category: .openAI, level: .debug)
-                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
-                    return (NotionAuthService.shared.stripBearer(tokenClean), sanitized)
-                }
+                // Non-Notion: use top-level auth and keep session header in headers
+                AppLogger.log("Resolved legacy MCP authorization token (top-level) for label \(prompt.mcpServerLabel)", category: .openAI, level: .debug)
+                let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                return (NotionAuthService.shared.stripBearer(tokenClean), sanitized)
             } else {
                 // Legacy auth with custom header key
                 let tokenClean = ensureBearerPrefix(auth)
-                if isNotionHost {
-                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
-                    AppLogger.log("Resolved legacy MCP token (custom key) for Notion official; using top-level authorization.", category: .openAI, level: .debug)
-                    return (tokenClean, sanitized)
-                } else {
-                    baseHeaders[normalizedDesiredKey] = tokenClean
-                    let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
-                    let keys = sanitized.keys.sorted().joined(separator: ", ")
-                    AppLogger.log("Resolved legacy MCP authorization token (headers-only: \(normalizedDesiredKey)) for label \(prompt.mcpServerLabel); headerKeys=[\(keys)]", category: .openAI, level: .debug)
-                    return (nil, sanitized)
-                }
+                baseHeaders[normalizedDesiredKey] = tokenClean
+                let sanitized = sanitizeMCPHeaders(baseHeaders, serverLabel: prompt.mcpServerLabel)
+                let keys = sanitized.keys.sorted().joined(separator: ", ")
+                AppLogger.log("Resolved legacy MCP authorization token (headers-only: \(normalizedDesiredKey)) for label \(prompt.mcpServerLabel); headerKeys=[\(keys)]", category: .openAI, level: .debug)
+                return (nil, sanitized)
             }
         }
 
@@ -1720,7 +1695,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         return (nil, headersOnly)
     }
 
-    private func sanitizeMCPHeaders(_ headers: [String: String], serverLabel: String) -> [String: String] {
+    private func sanitizeMCPHeaders(_ headers: [String: String], serverLabel _: String) -> [String: String] {
         var sanitized: [String: String] = [:]
 
         for (key, value) in headers {
@@ -1793,7 +1768,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func descriptionForMCPServer(label: String) -> String? {
         let normalized = label.lowercased()
         if normalized.contains("notion") {
-            return "Official Notion MCP server"
+            return "Notion MCP server"
         }
         if normalized.contains("filesystem") {
             return "Local filesystem MCP server"
@@ -1816,11 +1791,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         // Verbosity moved under text.verbosity in latest API. Handled in buildTextConfiguration.
 
-        if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) { 
+        if compatibilityService.isParameterSupported("temperature", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) {
             parameters["temperature"] = prompt.temperature
         }
 
-        if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) { 
+        if compatibilityService.isParameterSupported("top_p", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort) {
             parameters["top_p"] = prompt.topP
         }
 
@@ -1828,20 +1803,20 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters["parallel_tool_calls"] = prompt.parallelToolCalls
         }
 
-        if compatibilityService.isParameterSupported("max_output_tokens", for: prompt.openAIModel) && prompt.maxOutputTokens > 0 {
+        if compatibilityService.isParameterSupported("max_output_tokens", for: prompt.openAIModel), prompt.maxOutputTokens > 0 {
             parameters["max_output_tokens"] = prompt.maxOutputTokens
         }
 
-        if compatibilityService.isParameterSupported("truncation", for: prompt.openAIModel) && !prompt.truncationStrategy.isEmpty {
+        if compatibilityService.isParameterSupported("truncation", for: prompt.openAIModel), !prompt.truncationStrategy.isEmpty {
             parameters["truncation"] = prompt.truncationStrategy
         }
 
         // Add missing parameters that exist in UI but weren't in request
-        if compatibilityService.isParameterSupported("service_tier", for: prompt.openAIModel) && !prompt.serviceTier.isEmpty {
+        if compatibilityService.isParameterSupported("service_tier", for: prompt.openAIModel), !prompt.serviceTier.isEmpty {
             parameters["service_tier"] = prompt.serviceTier
         }
 
-        if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort), prompt.topLogprobs > 0 { 
+        if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort), prompt.topLogprobs > 0 {
             // Avoid logprobs on reasoning models to prevent API errors
             let caps = compatibilityService.getCapabilities(for: prompt.openAIModel)
             if caps?.supportsReasoningEffort == true {
@@ -1851,11 +1826,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             }
         }
 
-        if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel) && !prompt.userIdentifier.isEmpty {
+        if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel), !prompt.userIdentifier.isEmpty {
             parameters["user"] = prompt.userIdentifier
         }
 
-        if compatibilityService.isParameterSupported("max_tool_calls", for: prompt.openAIModel) && prompt.maxToolCalls > 0 {
+        if compatibilityService.isParameterSupported("max_tool_calls", for: prompt.openAIModel), prompt.maxToolCalls > 0 {
             parameters["max_tool_calls"] = prompt.maxToolCalls
         }
 
@@ -1863,7 +1838,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let metadataString = prompt.metadata, !metadataString.isEmpty {
             do {
                 if let data = metadataString.data(using: .utf8),
-                   let parsedMetadata = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                   let parsedMetadata = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                {
                     parameters["metadata"] = parsedMetadata
                 }
             } catch {
@@ -1891,7 +1867,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var reasoningObject: [String: Any] = ["effort": prompt.reasoningEffort]
 
         // Add reasoning summary for specific reasoning models
-        if (prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5")) && !prompt.reasoningSummary.isEmpty {
+        if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5"), !prompt.reasoningSummary.isEmpty {
             reasoningObject["summary"] = prompt.reasoningSummary
         }
 
@@ -1970,7 +1946,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             .lowercased()
         if ["low", "medium", "high"].contains(normalizedVerbosity) {
             textConfiguration["verbosity"] = normalizedVerbosity
-        } else if !normalizedVerbosity.isEmpty && normalizedVerbosity != "auto" {
+        } else if !normalizedVerbosity.isEmpty, normalizedVerbosity != "auto" {
             AppLogger.log(
                 "Skipping unsupported text.verbosity '\(prompt.verbosity)'",
                 category: .openAI,
@@ -1978,14 +1954,15 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             )
         }
 
-        if prompt.textFormatType == "json_schema" && !prompt.jsonSchemaName.isEmpty {
+        if prompt.textFormatType == "json_schema", !prompt.jsonSchemaName.isEmpty {
             var schema: [String: Any] = [:]
 
             // Parse the JSON schema content if provided
             if !prompt.jsonSchemaContent.isEmpty {
                 do {
                     if let data = prompt.jsonSchemaContent.data(using: .utf8),
-                       let parsedSchema = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                       let parsedSchema = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    {
                         schema = parsedSchema
                     }
                 } catch {
@@ -2001,7 +1978,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 "name": prompt.jsonSchemaName,
                 "description": prompt.jsonSchemaDescription.isEmpty ? prompt.jsonSchemaName : prompt.jsonSchemaDescription,
                 "strict": prompt.jsonSchemaStrict,
-                "schema": schema
+                "schema": schema,
             ]
         }
 
@@ -2010,12 +1987,12 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
     /// Constructs the `prompt` object for published prompts if enabled.
     private func buildPromptObject(for prompt: Prompt) -> [String: Any]? {
-        guard prompt.enablePublishedPrompt && !prompt.publishedPromptId.isEmpty else {
+        guard prompt.enablePublishedPrompt, !prompt.publishedPromptId.isEmpty else {
             return nil
         }
 
         var promptObject: [String: Any] = [
-            "id": prompt.publishedPromptId
+            "id": prompt.publishedPromptId,
         ]
 
         if !prompt.publishedPromptVersion.isEmpty {
@@ -2038,7 +2015,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         model: String,
         reasoningItems: [[String: Any]]?,
         previousResponseId: String?,
-        conversationId: String?,
+        conversationId _: String?,
         prompt: Prompt
     ) async throws -> OpenAIResponse {
         AppLogger.log("🔄 [sendFunctionOutput] Starting...", category: .openAI, level: .info)
@@ -2082,7 +2059,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.endpoint: "responses_function_output",
                 AnalyticsParameter.requestMethod: "POST",
                 AnalyticsParameter.requestSize: jsonData.count,
-                AnalyticsParameter.model: model
+                AnalyticsParameter.model: model,
             ]
         )
 
@@ -2116,7 +2093,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.endpoint: "responses_function_output",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAIFunctionAPI"
+                    AnalyticsParameter.errorDomain: "OpenAIFunctionAPI",
                 ]
             )
 
@@ -2131,7 +2108,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.endpoint: "responses_function_output",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
                 AnalyticsParameter.responseSize: data.count,
-                AnalyticsParameter.model: model
+                AnalyticsParameter.model: model,
             ]
         )
 
@@ -2167,7 +2144,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     func streamFunctionOutputs(
         outputs: [FunctionCallOutputPayload],
         model: String,
-        reasoningItems: [[String: Any]]?,
+        reasoningItems _: [[String: Any]]?,
         previousResponseId: String?,
         conversationId: String?,
         prompt: Prompt
@@ -2202,7 +2179,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         let functionOutputMessage: [String: Any] = [
                             "type": "function_call_output",
                             "call_id": callIdentifier,
-                            "output": output.output
+                            "output": output.output,
                         ]
 
                         AppLogger.log("📤 [streamFunctionOutputs] Adding function_call_output for call_id: \(callIdentifier)", category: .openAI, level: .info)
@@ -2213,7 +2190,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         "model": model,
                         "store": true,
                         "input": inputArray,
-                        "stream": true
+                        "stream": true,
                     ]
 
                     if let prevId = previousResponseId, !prevId.isEmpty {
@@ -2250,7 +2227,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                             AnalyticsParameter.endpoint: "responses_function_outputs_stream",
                             AnalyticsParameter.requestMethod: "POST",
                             AnalyticsParameter.streamingEnabled: true,
-                            AnalyticsParameter.model: model
+                            AnalyticsParameter.model: model,
                         ]
                     )
 
@@ -2337,7 +2314,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         let functionOutputMessage: [String: Any] = [
             "type": "function_call_output",
             "call_id": callIdentifier,
-            "output": output
+            "output": output,
         ]
         // The Responses API rejects the optional `name` field on function_call_output items.
         AppLogger.log("📤 [\(logPrefix)] Function output message created", category: .openAI, level: .info)
@@ -2347,7 +2324,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var requestObject: [String: Any] = [
             "model": model,
             "store": true,
-            "input": inputItems
+            "input": inputItems,
         ]
 
         if stream {
@@ -2385,7 +2362,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // when replaying the assistant's function_call as part of a function output payload.
         // The API only requires the call_id / name / arguments tuple.
         var encoded: [String: Any] = [
-            "type": call.type
+            "type": call.type,
         ]
 
         if let callId = call.callId, !callId.isEmpty {
@@ -2489,7 +2466,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.endpoint: "responses_mcp_approval",
                 AnalyticsParameter.requestMethod: "POST",
                 AnalyticsParameter.requestSize: jsonData.count,
-                AnalyticsParameter.model: model
+                AnalyticsParameter.model: model,
             ]
         )
 
@@ -2514,7 +2491,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.endpoint: "responses_mcp_approval",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAI_MCP_API"
+                    AnalyticsParameter.errorDomain: "OpenAI_MCP_API",
                 ]
             )
 
@@ -2527,7 +2504,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 AnalyticsParameter.endpoint: "responses_mcp_approval",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
                 AnalyticsParameter.responseSize: data.count,
-                AnalyticsParameter.model: model
+                AnalyticsParameter.model: model,
             ]
         )
 
@@ -2583,7 +2560,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                         parameters: [
                             AnalyticsParameter.endpoint: "responses_mcp_approval_stream",
                             AnalyticsParameter.requestMethod: "POST",
-                            AnalyticsParameter.model: model
+                            AnalyticsParameter.model: model,
                         ]
                     )
 
@@ -2673,7 +2650,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         tool: String,
         argumentsJSON: String,
         prompt: Prompt,
-        stream: Bool
+        stream _: Bool
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
         var derived = prompt
         derived.enableMCPTool = true
@@ -2813,7 +2790,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         var computerOutputMessage: [String: Any] = [
             "type": "computer_call_output",
             "call_id": callId,
-            "output": output
+            "output": output,
         ]
 
         // Add acknowledged safety checks if provided
@@ -2822,7 +2799,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 [
                     "id": safetyCheck.id,
                     "code": safetyCheck.code,
-                    "message": safetyCheck.message
+                    "message": safetyCheck.message,
                 ]
             }
         }
@@ -2836,26 +2813,26 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // Use sensible defaults for environment and display if we can't derive real values here.
         let environment: String
         #if os(iOS)
-        environment = "browser"
+            environment = "browser"
         #elseif os(macOS)
-        environment = "mac"
+            environment = "mac"
         #else
-        environment = "browser"
+            environment = "browser"
         #endif
         let screenSize: CGSize
         #if os(iOS)
-        screenSize = CGSize(width: 440, height: 956)
+            screenSize = CGSize(width: 440, height: 956)
         #elseif os(macOS)
-        screenSize = CGSize(width: 1920, height: 1080)
+            screenSize = CGSize(width: 1920, height: 1080)
         #else
-        screenSize = CGSize(width: 1920, height: 1080)
+            screenSize = CGSize(width: 1920, height: 1080)
         #endif
 
         // Encode tool config using our codable Tool enum for correctness.
         var toolsJSON: [Any] = []
         do {
             let tools: [APICapabilities.Tool] = [
-                .computer(environment: environment, displayWidth: Int(screenSize.width), displayHeight: Int(screenSize.height))
+                .computer(environment: environment, displayWidth: Int(screenSize.width), displayHeight: Int(screenSize.height)),
             ]
             let encoder = JSONEncoder()
             let toolsData = try encoder.encode(tools)
@@ -2871,7 +2848,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "model": model,
             "store": true,
             "input": [computerOutputMessage],
-            "truncation": "auto"
+            "truncation": "auto",
         ]
 
         if !toolsJSON.isEmpty {
@@ -3038,9 +3015,9 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             // The only required properties for input_file objects are:
             // 1. type: "input_file"
             // 2. file_id: the ID of the uploaded file
-            return [
+            [
                 "type": "input_file",
-                "file_id": fileId
+                "file_id": fileId,
             ]
         }
     }
@@ -3058,13 +3035,13 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         case "web_search_preview":
             // Simplified to basic configuration to avoid "unknown parameter" errors
             return [
-                "type": "web_search_preview"
+                "type": "web_search_preview",
             ]
         case "code_interpreter":
             // Code interpreter requires specifying a container type
             return [
                 "type": "code_interpreter",
-                "container": [ "type": "auto" ]
+                "container": ["type": "auto"],
             ]
         case "image_generation":
             // Image generation parameters for gpt-image-1 with enhanced capabilities
@@ -3076,11 +3053,11 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                 "output_format": "png",
                 "background": "auto",
                 "moderation": "low",
-                "partial_images": 3
+                "partial_images": 3,
             ]
         case "file_search":
             var config: [String: Any] = [
-                "type": "file_search"
+                "type": "file_search",
             ]
             // Include vector store configuration directly in the tool
             if let vectorStoreId = vectorStoreId {
@@ -3092,7 +3069,6 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         }
     }
 
-
     // Calculator tool configuration removed
 
     /// Creates the configuration for the MCP tool
@@ -3100,7 +3076,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func createMCPToolConfiguration(from prompt: Prompt) -> [String: Any] {
         var headers: [String: String] = [:]
         if let data = prompt.mcpHeaders.data(using: .utf8),
-           let parsedHeaders = try? JSONDecoder().decode([String: String].self, from: data) {
+           let parsedHeaders = try? JSONDecoder().decode([String: String].self, from: data)
+        {
             headers = parsedHeaders
         }
 
@@ -3159,7 +3136,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // Try to parse user-provided JSON schema; fall back to permissive object
         let parsedSchema: [String: Any]
         if let data = prompt.customToolParametersJSON.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
             parsedSchema = obj
         } else {
             parsedSchema = ["type": "object", "properties": [:], "additionalProperties": true]
@@ -3170,7 +3148,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "name": prompt.customToolName,
             "description": prompt.customToolDescription,
             "parameters": parsedSchema,
-            "strict": false
+            "strict": false,
         ]
     }
 
@@ -3180,7 +3158,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     private func createFileSearchToolConfiguration(vectorStoreIds: [String]) -> [String: Any] {
         return [
             "type": "file_search",
-            "vector_store_ids": vectorStoreIds
+            "vector_store_ids": vectorStoreIds,
         ]
     }
 
@@ -3472,7 +3450,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let days = expiresAfterDays {
             requestObject["expires_after"] = [
                 "anchor": "last_active_at",
-                "days": days
+                "days": days,
             ]
         }
 
@@ -3525,7 +3503,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         while hasMore {
             var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
             var queryItems: [URLQueryItem] = [
-                URLQueryItem(name: "limit", value: "100") // Max allowed by API
+                URLQueryItem(name: "limit", value: "100"), // Max allowed by API
             ]
             if let after = after {
                 queryItems.append(URLQueryItem(name: "after", value: after))
@@ -3584,7 +3562,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         var urlComponents = URLComponents(string: "https://api.openai.com/v1/vector_stores")!
         var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "limit", value: String(min(limit, 100))) // Ensure we don't exceed API limit
+            URLQueryItem(name: "limit", value: String(min(limit, 100))), // Ensure we don't exceed API limit
         ]
         if let after = after {
             queryItems.append(URLQueryItem(name: "after", value: after))
@@ -3682,7 +3660,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         if let expiresAfter = expiresAfter {
             requestObject["expires_after"] = [
                 "anchor": expiresAfter.anchor,
-                "days": expiresAfter.days
+                "days": expiresAfter.days,
             ]
         }
 
@@ -3699,7 +3677,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 120 // Increased timeout
-        request.httpMethod = "POST"  // OpenAI uses POST for vector store updates
+        request.httpMethod = "POST" // OpenAI uses POST for vector store updates
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
@@ -3756,7 +3734,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         AppLogger.log("   🌐 Endpoint: POST \(url.absoluteString)", category: .openAI, level: .debug)
 
         var requestObject: [String: Any] = [
-            "file_id": fileId
+            "file_id": fileId,
         ]
 
         // Add chunking strategy if provided
@@ -3764,7 +3742,8 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             let encoder = JSONEncoder()
             encoder.keyEncodingStrategy = .convertToSnakeCase
             if let chunkData = try? encoder.encode(chunkingStrategy),
-               let chunkDict = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any] {
+               let chunkDict = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any]
+            {
                 requestObject["chunking_strategy"] = chunkDict
                 AppLogger.log("   ⚙️ Custom chunking strategy applied", category: .openAI, level: .debug)
                 if let chunkType = (chunkDict["type"] as? String) {
@@ -3985,7 +3964,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
         // The API seems to have changed and no longer accepts these detailed parameters.
         // Simplified to basic configuration to avoid "unknown parameter" errors.
         return [
-            "type": "web_search_preview"
+            "type": "web_search_preview",
         ]
     }
 
@@ -3998,7 +3977,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             "quality": defaults.string(forKey: "imageGenerationQuality") ?? "auto",
             "background": defaults.string(forKey: "imageGenerationBackground") ?? "auto",
             "output_format": defaults.string(forKey: "imageGenerationOutputFormat") ?? "png",
-            "moderation": defaults.string(forKey: "imageGenerationModeration") ?? "auto"
+            "moderation": defaults.string(forKey: "imageGenerationModeration") ?? "auto",
         ]
 
         let partialImages = defaults.integer(forKey: "imageGenerationPartialImages")
@@ -4217,7 +4196,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
 
-        if httpResponse.statusCode != 200 && httpResponse.statusCode != 204 {
+        if httpResponse.statusCode != 200, httpResponse.statusCode != 204 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
@@ -4233,7 +4212,6 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
     func createVectorStore(name: String, fileIds: [String]?) async throws -> VectorStore {
         return try await createVectorStore(name: name, fileIds: fileIds, expiresAfterDays: nil)
     }
-
 
     // MARK: - Missing Response Management Endpoints
 
@@ -4264,7 +4242,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "delete_response",
                 AnalyticsParameter.requestMethod: "DELETE",
-                "response_id": responseId
+                "response_id": responseId,
             ]
         )
 
@@ -4291,7 +4269,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.endpoint: "delete_response",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAIDeleteAPI"
+                    AnalyticsParameter.errorDomain: "OpenAIDeleteAPI",
                 ]
             )
 
@@ -4303,7 +4281,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "delete_response",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
-                AnalyticsParameter.responseSize: data.count
+                AnalyticsParameter.responseSize: data.count,
             ]
         )
 
@@ -4343,7 +4321,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "cancel_response",
                 AnalyticsParameter.requestMethod: "POST",
-                "response_id": responseId
+                "response_id": responseId,
             ]
         )
 
@@ -4370,7 +4348,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.endpoint: "cancel_response",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAICancelAPI"
+                    AnalyticsParameter.errorDomain: "OpenAICancelAPI",
                 ]
             )
 
@@ -4382,7 +4360,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "cancel_response",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
-                AnalyticsParameter.responseSize: data.count
+                AnalyticsParameter.responseSize: data.count,
             ]
         )
 
@@ -4421,7 +4399,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "input_items",
                 AnalyticsParameter.requestMethod: "GET",
-                "response_id": responseId
+                "response_id": responseId,
             ]
         )
 
@@ -4448,7 +4426,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
                     AnalyticsParameter.endpoint: "input_items",
                     AnalyticsParameter.statusCode: httpResponse.statusCode,
                     AnalyticsParameter.errorCode: httpResponse.statusCode,
-                    AnalyticsParameter.errorDomain: "OpenAIInputItemsAPI"
+                    AnalyticsParameter.errorDomain: "OpenAIInputItemsAPI",
                 ]
             )
 
@@ -4460,7 +4438,7 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             parameters: [
                 AnalyticsParameter.endpoint: "input_items",
                 AnalyticsParameter.statusCode: httpResponse.statusCode,
-                AnalyticsParameter.responseSize: data.count
+                AnalyticsParameter.responseSize: data.count,
             ]
         )
 
@@ -4471,5 +4449,4 @@ Available actions: click, double_click, scroll, type, keypress, wait, screenshot
             throw OpenAIServiceError.invalidResponseData
         }
     }
-
 }

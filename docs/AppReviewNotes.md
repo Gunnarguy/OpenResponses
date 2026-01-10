@@ -33,8 +33,8 @@
 
 ## Data handling highlights
 
-- API keys (OpenAI, MCP, Notion) are user-supplied and saved only in the iOS Keychain.
-- Conversations and attachments remain on device unless the user explicitly uploads them to OpenAI or an MCP tool.
+- API keys (OpenAI, Notion) are user-supplied and saved only in the iOS Keychain.
+- Conversations and attachments remain on device unless the user explicitly uploads them to OpenAI or a connected tool.
 - The app does not request camera, microphone, speech recognition, or precise location permissions in this release.
 - Optional analytics are disabled by default and contain no conversation content.
 

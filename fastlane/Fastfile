@@ -18,7 +18,9 @@ platform :ios do
       skip_screenshots: ENV["DELIVER_SCREENSHOTS"] != "1",
       force: true,
       metadata_path: "fastlane/metadata",
-      screenshots_path: "fastlane/screenshots"
+      screenshots_path: "fastlane/screenshots",
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false
     )
   end
 end

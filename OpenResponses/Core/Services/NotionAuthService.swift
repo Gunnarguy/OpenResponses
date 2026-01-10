@@ -7,7 +7,7 @@ final class NotionAuthService {
     private init() {}
 
     private let notionUsersMeURL = URL(string: "https://api.notion.com/v1/users/me")!
-    private let defaultNotionVersion = "2022-06-28"
+    private let defaultNotionVersion = "2025-09-03"
 
     // MARK: - Public API
 
@@ -51,7 +51,7 @@ final class NotionAuthService {
     }
 
     /// Performs a Notion preflight by calling /v1/users/me with the provided authorization value.
-    /// - Automatically normalizes the Authorization header and sets Notion-Version (2022-06-28).
+    /// - Automatically normalizes the Authorization header and sets Notion-Version (2025-09-03).
     /// - Returns success state, HTTP status, message/body, and parsed user identity if available.
     func preflight(authorizationValue: String, timeout: TimeInterval = 15) async -> (ok: Bool, status: Int, message: String, userId: String?, userName: String?) {
         var req = URLRequest(url: notionUsersMeURL)

@@ -17,6 +17,8 @@ struct SettingsHomeView: View {
     @State private var showingNotionQuickConnect = false
     @State private var showingFileManager = false
     @State private var showingPromptLibrary = false
+    @State private var showingMCPGallery = false
+    @State private var showingRemoteMCPSheet = false
 
     var body: some View {
         NavigationView {
@@ -46,6 +48,8 @@ struct SettingsHomeView: View {
                         showingNotionQuickConnect: $showingNotionQuickConnect,
                         showingFileManager: $showingFileManager
                     )
+                    // MCP tab hidden for 1.0 launch
+                    // case .mcp: MCPTab(...)
                     case .advanced: AdvancedTab()
                     }
                 }
@@ -87,6 +91,13 @@ struct SettingsHomeView: View {
                 createPromptFromCurrentSettings: { viewModel.activePrompt }
             )
         }
+.sheet(isPresented: $showingMCPGallery) {
+    MCPConnectorGalleryView(viewModel: viewModel)
+}
+.sheet(isPresented: $showingRemoteMCPSheet) {
+    RemoteMCPSetupSheet()
+        .environmentObject(viewModel)
+}
     }
 
     private func normalizeApiKey(_ raw: String) -> String {
@@ -139,6 +150,8 @@ private enum ApiKeySaveState: Equatable {
 
 private enum SettingsTab: CaseIterable {
     case general, model, tools, advanced
+    // MCP tab hidden for 1.0 launch - will re-enable in point release
+    // case mcp
 
     var title: String {
         switch self {
@@ -320,7 +333,7 @@ private struct ToolsTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Binding var showingNotionQuickConnect: Bool
     @Binding var showingFileManager: Bool
-    @State private var hasNotionIntegrationToken: Bool = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
+    @State private var hasNotionIntegrationToken: Bool = false
     @AppStorage("hasShownComputerUseDisclosure") private var hasShownComputerUseDisclosure = false
     @State private var showComputerUseDisclosure = false
     @State private var showWebSearchAdvanced = false
@@ -487,14 +500,60 @@ private struct ToolsTab: View {
             // MARK: External Integrations
 
             Section {
-                Toggle("Notion", isOn: $viewModel.activePrompt.enableNotionIntegration)
-                    .disabled(!hasNotionIntegrationToken)
+                // Notion Integration
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "square.grid.2x2.fill")
+                            .foregroundColor(.black)
+                            .font(.title2)
 
-                if !hasNotionIntegrationToken {
-                    Button { showingNotionQuickConnect = true } label: {
-                        Label("Connect Notion", systemImage: "square.grid.2x2.fill")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Notion")
+                                .fontWeight(.semibold)
+                            Text(hasNotionIntegrationToken ? "Connected" : "Not connected")
+                                .font(.caption)
+                                .foregroundColor(hasNotionIntegrationToken ? .green : .secondary)
+                        }
+
+                        Spacer()
+
+                        if hasNotionIntegrationToken {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        }
+                    }
+
+                    if hasNotionIntegrationToken {
+                        Toggle("Enable Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                            .tint(.blue)
+                    }
+
+                    Button {
+                        showingNotionQuickConnect = true
+                    } label: {
+                        HStack {
+                            Text(hasNotionIntegrationToken ? "Manage Connection" : "Connect Notion")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !hasNotionIntegrationToken { 
+                        Text("Connect your Notion workspace to search pages, query databases, and create content.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
+.padding(.vertical, 4)
 
                 #if canImport(EventKit)
                     Toggle("Apple Calendar/Reminders/Contacts", isOn: $viewModel.activePrompt.enableAppleIntegrations)

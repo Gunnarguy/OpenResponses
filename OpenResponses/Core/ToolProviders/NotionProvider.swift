@@ -256,7 +256,8 @@ public final class NotionProvider: ToolProvider, NotionReadable {
     private let http = HttpClient()
     private let base = URL(string: "https://api.notion.com/v1")!
     private let version = "2025-09-03"
-    let tokenAccount = "notion.integration"
+    /// Unified keychain key for Notion integration token - matches NotionConnectionView, SettingsHomeView, etc.
+    let tokenAccount = "notionApiKey"
     private var dsCache: [String: (id: String, name: String?)] = [:]
 
     public init() {}

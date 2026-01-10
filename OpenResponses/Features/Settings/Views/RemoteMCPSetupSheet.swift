@@ -12,7 +12,7 @@ struct RemoteMCPSetupSheet: View {
     @State private var approvalMode: String = "never"
 
     @State private var errorMessage: String?
-    
+
     @State private var isTesting: Bool = false
     @State private var diagStatus: String? = nil
 
@@ -22,6 +22,8 @@ struct RemoteMCPSetupSheet: View {
         let tkn = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lbl.isEmpty, !url.isEmpty, !tkn.isEmpty else { return false }
         guard url.lowercased().hasPrefix("https://") else { return false }
+        // Notion hosted MCP requires OAuth; this app does not support that flow for remote MCP config.
+        if url.lowercased().contains("mcp.notion.com") { return false }
         return true
     }
 
@@ -38,7 +40,8 @@ struct RemoteMCPSetupSheet: View {
                 }
 
                 Section(header: Label("Authorization", systemImage: "key.fill"),
-                        footer: Text("Official Notion MCP (mcp.notion.com) uses your Notion Integration token (ntn_/secret_) as top‑level authorization. Self‑hosted Notion MCP uses a server‑issued Bearer token.").font(.caption)) {
+                        footer: Text("Notion's hosted MCP (mcp.notion.com) is OAuth-based and isn't supported here. For Notion, use Direct Notion Integration. For self-hosted MCP servers, paste the server-issued Bearer token.").font(.caption))
+                {
                     TextField("Header Key (default: Authorization)", text: $authHeaderKey)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
@@ -63,7 +66,7 @@ struct RemoteMCPSetupSheet: View {
                         Text(err).font(.caption).foregroundColor(.red)
                     }
                 }
-                
+
                 Section(header: Label("Diagnostics", systemImage: "checkmark.seal")) {
                     if isTesting {
                         HStack {
@@ -75,26 +78,27 @@ struct RemoteMCPSetupSheet: View {
                             Task {
                                 isTesting = true
                                 diagStatus = nil
-                                
+
                                 let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
                                 let urlStr = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
                                 let headerKey = authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Authorization" : authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
                                 let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(token)
                                 let isNotionOfficial = urlStr.lowercased().contains("mcp.notion.com")
-                                
-                                // Persist minimal auth for probe (matches OpenAIService.resolveMCPAuthorization expectations)
                                 if isNotionOfficial {
-                                    // Top-level only
-                                    _ = KeychainService.shared.save(value: normalizedAuth, forKey: "mcp_manual_\(lbl)")
-                                } else {
-                                    // Headers JSON
-                                    let headers = [headerKey: normalizedAuth]
-                                    if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
-                                       let str = String(data: data, encoding: .utf8) {
-                                        _ = KeychainService.shared.save(value: str, forKey: "mcp_manual_\(lbl)")
-                                    }
+                                    diagStatus = "Notion hosted MCP (mcp.notion.com) requires OAuth and isn't supported here. Use Direct Notion Integration instead."
+                                    isTesting = false
+                                    return
                                 }
-                                
+
+                                // Persist minimal auth for probe (matches OpenAIService.resolveMCPAuthorization expectations)
+                                // Headers JSON
+                                let headers = [headerKey: normalizedAuth]
+                                if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
+                                   let str = String(data: data, encoding: .utf8)
+                                {
+                                    _ = KeychainService.shared.save(value: str, forKey: "mcp_manual_\(lbl)")
+                                }
+
                                 var probePrompt = viewModel.activePrompt
                                 probePrompt.enableMCPTool = true
                                 probePrompt.mcpIsConnector = false
@@ -103,7 +107,7 @@ struct RemoteMCPSetupSheet: View {
                                 probePrompt.mcpAllowedTools = allowedToolsCSV.trimmingCharacters(in: .whitespacesAndNewlines)
                                 probePrompt.mcpRequireApproval = approvalMode
                                 probePrompt.mcpAuthHeaderKey = headerKey
-                                
+
                                 do {
                                     let (foundLabel, count) = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: probePrompt)
                                     let d = UserDefaults.standard
@@ -111,7 +115,8 @@ struct RemoteMCPSetupSheet: View {
                                     d.set(Date().timeIntervalSince1970, forKey: "mcp_probe_ok_at_\(foundLabel)")
                                     if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(foundLabel)"),
                                        let data = stored.data(using: .utf8),
-                                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+                                    {
                                         let ah = obj[headerKey] ?? obj["Authorization"] ?? ""
                                         let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: ah)
                                         d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
@@ -132,7 +137,7 @@ struct RemoteMCPSetupSheet: View {
                                         diagStatus = "Probe failed: \(error.localizedDescription)"
                                     }
                                 }
-                                
+
                                 isTesting = false
                             }
                         } label: {
@@ -140,7 +145,7 @@ struct RemoteMCPSetupSheet: View {
                         }
                         .disabled(!isValid)
                     }
-                    
+
                     if let status = diagStatus {
                         Text(status)
                             .font(.caption)
@@ -188,9 +193,13 @@ struct RemoteMCPSetupSheet: View {
             return
         }
 
+        if url.lowercased().contains("mcp.notion.com") {
+            errorMessage = "Notion hosted MCP (mcp.notion.com) requires OAuth and isn't supported here. Use Direct Notion Integration instead."
+            return
+        }
+
         // Normalize token value for headers
         let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(tkn)
-        let isNotionOfficial = url.lowercased().contains("mcp.notion.com")
 
         // Update active prompt configuration
         var prompt = viewModel.activePrompt
@@ -203,15 +212,8 @@ struct RemoteMCPSetupSheet: View {
         prompt.mcpAuthHeaderKey = headerKey
 
         var headers = prompt.secureMCPHeaders
-        if isNotionOfficial {
-            // Official Notion MCP requires top-level authorization only (no Authorization header)
-            headers.removeValue(forKey: headerKey)
-            headers.removeValue(forKey: "Authorization")
-            prompt.secureMCPHeaders = headers
-        } else {
-            headers[headerKey] = normalizedAuth
-            prompt.secureMCPHeaders = headers
-        }
+        headers[headerKey] = normalizedAuth
+        prompt.secureMCPHeaders = headers
 
         viewModel.replaceActivePrompt(with: prompt)
         viewModel.saveActivePrompt()

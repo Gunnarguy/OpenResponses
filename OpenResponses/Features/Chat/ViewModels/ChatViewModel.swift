@@ -853,30 +853,21 @@ class ChatViewModel: ObservableObject {
                 let now = Date().timeIntervalSince1970
 
                 // Light Notion guardrail for remote HTTP MCP: integration tokens are invalid here
-                let isNotionOfficial = url.lowercased().contains("mcp.notion.com")
+                let isNotionHostedMCP = url.lowercased().contains("mcp.notion.com")
+                if isNotionHostedMCP {
+                    let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP (mcp.notion.com) is OAuth-based and isn't supported by this app yet. Use Direct Notion Integration instead, or configure a self-hosted MCP server with its own server-issued Bearer token.")
+                    messages.append(sys)
+                    return
+                }
+
                 let looksLikeNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
                 if looksLikeNotion, let raw = authHeader {
                     let lower = raw.lowercased()
                     let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
                     if tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_") {
-                        if isNotionOfficial {
-                            // Auto-fix: move integration token to top-level and remove Authorization header
-                            var headersFix = activePrompt.secureMCPHeaders
-                            headersFix.removeValue(forKey: desiredKey)
-                            headersFix.removeValue(forKey: "Authorization")
-                            activePrompt.secureMCPHeaders = headersFix
-                            let rawTop = NotionAuthService.shared.stripBearer(raw)
-                            KeychainService.shared.save(value: rawTop, forKey: "mcp_manual_\(label)")
-                            saveActivePrompt()
-                            let sys = ChatMessage(role: .system, text: "✅ Auto-corrected official Notion MCP auth (moved integration token to top‑level). Continuing")
-                            messages.append(sys)
-                            // Do not return; proceed
-                        } else {
-                            // Self-hosted with integration token in header: warn but do not block chat
-                            let sys = ChatMessage(role: .system, text: "⚠️ This token looks like a Notion integration token, which is invalid for self‑hosted Notion MCP. Use the server‑issued Bearer token from your container logs. Continuing anyway, but the server may return 401.")
-                            messages.append(sys)
-                            // Do not return; proceed
-                        }
+                        // Warn but do not block chat: integration tokens should not be used as client auth for remote MCP servers.
+                        let sys = ChatMessage(role: .system, text: "⚠️ This looks like a Notion integration token. For self‑hosted MCP servers, keep the integration token server-side (env var) and use a server-issued Bearer token for the client. Continuing, but the server may return 401.")
+                        messages.append(sys)
                     }
                 }
 
@@ -888,11 +879,6 @@ class ChatViewModel: ObservableObject {
                     if let authHeader = authHeader {
                         return NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
                     }
-                    if isNotionOfficial {
-                        if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty {
-                            return NotionAuthService.shared.tokenHash(fromAuthorizationValue: stored)
-                        }
-                    }
                     return nil
                 }()
                 let prStoredHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
@@ -903,7 +889,7 @@ class ChatViewModel: ObservableObject {
                 if !probeSatisfied {
                     let labelForLog = label.isEmpty ? "(unnamed)" : label
                     AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
-                    if authHeader == nil && !isNotionOfficial {
+                    if authHeader == nil { 
                         let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
                         let sys = ChatMessage(role: .system, text: guidance)
                         messages.append(sys)
@@ -921,12 +907,6 @@ class ChatViewModel: ObservableObject {
                                 if let authHeader = authHeader {
                                     let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
                                     d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
-                                } else if isNotionOfficial {
-                                    // Official Notion MCP uses top-level token; persist its hash for future gate checks
-                                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty {
-                                        let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: stored)
-                                        d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
-                                    }
                                 }
                                 d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
                                 AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send", category: .openAI, level: .info)

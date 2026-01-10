@@ -13,7 +13,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
     let category: ConnectorCategory
     let popularTools: [String]
     let requiresRemoteServer: Bool // True if this requires self-hosted MCP server deployment
-    
+
     enum ConnectorCategory: String, Codable, CaseIterable {
         case storage = "Storage"
         case email = "Email"
@@ -22,7 +22,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
         case productivity = "Productivity"
         case development = "Development"
     }
-    
+
     /// Built-in library of available connectors
     static let library: [MCPConnector] = [
         // Storage
@@ -39,7 +39,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search_files", "fetch_file", "list_recent_files"],
             requiresRemoteServer: false
         ),
-        
+
         MCPConnector(
             id: "connector_googledrive",
             name: "Google Drive",
@@ -53,7 +53,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search", "recent_documents", "fetch"],
             requiresRemoteServer: false
         ),
-        
+
         MCPConnector(
             id: "connector_sharepoint",
             name: "SharePoint",
@@ -67,7 +67,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search", "list_recent_documents", "fetch"],
             requiresRemoteServer: false
         ),
-        
+
         // Email
         MCPConnector(
             id: "connector_gmail",
@@ -82,7 +82,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search_emails", "read_email", "get_recent_emails"],
             requiresRemoteServer: false
         ),
-        
+
         MCPConnector(
             id: "connector_outlookemail",
             name: "Outlook Email",
@@ -96,7 +96,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["list_messages", "search_messages", "fetch_message"],
             requiresRemoteServer: false
         ),
-        
+
         // Calendar
         MCPConnector(
             id: "connector_googlecalendar",
@@ -111,7 +111,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search_events", "read_event"],
             requiresRemoteServer: false
         ),
-        
+
         MCPConnector(
             id: "connector_outlookcalendar",
             name: "Outlook Calendar",
@@ -125,7 +125,7 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search_events", "list_events", "fetch_event"],
             requiresRemoteServer: false
         ),
-        
+
         // Collaboration
         MCPConnector(
             id: "connector_microsoftteams",
@@ -140,29 +140,29 @@ struct MCPConnector: Identifiable, Codable, Hashable {
             popularTools: ["search", "fetch", "get_chat_members"],
             requiresRemoteServer: false
         ),
-        
+
         // Productivity
         // REMOVED: Notion MCP connector (broken - use Direct Notion Integration instead)
         // The connector_notion entry has been removed because mcp.notion.com requires OAuth tokens
         // not integration tokens. Use Settings → MCP → Direct Notion Integration for working access.
     ]
-    
+
     /// Get connector by ID
     static func connector(for id: String) -> MCPConnector? {
         library.first { $0.id == id }
     }
-    
+
     /// Get connectors by category
     static func connectors(in category: ConnectorCategory) -> [MCPConnector] {
         library.filter { $0.category == category }
     }
-    
+
     /// Search connectors by name or description
     static func search(_ query: String) -> [MCPConnector] {
         let lowercased = query.lowercased()
         return library.filter {
             $0.name.lowercased().contains(lowercased) ||
-            $0.description.lowercased().contains(lowercased)
+                $0.description.lowercased().contains(lowercased)
         }
     }
 }
@@ -175,16 +175,16 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     var serverDescription: String?
     var requireApproval: MCPApprovalSetting
     var allowedTools: [String]?
-    
+
     /// User-friendly display name (can contain spaces/special chars)
     /// Falls back to label if not set
     var displayLabel: String?
-    
+
     /// The label to show in UI - uses displayLabel if set, otherwise label
     var uiLabel: String {
         displayLabel ?? label
     }
-    
+
     init(id: UUID = UUID(), label: String, serverURL: String, serverDescription: String? = nil, requireApproval: MCPApprovalSetting = .always, allowedTools: [String]? = nil, displayLabel: String? = nil) {
         self.id = id
         self.label = label
@@ -194,17 +194,17 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
         self.allowedTools = allowedTools
         self.displayLabel = displayLabel
     }
-    
+
     /// Official Notion MCP server template (hosted by Notion)
     static let notionOfficial = RemoteMCPServer(
         label: "notion-mcp-official",
         serverURL: "https://mcp.notion.com/mcp",
-        serverDescription: "Official Notion-hosted MCP server (Streamable HTTP). For manual connection, get your Notion OAuth token and paste it in the Authorization field. Pages must be explicitly shared with your integration.",
+        serverDescription: "Notion hosted MCP server (OAuth-based). This app does not currently support connecting to mcp.notion.com via OAuth, so this template is informational only.",
         requireApproval: .never,
         allowedTools: nil, // Empty = all tools available
         displayLabel: "Notion MCP (Official)"
     )
-    
+
     /// Self-hosted Notion MCP template (user's custom Docker + ngrok setup)
     static let notionCustom = RemoteMCPServer(
         label: "notion-mcp-custom",
@@ -218,16 +218,170 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     /// GCP-hosted Notion MCP template (your Cloud Run deployment)
     static let notionGCloud = RemoteMCPServer(
         label: "notion-gcloud",
-        serverURL: "https://notion-mcp-service-3w5iesbyaa-wn.a.run.app/mcp",
-        serverDescription: "Your GCP-hosted Notion MCP server (Cloud Run).",
+        serverURL: "https://your-cloud-run-service.a.run.app/mcp",
+        serverDescription: "Self-hosted Notion MCP server (Cloud Run).",
         requireApproval: .never,
         allowedTools: nil,
         displayLabel: "Notion MCP (GCP)"
     )
-    
-    /// Popular MCP server templates for quick setup (single supported method)
+
+    // MARK: - Official Third-Party MCP Servers
+
+    /// GitHub MCP Server (official, hosted by GitHub)
+    static let github = RemoteMCPServer(
+        label: "github",
+        serverURL: "https://api.githubcopilot.com/mcp/",
+        serverDescription: "Official GitHub MCP server. Access repositories, issues, PRs, and code search. Requires GitHub OAuth token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "GitHub"
+    )
+
+    /// Stripe MCP Server (official, hosted by Stripe)
+    static let stripe = RemoteMCPServer(
+        label: "stripe",
+        serverURL: "https://mcp.stripe.com",
+        serverDescription: "Official Stripe MCP server. Create payment links, manage customers, and access billing data. Requires Stripe OAuth token.",
+        requireApproval: .always,
+        allowedTools: nil,
+        displayLabel: "Stripe"
+    )
+
+    /// DeepWiki MCP Server (official)
+    static let deepwiki = RemoteMCPServer(
+        label: "deepwiki",
+        serverURL: "https://mcp.deepwiki.com/mcp",
+        serverDescription: "DeepWiki MCP server. Ask questions about GitHub repositories and read wiki structures. No auth required.",
+        requireApproval: .never,
+        allowedTools: ["ask_question", "read_wiki_structure"],
+        displayLabel: "DeepWiki"
+    )
+
+    /// Cloudflare MCP Server (official)
+    static let cloudflare = RemoteMCPServer(
+        label: "cloudflare",
+        serverURL: "https://mcp.cloudflare.com/sse",
+        serverDescription: "Official Cloudflare MCP server. Manage Workers, KV, R2, and D1. Requires Cloudflare API token.",
+        requireApproval: .always,
+        allowedTools: nil,
+        displayLabel: "Cloudflare"
+    )
+
+    /// Sentry MCP Server (official)
+    static let sentry = RemoteMCPServer(
+        label: "sentry",
+        serverURL: "https://mcp.sentry.dev/sse",
+        serverDescription: "Official Sentry MCP server. Search issues, view stack traces, and analyze errors. Requires Sentry auth token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Sentry"
+    )
+
+    /// Linear MCP Server (official)
+    static let linear = RemoteMCPServer(
+        label: "linear",
+        serverURL: "https://mcp.linear.app/sse",
+        serverDescription: "Official Linear MCP server. Manage issues, projects, and cycles. Requires Linear OAuth token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Linear"
+    )
+
+    /// Figma MCP Server (community)
+    static let figma = RemoteMCPServer(
+        label: "figma",
+        serverURL: "https://your-figma-mcp-server.com/sse",
+        serverDescription: "Figma MCP server. Access designs, components, and export assets. Requires Figma personal access token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Figma"
+    )
+
+    /// Slack MCP Server (community)
+    static let slack = RemoteMCPServer(
+        label: "slack",
+        serverURL: "https://your-slack-mcp-server.com/sse",
+        serverDescription: "Slack MCP server. Send messages, search channels, and access workspace data. Requires Slack OAuth token.",
+        requireApproval: .always,
+        allowedTools: nil,
+        displayLabel: "Slack"
+    )
+
+    /// Asana MCP Server (community)
+    static let asana = RemoteMCPServer(
+        label: "asana",
+        serverURL: "https://your-asana-mcp-server.com/sse",
+        serverDescription: "Asana MCP server. Manage tasks, projects, and workspaces. Requires Asana personal access token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Asana"
+    )
+
+    /// Jira MCP Server (community)
+    static let jira = RemoteMCPServer(
+        label: "jira",
+        serverURL: "https://your-jira-mcp-server.com/sse",
+        serverDescription: "Jira MCP server. Search issues, manage sprints, and track projects. Requires Atlassian API token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Jira"
+    )
+
+    /// Airtable MCP Server (community)
+    static let airtable = RemoteMCPServer(
+        label: "airtable",
+        serverURL: "https://your-airtable-mcp-server.com/sse",
+        serverDescription: "Airtable MCP server. Query bases, create records, and manage tables. Requires Airtable personal access token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Airtable"
+    )
+
+    /// Todoist MCP Server (community)
+    static let todoist = RemoteMCPServer(
+        label: "todoist",
+        serverURL: "https://your-todoist-mcp-server.com/sse",
+        serverDescription: "Todoist MCP server. Manage tasks, projects, and labels. Requires Todoist API token.",
+        requireApproval: .never,
+        allowedTools: nil,
+        displayLabel: "Todoist"
+    )
+
+    /// Popular MCP server templates for quick setup
     static let templates: [RemoteMCPServer] = [
-        .notionOfficial
+        // Official third-party servers (verified URLs)
+        .github,
+        .stripe,
+        .deepwiki,
+        .cloudflare,
+        .sentry,
+        .linear,
+        // Self-hosted templates (require user URL)
+        .figma,
+        .slack,
+        .asana,
+        .jira,
+        .airtable,
+        .todoist,
+    ]
+
+    /// Categorized templates for UI display
+    static let officialServers: [RemoteMCPServer] = [
+        .github,
+        .stripe,
+        .deepwiki,
+        .cloudflare,
+        .sentry,
+        .linear,
+    ]
+
+    static let communityServers: [RemoteMCPServer] = [
+        .figma,
+        .slack,
+        .asana,
+        .jira,
+        .airtable,
+        .todoist,
     ]
 }
 
@@ -236,12 +390,12 @@ enum MCPApprovalSetting: Codable, Hashable {
     case always
     case never
     case specificTools([String])
-    
+
     var displayName: String {
         switch self {
         case .always: return "Always require approval"
         case .never: return "Never require approval"
-        case .specificTools(let tools): return "Require approval for \(tools.count) tools"
+        case let .specificTools(tools): return "Require approval for \(tools.count) tools"
         }
     }
 }
@@ -250,25 +404,25 @@ enum MCPApprovalSetting: Codable, Hashable {
 enum MCPConfiguration: Identifiable, Codable, Hashable {
     case connector(MCPConnectorConfig)
     case remoteServer(RemoteMCPServer)
-    
+
     var id: String {
         switch self {
-        case .connector(let config): return "connector_\(config.connectorId)"
-        case .remoteServer(let server): return "server_\(server.id.uuidString)"
+        case let .connector(config): return "connector_\(config.connectorId)"
+        case let .remoteServer(server): return "server_\(server.id.uuidString)"
         }
     }
-    
+
     var displayName: String {
         switch self {
-        case .connector(let config): return MCPConnector.connector(for: config.connectorId)?.name ?? config.connectorId
-        case .remoteServer(let server): return server.label
+        case let .connector(config): return MCPConnector.connector(for: config.connectorId)?.name ?? config.connectorId
+        case let .remoteServer(server): return server.label
         }
     }
-    
+
     var requiresOAuth: Bool {
         switch self {
         case .connector: return true
-        case .remoteServer(let server): return !server.serverURL.isEmpty
+        case let .remoteServer(server): return !server.serverURL.isEmpty
         }
     }
 }
@@ -280,7 +434,7 @@ struct MCPConnectorConfig: Identifiable, Codable, Hashable {
     var requireApproval: MCPApprovalSetting
     var allowedTools: [String]?
     var isEnabled: Bool
-    
+
     init(id: UUID = UUID(), connectorId: String, requireApproval: MCPApprovalSetting = .always, allowedTools: [String]? = nil, isEnabled: Bool = true) {
         self.id = id
         self.connectorId = connectorId
@@ -288,7 +442,7 @@ struct MCPConnectorConfig: Identifiable, Codable, Hashable {
         self.allowedTools = allowedTools
         self.isEnabled = isEnabled
     }
-    
+
     var connector: MCPConnector? {
         MCPConnector.connector(for: connectorId)
     }
