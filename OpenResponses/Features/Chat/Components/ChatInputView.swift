@@ -11,7 +11,7 @@ struct ChatInputView: View {
     var vectorStoreCount: Int = 0 // Number of selected vector stores (0, 1, or 2)
     var fileSearchEnabled: Bool = false // Whether file search is enabled
     var currentModel: String = "gpt-4o"
-    
+
     @ScaledMetric private var buttonPadding: CGFloat = 8
     @ScaledMetric private var containerPadding: CGFloat = 10
     @ScaledMetric private var inputCornerRadius: CGFloat = 20
@@ -24,7 +24,7 @@ struct ChatInputView: View {
     private var canSend: Bool {
         !trimmedText.isEmpty
     }
-    
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
             // Attachment menu button - shows popover near the paperclip
@@ -34,13 +34,13 @@ struct ChatInputView: View {
                 } label: {
                     Label("Take Photo", systemImage: "camera")
                 }
-                
+
                 Button {
                     onSelectPhotos()
                 } label: {
                     Label("Photo Library", systemImage: "photo.on.rectangle")
                 }
-                
+
                 Button {
                     onSelectFiles()
                 } label: {
@@ -55,7 +55,7 @@ struct ChatInputView: View {
                 label: "Attach files or photos",
                 hint: AccessibilityUtils.Hint.fileAttachButton
             )
-            
+
             // Vector Store file upload button (smart context-aware)
             if let onVectorStoreUpload = onVectorStoreUpload {
                 VectorStoreUploadButton(
@@ -64,9 +64,9 @@ struct ChatInputView: View {
                     fileSearchEnabled: fileSearchEnabled
                 )
             }
-            
+
             // Audio recording removed
-            
+
             TextField("Message", text: $text, axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
@@ -85,7 +85,7 @@ struct ChatInputView: View {
                     hint: AccessibilityUtils.Hint.chatInput,
                     identifier: AccessibilityUtils.Identifier.chatInput
                 )
-            
+
             Button(action: {
                 onSend()
             }) {
@@ -125,10 +125,10 @@ struct VectorStoreUploadButton: View {
     let action: () -> Void
     let vectorStoreCount: Int
     let fileSearchEnabled: Bool
-    
+
     @ScaledMetric private var buttonPadding: CGFloat = 8
     @State private var isPulsing = false
-    
+
     private var buttonColor: Color {
         if !fileSearchEnabled {
             return .gray.opacity(0.5)
@@ -140,7 +140,7 @@ struct VectorStoreUploadButton: View {
         default: return .purple
         }
     }
-    
+
     private var accessibilityLabel: String {
         switch vectorStoreCount {
         case 0: return "Add files to vector store - No stores selected"
@@ -149,7 +149,7 @@ struct VectorStoreUploadButton: View {
         default: return "Add files to vector store"
         }
     }
-    
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
@@ -159,7 +159,7 @@ struct VectorStoreUploadButton: View {
                     .padding(buttonPadding)
                     .scaleEffect(isPulsing && fileSearchEnabled && vectorStoreCount == 0 ? 1.1 : 1.0)
                     .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isPulsing)
-                
+
                 // Smart badge showing store count
                 if vectorStoreCount > 0 {
                     Circle()
