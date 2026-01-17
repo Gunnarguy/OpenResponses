@@ -8,7 +8,7 @@ struct ChatView: View {
     @State private var userInput: String = ""
     @State private var showFilePicker: Bool = false // To present the file importer
     @State private var showImagePicker: Bool = false // To present the image picker
-    @State private var showAttachmentMenu: Bool = false // To show attachment options
+    @State private var showCameraPicker: Bool = false // To present the camera
     @State private var showVectorStoreUpload: Bool = false // To show vector store upload flow
     @State private var showFileManager: Bool = false // To show file manager
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
@@ -91,18 +91,27 @@ struct ChatView: View {
             SafetyApprovalSheet()
                 .environmentObject(viewModel)
         }
-        .confirmationDialog("Add Attachment", isPresented: $showAttachmentMenu, titleVisibility: .visible) {
-            Button("📷 Select Images") {
-                guard !showImagePicker else { return }
-                showImagePicker = true
+        .sheet(isPresented: $showCameraPicker) {
+            if isCameraAvailable() {
+                CameraPickerView { capturedImage in
+                    viewModel.attachImages([capturedImage])
+                }
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "camera.slash")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("Camera not available")
+                        .font(.headline)
+                    Text("This device doesn't have a camera or camera access is restricted.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Dismiss") { showCameraPicker = false }
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding()
             }
-            Button("📁 Select Files") {
-                guard !showFilePicker else { return }
-                showFilePicker = true
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Choose the type of content to attach to your message. You can select multiple files at once.")
         }
         .sheet(isPresented: $showVectorStoreUpload) {
             VectorStoreSmartUploadView(
@@ -234,7 +243,9 @@ struct ChatView: View {
                     userInput = ""              // Clear the input field
                     inputFocused = false        // Dismiss keyboard
                 },
-                onAttach: { showAttachmentMenu = true },
+                onSelectPhotos: { showImagePicker = true },
+                onSelectFiles: { showFilePicker = true },
+                onTakePhoto: { showCameraPicker = true },
                 currentModel: viewModel.currentModel()
             )
             .disabled(viewModel.isAwaitingComputerOutput)

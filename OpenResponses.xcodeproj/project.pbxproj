@@ -497,6 +497,7 @@
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Used to add calendar events you approve in chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Used to take photos and send them to the assistant for analysis.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Used to look up contacts only when you ask for it.";
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Used so you can attach documents for the assistant.";
 				INFOPLIST_KEY_NSFilesystemUsageDescription = "Used to attach files stored locally to your chats.";
@@ -542,6 +543,7 @@
 				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Used to add calendar events you approve in chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Used to take photos and send them to the assistant for analysis.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Used to look up contacts only when you ask for it.";
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Used so you can attach documents for the assistant.";
 				INFOPLIST_KEY_NSFilesystemUsageDescription = "Used to attach files stored locally to your chats.";

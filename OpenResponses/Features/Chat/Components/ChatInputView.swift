@@ -4,7 +4,9 @@ struct ChatInputView: View {
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
     var onSend: () -> Void
-    var onAttach: () -> Void // Callback for attachment button
+    var onSelectPhotos: () -> Void // Callback for photo library
+    var onSelectFiles: () -> Void // Callback for file picker
+    var onTakePhoto: () -> Void // Callback for camera
     var onVectorStoreUpload: (() -> Void)? = nil // Callback for vector store file upload
     var vectorStoreCount: Int = 0 // Number of selected vector stores (0, 1, or 2)
     var fileSearchEnabled: Bool = false // Whether file search is enabled
@@ -25,16 +27,32 @@ struct ChatInputView: View {
     
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            // Attachment button
-            Button(action: {
-                onAttach()
-            }) {
+            // Attachment menu button - shows popover near the paperclip
+            Menu {
+                Button {
+                    onTakePhoto()
+                } label: {
+                    Label("Take Photo", systemImage: "camera")
+                }
+                
+                Button {
+                    onSelectPhotos()
+                } label: {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                }
+                
+                Button {
+                    onSelectFiles()
+                } label: {
+                    Label("Choose Files", systemImage: "folder")
+                }
+            } label: {
                 Image(systemName: "paperclip")
                     .foregroundColor(.secondary)
                     .padding(buttonPadding)
             }
             .accessibilityConfiguration(
-                label: "Attach files",
+                label: "Attach files or photos",
                 hint: AccessibilityUtils.Hint.fileAttachButton
             )
             

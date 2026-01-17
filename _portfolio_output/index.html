@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenResponses - Project Deep Dive | Gunnar Hostetler</title>
+    <meta name="description" content="OpenResponses: SwiftUI iOS client for OpenAI Responses API.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="project-nav">
+        <a href="../../index.html" class="back-link"><i class="fas fa-arrow-left"></i> Portfolio</a>
+        <div class="nav-links">
+            <a href="#overview">Overview</a>
+            <a href="#features">Features</a>
+            <a href="#api">API</a>
+            <a href="#roadmap">Roadmap</a>
+            <a href="https://github.com/Gunnarguy/OpenResponses" target="_blank"><i class="fab fa-github"></i></a>
+        </div>
+    </nav>
+
+    <header class="project-hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span class="status-badge">Phase 1 Complete</span>
+                <span class="date-badge">Updated: 2025-11-07</span>
+            </div>
+            <h1>OpenResponses</h1>
+            <p class="hero-subtitle">SwiftUI-powered AI assistant for OpenAI Responses API with computer use, code interpreter, file search, and MCP integrations.</p>
+            <div class="hero-actions">
+                <a href="https://github.com/Gunnarguy/OpenResponses" class="btn btn-primary" target="_blank">
+                    <i class="fab fa-github"></i> View on GitHub
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <section id="overview" class="section">
+        <div class="container">
+            <h2>Project Overview</h2>
+            <div class="overview-grid">
+                <div class="overview-card"><i class="fas fa-mobile-alt"></i><h3>iOS Native</h3><p>SwiftUI, iOS 17+, Catalyst for macOS.</p></div>
+                <div class="overview-card"><i class="fas fa-shield-alt"></i><h3>Production Ready</h3><p>Keychain storage, approval flows, safety rails.</p></div>
+                <div class="overview-card"><i class="fas fa-plug"></i><h3>Full API Coverage</h3><p>All Responses API tools and streaming events.</p></div>
+                <div class="overview-card"><i class="fas fa-eye"></i><h3>Deep Observability</h3><p>Analytics, reasoning traces, token tracking.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="section section-alt">
+        <div class="container">
+            <h2>Core Features</h2>
+            <div class="features-grid">
+        <div class="feature-card">
+            <h3>Model Playground:</h3>
+            <p>Live model catalogue with compatibility gating, preset management, and advanced request controls (streaming flags, prompt cache IDs, reasoning toggles).</p>
+        </div>
+        <div class="feature-card">
+            <h3>Observability Surface:</h3>
+            <p>Streaming activity feed, live token usage, “Assistant Thinking” trace viewer, analytics events, and structured logging for every tool event.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Tooling Portfolio:</h3>
+            <p>Computer use with safety approvals, code interpreter with artifact viewer, multi-vector file search, direct file and image attachments, Notion/MCP connectors, custom function calls.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Knowledge Workflows:</h3>
+            <p>Vector store management flows, file conversion pipeline, and document picker enhancements built on `FileConverterService`.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Native Shell:</h3>
+            <p>SwiftUI UI with accessibility support, keyboard shortcuts, share sheets, prompt library, onboarding, and settings tuned for fast iteration.</p>
+        </div></div>
+        </div>
+    </section>
+
+    <section id="api" class="section">
+        <div class="container">
+            <h2>API Implementation</h2>
+            <table class="api-table">
+                <thead><tr><th>Feature</th><th>Status</th><th>Details</th></tr></thead>
+                <tbody>
+        <tr class="complete">
+            <td>Text Input/Output</td>
+            <td>✅</td>
+            <td>Full text conversation support with streaming, rich formatting, and comprehensiv...</td>
+        </tr>
+        <tr class="complete">
+            <td>Image Input</td>
+            <td>✅</td>
+            <td>Full image selection, base64 encoding, detail level control, and seamless API in...</td>
+        </tr>
+        <tr class="complete">
+            <td>File Input</td>
+            <td>✅</td>
+            <td>Full support for both `file_id` references and direct file uploads with `file_da...</td>
+        </tr>
+        <tr class="pending">
+            <td>Audio Input</td>
+            <td>❌</td>
+            <td>Audio input UI and APIs were intentionally removed from the app to focus on core...</td>
+        </tr>
+        <tr class="complete">
+            <td>Basic Tools</td>
+            <td>✅</td>
+            <td>Web search, code interpreter (with full artifact support), and file search fully...</td>
+        </tr>
+        <tr class="complete">
+            <td>Advanced Tools</td>
+            <td>✅</td>
+            <td>Computer Use tool complete with bulletproof error handling; Custom Function tool...</td>
+        </tr>
+        <tr class="complete">
+            <td>Streaming Response</td>
+            <td>✅</td>
+            <td>Comprehensive handling for text, tool calls, image generation events, and comput...</td>
+        </tr>
+        <tr class="partial">
+            <td>Rich Content Output</td>
+            <td>🟡</td>
+            <td>Text rendering is complete with copy functionality; media previews implemented; ...</td>
+        </tr>
+        <tr class="pending">
+            <td>Conversation Management</td>
+            <td>❌</td>
+            <td>Local storage complete; backend Conversations API integration planned for Phase ...</td>
+        </tr>
+        <tr class="complete">
+            <td>Advanced Parameters</td>
+            <td>✅</td>
+            <td>All API parameters exposed including `tool_choice`, `include`, background mode, ...</td>
+        </tr></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="roadmap" class="section section-alt">
+        <div class="container">
+            <h2>Roadmap</h2>
+            <div class="roadmap-timeline">
+                <div class="roadmap-item completed"><div class="roadmap-marker"></div><div class="roadmap-content"><h3>Phase 1: Core</h3><span class="status">✅ Complete</span><p>Full API tools, streaming, computer use, MCP.</p></div></div>
+                <div class="roadmap-item active"><div class="roadmap-marker"></div><div class="roadmap-content"><h3>Phase 2: Conversations API</h3><span class="status">🚧 In Progress</span><p>Backend sync, cross-device conversations.</p></div></div>
+                <div class="roadmap-item"><div class="roadmap-marker"></div><div class="roadmap-content"><h3>Phase 3: Polish</h3><span class="status">📋 Planned</span><p>Apple integrations, accessibility.</p></div></div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="project-footer">
+        <p>Auto-synced from <a href="https://github.com/Gunnarguy/OpenResponses">OpenResponses</a></p>
+        <p class="sync-time">Last sync: 2026-01-17 12:30</p>
+    </footer>
+</body>
+</html>
