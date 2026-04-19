@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Upload App Store metadata without a binary
 
+### ios release
+
+```sh
+[bundle exec] fastlane ios release
+```
+
+Build the app and upload the binary plus metadata to App Store Connect
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
