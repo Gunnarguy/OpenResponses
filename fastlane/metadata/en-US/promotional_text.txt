@@ -1,1 +1,1 @@
-GPT-5.4 on iPhone with streaming, Web Search, Image Generation, Code Interpreter, MCP, and full request inspection.
+GPT-5.4, Apple Calendar/Contacts/Reminders, camera and file attachments, Code Interpreter, computer use, MCP, and full Request Inspector.

@@ -1,1 +1,1 @@
-Native GPT-5.4 Client
+GPT-5.4, MCP, Apple Tools

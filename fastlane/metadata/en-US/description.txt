@@ -1,37 +1,40 @@
-OpenResponses is a native iOS client for the OpenAI Responses API. Bring your own API key, stream answers in real time, inspect every request, and use built-in tools in a fast, transparent app designed for power users.
+OpenResponses is a native iPhone client for the OpenAI Responses API built for people who want full control, clear observability, and modern tool support. Bring your own API key, stream responses in real time, inspect every request, and use the latest OpenAI models in a fast SwiftUI interface.
 
-Model Coverage
+Model Lineup
 
 - GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, and GPT-5-mini
 - o3 and o4-mini reasoning models with configurable effort
-- GPT-4.1 family, GPT-4o, and legacy fallbacks
+- GPT-4.1 family, GPT-4o, and gpt-image-1
 
-Built-in Tools
+What Makes It Different
 
-- Web Search with live sources and citations
+- Real-time streaming with activity feed, token usage, and Assistant Thinking traces
+- Request Inspector for payloads, tool calls, and raw Responses API details
+- Explore Demo so new users can try the interface before adding an API key
+- Prompt Library, advanced model controls, exports, and local conversation history
+- Message quick actions plus direct camera, photo, file, and document attachments
+
+Tools Included
+
+- Web Search with live sources
+- Code Interpreter for Python, analysis, charts, and artifacts
 - Image Generation with gpt-image-1
-- Code Interpreter for Python, analysis, and charts
-- File Search for uploaded files and vector stores
-- MCP integrations for connected tools and remote servers
+- File Search and vector store workflows
+- Computer Use preview with explicit approval steps
+- MCP connectors and remote servers with connector gallery support
+- Direct Notion integration and updated MCP compatibility
 
-Streaming & Control
+Built for Apple
 
-- Token-by-token streaming with reasoning indicators
-- Request Inspector shows API payloads, tool calls, and responses
-- Prompt Library for reusable configurations
-- Temperature, reasoning effort, max tokens, and tool routing controls
-- Local conversation history with export support
-
-Apple Integration
-
-- Calendar, Contacts, and Reminders tools
-- Native SwiftUI experience with Dark Mode, Dynamic Type, and VoiceOver support
+- Calendar, Contacts, and Reminders tools when you enable them
+- Permissions shown only when related features are used
+- SwiftUI experience with Dark Mode, Dynamic Type, and VoiceOver support
 
 Privacy
 
 - Your OpenAI API key is stored in the iOS Keychain
-- Conversation history stays on device unless you choose to send or export it
 - No required account
+- Conversation history stays on device unless you choose to send or export it
 
 AI output can be inaccurate or outdated. Verify important information before acting.
 
