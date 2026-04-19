@@ -1,6 +1,6 @@
-# App Review Notes – OpenResponses 1.0.0
+# App Review Notes – OpenResponses 1.0.1
 
-**Last updated:** 2025-11-14
+**Last updated:** 2026-04-19
 
 ## Reviewer access
 

@@ -43,7 +43,7 @@ platform :ios do
 
     build_app(
       scheme: "OpenResponses",
-      export_method: "app-store-connect",
+      export_method: "app-store",
       output_directory: "build",
       output_name: "OpenResponses.ipa",
       clean: true,
