@@ -5,8 +5,8 @@ Launch-ready reference for populating every App Store Connect field for OpenResp
 ## Quick Reference
 
 - **Name:** OpenResponses
-- **Subtitle:** Native GPT-5.2 Client
-- **Marketing Tagline:** GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
+- **Subtitle:** Native GPT-5.4 Client
+- **Marketing Tagline:** GPT-5.4 on iPhone with streaming, Web Search, Image Generation, Code Interpreter, MCP, and full request inspection.
 - **Bundle ID:** Gunndamental.OpenResponses
 - **Version:** 1.0.0 (Build 1)
 - **Primary Category:** Productivity
@@ -18,11 +18,11 @@ Launch-ready reference for populating every App Store Connect field for OpenResp
    - *Note:* Exclude Mainland China due to Generative AI filing requirements (CAC).
 - **Primary Language:** English (U.S.)
 - **Release Type:** Manual release with 7-day phased rollout
-- **Model Coverage:** GPT-5.2, GPT-5.1, GPT-5, o3, o4-mini, GPT-4.1 family, GPT-4o
+- **Model Coverage:** GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, o3, o4-mini, GPT-4.1 family, GPT-4o
 
 ## Promotional Text (≤170 characters)
 
-GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
+GPT-5.4 on iPhone with streaming, Web Search, Image Generation, Code Interpreter, MCP, and full request inspection.
 
 ## Full Description (≤4000 characters)
 
@@ -30,7 +30,7 @@ OpenResponses puts the OpenAI Responses API in your pocket. Built in SwiftUI for
 
 ### Why You'll Love It
 
-- Dynamic model gallery covering GPT-5 family (with configurable reasoning effort), GPT-4.1, GPT-4.1 mini/nano, GPT-4o, GPT-4o mini, o1, o3, o4-mini, GPT-4 Turbo, and GPT-3.5 fallback models—plus gpt-image-1 for visuals and computer-use-preview for automation
+- Dynamic model gallery covering GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5 family variants, GPT-4.1, GPT-4.1 mini/nano, GPT-4o, GPT-4o mini, o3, o4-mini, and legacy fallbacks—plus gpt-image-1 for visuals
 - Pro controls for temperature, reasoning effort, max tokens, tool routing, and moderation—all in one place
 - Built-in compatibility guidance so every model and tool combination stays within OpenAI and App Store policies
 - Save, organize, and reuse prompt setups across projects with the Prompt Library
@@ -82,19 +82,18 @@ AI-generated output can be inaccurate or outdated—always review critical infor
 
 ## Keywords (≤100 characters)
 
-gpt5,gpt52,reasoning,o3,ai,assistant,websearch,imagegen,native,api,byok,streaming,ios
+gpt5,gpt54,reasoning,o3,ai,assistant,websearch,imagegen,api,streaming,mcp,ios
 
 ## What's New in 1.0.0
 
-First release of OpenResponses.
+OpenResponses 1.0 is here.
 
-- GPT-5.2, o3, o4-mini, and full model gallery
-- Web Search, Image Generation, Code Interpreter, File Search
-- Real-time streaming with Request Inspector
-- Prompt Library for saved configurations
-- Calendar, Contacts, Reminders integration
-- API keys stored securely in Keychain
-- Dark Mode, Dynamic Type, VoiceOver support
+- GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, o3, o4-mini, and a full model gallery
+- Real-time streaming with reasoning indicators and Request Inspector
+- Web Search, Image Generation, Code Interpreter, File Search, and MCP integrations
+- Prompt Library, local export, and advanced model controls
+- Calendar, Contacts, and Reminders integration
+- OpenAI API keys stored securely in the iOS Keychain
 
 ## URLs
 
@@ -225,13 +224,13 @@ Note: Any API keys and connector credentials are provided separately (for exampl
 ## Launch-Day Marketing Copy
 
 **Tweet/X (280 chars):**
-"OpenResponses 1.0 is here 🎉 GPT-5.2 and o3 on iPhone. Web Search, Image Generation, full API control. Bring your own key, no middleman, privacy first. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
+"OpenResponses 1.0 is here 🎉 GPT-5.4 and o3 on iPhone. Web Search, Image Generation, Code Interpreter, MCP, and full API control. Bring your own key. Download free: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **LinkedIn Post (700 chars):**
-"Launching OpenResponses 1.0—a native iOS client for GPT-5.2 and reasoning models. Stream responses in real time, use Web Search and Image Generation, and keep full control with your own API key. No accounts, no tracking, no middleman. Built in SwiftUI for speed. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
+"Launching OpenResponses 1.0—a native iOS client for GPT-5.4 and reasoning models. Stream responses in real time, use Web Search, Image Generation, Code Interpreter, and MCP, and keep full control with your own API key. Built in SwiftUI for speed. Download now: <https://apps.apple.com/app/idXXXXXXXX>"
 
 **Press Release Headline:**
-"OpenResponses Brings GPT-5.2 to iPhone with Full API Control"
+"OpenResponses Brings GPT-5.4 to iPhone with Full API Control"
 
 **Press Release Subhead:**
 "Native SwiftUI app delivers real-time streaming, Web Search, Image Generation, and bring-your-own-key privacy."

@@ -43,10 +43,12 @@ platform :ios do
 
     build_app(
       scheme: "OpenResponses",
-      export_method: "app-store",
+      export_method: "app-store-connect",
       output_directory: "build",
       output_name: "OpenResponses.ipa",
-      clean: true
+      clean: true,
+      xcargs: "-allowProvisioningUpdates",
+      export_xcargs: "-allowProvisioningUpdates"
     )
 
     upload_to_app_store(

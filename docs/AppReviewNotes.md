@@ -18,11 +18,13 @@
 
 1. Launch the app.
 2. On the Welcome sheet, tap **Add API Key** and paste an OpenAI API key (from the App Review note if provided, or your own OpenAI API key).
-3. Send “Hello! Can you help me test this app?” and verify the response streams.
-4. Open Settings → Tools and enable **Code Interpreter**.
-5. Ask “Calculate the first 10 Fibonacci numbers.” The assistant will execute the code tool and stream back the result.
-6. (Optional) Attach a PDF or image from the Files picker to see file handling in action.
-7. (Optional) Toggle **Computer Use** back on in Settings → Tools. You will see a disclosure explaining the local network bridge requirement before the iOS prompt appears.
+3. In Settings → Model, select **GPT-5.4** or **GPT-4.1**.
+4. Send “Hello! Can you help me test this app?” and verify the response streams.
+5. Open Settings → Tools and enable **Code Interpreter**.
+6. Ask “Calculate the first 10 Fibonacci numbers.” The assistant will execute the code tool and stream back the result.
+7. Enable **Web Search** and ask “What happened in tech news today?”
+8. (Optional) Attach a PDF or image from the Files picker to see file handling in action.
+9. (Optional) Toggle **Computer Use** back on in Settings → Tools. You will see a disclosure explaining the local network bridge requirement before the iOS prompt appears.
 
 ## Computer Use safety summary
 

@@ -1,1 +1,1 @@
-GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
+GPT-5.4 on iPhone with streaming, Web Search, Image Generation, Code Interpreter, MCP, and full request inspection.

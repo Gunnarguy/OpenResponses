@@ -1,9 +1,8 @@
-First release of OpenResponses.
+OpenResponses 1.0 is here.
 
-- GPT-5.2, o3, o4-mini, and full model gallery
-- Web Search, Image Generation, Code Interpreter, File Search
-- Real-time streaming with Request Inspector
-- Prompt Library for saved configurations
-- Calendar, Contacts, Reminders integration
-- API keys stored securely in Keychain
-- Dark Mode, Dynamic Type, VoiceOver support
+- GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, o3, o4-mini, and a full model gallery
+- Real-time streaming with reasoning indicators and Request Inspector
+- Web Search, Image Generation, Code Interpreter, File Search, and MCP integrations
+- Prompt Library, local export, and advanced model controls
+- Calendar, Contacts, and Reminders integration
+- OpenAI API keys stored securely in the iOS Keychain
