@@ -35,6 +35,28 @@ final class OpenAIServiceTests: XCTestCase {
         )
     }
 
+    private func buildFunctionOutputsRequest(
+        prompt: Prompt = .defaultPrompt(),
+        model: String = "gpt-4o",
+        previousResponseID: String? = nil,
+        conversationID: String? = nil
+    ) throws -> [String: Any] {
+        try service.testing_buildFunctionOutputsRequestObject(
+            outputs: [
+                FunctionCallOutputPayload(
+                    callId: "call_123",
+                    output: #"{"status":"ok"}"#,
+                    functionName: "fetchAppleReminders",
+                    callItem: nil
+                )
+            ],
+            model: model,
+            previousResponseId: previousResponseID,
+            conversationId: conversationID,
+            prompt: prompt
+        )
+    }
+
     func testRequestIncludesModelAndStreamFlag() {
         var prompt = Prompt.defaultPrompt()
         prompt.openAIModel = "gpt-4o"
@@ -94,6 +116,32 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(request["temperature"] as? Double, 0.42)
     }
 
+    func testGPT54OmitsSamplingParametersWhenReasoningIsEnabled() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.reasoningEffort = "medium"
+        prompt.temperature = 0.42
+        prompt.topP = 0.25
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertNil(request["temperature"])
+        XCTAssertNil(request["top_p"])
+    }
+
+    func testGPT54IncludesSamplingParametersWhenReasoningIsNone() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.reasoningEffort = "none"
+        prompt.temperature = 0.42
+        prompt.topP = 0.25
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertEqual(request["temperature"] as? Double, 0.42)
+        XCTAssertEqual(request["top_p"] as? Double, 0.25)
+    }
+
     func testMaxOutputTokensIncluded() {
         var prompt = Prompt.defaultPrompt()
         prompt.maxOutputTokens = 1500
@@ -114,6 +162,17 @@ final class OpenAIServiceTests: XCTestCase {
         let reasoning = request["reasoning"] as? [String: Any]
         XCTAssertEqual(reasoning?["effort"] as? String, "high")
         XCTAssertEqual(reasoning?["summary"] as? String, "concise")
+    }
+
+    func testAppleInstructionsExplainLocalTimeAndReminderCompletionDefault() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableAppleIntegrations = true
+
+        let request = buildRequest(prompt: prompt)
+        let instructions = request["instructions"] as? String
+
+        XCTAssertTrue(instructions?.contains("device's local time zone") == true)
+        XCTAssertTrue(instructions?.contains("omit the `completed` filter") == true)
     }
 
     func testToolsIncludeCodeInterpreterWhenEnabled() {
@@ -257,7 +316,39 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testConversationIdPropagates() {
         let request = buildRequest(prompt: Prompt.defaultPrompt(), conversationID: "conv_789")
-        XCTAssertEqual(request["conversation_id"] as? String, "conv_789")
+        XCTAssertEqual(request["conversation"] as? String, "conv_789")
+        XCTAssertNil(request["conversation_id"])
+    }
+
+    func testPreviousResponseIdWinsOverConversationId() {
+        let request = buildRequest(
+            prompt: Prompt.defaultPrompt(),
+            previousResponseID: "resp_123",
+            conversationID: "conv_789"
+        )
+
+        XCTAssertEqual(request["previous_response_id"] as? String, "resp_123")
+        XCTAssertNil(request["conversation"])
+    }
+
+    func testFunctionOutputsRequestOmitsConversationWhenPreviousResponseIdIsPresent() throws {
+        let request = try buildFunctionOutputsRequest(
+            previousResponseID: "resp_123",
+            conversationID: "conv_789"
+        )
+
+        XCTAssertEqual(request["previous_response_id"] as? String, "resp_123")
+        XCTAssertNil(request["conversation"])
+    }
+
+    func testFunctionOutputsRequestIncludesConversationWhenPreviousResponseIdIsMissing() throws {
+        let request = try buildFunctionOutputsRequest(
+            previousResponseID: nil,
+            conversationID: "conv_789"
+        )
+
+        XCTAssertEqual(request["conversation"] as? String, "conv_789")
+        XCTAssertNil(request["previous_response_id"])
     }
 
     func testCustomInputOverridesDefaultMessages() {

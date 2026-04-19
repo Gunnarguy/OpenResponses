@@ -18,14 +18,16 @@ struct ConversationListResponse: Decodable {
 /// Minimal representation of a conversation returned by the Conversations API.
 struct ConversationSummary: Decodable {
     let id: String
+    let object: String?
     let title: String?
     let metadata: [String: String]?
-    let createdAt: Date?
-    let updatedAt: Date?
-    let archivedAt: Date?
+    let createdAt: Int?
+    let updatedAt: Int?
+    let archivedAt: Int?
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case object
         case title
         case metadata
         case createdAt = "created_at"
@@ -37,15 +39,19 @@ struct ConversationSummary: Decodable {
 /// Detailed conversation payload with message history.
 struct ConversationDetail: Decodable {
     let id: String
+    let object: String?
+    let deleted: Bool?
     let title: String?
     let metadata: [String: String]?
-    let createdAt: Date?
-    let updatedAt: Date?
-    let archivedAt: Date?
-    let messages: [ConversationMessage]
+    let createdAt: Int?
+    let updatedAt: Int?
+    let archivedAt: Int?
+    let messages: [ConversationMessage]?
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case object
+        case deleted
         case title
         case metadata
         case createdAt = "created_at"
@@ -60,7 +66,7 @@ struct ConversationMessage: Decodable {
     let id: String
     let role: String?
     let content: [ConversationContentPart]?
-    let createdAt: Date?
+    let createdAt: Int?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -86,12 +92,10 @@ struct ConversationUpdatePayload: Encodable {
     var title: String?
     var metadata: [String: String]?
     var archived: Bool?
-    var store: Bool?
 
-    init(title: String? = nil, metadata: [String: String]? = nil, archived: Bool? = nil, store: Bool? = nil) {
+    init(title: String? = nil, metadata: [String: String]? = nil, archived: Bool? = nil) {
         self.title = title
         self.metadata = metadata
         self.archived = archived
-        self.store = store
     }
 }

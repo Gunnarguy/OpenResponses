@@ -20,7 +20,7 @@ struct DebugConsoleView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Filter controls
                 HStack {

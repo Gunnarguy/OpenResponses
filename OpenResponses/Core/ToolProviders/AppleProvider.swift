@@ -167,20 +167,12 @@ extension AppleProvider: AppleCalendarReadable {
         notes: String?,
         calendarIdentifier: String?
     ) async throws -> AppleCalendarEventDetail {
-        // Parse ISO8601 dates
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        guard let startDate = formatter.date(from: startISO8601) else {
-            throw NSError(domain: "AppleProvider", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Invalid start date format: \(startISO8601)"
-            ])
+        guard let startDate = AppleDateUtilities.parseISO8601(startISO8601) else {
+            throw AppleDataAccessError.invalidDate(startISO8601)
         }
 
-        guard let endDate = formatter.date(from: endISO8601) else {
-            throw NSError(domain: "AppleProvider", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Invalid end date format: \(endISO8601)"
-            ])
+        guard let endDate = AppleDateUtilities.parseISO8601(endISO8601) else {
+            throw AppleDataAccessError.invalidDate(endISO8601)
         }
 
         let summary = try await calendarRepo.createEvent(
@@ -258,14 +250,15 @@ extension AppleProvider: AppleReminderReadable {
         title: String,
         notes: String?,
         dueDateISO8601: String?,
+        priority: Int?,
         listIdentifier: String?
     ) async throws -> AppleReminderDetail {
-        // Parse ISO8601 date if provided
         let dueDate: Date?
         if let dueDateISO8601 {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            dueDate = formatter.date(from: dueDateISO8601)
+            guard let parsed = AppleDateUtilities.parseISO8601(dueDateISO8601) else {
+                throw AppleDataAccessError.invalidDate(dueDateISO8601)
+            }
+            dueDate = parsed
         } else {
             dueDate = nil
         }
@@ -274,6 +267,7 @@ extension AppleProvider: AppleReminderReadable {
             title: title,
             notes: notes,
             dueDate: dueDate,
+            priority: priority,
             listIdentifier: listIdentifier
         )
 
@@ -323,6 +317,7 @@ public protocol AppleReminderReadable {
         title: String,
         notes: String?,
         dueDateISO8601: String?,
+        priority: Int?,
         listIdentifier: String?
     ) async throws -> AppleReminderDetail
 }

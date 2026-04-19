@@ -8,7 +8,7 @@ struct ToolConnectionsView: View {
     @EnvironmentObject private var chatViewModel: ChatViewModel
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Client-Only Connections"), footer: Text("Direct connections to services that run entirely on your device. No server required.")) {
                     // Notion

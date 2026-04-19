@@ -14,20 +14,48 @@ class ConversationStorageService {
     private var conversationsCache: [Conversation]?
 
     /// Initializes the storage service. It sets up the storage directory and ensures it exists.
-    /// If the directory cannot be created, it will trigger a fatal error, as the app cannot function without it.
-    private init() {
-        do {
-            let fileManager = FileManager.default
-            let appSupportDir = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            storageURL = appSupportDir.appendingPathComponent("Conversations")
+    init(storageURL: URL = ConversationStorageService.prepareStorageURL()) {
+        self.storageURL = storageURL
 
-            // Create the storage directory if it doesn't already exist.
-            if !fileManager.fileExists(atPath: storageURL.path) {
-                try fileManager.createDirectory(at: storageURL, withIntermediateDirectories: true, attributes: nil)
-            }
-        } catch {
-            fatalError("Failed to initialize ConversationStorageService: \(error)")
+        if !FileManager.default.fileExists(atPath: storageURL.path) {
+            try? FileManager.default.createDirectory(at: storageURL, withIntermediateDirectories: true, attributes: nil)
         }
+    }
+
+    private static func prepareStorageURL() -> URL {
+        let fileManager = FileManager.default
+        let candidateDirectories: [FileManager.SearchPathDirectory] = [
+            .applicationSupportDirectory,
+            .documentDirectory,
+            .cachesDirectory,
+        ]
+
+        for directory in candidateDirectories {
+            do {
+                let baseURL = try fileManager.url(for: directory, in: .userDomainMask, appropriateFor: nil, create: true)
+                let conversationsURL = baseURL.appendingPathComponent("Conversations", isDirectory: true)
+
+                if !fileManager.fileExists(atPath: conversationsURL.path) {
+                    try fileManager.createDirectory(at: conversationsURL, withIntermediateDirectories: true, attributes: nil)
+                }
+
+                return conversationsURL
+            } catch {
+                print("Failed to prepare conversation storage in \(directory): \(error)")
+            }
+        }
+
+        let fallbackURL = fileManager.temporaryDirectory
+            .appendingPathComponent("OpenResponses", isDirectory: true)
+            .appendingPathComponent("Conversations", isDirectory: true)
+
+        do {
+            try fileManager.createDirectory(at: fallbackURL, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("Failed to prepare fallback conversation storage at \(fallbackURL.path): \(error)")
+        }
+
+        return fallbackURL
     }
 
     /// Retrieves all conversations, sorted by the last modified date in descending order.

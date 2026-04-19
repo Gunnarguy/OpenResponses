@@ -124,8 +124,10 @@ The OpenResponses app now has full integration with Apple Calendar and Reminders
 ## Permission Handling
 
 ### Info.plist Keys
-- `NSCalendarsUsageDescription` - "OpenResponses needs access to your calendar to help you manage events and schedule tasks."
-- `NSRemindersUsageDescription` - "OpenResponses needs access to your reminders to help you create and manage tasks."
+- `NSCalendarsFullAccessUsageDescription` - Required on iOS 17+ for reading calendar events.
+- `NSRemindersFullAccessUsageDescription` - Required on iOS 17+ for reading reminders.
+- `NSCalendarsUsageDescription` - Legacy fallback usage string for older EventKit authorization flows.
+- `NSRemindersUsageDescription` - Legacy fallback usage string for older EventKit authorization flows.
 
 ### Permission Flow
 1. User navigates to Settings > Apple Integrations
@@ -138,6 +140,10 @@ The OpenResponses app now has full integration with Apple Calendar and Reminders
 - **iOS 17+**: Uses `requestFullAccessToEvents()` and `requestFullAccessToReminders()`
 - **iOS <17**: Falls back to `requestAccess(to:completion:)`
 - Status checks use `EKAuthorizationStatus` enum (.authorized, .fullAccess, .denied, .restricted, .writeOnly)
+- Reminder reads should use EventKit's reminder-specific predicates:
+  `predicateForIncompleteReminders(withDueDateStarting:ending:calendars:)` and
+  `predicateForCompletedReminders(withCompletionDateStarting:ending:calendars:)`
+- Local-day Apple queries should be evaluated in the device time zone. If an upstream tool emits UTC midnight/end-of-day timestamps for a local-day query, normalize those boundaries back to the device's local day before running the EventKit fetch.
 
 ## User Experience
 
@@ -190,7 +196,7 @@ All operations include comprehensive error handling:
 8. ✅ `ChatViewModel.swift` - Added 4 function handlers & streaming status
 9. ✅ `OpenAIService.swift` - Added 4 function definitions in buildTools()
 10. ✅ `SettingsHomeView.swift` - Added Apple Integrations Card
-11. ✅ `project.pbxproj` - Added NSCalendarsUsageDescription & NSRemindersUsageDescription
+11. ✅ `project.pbxproj` - Added current EventKit privacy usage descriptions for calendar/reminder full access
 
 ### Documentation Created
 - ✅ `/docs/APPLE_INTEGRATION_COMPLETE.md` - This file

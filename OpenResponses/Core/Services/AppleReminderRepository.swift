@@ -10,64 +10,65 @@ public final class AppleReminderRepository {
 
     public init(permissionManager: EventKitPermissionManager = .shared) {
         self.permissionManager = permissionManager
-        self.isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.isoFormatter = AppleDateUtilities.makeOutputFormatter()
     }
 
-    /// Fetches reminders optionally constrained by due date and list identifiers.
+    /// Fetches reminders using the EventKit predicates documented for incomplete and completed reminders.
     func fetchReminders(
         dueBetween start: Date?,
         end: Date?,
+        completed: Bool?,
         listIDs: [String]?,
         limit: Int
     ) async throws -> [AppleReminderSummary] {
         try await permissionManager.ensureAccess(for: .reminder)
         guard limit > 0 else { return [] }
+        if let start, let end, start > end {
+            throw AppleDataAccessError.invalidDateRange
+        }
 
         let store = permissionManager.store
         let calendars = selectCalendars(from: store, matching: listIDs)
-        let predicate = store.predicateForReminders(in: calendars)
 
-        let reminders = try await withCheckedThrowingContinuation { continuation in
-            store.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
-            }
+        let reminders: [EKReminder]
+        switch completed {
+        case .some(false):
+            reminders = try await fetchReminderObjects(
+                matching: store.predicateForIncompleteReminders(
+                    withDueDateStarting: start,
+                    ending: end,
+                    calendars: calendars
+                )
+            )
+        case .some(true):
+            reminders = try await fetchReminderObjects(
+                matching: store.predicateForCompletedReminders(
+                    withCompletionDateStarting: start,
+                    ending: end,
+                    calendars: calendars
+                )
+            )
+        case nil:
+            reminders = try await fetchReminderObjects(
+                matching: store.predicateForReminders(in: calendars)
+            )
         }
 
         let filtered = reminders
             .filter { reminder in
-                guard let start else { return true }
-                guard let due = reminder.dueDateComponents?.date else { return false }
-                if let end { return due >= start && due <= end }
-                return due >= start
+                matches(reminder: reminder, start: start, end: end, completed: completed)
             }
-            .sorted(by: { lhs, rhs in
-                let lhsDate = lhs.dueDateComponents?.date ?? .distantFuture
-                let rhsDate = rhs.dueDateComponents?.date ?? .distantFuture
+            .sorted { lhs, rhs in
+                let lhsDate = sortDate(for: lhs, completed: completed) ?? .distantFuture
+                let rhsDate = sortDate(for: rhs, completed: completed) ?? .distantFuture
+                if lhsDate == rhsDate {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
                 return lhsDate < rhsDate
-            })
+            }
             .prefix(limit)
 
-        return filtered.map { reminder in
-            let hasTime: Bool
-            if let components = reminder.dueDateComponents {
-                hasTime = components.hour != nil || components.minute != nil || components.second != nil
-            } else {
-                hasTime = false
-            }
-            return AppleReminderSummary(
-                identifier: reminder.calendarItemIdentifier,
-                calendarIdentifier: reminder.calendar?.calendarIdentifier ?? "",
-                calendarTitle: reminder.calendar?.title ?? "Reminders",
-                title: reminder.title,
-                dueDateISO8601: reminder.dueDateComponents?.date.map { isoFormatter.string(from: $0) },
-                hasDueTime: hasTime,
-                completed: reminder.isCompleted,
-                completionDateISO8601: reminder.completionDate.map { isoFormatter.string(from: $0) },
-                priority: reminder.priority,
-                notes: reminder.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        }
+        return filtered.map { summary(for: $0) }
     }
 
     /// Convenience wrapper for ISO8601 date strings and completion filter.
@@ -77,33 +78,24 @@ public final class AppleReminderRepository {
         completed: Bool?,
         listIdentifiers: [String]?
     ) async throws -> [AppleReminderSummary] {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        let start = startISO8601.flatMap { formatter.date(from: $0) }
-        let end = endISO8601.flatMap { formatter.date(from: $0) }
-        
-        // Fetch all reminders
-        var allReminders = try await fetchReminders(
+        let start = try parseDate(startISO8601)
+        let end = try parseDate(endISO8601)
+
+        return try await fetchReminders(
             dueBetween: start,
             end: end,
+            completed: completed,
             listIDs: listIdentifiers,
             limit: 100
         )
-        
-        // Filter by completion status if specified
-        if let completed {
-            allReminders = allReminders.filter { $0.completed == completed }
-        }
-        
-        return allReminders
     }
 
-    /// Creates a new reminder in the user\'s default list or the list matching `listIdentifier`.
+    /// Creates a new reminder in the user's default list or the list matching `listIdentifier`.
     public func createReminder(
         title: String,
         notes: String?,
         dueDate: Date?,
+        priority: Int?,
         listIdentifier: String?
     ) async throws -> AppleReminderSummary {
         try await permissionManager.ensureAccess(for: .reminder)
@@ -111,10 +103,12 @@ public final class AppleReminderRepository {
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
         reminder.notes = notes
+        reminder.priority = priority ?? 0
 
         if let dueDate {
-            reminder.dueDateComponents = Calendar.current.dateComponents(in: TimeZone.current, from: dueDate)
-            reminder.dueDateComponents?.calendar = Calendar.current
+            let dueComponents = AppleDateUtilities.makeReminderDateComponents(from: dueDate)
+            reminder.startDateComponents = dueComponents
+            reminder.dueDateComponents = dueComponents
         }
 
         if let listIdentifier,
@@ -129,24 +123,82 @@ public final class AppleReminderRepository {
 
         try store.save(reminder, commit: true)
 
-        let hasTime: Bool
-        if let components = reminder.dueDateComponents {
-            hasTime = components.hour != nil || components.minute != nil || components.second != nil
-        } else {
-            hasTime = false
-        }
-
         return AppleReminderSummary(
             identifier: reminder.calendarItemIdentifier,
             calendarIdentifier: reminder.calendar.calendarIdentifier,
             calendarTitle: reminder.calendar.title,
             title: reminder.title,
             dueDateISO8601: reminder.dueDateComponents?.date.map { isoFormatter.string(from: $0) },
-            hasDueTime: hasTime,
+            hasDueTime: AppleDateUtilities.hasClockTime(reminder.dueDateComponents),
             completed: reminder.isCompleted,
             completionDateISO8601: reminder.completionDate.map { isoFormatter.string(from: $0) },
             priority: reminder.priority,
             notes: reminder.notes
+        )
+    }
+
+    private func parseDate(_ rawValue: String?) throws -> Date? {
+        guard let rawValue else { return nil }
+        guard let parsed = AppleDateUtilities.parseQueryDate(rawValue) else {
+            throw AppleDataAccessError.invalidDate(rawValue)
+        }
+        return parsed
+    }
+
+    private func fetchReminderObjects(matching predicate: NSPredicate) async throws -> [EKReminder] {
+        try await withCheckedThrowingContinuation { continuation in
+            permissionManager.store.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+    }
+
+    private func matches(
+        reminder: EKReminder,
+        start: Date?,
+        end: Date?,
+        completed: Bool?
+    ) -> Bool {
+        if let completed, reminder.isCompleted != completed {
+            return false
+        }
+
+        guard start != nil || end != nil else {
+            return true
+        }
+
+        let relevantDate: Date?
+        if completed == true {
+            relevantDate = reminder.completionDate
+        } else {
+            relevantDate = reminder.dueDateComponents?.date
+        }
+
+        guard let relevantDate else { return false }
+        if let start, relevantDate < start { return false }
+        if let end, relevantDate > end { return false }
+        return true
+    }
+
+    private func sortDate(for reminder: EKReminder, completed: Bool?) -> Date? {
+        if completed == true {
+            return reminder.completionDate ?? reminder.dueDateComponents?.date
+        }
+        return reminder.dueDateComponents?.date ?? reminder.completionDate
+    }
+
+    private func summary(for reminder: EKReminder) -> AppleReminderSummary {
+        AppleReminderSummary(
+            identifier: reminder.calendarItemIdentifier,
+            calendarIdentifier: reminder.calendar?.calendarIdentifier ?? "",
+            calendarTitle: reminder.calendar?.title ?? "Reminders",
+            title: reminder.title,
+            dueDateISO8601: reminder.dueDateComponents?.date.map { isoFormatter.string(from: $0) },
+            hasDueTime: AppleDateUtilities.hasClockTime(reminder.dueDateComponents),
+            completed: reminder.isCompleted,
+            completionDateISO8601: reminder.completionDate.map { isoFormatter.string(from: $0) },
+            priority: reminder.priority,
+            notes: reminder.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 

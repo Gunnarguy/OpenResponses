@@ -10,7 +10,7 @@ struct PromptLibraryView: View {
     var createPromptFromCurrentSettings: () -> Prompt
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(library.prompts) { prompt in
                     VStack(alignment: .leading) {
@@ -94,7 +94,7 @@ struct AddEditPromptView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     TextField("Preset Name", text: $currentSettings.name)

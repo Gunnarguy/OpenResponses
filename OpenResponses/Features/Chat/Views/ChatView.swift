@@ -64,7 +64,7 @@ struct ChatView: View {
             )
         }
         .sheet(isPresented: $showImagePicker) {
-            NavigationView {
+            NavigationStack {
                 ImagePickerView { selectedImages in
                     if !selectedImages.isEmpty {
                         viewModel.attachImages(selectedImages)

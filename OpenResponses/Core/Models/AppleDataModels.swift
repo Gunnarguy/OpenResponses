@@ -6,6 +6,7 @@ public enum AppleDataAccessError: LocalizedError {
     case accessDenied(entity: String)
     case accessRestricted(entity: String)
     case writeOnlyAccess(entity: String)
+    case invalidDate(String)
     case invalidDateRange
     case invalidCalendar
     case calendarNotWritable
@@ -22,6 +23,8 @@ public enum AppleDataAccessError: LocalizedError {
             return "Access to your \(entity) is restricted on this device."
         case .writeOnlyAccess(let entity):
             return "Only write access is available for \(entity). Reading existing data is not permitted."
+        case .invalidDate(let value):
+            return "The provided date is not a valid ISO 8601 timestamp: \(value)"
         case .invalidDateRange:
             return "The requested date range is invalid. Ensure the start date is on or before the end date."
         case .invalidCalendar:
@@ -33,6 +36,121 @@ public enum AppleDataAccessError: LocalizedError {
         case .operationUnavailable(let reason):
             return reason
         }
+    }
+}
+
+enum AppleDateUtilities {
+    private static let dayBoundaryRegex = try? NSRegularExpression(
+        pattern: #"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$"#
+    )
+
+    static func makeOutputFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
+    static func makeGregorianCalendar(timeZone: TimeZone = .current) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    static func parseISO8601(_ rawValue: String?) -> Date? {
+        guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !rawValue.isEmpty else {
+            return nil
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = formatter.date(from: rawValue) {
+            return parsed
+        }
+
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: rawValue)
+    }
+
+    static func parseQueryDate(_ rawValue: String?, timeZone: TimeZone = .current) -> Date? {
+        guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !rawValue.isEmpty else {
+            return nil
+        }
+
+        guard let parsed = parseISO8601(rawValue) else {
+            return nil
+        }
+
+        guard let components = utcDayBoundaryComponents(from: rawValue) else {
+            return parsed
+        }
+
+        var localComponents = components
+        localComponents.calendar = makeGregorianCalendar(timeZone: timeZone)
+        localComponents.timeZone = timeZone
+        return localComponents.calendar?.date(from: localComponents) ?? parsed
+    }
+
+    static func hasClockTime(_ components: DateComponents?) -> Bool {
+        guard let components else { return false }
+        return components.hour != nil || components.minute != nil || components.second != nil
+    }
+
+    static func makeReminderDateComponents(from date: Date, timeZone: TimeZone = .current) -> DateComponents {
+        let calendar = makeGregorianCalendar(timeZone: timeZone)
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        components.calendar = calendar
+        components.timeZone = timeZone
+        return components
+    }
+
+    private static func utcDayBoundaryComponents(from rawValue: String) -> DateComponents? {
+        guard let dayBoundaryRegex else { return nil }
+
+        let range = NSRange(rawValue.startIndex..<rawValue.endIndex, in: rawValue)
+        guard let match = dayBoundaryRegex.firstMatch(in: rawValue, options: [], range: range),
+              match.numberOfRanges == 8
+        else {
+            return nil
+        }
+
+        func capture(_ index: Int) -> String? {
+            guard let range = Range(match.range(at: index), in: rawValue) else { return nil }
+            return String(rawValue[range])
+        }
+
+        guard
+            let yearString = capture(1),
+            let monthString = capture(2),
+            let dayString = capture(3),
+            let hourString = capture(4),
+            let minuteString = capture(5),
+            let secondString = capture(6),
+            let timeZoneDesignator = capture(7),
+            let year = Int(yearString),
+            let month = Int(monthString),
+            let day = Int(dayString),
+            let hour = Int(hourString),
+            let minute = Int(minuteString),
+            let second = Int(secondString)
+        else {
+            return nil
+        }
+
+        let isUTC = timeZoneDesignator == "Z" || timeZoneDesignator == "+00:00" || timeZoneDesignator == "-00:00"
+        let isStartOfDay = hour == 0 && minute == 0 && second == 0
+        let isEndOfDay = hour == 23 && minute == 59 && second == 59
+        guard isUTC, isStartOfDay || isEndOfDay else {
+            return nil
+        }
+
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        return components
     }
 }
 

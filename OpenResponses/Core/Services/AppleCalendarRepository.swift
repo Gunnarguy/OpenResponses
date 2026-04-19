@@ -10,8 +10,7 @@ public final class AppleCalendarRepository {
 
     public init(permissionManager: EventKitPermissionManager = .shared) {
         self.permissionManager = permissionManager
-        self.isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.isoFormatter = AppleDateUtilities.makeOutputFormatter()
     }
 
     /// Fetches events within the provided date range.
@@ -65,12 +64,14 @@ public final class AppleCalendarRepository {
         endISO8601: String,
         calendarIdentifiers: [String]?
     ) async throws -> [AppleCalendarItemSummary] {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        let start = formatter.date(from: startISO8601)
-        let end = formatter.date(from: endISO8601)
-        
+        guard let start = AppleDateUtilities.parseQueryDate(startISO8601) else {
+            throw AppleDataAccessError.invalidDate(startISO8601)
+        }
+
+        guard let end = AppleDateUtilities.parseQueryDate(endISO8601) else {
+            throw AppleDataAccessError.invalidDate(endISO8601)
+        }
+
         return try await fetchEvents(
             start: start,
             end: end,

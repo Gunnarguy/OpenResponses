@@ -261,7 +261,7 @@ struct ToolStatusCard: View {
             return "photo"
         case "file_search":
             return "doc.text.magnifyingglass"
-        case "computer_use_preview":
+        case "computer_use_preview", "computer":
             return "display"
     // calculator removed
         default:
@@ -279,7 +279,7 @@ struct ToolStatusCard: View {
             return "Image Generation"
         case "file_search":
             return "File Search"
-        case "computer_use_preview":
+        case "computer_use_preview", "computer":
             return "Computer Use"
     // calculator removed
         default:

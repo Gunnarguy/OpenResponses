@@ -681,7 +681,7 @@ HStack(spacing: 8) {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Tab Picker
                 Picker("View", selection: $selectedTab) {
@@ -1634,7 +1634,7 @@ struct QuickUploadView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section {
                     VStack(spacing: 12) {
@@ -2041,7 +2041,7 @@ struct EditVectorStoreView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Vector Store Name")) {
                     TextField("Optional name", text: $name)
@@ -2141,7 +2141,7 @@ struct VectorStoreDetailView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // MARK: - Settings Section
                 Section {
@@ -2296,7 +2296,7 @@ struct VectorStoreDetailView: View {
                 }
             }
             .sheet(isPresented: $showingAssociateFiles) {
-                NavigationView {
+                NavigationStack {
                     AssociateExistingFilesView(
                         availableFiles: availableFiles,
                         selectedFileIds: $selectedExistingFiles,
@@ -2431,7 +2431,7 @@ struct CreateVectorStoreView: View {
     let onCreate: (String, [String], Int?) -> Void
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Vector Store Name")) {
                     TextField("Optional name", text: $vectorStoreName)
@@ -2637,7 +2637,7 @@ struct VectorStoreSelectorView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if vectorStores.isEmpty {
                     VStack(spacing: 16) {
@@ -2994,7 +2994,7 @@ struct UploadSummaryView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     // Header with icon

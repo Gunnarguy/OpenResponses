@@ -8,9 +8,33 @@ struct RequestInspectorView: View {
     @State private var copiedToClipboard = false
     
     let userMessage: String
+
+    private var usesBackgroundPolling: Bool {
+        viewModel.activePrompt.backgroundMode
+    }
+
+    private var effectiveStreamingEnabled: Bool {
+        viewModel.activePrompt.enableStreaming && !usesBackgroundPolling
+    }
+
+    private var supportsTemperature: Bool {
+        ModelCompatibilityService.shared.isParameterSupported(
+            "temperature",
+            for: viewModel.activePrompt.openAIModel,
+            reasoningEffort: viewModel.activePrompt.reasoningEffort
+        )
+    }
+
+    private var supportsTopP: Bool {
+        ModelCompatibilityService.shared.isParameterSupported(
+            "top_p",
+            for: viewModel.activePrompt.openAIModel,
+            reasoningEffort: viewModel.activePrompt.reasoningEffort
+        )
+    }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // Info banner
@@ -79,7 +103,7 @@ struct RequestInspectorView: View {
             
             DetailRow(label: "Endpoint", value: "POST /v1/responses")
             DetailRow(label: "Model", value: viewModel.activePrompt.openAIModel)
-            DetailRow(label: "Streaming", value: viewModel.activePrompt.enableStreaming ? "Enabled" : "Disabled")
+            DetailRow(label: "Streaming", value: effectiveStreamingEnabled ? "Enabled" : "Disabled")
             
             if viewModel.activePrompt.enableFileSearch {
                 DetailRow(label: "file_search", value: "Enabled")
@@ -201,7 +225,7 @@ struct RequestInspectorView: View {
         }
         
         // Parameters
-        if viewModel.activePrompt.temperature != 1.0 {
+        if supportsTemperature, viewModel.activePrompt.temperature != 1.0 {
             request["temperature"] = viewModel.activePrompt.temperature
         }
         
@@ -209,16 +233,20 @@ struct RequestInspectorView: View {
             request["max_output_tokens"] = viewModel.activePrompt.maxOutputTokens
         }
         
-        if viewModel.activePrompt.topP != 1.0 {
+        if supportsTopP, viewModel.activePrompt.topP != 1.0 {
             request["top_p"] = viewModel.activePrompt.topP
         }
-        
-        // Streaming
-        request["stream"] = viewModel.activePrompt.enableStreaming
-        
-        // Previous response ID if continuing conversation
-        if let lastResponseId = viewModel.lastResponseId {
+
+        request["stream"] = effectiveStreamingEnabled
+
+        if let remoteConversationId = viewModel.activeConversation?.remoteId {
+            request["conversation"] = remoteConversationId
+        } else if let lastResponseId = viewModel.lastResponseId {
             request["previous_response_id"] = lastResponseId
+        }
+
+        if usesBackgroundPolling {
+            request["background"] = true
         }
         
         return request

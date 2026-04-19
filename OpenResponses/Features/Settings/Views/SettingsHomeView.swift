@@ -21,7 +21,7 @@ struct SettingsHomeView: View {
     @State private var showingRemoteMCPSheet = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 12) {
                 // Segmented tabs
                 Picker("", selection: $selectedTab) {
@@ -241,7 +241,7 @@ private struct GeneralTab: View {
             // MARK: API Behavior
 
             Section {
-                Toggle("Store on OpenAI", isOn: $viewModel.activePrompt.storeResponses)
+                Toggle("Store on OpenAI", isOn: storeResponsesBinding)
 
                 DisclosureGroup("Identity & Caching", isExpanded: $showAdvancedIdentity) {
                     TextField("Safety Identifier", text: $viewModel.activePrompt.safetyIdentifier)
@@ -260,6 +260,8 @@ private struct GeneralTab: View {
                 }
             } header: {
                 Label("API Behavior", systemImage: "server.rack")
+            } footer: {
+                Text("Background responses require Store on OpenAI to stay enabled.")
             }
 
             // MARK: Presets
@@ -306,6 +308,19 @@ private struct GeneralTab: View {
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
         }
+    }
+
+    private var storeResponsesBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.storeResponses },
+            set: { newValue in
+                viewModel.activePrompt.storeResponses = newValue
+                viewModel.applyDraftStorePreference(newValue)
+                if !newValue {
+                    viewModel.activePrompt.backgroundMode = false
+                }
+            }
+        )
     }
 }
 
@@ -1225,7 +1240,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
             }
 
         if !isComputerUseSupported {
-            Text("Requires computer-use-preview model.")
+            Text("Requires a computer-capable model such as gpt-5.4 or gpt-5.4-mini.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         } else if viewModel.activePrompt.enableComputerUse {
@@ -1549,13 +1564,13 @@ private struct AdvancedTab: View {
 
 Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
 
-Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
+Toggle("Background Mode", isOn: backgroundModeBinding)
 
                 limitToolCallsRow
             } header: {
                 Label("Tool Execution", systemImage: "hammer.circle")
             } footer: {
-                Text("Control how the model uses tools during generation.")
+                Text("Control how the model uses tools during generation. Background mode requires Store on OpenAI.")
             }
 
             // MARK: Request Options
@@ -1624,6 +1639,19 @@ Toggle("Background Mode", isOn: $viewModel.activePrompt.backgroundMode)
 .sheet(isPresented: $showingAbout) {
     AboutView()
         }
+    }
+
+    private var backgroundModeBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.activePrompt.backgroundMode },
+            set: { newValue in
+                if newValue {
+                    viewModel.activePrompt.storeResponses = true
+                    viewModel.applyDraftStorePreference(true)
+                }
+                viewModel.activePrompt.backgroundMode = newValue
+            }
+        )
     }
 
     @ViewBuilder

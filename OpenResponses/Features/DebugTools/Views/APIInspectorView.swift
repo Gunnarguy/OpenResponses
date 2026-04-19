@@ -7,7 +7,7 @@ struct APIInspectorView: View {
     @State private var showRequestDetails = true
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 if analyticsService.apiRequestHistory.isEmpty {
                     Spacer()

@@ -53,7 +53,7 @@ struct VectorStoreSmartUploadView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if isLoading {
                     ProgressView("Loading vector stores...")
@@ -661,7 +661,7 @@ struct CreateVectorStoreSimpleView: View {
     private let api = OpenAIService()
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section {
                     TextField("Vector Store Name", text: $storeName)

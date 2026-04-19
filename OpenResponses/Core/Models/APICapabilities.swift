@@ -212,7 +212,7 @@ public enum APICapabilities {
                     try container.encode(strict, forKey: .strict)
                 }
             case .computer(let environment, let displayWidth, let displayHeight):
-                try container.encode("computer_use_preview", forKey: .type)
+                try container.encode("computer", forKey: .type)
                 if let environment = environment {
                     try container.encode(environment, forKey: .environment)
                 }

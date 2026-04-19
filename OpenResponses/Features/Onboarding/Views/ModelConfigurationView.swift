@@ -44,7 +44,7 @@ struct ModelConfigurationView: View {
                     isStreaming: activePrompt.enableStreaming
                 )
 
-                if supportsComputer && newModel == "computer-use-preview" {
+                if newModel == "computer-use-preview" {
                     // Dedicated model – flip computer use on automatically
                     activePrompt.enableComputerUse = true
                 } else if !supportsComputer && activePrompt.enableComputerUse {
@@ -59,6 +59,13 @@ struct ModelConfigurationView: View {
                 let previousSupportedReasoning = compatibilityService
                     .getCapabilities(for: oldModel)?
                     .supportsReasoningEffort == true
+
+                if supportsReasoning,
+                   !previousSupportedReasoning,
+                   let defaultReasoningEffort = compatibilityService.defaultReasoningEffort(for: newModel)
+                {
+                    activePrompt.reasoningEffort = defaultReasoningEffort
+                }
 
                 if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
                     activePrompt.includeReasoningContent = true
@@ -219,19 +226,23 @@ struct ModelConfigurationView: View {
 
     private func reasoningEffortOptions(for modelId: String) -> [String] {
         let id = modelId.lowercased()
+        if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        }
         if id == "gpt-5.2" || id == "gpt-5.2-pro" || id.hasPrefix("gpt-5.2-") {
-            return ["none", "low", "medium", "high", "xhigh"]
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
         }
         if id == "gpt-5.1" || id.hasPrefix("gpt-5.1-") {
-            return ["none", "low", "medium", "high"]
+            return ["none", "minimal", "low", "medium", "high"]
         }
         // Default for other reasoning-capable models in this app.
-        return ["low", "medium", "high"]
+        return ["minimal", "low", "medium", "high"]
     }
 
     private func optionDisplayName(_ option: String) -> String {
         switch option {
         case "none": return "None"
+        case "minimal": return "Minimal"
         case "low": return "Low"
         case "medium": return "Medium"
         case "high": return "High"

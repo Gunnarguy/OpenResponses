@@ -9,6 +9,175 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct ConversationTransferDocument: Codable {
+    let exportVersion: String
+    let exportedAt: Date
+    let conversation: Conversation
+    let cumulativeTokenUsage: TokenUsage
+}
+
+enum ConversationTransferError: LocalizedError {
+    case invalidFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidFormat:
+            return "This file is not a valid OpenResponses conversation export."
+        }
+    }
+}
+
+enum ConversationTransferCodec {
+    static let currentVersion = "2.0"
+
+    static func exportConversation(_ conversation: Conversation, cumulativeTokenUsage: TokenUsage) throws -> Data {
+        let encoder = makeISO8601Encoder()
+        let document = ConversationTransferDocument(
+            exportVersion: currentVersion,
+            exportedAt: Date(),
+            conversation: conversation,
+            cumulativeTokenUsage: cumulativeTokenUsage
+        )
+        return try encoder.encode(document)
+    }
+
+    static func importConversation(from data: Data) throws -> Conversation {
+        let iso8601Decoder = makeISO8601Decoder()
+
+        if let document = try? iso8601Decoder.decode(ConversationTransferDocument.self, from: data) {
+            return sanitizeImportedConversation(document.conversation)
+        }
+
+        if let conversation = try? iso8601Decoder.decode(Conversation.self, from: data) {
+            return sanitizeImportedConversation(conversation)
+        }
+
+        if let conversation = try? JSONDecoder().decode(Conversation.self, from: data) {
+            return sanitizeImportedConversation(conversation)
+        }
+
+        return try decodeLegacyConversation(from: data)
+    }
+
+    private static func sanitizeImportedConversation(_ conversation: Conversation) -> Conversation {
+        var sanitizedConversation = conversation
+
+        let trimmedTitle = sanitizedConversation.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTitle.isEmpty {
+            sanitizedConversation.title = "Imported Conversation"
+        } else {
+            sanitizedConversation.title = trimmedTitle
+        }
+
+        sanitizedConversation.remoteId = nil
+        sanitizedConversation.lastResponseId = nil
+        sanitizedConversation.lastSyncedAt = nil
+        sanitizedConversation.shouldStoreRemotely = false
+        sanitizedConversation.syncState = .localOnly
+
+        return sanitizedConversation
+    }
+
+    private static func decodeLegacyConversation(from data: Data) throws -> Conversation {
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ConversationTransferError.invalidFormat
+        }
+
+        let messages = decodeLegacyMessages(from: payload["messages"] as? [[String: Any]] ?? [])
+        let title = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let conversation = Conversation(
+            id: UUID(uuidString: payload["id"] as? String ?? "") ?? UUID(),
+            remoteId: nil,
+            title: (title?.isEmpty == false ? title : "Imported Conversation") ?? "Imported Conversation",
+            messages: messages,
+            lastResponseId: nil,
+            lastModified: decodeLegacyDate(payload["lastModified"]) ?? Date(),
+            metadata: nil,
+            lastSyncedAt: nil,
+            shouldStoreRemotely: false,
+            syncState: .localOnly
+        )
+
+        return sanitizeImportedConversation(conversation)
+    }
+
+    private static func decodeLegacyMessages(from payload: [[String: Any]]) -> [ChatMessage] {
+        payload.compactMap { message in
+            let role = ChatMessage.Role(rawValue: message["role"] as? String ?? "") ?? .system
+            let tokenUsage = decodeLegacyTokenUsage(message["tokenUsage"] as? [String: Any])
+
+            return ChatMessage(
+                id: UUID(uuidString: message["id"] as? String ?? "") ?? UUID(),
+                role: role,
+                text: message["text"] as? String,
+                toolsUsed: message["toolsUsed"] as? [String],
+                tokenUsage: tokenUsage
+            )
+        }
+    }
+
+    private static func decodeLegacyTokenUsage(_ payload: [String: Any]?) -> TokenUsage? {
+        guard let payload else { return nil }
+
+        return TokenUsage(
+            estimatedOutput: payload["estimatedOutput"] as? Int,
+            input: payload["input"] as? Int,
+            output: payload["output"] as? Int,
+            total: payload["total"] as? Int
+        )
+    }
+
+    private static func decodeLegacyDate(_ rawValue: Any?) -> Date? {
+        if let seconds = rawValue as? TimeInterval {
+            return Date(timeIntervalSince1970: seconds)
+        }
+
+        if let seconds = rawValue as? Double {
+            return Date(timeIntervalSince1970: seconds)
+        }
+
+        if let seconds = rawValue as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(seconds))
+        }
+
+        guard let stringValue = rawValue as? String else { return nil }
+
+        let formatters: [ISO8601DateFormatter] = [
+            {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                return formatter
+            }(),
+            {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime]
+                return formatter
+            }(),
+        ]
+
+        for formatter in formatters {
+            if let date = formatter.date(from: stringValue) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func makeISO8601Encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    private static func makeISO8601Decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
 struct ConversationExportView: View {
     @EnvironmentObject var viewModel: ChatViewModel
     @Environment(\.dismiss) var dismiss
@@ -18,7 +187,7 @@ struct ConversationExportView: View {
     @State private var errorMessage: String?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // MARK: - Export Section
                 Section {
@@ -100,11 +269,13 @@ struct ConversationExportView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingImportPicker) {
-                // Use a file picker for JSON imports
-                // Since DocumentPicker requires bindings, we'll use a simple file importer
-                Text("Import not yet implemented")
-                    .padding()
+            .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+                do {
+                    guard let url = try result.get().first else { return }
+                    importConversation(from: url)
+                } catch {
+                    errorMessage = "Failed to import file: \(error.localizedDescription)"
+                }
             }
             .alert("Export Successful", isPresented: $showingExportSuccess) {
                 if let url = exportedURL {
@@ -129,38 +300,30 @@ struct ConversationExportView: View {
     // MARK: - Export Logic
     
     private func exportCurrentConversation() {
-        let exportData: [String: Any]
-        
-        if let conversation = viewModel.activeConversation {
-            // Export full conversation object
-            exportData = [
-                "id": conversation.id.uuidString,
-                "title": conversation.title,
-                "lastModified": ISO8601DateFormatter().string(from: conversation.lastModified),
-                "messages": conversation.messages.map { messageToDict($0) },
-                "tokenUsage": tokenUsageToDict(viewModel.cumulativeTokenUsage),
-                "exportVersion": "1.0",
-                "exportedAt": ISO8601DateFormatter().string(from: Date())
-            ]
-        } else {
-            // Export current session messages
-            exportData = [
-                "id": UUID().uuidString,
-                "title": "Exported Session",
-                "lastModified": ISO8601DateFormatter().string(from: Date()),
-                "messages": viewModel.messages.map { messageToDict($0) },
-                "tokenUsage": tokenUsageToDict(viewModel.cumulativeTokenUsage),
-                "exportVersion": "1.0",
-                "exportedAt": ISO8601DateFormatter().string(from: Date())
-            ]
-        }
-        
-        // Convert to JSON
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted, .sortedKeys]) else {
-            errorMessage = "Failed to serialize conversation data"
+        let conversation = viewModel.activeConversation ?? Conversation(
+            id: UUID(),
+            remoteId: nil,
+            title: "Exported Session",
+            messages: viewModel.messages,
+            lastResponseId: nil,
+            lastModified: Date(),
+            metadata: nil,
+            lastSyncedAt: nil,
+            shouldStoreRemotely: false,
+            syncState: .localOnly
+        )
+
+        let jsonData: Data
+        do {
+            jsonData = try ConversationTransferCodec.exportConversation(
+                conversation,
+                cumulativeTokenUsage: viewModel.cumulativeTokenUsage
+            )
+        } catch {
+            errorMessage = "Failed to serialize conversation data: \(error.localizedDescription)"
             return
         }
-        
+
         // Save to temporary file
         let filename = "conversation_\(Date().timeIntervalSince1970).json"
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
@@ -174,57 +337,23 @@ struct ConversationExportView: View {
         }
     }
     
-    private func messageToDict(_ message: ChatMessage) -> [String: Any] {
-        var dict: [String: Any] = [
-            "id": message.id.uuidString,
-            "role": message.role.rawValue
-        ]
-        
-        if let text = message.text {
-            dict["text"] = text
-        }
-        
-        if let usage = message.tokenUsage {
-            dict["tokenUsage"] = tokenUsageToDict(usage)
-        }
-        
-        if let tools = message.toolsUsed, !tools.isEmpty {
-            dict["toolsUsed"] = tools
-        }
-        
-        return dict
-    }
-    
-    private func tokenUsageToDict(_ usage: TokenUsage) -> [String: Any] {
-        var dict: [String: Any] = [:]
-        if let input = usage.input { dict["input"] = input }
-        if let output = usage.output { dict["output"] = output }
-        if let total = usage.total { dict["total"] = total }
-        return dict
-    }
-    
     // MARK: - Import Logic
     
     private func importConversation(from url: URL) {
-        guard url.startAccessingSecurityScopedResource() else {
-            errorMessage = "Failed to access file"
-            return
+        let didAccessSecurityScopedResource = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScopedResource {
+                url.stopAccessingSecurityScopedResource()
+            }
         }
-        defer { url.stopAccessingSecurityScopedResource() }
         
         do {
             let data = try Data(contentsOf: url)
-            guard (try JSONSerialization.jsonObject(with: data) as? [String: Any]) != nil else {
-                errorMessage = "Invalid JSON format"
-                return
-            }
-            
-            // TODO: Implement conversation import logic
-            // This would require adding methods to ChatViewModel to load imported messages
-            errorMessage = "Import feature coming soon"
-            
+            let conversation = try ConversationTransferCodec.importConversation(from: data)
+            viewModel.importConversation(conversation)
+            dismiss()
         } catch {
-            errorMessage = "Failed to read file: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
         }
     }
     

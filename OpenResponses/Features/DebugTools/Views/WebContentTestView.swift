@@ -5,7 +5,7 @@ struct WebContentTestView: View {
     @State private var testMessages: [ChatMessage] = []
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(testMessages) { message in

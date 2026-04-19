@@ -14,6 +14,9 @@ struct DynamicModelSelector: View {
     // Fallback chat models in case the API call fails
     private let fallbackModels = [
         // Latest chat models (2025)
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
         "gpt-5.2",
         "gpt-5.2-pro",
         "gpt-5.1",
@@ -126,7 +129,7 @@ struct DynamicModelSelector: View {
             let modelsToShow: [OpenAIModel] = usingFallback
                 ? fallbackModels.map { OpenAIModel(id: $0, object: "model", created: 0, ownedBy: "openai") }
                 : availableModels
-            NavigationView {
+            NavigationStack {
                 ModelPickerView(
                     selectedModel: $selectedModel,
                     models: modelsToShow,
@@ -150,7 +153,15 @@ struct DynamicModelSelector: View {
 
             // Specific descriptions for each model type
             if id.contains("gpt-5") {
-                if id.contains("gpt-5.2-pro") {
+                if id.contains("gpt-5.4-pro") {
+                    return "🧠 Maximum compute for the toughest work"
+                } else if id.contains("gpt-5.4-mini") {
+                    return "💨 Strong mini model with computer use"
+                } else if id.contains("gpt-5.4-nano") {
+                    return "⚡ Cheapest GPT‑5.4-class model"
+                } else if id.contains("gpt-5.4") {
+                    return "🚀 Latest flagship with computer use"
+                } else if id.contains("gpt-5.2-pro") {
                     return "🧠 Extra compute for tougher problems"
                 } else if id.contains("gpt-5.2") {
                     return "🚀 Flagship for coding + agentic tasks"
@@ -184,7 +195,7 @@ struct DynamicModelSelector: View {
             } else if id.contains("o1") {
                 return "🧩 Step-by-step reasoning"
             } else if id.contains("computer-use-preview") {
-                return "🖥️ Computer Use (Preview)"
+                return "🖥️ Legacy Computer Use preview"
             } else if id.contains("gpt-4") {
                 return "💪 Powerful general-purpose"
             } else if id.contains("gpt-3.5") {
@@ -197,7 +208,15 @@ struct DynamicModelSelector: View {
         // Fallback descriptions for when model isn't loaded yet
         let id = selectedModel.lowercased()
         if id.contains("gpt-5") {
-            if id.contains("gpt-5.2-pro") {
+            if id.contains("gpt-5.4-pro") {
+                return "🧠 Maximum compute for the toughest work"
+            } else if id.contains("gpt-5.4-mini") {
+                return "💨 Strong mini model with computer use"
+            } else if id.contains("gpt-5.4-nano") {
+                return "⚡ Cheapest GPT‑5.4-class model"
+            } else if id.contains("gpt-5.4") {
+                return "🚀 Latest flagship with computer use"
+            } else if id.contains("gpt-5.2-pro") {
                 return "🧠 Extra compute for tougher problems"
             } else if id.contains("gpt-5.2") {
                 return "🚀 Flagship for coding + agentic tasks"
@@ -218,6 +237,8 @@ struct DynamicModelSelector: View {
             return "🎯 Versatile and reliable"
         } else if id.contains("o1") {
             return "🧩 Step-by-step reasoning"
+        } else if id.contains("computer-use-preview") {
+            return "🖥️ Legacy Computer Use preview"
         } else {
             return "💬 Chat model"
         }
@@ -244,6 +265,7 @@ struct DynamicModelSelector: View {
                         // Explicit allowlist of known working chat models
                         let allowedModels: Set<String> = [
                             // Latest models
+                            "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
                             "gpt-5.2", "gpt-5.2-pro",
                             "gpt-5.1",
                             "gpt-5", "gpt-5-mini", "gpt-5-nano",
@@ -269,6 +291,10 @@ struct DynamicModelSelector: View {
 
                         // Allow GPT-5.2 / GPT-5.1 snapshots (but avoid ChatGPT-only aliases).
                         if id.hasPrefix("gpt-5.2-") || id.hasPrefix("gpt-5.1-"), !id.contains("chat-latest") {
+                            return true
+                        }
+
+                        if id.hasPrefix("gpt-5.4-"), !id.contains("chat-latest") {
                             return true
                         }
 
@@ -299,6 +325,10 @@ struct DynamicModelSelector: View {
 
                         // Priority order: gpt-5.2-pro > gpt-5.2 > gpt-5.1 > gpt-5 > gpt-4.1 > o4 > o3 > gpt-4o > CUA > o1 > gpt-4 > gpt-3.5
                         let modelPriority: [String: Int] = [
+                            "gpt-5.4-pro": 1200,
+                            "gpt-5.4": 1150,
+                            "gpt-5.4-mini": 990,
+                            "gpt-5.4-nano": 980,
                             "gpt-5.2-pro": 1100,
                             "gpt-5.2": 1090,
                             "gpt-5.1": 1080,
@@ -393,9 +423,11 @@ struct ModelPickerView: View {
     var body: some View {
         List {
             if isOffline {
-                // Fallback models organized by category
-                Section("🚀 Latest Models") {
-                    ForEach(["gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"], id: \.self) { modelId in
+                let computerCapableFallbackModels = ["gpt-5.4", "gpt-5.4-mini", "computer-use-preview"]
+                let latestFallbackModels = ["gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]
+
+                Section("🖥️ Computer Capable") {
+                    ForEach(computerCapableFallbackModels, id: \.self) { modelId in
                         ModelPickerRow(
                             modelId: modelId,
                             displayName: tempModelDisplayName(for: modelId),
@@ -408,13 +440,13 @@ struct ModelPickerView: View {
                     }
                 }
 
-                // Dedicated Computer Use model
-                Section("🖥️ Computer Use (Preview)") {
-                    ForEach(["computer-use-preview"], id: \.self) { modelId in
+                // Fallback models organized by category
+                Section("🚀 Latest Models") {
+                    ForEach(latestFallbackModels, id: \.self) { modelId in
                         ModelPickerRow(
                             modelId: modelId,
                             displayName: tempModelDisplayName(for: modelId),
-                            description: "Dedicated model required for hosted Computer Use",
+                            description: tempModelDescription(for: modelId),
                             isSelected: selectedModel == modelId
                         ) {
                             selectedModel = modelId
@@ -452,8 +484,12 @@ struct ModelPickerView: View {
                 }
             } else {
                 // Live models organized by capability
-                let latestModels = models.filter { 
-                    $0.id.contains("gpt-5") || $0.id.contains("gpt-4.1") || $0.id.contains("o4")
+                let computerCapableModels = models.filter {
+                    isComputerCapableModel($0.id)
+                }
+                let latestModels = models.filter {
+                    ($0.id.contains("gpt-5") || $0.id.contains("gpt-4.1") || $0.id.contains("o4")) &&
+                    !isComputerCapableModel($0.id)
                 }
                 let reasoningModels = models.filter { 
                     ($0.id.contains("o3") || $0.id.contains("o1")) && !$0.id.contains("o4")
@@ -462,7 +498,22 @@ struct ModelPickerView: View {
                     ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4") || $0.id.contains("gpt-3.5")) &&
                     !$0.id.contains("gpt-4.1")
                 }
-                let computerUseModels = models.filter { $0.id == "computer-use-preview" }
+
+                if !computerCapableModels.isEmpty {
+                    Section("🖥️ Computer Capable") {
+                        ForEach(computerCapableModels) { model in
+                            ModelPickerRow(
+                                modelId: model.id,
+                                displayName: model.displayName,
+                                description: modelDescription(for: model.id),
+                                isSelected: selectedModel == model.id
+                            ) {
+                                selectedModel = model.id
+                                dismiss()
+                            }
+                        }
+                    }
+                }
 
                 if !latestModels.isEmpty {
                     Section("🚀 Latest & Greatest") {
@@ -511,26 +562,14 @@ struct ModelPickerView: View {
                         }
                     }
                 }
-
-                if !computerUseModels.isEmpty {
-                    Section("🖥️ Computer Use (Preview)") {
-                        ForEach(computerUseModels) { model in
-                            ModelPickerRow(
-                                modelId: model.id,
-                                displayName: model.displayName,
-                                description: "Dedicated model required for hosted Computer Use",
-                                isSelected: selectedModel == model.id
-                            ) {
-                                selectedModel = model.id
-                                dismiss()
-                            }
-                        }
-                    }
-                }
             }
         }
         .navigationTitle("Select Model")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    private func isComputerCapableModel(_ modelId: String) -> Bool {
+        ModelCompatibilityService.shared.isToolSupported(.computer, for: modelId, isStreaming: true)
     }
 
     private func tempModelDisplayName(for modelId: String) -> String {
@@ -541,7 +580,15 @@ struct ModelPickerView: View {
     private func tempModelDescription(for modelId: String) -> String {
         let id = modelId.lowercased()
         if id.contains("gpt-5") {
-            if id.contains("gpt-5.2-pro") {
+            if id.contains("gpt-5.4-pro") {
+                return "🧠 Maximum compute for the toughest work"
+            } else if id.contains("gpt-5.4-mini") {
+                return "💨 Strong mini model with computer use"
+            } else if id.contains("gpt-5.4-nano") {
+                return "⚡ Cheapest GPT‑5.4-class model"
+            } else if id.contains("gpt-5.4") {
+                return "🚀 Latest flagship with computer use"
+            } else if id.contains("gpt-5.2-pro") {
                 return "🧠 Extra compute for tougher problems"
             } else if id.contains("gpt-5.2") {
                 return "🚀 Flagship for coding + agentic tasks"
@@ -574,6 +621,8 @@ struct ModelPickerView: View {
             }
         } else if id.contains("o1") {
             return "🧩 Step-by-step reasoning"
+        } else if id.contains("computer-use-preview") {
+            return "🖥️ Legacy Computer Use preview"
         } else if id.contains("gpt-4") {
             return "💪 Powerful general-purpose"
         } else if id.contains("gpt-3.5") {
@@ -626,7 +675,7 @@ struct ModelPickerRow: View {
         @State private var selectedModel = "gpt-4o"
 
         var body: some View {
-            NavigationView {
+            NavigationStack {
                 Form {
                     DynamicModelSelector(
                         selectedModel: $selectedModel,

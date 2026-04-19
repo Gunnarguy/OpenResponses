@@ -28,7 +28,7 @@ struct RemoteMCPSetupSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Label("Remote Server", systemImage: "server.rack")) {
                     TextField("Label (e.g., Notion HTTP MCP)", text: $label)

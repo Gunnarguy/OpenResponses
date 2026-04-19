@@ -7,7 +7,7 @@ struct NotionConnectionView: View {
     @StateObject private var viewModel = NotionConnectionViewModel()
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     headerSection

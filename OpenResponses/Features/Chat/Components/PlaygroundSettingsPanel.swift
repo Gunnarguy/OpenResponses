@@ -28,26 +28,56 @@ struct PlaygroundSettingsPanel: View {
             isStreaming: viewModel.activePrompt.enableStreaming
         )
     }
+
+    private var supportsTemperature: Bool {
+        ModelCompatibilityService.shared.isParameterSupported(
+            "temperature",
+            for: viewModel.activePrompt.openAIModel,
+            reasoningEffort: viewModel.activePrompt.reasoningEffort
+        )
+    }
+
+    private var supportsTopP: Bool {
+        ModelCompatibilityService.shared.isParameterSupported(
+            "top_p",
+            for: viewModel.activePrompt.openAIModel,
+            reasoningEffort: viewModel.activePrompt.reasoningEffort
+        )
+    }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o1-preview", "o1-mini", "o3-mini", "computer-use-preview"], id: \.self) { model in
+                        ForEach(["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "o3", "o4-mini", "o1-preview", "o1-mini", "computer-use-preview"], id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
                     .pickerStyle(.menu)
-                    .onChange(of: viewModel.activePrompt.openAIModel) { _, newModel in
+                    .onChange(of: viewModel.activePrompt.openAIModel) { oldModel, newModel in
                         let compatibilityService = ModelCompatibilityService.shared
                         let supportsComputer = compatibilityService.isToolSupported(
                             .computer,
                             for: newModel,
                             isStreaming: viewModel.activePrompt.enableStreaming
                         )
-                        if supportsComputer && newModel == "computer-use-preview" {
+                        let supportsReasoning = compatibilityService
+                            .getCapabilities(for: newModel)?
+                            .supportsReasoningEffort == true
+                        let previousSupportsReasoning = compatibilityService
+                            .getCapabilities(for: oldModel)?
+                            .supportsReasoningEffort == true
+
+                        if supportsReasoning,
+                           !previousSupportsReasoning,
+                           let defaultReasoningEffort = compatibilityService.defaultReasoningEffort(for: newModel)
+                        {
+                            viewModel.activePrompt.reasoningEffort = defaultReasoningEffort
+                        }
+
+                        if newModel == "computer-use-preview" {
                             viewModel.activePrompt.enableComputerUse = true
                         } else if !supportsComputer && viewModel.activePrompt.enableComputerUse {
                             viewModel.activePrompt.enableComputerUse = false
@@ -69,7 +99,7 @@ struct PlaygroundSettingsPanel: View {
                         .disabled(!isComputerUseSupported)
 
                     if !isComputerUseSupported {
-                        Text("Computer use requires the computer-use-preview model.")
+                        Text("Choose a computer-capable model like gpt-5.4 or gpt-5.4-mini.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -77,22 +107,23 @@ struct PlaygroundSettingsPanel: View {
                 
                 // MARK: - Parameters Section
                 Section("Parameters") {
-                    // Temperature
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Temperature")
-                                .font(.subheadline)
-                            Spacer()
-                            Text(String(format: "%.2f", viewModel.activePrompt.temperature))
-                                .font(.system(.subheadline, design: .monospaced))
+                    if supportsTemperature {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Temperature")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f", viewModel.activePrompt.temperature))
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.01)
+                            Text("Controls randomness. Lower = focused, higher = creative")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $viewModel.activePrompt.temperature, in: 0...2, step: 0.01)
-                        Text("Controls randomness. Lower = focused, higher = creative")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                     
                     // Max Output Tokens
                     VStack(alignment: .leading, spacing: 8) {
@@ -114,22 +145,29 @@ struct PlaygroundSettingsPanel: View {
                     }
                     .padding(.vertical, 4)
                     
-                    // Top P
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Top P")
-                                .font(.subheadline)
-                            Spacer()
-                            Text(String(format: "%.2f", viewModel.activePrompt.topP))
-                                .font(.system(.subheadline, design: .monospaced))
+                    if supportsTopP {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Top P")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f", viewModel.activePrompt.topP))
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            Slider(value: $viewModel.activePrompt.topP, in: 0...1, step: 0.01)
+                            Text("Nucleus sampling. Alternative to temperature")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $viewModel.activePrompt.topP, in: 0...1, step: 0.01)
-                        Text("Nucleus sampling. Alternative to temperature")
+                        .padding(.vertical, 4)
+                    }
+
+                    if !supportsTemperature || !supportsTopP {
+                        Text("Sampling controls are only available for this model when reasoning effort is set to none.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 4)
                 }
                 
                 // MARK: - Files & Vector Stores Section

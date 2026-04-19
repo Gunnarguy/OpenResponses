@@ -33,7 +33,7 @@ struct MCPConnectorGalleryView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
@@ -460,7 +460,7 @@ struct ConnectorSetupView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     // Header
@@ -826,7 +826,7 @@ private struct RemoteServerSetupSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Server")) {
                     TextField("Label", text: $label)
@@ -1220,7 +1220,7 @@ private struct RemoteServerTemplateSetupSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {

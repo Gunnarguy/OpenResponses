@@ -406,11 +406,59 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
-    /// Builds default system instructions that are aware of computer use capabilities
+    private func isDedicatedComputerUseModel(_ modelId: String) -> Bool {
+        modelId == "computer-use-preview"
+    }
+
+    private func supportsComputerUse(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
+        let effectiveStreaming = isStreaming ?? (prompt.enableStreaming && !prompt.backgroundMode)
+        return ModelCompatibilityService.shared.isToolSupported(
+            .computer,
+            for: prompt.openAIModel,
+            isStreaming: effectiveStreaming
+        )
+    }
+
+    private func isComputerUseActive(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
+        prompt.enableComputerUse && supportsComputerUse(for: prompt, isStreaming: isStreaming)
+    }
+
+    private func defaultComputerToolConfiguration() -> (environment: String, screenSize: CGSize) {
+        let environment: String
+        #if os(iOS)
+            environment = "browser"
+        #elseif os(macOS)
+            environment = "mac"
+        #else
+            environment = "browser"
+        #endif
+
+        let screenSize: CGSize
+        #if os(iOS)
+            screenSize = CGSize(width: 440, height: 956)
+        #elseif os(macOS)
+            screenSize = CGSize(width: 1920, height: 1080)
+        #else
+            screenSize = CGSize(width: 1920, height: 1080)
+        #endif
+
+        return (environment, screenSize)
+    }
+
+    /// Builds default system instructions that are aware of computer use capabilities.
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
-        if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
+        if isComputerUseActive(for: prompt) {
+            let computerConfig = defaultComputerToolConfiguration()
+            let surfaceDescription: String
+            switch computerConfig.environment {
+            case "mac":
+                surfaceDescription = "\(Int(computerConfig.screenSize.width))x\(Int(computerConfig.screenSize.height)) desktop workspace"
+            default:
+                surfaceDescription = "\(Int(computerConfig.screenSize.width))x\(Int(computerConfig.screenSize.height)) browser viewport"
+            }
+
             return """
-            You are a precise assistant using a 440x956 iPhone-like screen. Do exactly what the user asks—no guesses.
+            You are a precise assistant using the computer tool on a \(surfaceDescription). Do exactly what the user asks—no guesses.
 
             Core rules:
             - If current_url is blank or "about:blank", do not screenshot/wait first. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
@@ -425,16 +473,14 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
-    /// Builds system instructions; for computer-use-preview we prefer action-only loops and omit instructions unless explicitly provided
+    /// Builds system instructions, adding computer-use guardrails when the hosted computer tool is active.
     private func buildInstructions(prompt: Prompt) -> String {
-        // For CUA, default to no system instructions unless user explicitly set them
-        if prompt.enableComputerUse && prompt.openAIModel == "computer-use-preview" {
-            return prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        // If user provided custom instructions, use them
         let userInstructions = prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !userInstructions.isEmpty && userInstructions != "You are a helpful assistant." {
+        let computerUseActive = isComputerUseActive(for: prompt)
+
+        // Preserve existing behavior for non-computer requests: explicit user instructions override
+        // the default assistant prompt and the dynamic tool guidance below.
+        if !computerUseActive, !userInstructions.isEmpty, userInstructions != "You are a helpful assistant." {
             return userInstructions
         }
 
@@ -442,7 +488,11 @@ class OpenAIService: OpenAIServiceProtocol {
         var instructions: [String] = []
 
         // Base instruction
-        instructions.append("You are a helpful assistant.")
+        instructions.append(computerUseActive ? buildDefaultComputerUseInstructions(prompt: prompt) : "You are a helpful assistant.")
+
+        if computerUseActive, !userInstructions.isEmpty, userInstructions != "You are a helpful assistant." {
+            instructions.append("\n\nAdditional instructions:\n\(userInstructions)")
+        }
 
         // Add MCP-specific guidance if MCP is enabled
         // Note: The model automatically receives tool schemas from OpenAI's framework
@@ -472,6 +522,12 @@ class OpenAIService: OpenAIServiceProtocol {
         // Add code interpreter guidance if enabled
         if prompt.enableCodeInterpreter {
             instructions.append("\n\nYou can run Python code via code_interpreter for analysis, calculations, and file processing.")
+        }
+
+        if prompt.enableAppleIntegrations {
+            instructions.append(
+                "\n\nFor Apple Calendar and Reminders tools, interpret relative dates like \"today\" and \"tomorrow\" in the device's local time zone (\(TimeZone.current.identifier)). When sending ISO 8601 day-boundary arguments to those tools, preserve the local UTC offset instead of converting local-day queries to Z. For reminder list queries, omit the `completed` filter unless the user explicitly asks for incomplete/open reminders only or completed reminders only."
+            )
         }
 
         if prompt.enableWebSearch {
@@ -551,16 +607,20 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["reasoning"] = reasoning
         }
 
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId
-        }
+        applyContinuationIdentifiers(
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            to: &requestObject
+        )
 
-        if let convId = conversationId {
-            requestObject["conversation_id"] = convId
-        }
-
-        if prompt.backgroundMode {
+        if prompt.backgroundMode && prompt.storeResponses {
             requestObject["background"] = true
+        } else if prompt.backgroundMode {
+            AppLogger.log(
+                "Omitting background=true because background responses require store=true",
+                category: .openAI,
+                level: .info
+            )
         }
 
         applyToolChoice(
@@ -609,7 +669,70 @@ class OpenAIService: OpenAIServiceProtocol {
                 customInput: customInput
             )
         }
+
+        /// Test hook for validating function output continuation request assembly.
+        func testing_buildFunctionOutputsRequestObject(
+            outputs: [FunctionCallOutputPayload],
+            model: String,
+            previousResponseId: String? = nil,
+            conversationId: String? = nil,
+            prompt: Prompt,
+            stream: Bool = false
+        ) throws -> [String: Any] {
+            let data = try buildFunctionOutputsRequestData(
+                outputs: outputs,
+                model: model,
+                previousResponseId: previousResponseId,
+                conversationId: conversationId,
+                prompt: prompt,
+                stream: stream,
+                logPrefix: "testing_buildFunctionOutputsRequestObject",
+                reasoningItems: nil
+            )
+
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return [:]
+            }
+
+            return object
+        }
     #endif
+
+    private func applyContinuationIdentifiers(
+        previousResponseId: String?,
+        conversationId: String?,
+        to requestObject: inout [String: Any],
+        logPrefix: String? = nil
+    ) {
+        let normalizedPreviousResponseId = previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedConversationId = conversationId?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let prevId = normalizedPreviousResponseId, !prevId.isEmpty {
+            requestObject["previous_response_id"] = prevId
+
+            if let logPrefix {
+                AppLogger.log("📤 [\(logPrefix)] Including previous_response_id: \(prevId)", category: .openAI, level: .info)
+            }
+
+            if let convId = normalizedConversationId, !convId.isEmpty {
+                let prefix = logPrefix ?? "request"
+                AppLogger.log(
+                    "⚠️ [\(prefix)] Omitting conversation=\(convId) because previous_response_id is already set",
+                    category: .openAI,
+                    level: .warning
+                )
+            }
+            return
+        }
+
+        if let convId = normalizedConversationId, !convId.isEmpty {
+            requestObject["conversation"] = convId
+
+            if let logPrefix {
+                AppLogger.log("📤 [\(logPrefix)] Including conversation: \(convId)", category: .openAI, level: .info)
+            }
+        }
+    }
 
     /// Builds base metadata for a request, adding instructions, store flag, and stream options.
     private func baseRequestMetadata(for prompt: Prompt, stream: Bool) -> [String: Any] {
@@ -620,7 +743,7 @@ class OpenAIService: OpenAIServiceProtocol {
         ]
 
         let instructions = buildInstructions(prompt: prompt)
-        if !instructions.isEmpty, !(apiModelId == "computer-use-preview" && instructions == "You are a helpful assistant.") {
+        if !instructions.isEmpty {
             metadata["instructions"] = instructions
         }
 
@@ -642,31 +765,18 @@ class OpenAIService: OpenAIServiceProtocol {
         var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: isStreaming)
         var forceImageToolChoice = false
 
-        if prompt.openAIModel == "computer-use-preview", !tools.contains(where: { if case .computer = $0 { return true } else { return false } }) {
-            let environment: String
-            #if os(iOS)
-                environment = "browser"
-            #elseif os(macOS)
-                environment = "mac"
-            #else
-                environment = "browser"
-            #endif
-            let screenSize: CGSize
-            #if os(iOS)
-                screenSize = CGSize(width: 440, height: 956)
-            #elseif os(macOS)
-                screenSize = CGSize(width: 1920, height: 1080)
-            #else
-                screenSize = CGSize(width: 1920, height: 1080)
-            #endif
+        if isDedicatedComputerUseModel(prompt.openAIModel),
+           !tools.contains(where: { if case .computer = $0 { return true } else { return false } })
+        {
+            let computerConfig = defaultComputerToolConfiguration()
             tools.append(.computer(
-                environment: environment,
-                displayWidth: Int(screenSize.width),
-                displayHeight: Int(screenSize.height)
+                environment: computerConfig.environment,
+                displayWidth: Int(computerConfig.screenSize.width),
+                displayHeight: Int(computerConfig.screenSize.height)
             ))
         }
 
-        if prompt.openAIModel == "computer-use-preview" {
+        if isDedicatedComputerUseModel(prompt.openAIModel) {
             tools.removeAll { tool in
                 if case .computer = tool { return false }
                 return true
@@ -819,7 +929,7 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Merges top-level sampling parameters into the request and applies model-specific overrides.
     private func mergeTopLevelParameters(for prompt: Prompt, into request: inout [String: Any]) {
         var parameters = buildParameters(for: prompt)
-        if prompt.openAIModel == "computer-use-preview" {
+        if isDedicatedComputerUseModel(prompt.openAIModel) {
             parameters["truncation"] = "auto"
         }
 
@@ -850,7 +960,7 @@ class OpenAIService: OpenAIServiceProtocol {
     private func shouldForceImageGeneration(for prompt: Prompt, userMessage: String, availableTools: [APICapabilities.Tool]) -> Bool {
         guard prompt.enableImageGeneration else { return false }
         guard availableTools.contains(where: { if case .imageGeneration = $0 { return true } else { return false } }) else { return false }
-        guard prompt.openAIModel != "computer-use-preview" else { return false }
+        guard !isDedicatedComputerUseModel(prompt.openAIModel) else { return false }
 
         let text = userMessage.lowercased()
         // Common verbs and nouns indicating image creation
@@ -1035,33 +1145,18 @@ class OpenAIService: OpenAIServiceProtocol {
 
         if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
             AppLogger.log("Computer tool is enabled and supported", category: .openAI, level: .info)
-            // Computer Use tool with proper API parameters
-            // Detect environment based on platform
-            let environment: String
-            #if os(iOS)
-                environment = "browser" // Use browser environment for iOS
-            #elseif os(macOS)
-                environment = "mac" // Use mac environment for macOS
-            #else
-                environment = "browser" // Default to browser for other platforms
-            #endif
-
-            // Get screen dimensions (use reasonable defaults to avoid main thread issues)
-            let screenSize: CGSize
-            #if os(iOS)
-                screenSize = CGSize(width: 440, height: 956) // Default iPhone size
-            #elseif os(macOS)
-                screenSize = CGSize(width: 1920, height: 1080) // Default Mac size
-            #else
-                screenSize = CGSize(width: 1920, height: 1080) // Default size
-            #endif
+            let computerConfig = defaultComputerToolConfiguration()
 
             tools.append(.computer(
-                environment: environment,
-                displayWidth: Int(screenSize.width),
-                displayHeight: Int(screenSize.height)
+                environment: computerConfig.environment,
+                displayWidth: Int(computerConfig.screenSize.width),
+                displayHeight: Int(computerConfig.screenSize.height)
             ))
-            AppLogger.log("Added computer tool with environment=\(environment), width=\(Int(screenSize.width)), height=\(Int(screenSize.height))", category: .openAI, level: .info)
+            AppLogger.log(
+                "Added computer tool with environment=\(computerConfig.environment), width=\(Int(computerConfig.screenSize.width)), height=\(Int(computerConfig.screenSize.height))",
+                category: .openAI,
+                level: .info
+            )
         } else {
             AppLogger.log("Computer tool not added: enabled=\(prompt.enableComputerUse), supported=\(compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming))", category: .openAI, level: .info)
         }
@@ -1256,17 +1351,17 @@ class OpenAIService: OpenAIServiceProtocol {
                 // List calendar events
                 let listEventsFunc = APICapabilities.Function(
                     name: "fetchAppleCalendarEvents",
-                    description: "List calendar events from Apple Calendar within a date range. Useful for checking schedules, finding meetings, or viewing upcoming appointments.",
+                    description: "List calendar events from Apple Calendar within a date range. Interpret relative dates in the device's local time zone and prefer ISO 8601 timestamps with an explicit local offset for local-day queries.",
                     parameters: APICapabilities.JSONSchema([
                         "type": "object",
                         "properties": [
                             "startDate": [
                                 "type": "string",
-                                "description": "Start date in ISO 8601 format (e.g., '2024-01-15T00:00:00Z'). Defaults to now if omitted.",
+                                "description": "Start date in ISO 8601 format. For local-day queries like 'today', use the device's local offset (e.g., '2024-01-15T00:00:00-08:00'). Defaults to now if omitted.",
                             ],
                             "endDate": [
                                 "type": "string",
-                                "description": "End date in ISO 8601 format (e.g., '2024-01-22T23:59:59Z'). Defaults to 7 days from start if omitted.",
+                                "description": "End date in ISO 8601 format. For local-day queries like 'today', use the device's local offset (e.g., '2024-01-15T23:59:59-08:00'). Defaults to 7 days from start if omitted.",
                             ],
                             "calendarIdentifiers": [
                                 "type": "array",
@@ -1293,11 +1388,11 @@ class OpenAIService: OpenAIServiceProtocol {
                             ],
                             "startDate": [
                                 "type": "string",
-                                "description": "Event start date/time in ISO 8601 format (e.g., '2024-01-15T14:00:00Z').",
+                                "description": "Event start date/time in ISO 8601 format, preferably with the device's local offset (e.g., '2024-01-15T14:00:00-08:00').",
                             ],
                             "endDate": [
                                 "type": "string",
-                                "description": "Event end date/time in ISO 8601 format (e.g., '2024-01-15T15:00:00Z').",
+                                "description": "Event end date/time in ISO 8601 format, preferably with the device's local offset (e.g., '2024-01-15T15:00:00-08:00').",
                             ],
                             "location": [
                                 "type": "string",
@@ -1323,21 +1418,21 @@ class OpenAIService: OpenAIServiceProtocol {
                 // List reminders
                 let listRemindersFunc = APICapabilities.Function(
                     name: "fetchAppleReminders",
-                    description: "List reminders from Apple Reminders app. Can filter by completion status and date range.",
+                    description: "List reminders from Apple Reminders app. For generic queries like 'what are my reminders today', omit `completed` so both completed and incomplete reminders can be returned. For incomplete reminders, date filters apply to due dates in the device's local time zone. For completed reminders, date filters apply to completion dates.",
                     parameters: APICapabilities.JSONSchema([
                         "type": "object",
                         "properties": [
                             "completed": [
                                 "type": "boolean",
-                                "description": "Filter by completion status. True shows completed reminders, false shows incomplete. Omit to show all.",
+                                "description": "Filter by completion status. True shows completed reminders, false shows incomplete. Omit this field for general reminder queries so all matching reminders can be returned.",
                             ],
                             "startDate": [
                                 "type": "string",
-                                "description": "Optional start date for due date filtering in ISO 8601 format.",
+                                "description": "Optional ISO 8601 start date. For local-day queries like 'today', use the device's local offset (e.g., '2024-01-15T00:00:00-08:00').",
                             ],
                             "endDate": [
                                 "type": "string",
-                                "description": "Optional end date for due date filtering in ISO 8601 format.",
+                                "description": "Optional ISO 8601 end date. For local-day queries like 'today', use the device's local offset (e.g., '2024-01-15T23:59:59-08:00').",
                             ],
                         ],
                         "required": [],
@@ -1363,7 +1458,7 @@ class OpenAIService: OpenAIServiceProtocol {
                             ],
                             "dueDate": [
                                 "type": "string",
-                                "description": "Optional due date in ISO 8601 format (e.g., '2024-01-20T09:00:00Z').",
+                                "description": "Optional due date in ISO 8601 format, preferably with the device's local offset (e.g., '2024-01-20T09:00:00-08:00').",
                             ],
                             "priority": [
                                 "type": "integer",
@@ -1781,12 +1876,17 @@ class OpenAIService: OpenAIServiceProtocol {
         var parameters: [String: Any] = [:]
         let compatibilityService = ModelCompatibilityService.shared
 
-        if !prompt.promptCacheKey.isEmpty {
-            parameters["prompt_cache_key"] = prompt.promptCacheKey
+        let trimmedPromptCacheKey = prompt.promptCacheKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPromptCacheKey.isEmpty {
+            parameters["prompt_cache_key"] = trimmedPromptCacheKey
         }
 
-        if !prompt.safetyIdentifier.isEmpty {
-            parameters["safety_identifier"] = prompt.safetyIdentifier
+        let trimmedSafetyIdentifier = prompt.safetyIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLegacyUserIdentifier = prompt.userIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSafetyIdentifier.isEmpty {
+            parameters["safety_identifier"] = trimmedSafetyIdentifier
+        } else if !trimmedLegacyUserIdentifier.isEmpty {
+            parameters["safety_identifier"] = trimmedLegacyUserIdentifier
         }
 
         // Verbosity moved under text.verbosity in latest API. Handled in buildTextConfiguration.
@@ -1826,10 +1926,6 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
-        if compatibilityService.isParameterSupported("user_identifier", for: prompt.openAIModel), !prompt.userIdentifier.isEmpty {
-            parameters["user"] = prompt.userIdentifier
-        }
-
         if compatibilityService.isParameterSupported("max_tool_calls", for: prompt.openAIModel), prompt.maxToolCalls > 0 {
             parameters["max_tool_calls"] = prompt.maxToolCalls
         }
@@ -1853,8 +1949,8 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Constructs the `reasoning` object for models that support it.
     private func buildReasoningObject(for prompt: Prompt) -> [String: Any]? {
         let compatibilityService = ModelCompatibilityService.shared
-        // Special-case: computer-use-preview supports reasoning.summary without effort
-        if prompt.openAIModel == "computer-use-preview" {
+        // The legacy preview model supports reasoning.summary without exposing effort.
+        if isDedicatedComputerUseModel(prompt.openAIModel) {
             // Default to concise summary for visibility into actions unless the user overrides.
             let summary = prompt.reasoningSummary.isEmpty ? "concise" : prompt.reasoningSummary
             return ["summary": summary]
@@ -1921,7 +2017,7 @@ class OpenAIService: OpenAIServiceProtocol {
 
         // Include computer tool outputs only when the computer tool is actually added for this request
         // or when using the dedicated computer-use model (which always uses the computer tool).
-        if hasComputerTool || prompt.openAIModel == "computer-use-preview" {
+        if hasComputerTool || isDedicatedComputerUseModel(prompt.openAIModel) {
             if prompt.includeComputerCallOutput {
                 includeArray.append("computer_call_output.output")
             }
@@ -2015,7 +2111,7 @@ class OpenAIService: OpenAIServiceProtocol {
         model: String,
         reasoningItems: [[String: Any]]?,
         previousResponseId: String?,
-        conversationId _: String?,
+        conversationId: String?,
         prompt: Prompt
     ) async throws -> OpenAIResponse {
         AppLogger.log("🔄 [sendFunctionOutput] Starting...", category: .openAI, level: .info)
@@ -2035,6 +2131,7 @@ class OpenAIService: OpenAIServiceProtocol {
             output: output,
             model: model,
             previousResponseId: previousResponseId,
+            conversationId: conversationId,
             prompt: prompt,
             stream: false,
             logPrefix: "sendFunctionOutput",
@@ -2139,6 +2236,59 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
+    /// Sends one or more function call outputs back to the API and waits for the full response.
+    func sendFunctionOutputs(
+        outputs: [FunctionCallOutputPayload],
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        conversationId: String?,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        let jsonData = try buildFunctionOutputsRequestData(
+            outputs: outputs,
+            model: model,
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            prompt: prompt,
+            stream: false,
+            logPrefix: "sendFunctionOutputs",
+            reasoningItems: reasoningItems
+        )
+
+        var request = URLRequest(url: apiURL)
+        request.timeoutInterval = 120
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+
+        do {
+            return try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            AppLogger.log("❌ [sendFunctionOutputs] Decoding error: \(error)", category: .openAI, level: .error)
+            if let jsonString = String(data: data, encoding: .utf8) {
+                AppLogger.log("📋 [sendFunctionOutputs] Raw response: \(jsonString.prefix(500))", category: .openAI, level: .error)
+            }
+            throw OpenAIServiceError.invalidResponseData
+        }
+    }
+
     /// Streams one or more function call outputs back to the API and yields streaming events.
     /// This method supports batch processing of multiple function outputs in a single request.
     func streamFunctionOutputs(
@@ -2156,61 +2306,16 @@ class OpenAIService: OpenAIServiceProtocol {
                         continuation.finish(throwing: OpenAIServiceError.missingAPIKey)
                         return
                     }
-
-                    // Build input array with function_call_output items
-                    // NOTE: Do NOT include reasoning items here - they belong to the previous turn
-                    // and the API expects reasoning to be followed by its corresponding message/output.
-                    // When sending function outputs, we only need the function_call and function_call_output.
-                    var inputArray: [[String: Any]] = []
-
-                    var appendedCallIds = Set<String>()
-                    for output in outputs {
-                        // Use consistent call identifier logic: callId if present, otherwise id
-                        let callIdentifier = output.callId.isEmpty ? (output.callItem?.id ?? output.callId) : output.callId
-
-                        if let callItem = output.callItem {
-                            if appendedCallIds.insert(callIdentifier).inserted {
-                                let encodedCall = encodeFunctionCallItem(callItem)
-                                AppLogger.log("📦 [streamFunctionOutputs] Adding function_call item: id=\(callItem.id), callId=\(callItem.callId ?? "none"), type=\(callItem.type)", category: .openAI, level: .info)
-                                inputArray.append(encodedCall)
-                            }
-                        }
-
-                        let functionOutputMessage: [String: Any] = [
-                            "type": "function_call_output",
-                            "call_id": callIdentifier,
-                            "output": output.output,
-                        ]
-
-                        AppLogger.log("📤 [streamFunctionOutputs] Adding function_call_output for call_id: \(callIdentifier)", category: .openAI, level: .info)
-                        inputArray.append(functionOutputMessage)
-                    }
-
-                    var requestObject: [String: Any] = [
-                        "model": model,
-                        "store": true,
-                        "input": inputArray,
-                        "stream": true,
-                    ]
-
-                    if let prevId = previousResponseId, !prevId.isEmpty {
-                        requestObject["previous_response_id"] = prevId
-                    }
-
-                    if let convId = conversationId, !convId.isEmpty {
-                        requestObject["conversation_id"] = convId
-                    }
-
-                    // Add tools
-                    let tools = buildTools(for: prompt, userMessage: "", isStreaming: true)
-                    if !tools.isEmpty {
-                        let toolsData = try JSONEncoder().encode(tools)
-                        if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
-                            requestObject["tools"] = toolsArray
-                        }
-                    }
-
-                    let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
+                    let jsonData = try buildFunctionOutputsRequestData(
+                        outputs: outputs,
+                        model: model,
+                        previousResponseId: previousResponseId,
+                        conversationId: conversationId,
+                        prompt: prompt,
+                        stream: true,
+                        logPrefix: "streamFunctionOutputs",
+                        reasoningItems: nil
+                    )
 
                     var request = URLRequest(url: apiURL)
                     request.timeoutInterval = 120
@@ -2285,6 +2390,7 @@ class OpenAIService: OpenAIServiceProtocol {
         output: String,
         model: String,
         previousResponseId: String?,
+        conversationId: String?,
         prompt: Prompt,
         stream: Bool,
         logPrefix: String,
@@ -2331,9 +2437,16 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["stream"] = true
         }
 
-        if let prevId = previousResponseId, !prevId.isEmpty {
-            requestObject["previous_response_id"] = prevId
-            AppLogger.log("📤 [\(logPrefix)] Including previous_response_id: \(prevId)", category: .openAI, level: .info)
+        applyContinuationIdentifiers(
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            to: &requestObject,
+            logPrefix: logPrefix
+        )
+
+        if !stream, prompt.backgroundMode && prompt.storeResponses {
+            requestObject["background"] = true
+            AppLogger.log("📤 [\(logPrefix)] Enabling background mode for non-streaming follow-up", category: .openAI, level: .info)
         }
 
         AppLogger.log("🔧 [\(logPrefix)] Building tools array...", category: .openAI, level: .info)
@@ -2355,6 +2468,82 @@ class OpenAIService: OpenAIServiceProtocol {
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
         AppLogger.log("📤 [\(logPrefix)] Request body size: \(jsonData.count) bytes", category: .openAI, level: .info)
         return jsonData
+    }
+
+    private func buildFunctionOutputsRequestData(
+        outputs: [FunctionCallOutputPayload],
+        model: String,
+        previousResponseId: String?,
+        conversationId: String?,
+        prompt: Prompt,
+        stream: Bool,
+        logPrefix: String,
+        reasoningItems: [[String: Any]]?
+    ) throws -> Data {
+        guard !outputs.isEmpty else {
+            throw OpenAIServiceError.invalidRequest("At least one function output is required")
+        }
+
+        var inputArray: [[String: Any]] = []
+
+        if let reasoningItems, !reasoningItems.isEmpty {
+            let dedupedReasoning = deduplicatedInputItems(reasoningItems, logPrefix: logPrefix)
+            inputArray.append(contentsOf: dedupedReasoning)
+            AppLogger.log("📤 [\(logPrefix)] Including \(dedupedReasoning.count) reasoning item(s)", category: .openAI, level: .info)
+        }
+
+        var appendedCallIds = Set<String>()
+        for output in outputs {
+            let callIdentifier = output.callId.isEmpty ? (output.callItem?.id ?? output.callId) : output.callId
+            guard !callIdentifier.isEmpty else {
+                throw OpenAIServiceError.invalidRequest("Missing call_id for function output payload")
+            }
+
+            if let callItem = output.callItem, appendedCallIds.insert(callIdentifier).inserted {
+                let encodedCall = encodeFunctionCallItem(callItem)
+                AppLogger.log("📦 [\(logPrefix)] Adding function_call item: id=\(callItem.id), callId=\(callItem.callId ?? "none"), type=\(callItem.type)", category: .openAI, level: .info)
+                inputArray.append(encodedCall)
+            }
+
+            let functionOutputMessage: [String: Any] = [
+                "type": "function_call_output",
+                "call_id": callIdentifier,
+                "output": output.output,
+            ]
+
+            AppLogger.log("📤 [\(logPrefix)] Adding function_call_output for call_id: \(callIdentifier)", category: .openAI, level: .info)
+            inputArray.append(functionOutputMessage)
+        }
+
+        var requestObject: [String: Any] = [
+            "model": model,
+            "store": true,
+            "input": inputArray,
+        ]
+
+        if stream {
+            requestObject["stream"] = true
+        } else if prompt.backgroundMode && prompt.storeResponses {
+            requestObject["background"] = true
+            AppLogger.log("📤 [\(logPrefix)] Enabling background mode for non-streaming batch follow-up", category: .openAI, level: .info)
+        }
+
+        applyContinuationIdentifiers(
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            to: &requestObject,
+            logPrefix: logPrefix
+        )
+
+        let tools = buildTools(for: prompt, userMessage: "", isStreaming: stream)
+        if !tools.isEmpty {
+            let toolsData = try JSONEncoder().encode(tools)
+            if let toolsArray = try JSONSerialization.jsonObject(with: toolsData) as? [[String: Any]] {
+                requestObject["tools"] = toolsArray
+            }
+        }
+
+        return try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
     }
 
     private func encodeFunctionCallItem(_ call: OutputItem) -> [String: Any] {
@@ -2811,28 +3000,17 @@ class OpenAIService: OpenAIServiceProtocol {
 
         // Always include the computer tool configuration on follow-ups to keep the CUA context.
         // Use sensible defaults for environment and display if we can't derive real values here.
-        let environment: String
-        #if os(iOS)
-            environment = "browser"
-        #elseif os(macOS)
-            environment = "mac"
-        #else
-            environment = "browser"
-        #endif
-        let screenSize: CGSize
-        #if os(iOS)
-            screenSize = CGSize(width: 440, height: 956)
-        #elseif os(macOS)
-            screenSize = CGSize(width: 1920, height: 1080)
-        #else
-            screenSize = CGSize(width: 1920, height: 1080)
-        #endif
+        let computerConfig = defaultComputerToolConfiguration()
 
         // Encode tool config using our codable Tool enum for correctness.
         var toolsJSON: [Any] = []
         do {
             let tools: [APICapabilities.Tool] = [
-                .computer(environment: environment, displayWidth: Int(screenSize.width), displayHeight: Int(screenSize.height)),
+                .computer(
+                    environment: computerConfig.environment,
+                    displayWidth: Int(computerConfig.screenSize.width),
+                    displayHeight: Int(computerConfig.screenSize.height)
+                ),
             ]
             let encoder = JSONEncoder()
             let toolsData = try encoder.encode(tools)
@@ -4068,20 +4246,17 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Creates a new conversation.
-    func createConversation(title: String?, metadata: [String: String]?, store: Bool?) async throws -> ConversationDetail {
+    func createConversation(title: String?, metadata: [String: String]?, items: [[String: Any]]?) async throws -> ConversationDetail {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
 
         var body: [String: Any] = [:]
-        if let title = title {
-            body["title"] = title
+        if let mergedMetadata = mergedConversationMetadata(title: title, metadata: metadata) {
+            body["metadata"] = mergedMetadata
         }
-        if let metadata = metadata {
-            body["metadata"] = metadata
-        }
-        if let store = store {
-            body["store"] = store
+        if let items, !items.isEmpty {
+            body["items"] = items
         }
 
         let jsonData = try JSONSerialization.data(withJSONObject: body)
@@ -4135,23 +4310,17 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Updates an existing conversation.
-    func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?, store: Bool?) async throws -> ConversationDetail {
+    func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?) async throws -> ConversationDetail {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
 
         var body: [String: Any] = [:]
-        if let title = title {
-            body["title"] = title
-        }
-        if let metadata = metadata {
-            body["metadata"] = metadata
+        if let mergedMetadata = mergedConversationMetadata(title: title, metadata: metadata) {
+            body["metadata"] = mergedMetadata
         }
         if let archived = archived {
             body["archived"] = archived
-        }
-        if let store = store {
-            body["store"] = store
         }
 
         let jsonData = try JSONSerialization.data(withJSONObject: body)
@@ -4200,6 +4369,19 @@ class OpenAIService: OpenAIServiceProtocol {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
+    }
+
+    private func mergedConversationMetadata(title: String?, metadata: [String: String]?) -> [String: String]? {
+        var merged = metadata ?? [:]
+
+        if let title {
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedTitle.isEmpty {
+                merged["openresponses_title"] = trimmedTitle
+            }
+        }
+
+        return merged.isEmpty ? nil : merged
     }
 
     // Removed: computer_use_preview probe utility

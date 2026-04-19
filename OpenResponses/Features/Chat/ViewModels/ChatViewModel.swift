@@ -47,9 +47,11 @@ class ChatViewModel: ObservableObject {
     let api: OpenAIServiceProtocol
     private let computerService: ComputerService
     private let storageService: ConversationStorageService
+    private let backgroundPollIntervalNanoseconds: UInt64
     var streamingMessageId: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
+    private var activeBackgroundResponseId: String?
     private lazy var networkMonitor = NetworkMonitor.shared
 
     private let exploreModeDefaultsKey = "exploreModeEnabled"
@@ -247,6 +249,12 @@ class ChatViewModel: ObservableObject {
     @Published var activityLines: [String] = []
     private var lastActivityLine: String?
     private let maxActivityLines: Int = 12
+    private let placeholderConversationTitles: Set<String> = [
+        "",
+        "New Chat",
+        "Exported Session",
+        "Imported Conversation",
+    ]
 
     /// Tracks retry context for a streaming request keyed by assistant message ID.
     /// Used to transparently retry once when the streaming API emits a transient model_error.
@@ -329,11 +337,13 @@ class ChatViewModel: ObservableObject {
         api: OpenAIServiceProtocol? = nil,
         computerService: ComputerService? = nil,
         storageService: ConversationStorageService? = nil,
-        startBackgroundWork: Bool = true
+        startBackgroundWork: Bool = true,
+        backgroundPollIntervalNanoseconds: UInt64 = 1_500_000_000
     ) { 
         self.api = api ?? OpenAIService()
         self.computerService = computerService ?? ComputerService()
         self.storageService = storageService ?? ConversationStorageService.shared
+        self.backgroundPollIntervalNanoseconds = backgroundPollIntervalNanoseconds
         self.activePrompt = Prompt.defaultPrompt()
 
         loadActivePrompt()
@@ -343,7 +353,7 @@ class ChatViewModel: ObservableObject {
             createNewConversation()
             clearActivity()
         } else {
-            activeConversation = conversations.first
+            activateConversation(conversations.first)
         }
 
         if startBackgroundWork { 
@@ -670,8 +680,19 @@ class ChatViewModel: ObservableObject {
     }
 
     private func updateActiveConversation(_ conversation: Conversation) {
+        persistConversation(conversation, touchLastModified: true)
+    }
+
+    private func replaceConversationState(_ conversation: Conversation) {
+        persistConversation(conversation, touchLastModified: false)
+    }
+
+    private func persistConversation(_ conversation: Conversation, touchLastModified: Bool) {
         var conv = conversation
-        conv.lastModified = Date() // Update timestamp
+        if touchLastModified {
+            conv.lastModified = Date()
+        }
+        conv.title = normalizedConversationTitle(for: conv)
 
         if let index = conversations.firstIndex(where: { $0.id == conv.id }) {
             conversations[index] = conv
@@ -679,8 +700,56 @@ class ChatViewModel: ObservableObject {
             conversations.insert(conv, at: 0)
         }
 
-        activeConversation = conv
+        conversations.sort { $0.lastModified > $1.lastModified }
+
+        if activeConversation?.id == conv.id || activeConversation == nil {
+            activateConversation(conv)
+        }
+
         saveConversation(conv)
+    }
+
+    private func activateConversation(_ conversation: Conversation?) {
+        activeConversation = conversation
+        recomputeCumulativeUsage()
+    }
+
+    private func normalizedConversationTitle(for conversation: Conversation) -> String {
+        let trimmedTitle = conversation.title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if placeholderConversationTitles.contains(trimmedTitle),
+           let derivedTitle = derivedConversationTitle(from: conversation.messages) {
+            return derivedTitle
+        }
+
+        return trimmedTitle.isEmpty ? "New Chat" : trimmedTitle
+    }
+
+    private func derivedConversationTitle(from messages: [ChatMessage]) -> String? {
+        for message in messages where message.role == .user {
+            guard let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else {
+                continue
+            }
+
+            let firstLine = text
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first(where: { !$0.isEmpty })?
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+
+            guard let firstLine, !firstLine.isEmpty else { continue }
+
+            let maxTitleLength = 60
+            if firstLine.count > maxTitleLength {
+                let prefix = String(firstLine.prefix(maxTitleLength - 3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                return prefix + "..."
+            }
+
+            return firstLine
+        }
+
+        return nil
     }
 
     /// Updates the current model compatibility information
@@ -689,8 +758,12 @@ class ChatViewModel: ObservableObject {
         currentModelCompatibility = compatibilityService.getCompatibleTools(
             for: activePrompt.openAIModel,
             prompt: activePrompt,
-            isStreaming: activePrompt.enableStreaming
+            isStreaming: effectiveStreamingEnabled
         )
+    }
+
+    private var effectiveStreamingEnabled: Bool {
+        activePrompt.enableStreaming && !activePrompt.backgroundMode
     }
 
     /// Recomputes cumulative token usage across the conversation.
@@ -716,16 +789,7 @@ class ChatViewModel: ObservableObject {
         cumulativeTokenUsage = agg
 
         // Update last token usage from most recent assistant message
-        if let lastAssistantMessage = messages.last(where: { $0.role == .assistant }),
-           let usage = lastAssistantMessage.tokenUsage,
-           let total = usage.total {
-            lastTokenUsage = TokenUsage(
-                estimatedOutput: usage.estimatedOutput,
-                input: usage.input,
-                output: usage.output,
-                total: total
-            )
-        }
+        lastTokenUsage = messages.last(where: { $0.role == .assistant })?.tokenUsage
     }
 
     // Removed detection UI and related method
@@ -932,11 +996,15 @@ class ChatViewModel: ObservableObject {
         // This prevents receiving chunks from a previous, unfinished stream.
         streamingTask?.cancel()
         surfacedMCPToolWarnings.removeAll()
-        // Determine streaming mode up front for logging and flow control
-        let streamingEnabled = activePrompt.enableStreaming
+        let existingConversationMessages = messages
+        // Background mode is polled, so it takes precedence over live streaming.
+        let streamingEnabled = activePrompt.enableStreaming && !activePrompt.backgroundMode
         // Keep recent activity so users can see context; do not clear here to avoid flashing.
     logActivity("Connecting to OpenAI API")
         logActivity(streamingEnabled ? "Streaming mode enabled" : "Using non-streaming mode")
+        if activePrompt.backgroundMode {
+            logActivity("Background mode will poll until the response finishes")
+        }
 
         // Append the user's message to the chat with URL detection
         let userMsg = ChatMessage.withURLDetection(role: .user, text: trimmed, images: nil)
@@ -994,20 +1062,6 @@ class ChatViewModel: ObservableObject {
 
     // Compose final user text (no audio flow)
     let finalUserText = trimmed
-
-        // Capture the base previous_response_id for resilience. During streaming, lastResponseId will
-        // change to the new streaming response ID; we keep this original value to enable safe retries.
-        let basePreviousIdForThisSend = lastResponseId
-        // Initialize a single retry attempt for transient model errors (only when streaming is enabled)
-        if activePrompt.enableStreaming {
-            retryContextByMessageId[assistantMsgId] = StreamRetryContext(
-                remainingAttempts: 1,
-                basePreviousResponseId: basePreviousIdForThisSend,
-                userText: finalUserText,
-                attachments: attachments,
-                imageAttachments: imageAttachments
-            )
-        }
 
         // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
@@ -1108,6 +1162,19 @@ class ChatViewModel: ObservableObject {
                         AppLogger.log("[CUA] Skipping pending-call resolution (tool unsupported for model/stream)", category: .openAI, level: .debug)
                     }
                 }
+                let requestContext = await self.prepareConversationContextForSend(
+                    seedMessages: existingConversationMessages
+                )
+
+                if streamingEnabled {
+                    self.retryContextByMessageId[assistantMsgId] = StreamRetryContext(
+                        remainingAttempts: 1,
+                        basePreviousResponseId: requestContext.previousResponseId,
+                        userText: finalUserText,
+                        attachments: attachments,
+                        imageAttachments: imageAttachments
+                    )
+                }
                 if streamingEnabled {
                     // Use streaming API with uploaded file IDs
                     let stream = api.streamChatRequest(
@@ -1118,8 +1185,8 @@ class ChatViewModel: ObservableObject {
                         fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
                         imageAttachments: imageAttachments,
-                        previousResponseId: lastResponseId,
-                        conversationId: activeConversation?.remoteId
+                        previousResponseId: requestContext.previousResponseId,
+                        conversationId: requestContext.conversationId
                     )
 
                     for try await chunk in stream {
@@ -1145,12 +1212,12 @@ class ChatViewModel: ObservableObject {
                         fileNames: nil,
                         fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
                         imageAttachments: imageAttachments,
-                        previousResponseId: lastResponseId,
-                        conversationId: activeConversation?.remoteId
+                        previousResponseId: requestContext.previousResponseId,
+                        conversationId: requestContext.conversationId
                     )
 
+                    await self.processNonStreamingResponse(response, for: assistantMsgId)
                     await MainActor.run {
-                        self.handleNonStreamingResponse(response, for: assistantMsgId)
                         self.logActivity("Response received")
                     }
                 }
@@ -1486,7 +1553,7 @@ class ChatViewModel: ObservableObject {
                     self.messages.append(sys)
                 }
             } else {
-                await MainActor.run { self.handleNonStreamingResponse(response, for: messageId) }
+                await self.processNonStreamingResponse(response, for: messageId)
             }
         } else {
             AppLogger.log("[CUA] (resume) No screenshot; clearing previousId", category: .openAI, level: .warning)
@@ -1778,7 +1845,7 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("📤 [Batch] Sending \(payloads.count) outputs for response \(responseId)", category: .openAI, level: .info)
 
         let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
-        var previousResponseIdForAttempt = priorResponseId
+        var previousResponseIdForAttempt = followUpContinuationContext(previousResponseId: priorResponseId).previousResponseId
         var reasoningItemsForAttempt: [[String: Any]]?
         var retainedReasoningItems: [[String: Any]]?
 
@@ -1816,7 +1883,7 @@ class ChatViewModel: ObservableObject {
             }
         }
 
-        let shouldStreamFollowUp = activePrompt.enableStreaming
+        let shouldStreamFollowUp = effectiveStreamingEnabled
         var followUpCompleted = false
         var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
         var capturedError: Error?
@@ -1841,8 +1908,8 @@ class ChatViewModel: ObservableObject {
                         outputs: payloads,
                         model: activePrompt.openAIModel,
                         reasoningItems: nil,
-                        previousResponseId: previousResponseIdForAttempt,
-                        conversationId: activeConversation?.remoteId,
+                        previousResponseId: followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).previousResponseId,
+                        conversationId: followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).conversationId,
                         prompt: activePrompt
                     )
 
@@ -1875,9 +1942,18 @@ class ChatViewModel: ObservableObject {
                         break
                     }
                 } else {
-                    AppLogger.log("⚠️ [Batch] Non-streaming batch not implemented", category: .openAI, level: .warning)
-                    capturedError = NSError(domain: "BatchError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Non-streaming batch not supported"])
-                    break
+                    AppLogger.log("📤 [Batch] Sending non-streaming batch to OpenAI", category: .openAI, level: .info)
+                    let finalResponse = try await api.sendFunctionOutputs(
+                        outputs: payloads,
+                        model: activePrompt.openAIModel,
+                        reasoningItems: nil,
+                        previousResponseId: followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).previousResponseId,
+                        conversationId: followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).conversationId,
+                        prompt: activePrompt
+                    )
+
+                    await processNonStreamingResponse(finalResponse, for: messageId)
+                    followUpCompleted = true
                 }
             } catch {
                 capturedError = error
@@ -1919,6 +1995,14 @@ class ChatViewModel: ObservableObject {
         }
 
         return false
+    }
+
+    private func followUpContinuationContext(previousResponseId: String?) -> (previousResponseId: String?, conversationId: String?) {
+        guard let remoteId = activeConversation?.remoteId, !remoteId.isEmpty else {
+            return (previousResponseId, nil)
+        }
+
+        return (nil, remoteId)
     }
 
     /// Extracts function execution logic (the big switch statement) to be reused by both batching and non-batching paths
@@ -2321,7 +2405,8 @@ class ChatViewModel: ObservableObject {
                     title: decodedArgs.title,
                     notes: decodedArgs.notes,
                     dueDateISO8601: decodedArgs.dueDate,
-                    listIdentifier: nil  // TODO: Add priority support
+                    priority: decodedArgs.priority,
+                    listIdentifier: nil
                 )
 
                 let encoder = JSONEncoder()
@@ -2597,9 +2682,9 @@ class ChatViewModel: ObservableObject {
             reasoningReplay = sanitized
         }
 
-        var previousResponseIdForAttempt = priorResponseId
+        var previousResponseIdForAttempt = followUpContinuationContext(previousResponseId: priorResponseId).previousResponseId
         var reasoningItemsForAttempt = (reasoningReplay?.isEmpty == true) ? nil : reasoningReplay
-        let shouldStreamFollowUp = activePrompt.enableStreaming
+        let shouldStreamFollowUp = effectiveStreamingEnabled
         var followUpCompleted = false
         var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
         var capturedError: Error?
@@ -2630,8 +2715,8 @@ class ChatViewModel: ObservableObject {
                         outputs: [functionOutputPayload],
                         model: activePrompt.openAIModel,
                         reasoningItems: nil,
-                        previousResponseId: previousResponseIdForAttempt,
-                        conversationId: self.activeConversation?.remoteId,
+                        previousResponseId: self.followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).previousResponseId,
+                        conversationId: self.followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).conversationId,
                         prompt: activePrompt
                     )
 
@@ -2676,8 +2761,8 @@ class ChatViewModel: ObservableObject {
                         output: output,
                         model: activePrompt.openAIModel,
                         reasoningItems: reasoningItemsForAttempt,
-                        previousResponseId: previousResponseIdForAttempt,
-                        conversationId: self.activeConversation?.remoteId,
+                        previousResponseId: self.followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).previousResponseId,
+                        conversationId: self.followUpContinuationContext(previousResponseId: previousResponseIdForAttempt).conversationId,
                         prompt: activePrompt
                     )
 
@@ -2695,11 +2780,7 @@ class ChatViewModel: ObservableObject {
                         }
                     }
 
-                    await MainActor.run {
-                        AppLogger.log("🎯 [Function Call] Calling handleNonStreamingResponse...", category: .ui, level: .info)
-                        self.handleNonStreamingResponse(finalResponse, for: messageId)
-                        AppLogger.log("✅ [Function Call] Completed handleNonStreamingResponse", category: .ui, level: .info)
-                    }
+                    await processNonStreamingResponse(finalResponse, for: messageId)
 
                     followUpCompleted = true
                 }
@@ -2857,7 +2938,7 @@ class ChatViewModel: ObservableObject {
                 )
 
                 // Send the response using previous_response_id to continue the conversation
-                if self.activePrompt.enableStreaming {
+                if self.effectiveStreamingEnabled {
                     // Streaming mode
                     let stream = self.api.streamMCPApprovalResponse(
                         approvalResponse: approvalResponse,
@@ -2880,9 +2961,7 @@ class ChatViewModel: ObservableObject {
                         prompt: self.activePrompt
                     )
 
-                    await MainActor.run {
-                        self.handleNonStreamingResponse(response, for: messageId)
-                    }
+                    await self.processNonStreamingResponse(response, for: messageId)
                 }
             } catch {
                 await MainActor.run {
@@ -2922,7 +3001,12 @@ class ChatViewModel: ObservableObject {
         // Do not save if the active prompt is a temporary preset
         if activePrompt.isPreset { return }
 
-        if let encoded = try? JSONEncoder().encode(activePrompt) {
+        var promptToSave = activePrompt
+        if enforceResponsesAPIConstraints(for: &promptToSave) {
+            activePrompt = promptToSave
+        }
+
+        if let encoded = try? JSONEncoder().encode(promptToSave) {
             UserDefaults.standard.set(encoded, forKey: "activePrompt")
             print("Active prompt saved.")
         }
@@ -2945,6 +3029,21 @@ class ChatViewModel: ObservableObject {
         var didChange = false
 
         if supportsReasoning {
+            if let defaultReasoningEffort = compatibilityService.defaultReasoningEffort(for: prompt.openAIModel) {
+                let normalizedCurrentEffort = prompt.reasoningEffort
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+
+                if normalizedCurrentEffort.isEmpty {
+                    prompt.reasoningEffort = defaultReasoningEffort
+                    didChange = true
+                } else if !previousSupportedReasoning && normalizedCurrentEffort == "medium" && defaultReasoningEffort == "none" {
+                    // Avoid carrying the app's generic legacy default into GPT-5 models that now default to none.
+                    prompt.reasoningEffort = defaultReasoningEffort
+                    didChange = true
+                }
+            }
+
             if !prompt.includeReasoningContent && !previousSupportedReasoning {
                 prompt.includeReasoningContent = true
                 didChange = true
@@ -2957,14 +3056,41 @@ class ChatViewModel: ObservableObject {
         return didChange
     }
 
+    /// Normalizes prompt fields that have stricter Responses API contracts or legacy migrations.
+    @discardableResult
+    private func enforceResponsesAPIConstraints(for prompt: inout Prompt) -> Bool {
+        var didChange = false
+
+        let trimmedSafetyIdentifier = prompt.safetyIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLegacyUserIdentifier = prompt.userIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedSafetyIdentifier.isEmpty, !trimmedLegacyUserIdentifier.isEmpty {
+            prompt.safetyIdentifier = trimmedLegacyUserIdentifier
+            didChange = true
+        }
+
+        if !trimmedLegacyUserIdentifier.isEmpty {
+            prompt.userIdentifier = ""
+            didChange = true
+        }
+
+        if prompt.backgroundMode && !prompt.storeResponses {
+            prompt.backgroundMode = false
+            didChange = true
+        }
+
+        return didChange
+    }
+
     /// Replaces the active prompt, normalizing capabilities before storing it.
     @discardableResult
     func replaceActivePrompt(with prompt: Prompt, previousModelId: String? = nil) -> Bool {
         var updatedPrompt = prompt
         let baselineModel = previousModelId ?? activePrompt.openAIModel
         let reasoningChanged = enforceReasoningDefaults(for: &updatedPrompt, previousModelId: baselineModel)
+        let responsesAPIChanged = enforceResponsesAPIConstraints(for: &updatedPrompt)
         activePrompt = updatedPrompt
-        return reasoningChanged
+        return reasoningChanged || responsesAPIChanged
     }
 
     /// Force reset the active prompt to default values
@@ -3031,9 +3157,10 @@ class ChatViewModel: ObservableObject {
             }
 
             let reasoningChanged = enforceReasoningDefaults(for: &prompt, previousModelId: nil)
+            let responsesAPIChanged = enforceResponsesAPIConstraints(for: &prompt)
             activePrompt = prompt
 
-            if needsSave || reasoningChanged {
+            if needsSave || reasoningChanged || responsesAPIChanged {
                 saveActivePrompt() // Save all migrations at once
             }
 
@@ -3068,7 +3195,7 @@ class ChatViewModel: ObservableObject {
             if conversations.isEmpty {
                 createNewConversation()
             } else {
-                activeConversation = conversations.first
+                activateConversation(conversations.first)
             }
         } catch {
             handleError(error)
@@ -3082,7 +3209,7 @@ class ChatViewModel: ObservableObject {
         let storePreference = activePrompt.storeResponses
         let newConversation = Conversation.new(storePreference: storePreference)
         conversations.insert(newConversation, at: 0)
-        activeConversation = newConversation
+        activateConversation(newConversation)
         saveConversation(newConversation)
     }
 
@@ -3094,7 +3221,92 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    func applyDraftStorePreference(_ shouldStoreRemotely: Bool) {
+        guard var conversation = activeConversation,
+              conversation.remoteId == nil,
+              conversation.messages.isEmpty
+        else {
+            return
+        }
+
+        conversation.shouldStoreRemotely = shouldStoreRemotely
+        conversation.syncState = .localOnly
+        replaceConversationState(conversation)
+    }
+
     func deleteConversation(_ conversation: Conversation) {
+        guard let remoteId = conversation.remoteId, !remoteId.isEmpty else {
+            removeConversationLocally(conversation)
+            return
+        }
+
+        var pendingConversation = conversation
+        pendingConversation.syncState = .pendingDelete
+        replaceConversationState(pendingConversation)
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                try await api.deleteConversation(conversationId: remoteId)
+                await MainActor.run {
+                    self.removeConversationLocally(conversation)
+                }
+            } catch {
+                if case OpenAIServiceError.requestFailed(let statusCode, _) = error, statusCode == 404 {
+                    await MainActor.run {
+                        self.removeConversationLocally(conversation)
+                    }
+                    return
+                }
+
+                await MainActor.run {
+                    var failedConversation = conversation
+                    failedConversation.syncState = .failed
+                    self.replaceConversationState(failedConversation)
+                    self.handleError(error)
+                }
+            }
+        }
+    }
+
+    func selectConversation(_ conversation: Conversation) {
+        activateConversation(conversation)
+    }
+
+    func importConversation(_ conversation: Conversation) {
+        var importedConversation = conversation
+
+        if conversations.contains(where: { $0.id == importedConversation.id }) {
+            importedConversation.id = UUID()
+        }
+
+        importedConversation.remoteId = nil
+        importedConversation.lastResponseId = nil
+        importedConversation.lastSyncedAt = nil
+        importedConversation.shouldStoreRemotely = false
+        importedConversation.syncState = .localOnly
+        importedConversation.lastModified = Date()
+        importedConversation.title = normalizedConversationTitle(for: importedConversation)
+
+        importedConversation.messages = importedConversation.messages.map { message in
+            var sanitizedMessage = message
+            sanitizedMessage.mcpApprovalRequests = nil
+            return sanitizedMessage
+        }
+
+        conversations.insert(importedConversation, at: 0)
+        conversations.sort { $0.lastModified > $1.lastModified }
+        activateConversation(importedConversation)
+        saveConversation(importedConversation)
+
+        streamingStatus = .idle
+        isStreaming = false
+        clearActivity()
+        logActivity("Imported conversation (\(importedConversation.messages.count) messages)")
+    }
+
+    private func removeConversationLocally(_ conversation: Conversation) {
         conversations.removeAll { $0.id == conversation.id }
         do {
             try storageService.deleteConversation(withId: conversation.id)
@@ -3103,15 +3315,94 @@ class ChatViewModel: ObservableObject {
         }
 
         if activeConversation?.id == conversation.id {
-            activeConversation = conversations.first
+            activateConversation(conversations.first)
             if activeConversation == nil {
                 createNewConversation()
             }
         }
     }
 
-    func selectConversation(_ conversation: Conversation) {
-        activeConversation = conversation
+    private func prepareConversationContextForSend(seedMessages: [ChatMessage]) async -> (previousResponseId: String?, conversationId: String?) {
+        guard let conversation = activeConversation else {
+            return (lastResponseId, nil)
+        }
+
+        if let remoteId = conversation.remoteId, !remoteId.isEmpty {
+            return (nil, remoteId)
+        }
+
+        guard conversation.shouldStoreRemotely else {
+            return (conversation.lastResponseId, nil)
+        }
+
+        if let remoteId = await ensureRemoteConversationIfNeeded(
+            for: conversation.id,
+            seedMessages: seedMessages
+        ) {
+            return (nil, remoteId)
+        }
+
+        return (conversation.lastResponseId, nil)
+    }
+
+    private func ensureRemoteConversationIfNeeded(for conversationId: UUID, seedMessages: [ChatMessage]) async -> String? {
+        guard var conversation = conversations.first(where: { $0.id == conversationId }) else {
+            return nil
+        }
+
+        if let remoteId = conversation.remoteId, !remoteId.isEmpty {
+            return remoteId
+        }
+
+        conversation.syncState = .syncing
+        replaceConversationState(conversation)
+
+        do {
+            let created = try await api.createConversation(
+                title: conversation.title,
+                metadata: remoteConversationMetadata(for: conversation),
+                items: buildConversationSeedItems(from: seedMessages)
+            )
+
+            conversation.remoteId = created.id
+            conversation.lastSyncedAt = Date()
+            conversation.syncState = .synced
+            replaceConversationState(conversation)
+            return created.id
+        } catch {
+            conversation.syncState = .failed
+            replaceConversationState(conversation)
+            AppLogger.log("Remote conversation creation failed: \(error)", category: .openAI, level: .warning)
+            logActivity("Cloud conversation sync unavailable; continuing locally")
+            return nil
+        }
+    }
+
+    private func remoteConversationMetadata(for conversation: Conversation) -> [String: String]? {
+        var metadata = conversation.metadata ?? [:]
+        metadata["openresponses_local_id"] = conversation.id.uuidString
+        metadata["openresponses_title"] = normalizedConversationTitle(for: conversation)
+
+        return metadata.isEmpty ? nil : metadata
+    }
+
+    private func buildConversationSeedItems(from messages: [ChatMessage]) -> [[String: Any]]? {
+        let items = messages.compactMap { message -> [String: Any]? in
+            guard message.role != .system,
+                  let text = message.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else {
+                return nil
+            }
+
+            return [
+                "type": "message",
+                "role": message.role.rawValue,
+                "content": text,
+            ]
+        }
+
+        return items.isEmpty ? nil : items
     }
 
 
@@ -3506,8 +3797,8 @@ class ChatViewModel: ObservableObject {
                             self.messages.append(sys)
                         }
                     } else {
+                        await self.processNonStreamingResponse(response, for: messageId)
                         await MainActor.run {
-                            self.handleNonStreamingResponse(response, for: messageId)
                             self.isAwaitingComputerOutput = false
                         }
                     }
@@ -3923,9 +4214,7 @@ class ChatViewModel: ObservableObject {
                 model: activePrompt.openAIModel,
                 previousResponseId: previousId
             )
-            await MainActor.run {
-                self.handleNonStreamingResponse(response, for: messageId)
-            }
+            await self.processNonStreamingResponse(response, for: messageId)
         } catch {
             await MainActor.run {
                 self.handleError(error)
@@ -4331,6 +4620,8 @@ class ChatViewModel: ObservableObject {
 
     /// Cancels the ongoing streaming request.
     func cancelStreaming() {
+        let backgroundResponseId = activeBackgroundResponseId
+        let cancellingMessageId = streamingMessageId
         streamingTask?.cancel()
         streamingTask = nil
         // Cleanup any buffered deltas and pending flush tasks for the current message
@@ -4346,6 +4637,38 @@ class ChatViewModel: ObservableObject {
         // Update UI immediately
         isStreaming = false
         streamingStatus = .idle
+
+        if let backgroundResponseId,
+           let cancellingMessageId {
+            activeBackgroundResponseId = nil
+            updateBackgroundMessage(
+                for: cancellingMessageId,
+                text: "Cancelling background response..."
+            )
+            logActivity("Cancelling background response")
+            streamingMessageId = nil
+
+            Task { [weak self] in
+                guard let self else { return }
+
+                do {
+                    let cancelled = try await api.cancelResponse(responseId: backgroundResponseId)
+                    await MainActor.run {
+                        self.handleCancelledBackgroundResponse(cancelled, for: cancellingMessageId)
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.handleError(error)
+                        self.updateBackgroundMessage(
+                            for: cancellingMessageId,
+                            text: "[Background response cancellation failed]"
+                        )
+                    }
+                }
+            }
+
+            return
+        }
 
         // If there was a message being streamed, update its text to show it was cancelled
         if let streamingId = streamingMessageId, let msgIndex = messages.firstIndex(where: { $0.id == streamingId }) {
@@ -5147,6 +5470,131 @@ extension ChatViewModel {
 
 // MARK: - Non-Streaming Response Handling
 extension ChatViewModel {
+    private func processNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) async {
+        let status = normalizedResponseStatus(response.status)
+
+        switch status {
+        case "queued", "in_progress":
+            await monitorBackgroundResponse(response, for: messageId)
+        case "failed", "incomplete":
+            activeBackgroundResponseId = nil
+            removePlaceholderMessageIfNeeded(for: messageId)
+            let message =
+                response.error?.message ??
+                response.incompleteDetails?.reason ??
+                "The response did not complete successfully."
+            handleError(OpenAIServiceError.requestFailed(400, message))
+        case "cancelled", "canceled":
+            activeBackgroundResponseId = nil
+            updateBackgroundMessage(for: messageId, text: "[Background response cancelled]")
+            logActivity("Background response cancelled")
+        default:
+            activeBackgroundResponseId = nil
+            handleNonStreamingResponse(response, for: messageId)
+        }
+    }
+
+    private func monitorBackgroundResponse(_ initialResponse: OpenAIResponse, for messageId: UUID) async {
+        let responseId = initialResponse.id
+        activeBackgroundResponseId = responseId
+        updateBackgroundMessage(for: messageId, text: backgroundStatusText(for: initialResponse.status))
+        logActivity("Background response queued")
+
+        var latestResponse = initialResponse
+
+        while !Task.isCancelled {
+            let status = normalizedResponseStatus(latestResponse.status)
+
+            switch status {
+            case "completed", "done", "":
+                activeBackgroundResponseId = nil
+                handleNonStreamingResponse(latestResponse, for: messageId)
+                logActivity("Background response completed")
+                return
+            case "failed", "incomplete":
+                activeBackgroundResponseId = nil
+                removePlaceholderMessageIfNeeded(for: messageId)
+                let message =
+                    latestResponse.error?.message ??
+                    latestResponse.incompleteDetails?.reason ??
+                    "The background response did not complete successfully."
+                handleError(OpenAIServiceError.requestFailed(400, message))
+                return
+            case "cancelled", "canceled":
+                activeBackgroundResponseId = nil
+                updateBackgroundMessage(for: messageId, text: "[Background response cancelled]")
+                logActivity("Background response cancelled")
+                return
+            default:
+                updateBackgroundMessage(for: messageId, text: backgroundStatusText(for: latestResponse.status))
+                logActivity(status == "queued" ? "Background response queued" : "Background response running")
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: backgroundPollIntervalNanoseconds)
+                guard !Task.isCancelled else { return }
+                latestResponse = try await api.getResponse(responseId: responseId)
+            } catch is CancellationError {
+                return
+            } catch {
+                activeBackgroundResponseId = nil
+                removePlaceholderMessageIfNeeded(for: messageId)
+                handleError(error)
+                return
+            }
+        }
+    }
+
+    private func handleCancelledBackgroundResponse(_ response: OpenAIResponse, for messageId: UUID) {
+        activeBackgroundResponseId = nil
+        let status = normalizedResponseStatus(response.status)
+        if status == "completed" || status == "done" {
+            handleNonStreamingResponse(response, for: messageId)
+            return
+        }
+
+        updateBackgroundMessage(for: messageId, text: "[Background response cancelled by user]")
+        logActivity("Background response cancelled")
+    }
+
+    private func updateBackgroundMessage(for messageId: UUID, text: String) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var updatedMessages = messages
+        updatedMessages[index].text = text.isEmpty ? nil : text
+        messages = updatedMessages
+    }
+
+    private func removePlaceholderMessageIfNeeded(for messageId: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let placeholderText = messages[index].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isPlaceholder =
+            placeholderText.isEmpty ||
+            placeholderText.hasPrefix("Background response") ||
+            placeholderText.hasPrefix("Cancelling background response")
+        guard isPlaceholder, messages[index].images?.isEmpty ?? true else { return }
+
+        var updatedMessages = messages
+        updatedMessages.remove(at: index)
+        messages = updatedMessages
+    }
+
+    private func backgroundStatusText(for status: String?) -> String {
+        switch normalizedResponseStatus(status) {
+        case "queued":
+            return "Background response queued..."
+        case "in_progress":
+            return "Background response in progress..."
+        case "cancelled", "canceled":
+            return "[Background response cancelled]"
+        default:
+            return "Background response running..."
+        }
+    }
+
+    private func normalizedResponseStatus(_ status: String?) -> String {
+        status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+    }
+
     /// Records tool usage for analytics and marks the tool on the message.
     func trackToolUsage(for messageId: UUID, tool: String) {
         // Update message toolsUsed for quick UI badges
@@ -5217,12 +5665,19 @@ extension ChatViewModel {
             item.type == "message" && (item.content?.contains { ($0.type == "output_text" || $0.type == "text") && ($0.text?.isEmpty == false) } ?? false)
         }
 
-        if !hasAssistantMessage,
-           let functionCallItem = response.output.first(where: { $0.type == "function_call" }) {
-            AppLogger.log("🔧 [handleNonStreamingResponse] No assistant message yet; handling function call \(functionCallItem.name ?? "<unknown>")", category: .openAI, level: .info)
+        let functionCallItems = response.output.filter { $0.type == "function_call" }
+
+        if !hasAssistantMessage, !functionCallItems.isEmpty {
+            AppLogger.log("🔧 [handleNonStreamingResponse] No assistant message yet; handling \(functionCallItems.count) function call(s)", category: .openAI, level: .info)
             Task { [weak self] in
                 guard let self = self else { return }
-                await self.handleFunctionCall(functionCallItem, for: messageId)
+                if functionCallItems.count == 1, let functionCallItem = functionCallItems.first {
+                    await self.handleFunctionCall(functionCallItem, for: messageId)
+                } else {
+                    for functionCallItem in functionCallItems {
+                        await self.handleFunctionCallWithBatching(functionCallItem, for: messageId, responseId: response.id)
+                    }
+                }
             }
             return
         } else if hasAssistantMessage {

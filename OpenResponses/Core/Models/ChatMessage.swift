@@ -154,6 +154,31 @@ struct OpenAIResponse: Decodable {
     let output: [OutputItem]     // List of output items returned by the model (messages, tool outputs, etc.)
     let usage: UsageInfo?        // Token usage information
     let status: String?          // Response status
+    let background: Bool?        // Whether the response is running in background mode
+    let error: OpenAIResponseError?
+    let incompleteDetails: OpenAIResponseIncompleteDetails?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case object
+        case created = "created_at"
+        case model
+        case output
+        case usage
+        case status
+        case background
+        case error
+        case incompleteDetails = "incomplete_details"
+    }
+}
+
+struct OpenAIResponseError: Decodable {
+    let code: String?
+    let message: String?
+}
+
+struct OpenAIResponseIncompleteDetails: Decodable {
+    let reason: String?
 }
 
 struct OutputItem: Decodable {
@@ -190,6 +215,28 @@ struct OutputItem: Decodable {
         callId = try container.decodeIfPresent(String.self, forKey: .callId)
         action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
         pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
+    }
+
+    init(
+        id: String,
+        type: String,
+        summary: [SummaryItem]? = nil,
+        content: [ContentItem]? = nil,
+        name: String? = nil,
+        arguments: String? = nil,
+        callId: String? = nil,
+        action: [String: AnyCodable]? = nil,
+        pendingSafetyChecks: [SafetyCheck]? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.summary = summary
+        self.content = content
+        self.name = name
+        self.arguments = arguments
+        self.callId = callId
+        self.action = action
+        self.pendingSafetyChecks = pendingSafetyChecks
     }
 }
 

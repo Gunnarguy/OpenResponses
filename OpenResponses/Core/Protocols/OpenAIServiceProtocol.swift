@@ -70,12 +70,22 @@ protocol OpenAIServiceProtocol {
         prompt: Prompt
     ) -> AsyncThrowingStream<StreamingEvent, Error>
 
+    /// Sends one or more function call outputs back to the API and waits for the full response.
+    func sendFunctionOutputs(
+        outputs: [FunctionCallOutputPayload],
+        model: String,
+        reasoningItems: [[String: Any]]?,
+        previousResponseId: String?,
+        conversationId: String?,
+        prompt: Prompt
+    ) async throws -> OpenAIResponse
+
     /// Sends computer-use call output back to the API.
     /// Use this to continue a computer-use turn by providing observations, screenshots, or status.
     /// - Parameters:
     ///   - call: The streaming item representing the computer tool call.
     ///   - output: The output result - can be a string (for errors) or a dictionary (for successful results).
-    ///   - model: The model name (should be "computer-use-preview").
+    ///   - model: The active model name (for example, "gpt-5.4", "gpt-5.4-mini", or "computer-use-preview").
     ///   - previousResponseId: The ID of the response that contained the computer call.
     ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
     ///   - currentUrl: Current URL for safety checks, if available.
@@ -94,7 +104,7 @@ protocol OpenAIServiceProtocol {
     /// - Parameters:
     ///   - callId: The call_id for the computer tool call.
     ///   - output: The output result – typically a screenshot content object.
-    ///   - model: The model name (e.g., "computer-use-preview").
+    ///   - model: The active model name (e.g., "gpt-5.4", "gpt-5.4-mini", or "computer-use-preview").
     ///   - previousResponseId: The ID of the response that contained the computer call.
     ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
     ///   - currentUrl: Current URL for safety checks, if available.
@@ -199,9 +209,9 @@ protocol OpenAIServiceProtocol {
         // MARK: - Conversations API
 
         func listConversations(limit: Int?, order: String?) async throws -> ConversationListResponse
-        func createConversation(title: String?, metadata: [String: String]?, store: Bool?) async throws -> ConversationDetail
+        func createConversation(title: String?, metadata: [String: String]?, items: [[String: Any]]?) async throws -> ConversationDetail
         func getConversation(conversationId: String) async throws -> ConversationDetail
-        func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?, store: Bool?) async throws -> ConversationDetail
+        func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?) async throws -> ConversationDetail
         func deleteConversation(conversationId: String) async throws
 }
 

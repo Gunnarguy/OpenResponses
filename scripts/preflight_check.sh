@@ -10,8 +10,10 @@ REQUIRED_KEYS=(
   "INFOPLIST_KEY_NSLocalNetworkUsageDescription"
   "INFOPLIST_KEY_NSDocumentsFolderUsageDescription"
   "INFOPLIST_KEY_NSFilesystemUsageDescription"
+  "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription"
   "INFOPLIST_KEY_NSCalendarsUsageDescription"
   "INFOPLIST_KEY_NSContactsUsageDescription"
+  "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription"
   "INFOPLIST_KEY_NSRemindersUsageDescription"
 )
 
