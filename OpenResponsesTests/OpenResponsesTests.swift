@@ -319,6 +319,40 @@ final class OpenResponsesTests: XCTestCase {
         )
     }
 
+    func testComputerServicePrefersProgrammaticSearchForSearchStyleSubmissions() {
+        XCTAssertTrue(
+            ComputerService.testing_shouldPreferProgrammaticSearch(
+                fieldHint: "Google Search",
+                submit: true,
+                currentURL: "https://www.google.com"
+            )
+        )
+
+        XCTAssertTrue(
+            ComputerService.testing_shouldPreferProgrammaticSearch(
+                fieldHint: nil,
+                submit: true,
+                currentURL: "https://www.amazon.com"
+            )
+        )
+
+        XCTAssertFalse(
+            ComputerService.testing_shouldPreferProgrammaticSearch(
+                fieldHint: "Email",
+                submit: true,
+                currentURL: "https://accounts.google.com"
+            )
+        )
+
+        XCTAssertFalse(
+            ComputerService.testing_shouldPreferProgrammaticSearch(
+                fieldHint: "Google Search",
+                submit: false,
+                currentURL: "https://www.google.com"
+            )
+        )
+    }
+
     // Test PromptLibrary
     @MainActor
     func testPromptLibraryPersistsAddUpdateAndDelete() throws {

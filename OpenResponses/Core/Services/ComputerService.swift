@@ -1189,8 +1189,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             AppLogger.log("🔎 [Search Override] Navigating directly to search results: \(directSearchURL.absoluteString)", category: .general, level: .info)
             try await navigate(to: directSearchURL)
             self.suppressClicksUntil = Date().addingTimeInterval(1.0)
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            try await waitForDomReadyAndPaint()
+            try await waitForNavigationToSettle()
             return true
         }
 
@@ -1280,9 +1279,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         guard didSubmit else { return false }
         // Start a short suppression window to ignore model-originated clicks right after programmatic submit
         self.suppressClicksUntil = Date().addingTimeInterval(1.0)
-        // Give the page time to navigate and paint results
-        try? await Task.sleep(nanoseconds: 700_000_000) // 700ms
-        try await waitForDomReadyAndPaint()
+        try await waitForNavigationToSettle()
         return true
     }
 
@@ -1348,8 +1345,31 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
 
         try await prepareWebViewForExecution()
+
+        if Self.shouldPreferProgrammaticSearchSubmission(
+            fieldHint: fieldHint,
+            submit: submit,
+            currentURL: webView?.url
+        ) {
+            do {
+                let didSearch = try await performSearchIfOnKnownEngine(query: trimmedText)
+                if didSearch {
+                    try await waitForNavigationToSettle()
+                    return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedText)")
+                }
+            } catch {
+                AppLogger.log("⚠️ [Live Browser] Programmatic search submission failed, falling back to field typing: \(error)", category: .general, level: .warning)
+            }
+        }
+
         let typeMessage = try await typeIntoVisibleField(text: trimmedText, fieldHint: fieldHint, submit: submit)
-        try await waitForDomReadyAndPaint()
+
+        if submit {
+            try await waitForNavigationToSettle()
+        } else {
+            try await waitForDomReadyAndPaint()
+        }
+
         return try await captureBrowserAutomationResult(actionOutput: typeMessage)
     }
 
@@ -1401,6 +1421,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private func captureBrowserAutomationResult(actionOutput: String?) async throws -> BrowserAutomationResult {
         try await prepareWebViewForExecution()
         try await ensureWebViewReady()
+
+        if let webView,
+           webView.isLoading || webView.estimatedProgress < 0.85 {
+            try await waitForNavigationToSettle()
+        }
+
         try await waitForDomReadyAndPaint()
 
         let state = try await readBrowserPageState()
@@ -1540,6 +1566,121 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
         let data = try JSONSerialization.data(withJSONObject: stateObject, options: [])
         return try JSONDecoder().decode(BrowserPageState.self, from: data)
+    }
+
+    private func waitForNavigationToSettle(timeoutMs: Int = 5000, minimumProgress: Double = 0.85) async throws {
+        guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
+
+        let start = Date()
+        while Date().timeIntervalSince(start) * 1000 < Double(timeoutMs) {
+            try await waitForDomReadyAndPaint(timeoutMs: 800)
+
+            let elapsedMs = Date().timeIntervalSince(start) * 1000
+            let isLoading = webView.isLoading
+            let progress = webView.estimatedProgress
+            let progressString = String(format: "%.2f", progress)
+            let hasMeaningfulContent = (try? await pageHasMeaningfulVisibleContent()) ?? false
+
+            if (!isLoading && progress >= minimumProgress)
+                || (!isLoading && hasMeaningfulContent)
+                || (hasMeaningfulContent && progress >= 0.95)
+                || (hasMeaningfulContent && elapsedMs >= 1200 && progress >= 0.5) {
+                AppLogger.log(
+                    "✅ [Navigation] Settled page load: loading=\(isLoading), progress=\(progressString), meaningful=\(hasMeaningfulContent)",
+                    category: .general,
+                    level: .debug
+                )
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+
+        let timeoutProgressString = String(format: "%.2f", webView.estimatedProgress)
+        AppLogger.log(
+            "⚠️ [Navigation] Timed out waiting for page settle: loading=\(webView.isLoading), progress=\(timeoutProgressString)",
+            category: .general,
+            level: .warning
+        )
+    }
+
+    private nonisolated static func isSearchLikeFieldHint(_ fieldHint: String?) -> Bool {
+        let normalized = fieldHint?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+
+        guard !normalized.isEmpty else { return false }
+
+        let searchKeywords = ["search", "query", "find", "look up", "lookup"]
+        return searchKeywords.contains { normalized.contains($0) }
+    }
+
+    private nonisolated static func isKnownSearchHost(_ host: String?) -> Bool {
+        let normalizedHost = host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard !normalizedHost.isEmpty else { return false }
+
+        let knownHosts = ["google", "bing", "duckduckgo", "amazon", "youtube", "github"]
+        return knownHosts.contains { normalizedHost.contains($0) }
+    }
+
+    private nonisolated static func shouldPreferProgrammaticSearchSubmission(fieldHint: String?, submit: Bool, currentURL: URL?) -> Bool {
+        guard submit else { return false }
+
+        if isSearchLikeFieldHint(fieldHint) {
+            return true
+        }
+
+        let trimmedFieldHint = fieldHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmedFieldHint.isEmpty, isKnownSearchHost(currentURL?.host) {
+            return true
+        }
+
+        return false
+    }
+
+    private func pageHasMeaningfulVisibleContent(minTextLength: Int = 80, minInteractiveCount: Int = 3) async throws -> Bool {
+        let script = """
+        (function() {
+            function isVisible(el) {
+                if (!el) return false;
+                var style = window.getComputedStyle(el);
+                if (!style) return false;
+                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
+                    return false;
+                }
+                var rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }
+
+            var text = ((document.body && (document.body.innerText || document.body.textContent)) || '').replace(/\\s+/g, ' ').trim();
+            var interactiveCount = Array.from(document.querySelectorAll('a[href], button, input:not([type="hidden"]), textarea, [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [contenteditable="true"]'))
+                .filter(isVisible)
+                .length;
+            var headingCount = Array.from(document.querySelectorAll('h1, h2, h3')).filter(isVisible).length;
+            var title = (document.title || '').trim();
+
+            return {
+                textLength: text.length,
+                interactiveCount: interactiveCount,
+                headingCount: headingCount,
+                titleLength: title.length
+            };
+        })();
+        """
+
+        guard let result = try await evaluateJavaScript(script) as? [String: Any] else {
+            return false
+        }
+
+        let textLength = Self.valueAsDouble(result["textLength"]) ?? 0
+        let interactiveCount = Self.valueAsDouble(result["interactiveCount"]) ?? 0
+        let headingCount = Self.valueAsDouble(result["headingCount"]) ?? 0
+        let titleLength = Self.valueAsDouble(result["titleLength"]) ?? 0
+
+        return textLength >= Double(minTextLength)
+            || interactiveCount >= Double(minInteractiveCount)
+            || headingCount >= 1
+            || titleLength >= 8
     }
 
     private func clickVisibleElement(matching text: String) async throws -> String {
@@ -1900,6 +2041,14 @@ extension ComputerService {
 
     nonisolated static func testing_searchResultsURL(siteKeyword: String, query: String) -> String? {
         searchResultsURL(forSiteKeyword: siteKeyword, query: query)?.absoluteString
+    }
+
+    nonisolated static func testing_shouldPreferProgrammaticSearch(fieldHint: String?, submit: Bool, currentURL: String?) -> Bool {
+        shouldPreferProgrammaticSearchSubmission(
+            fieldHint: fieldHint,
+            submit: submit,
+            currentURL: currentURL.flatMap(URL.init(string:))
+        )
     }
 }
 #endif
