@@ -168,6 +168,33 @@ class ComputerService: NSObject, WKNavigationDelegate {
     /// - Parameter action: The `ComputerAction` to perform.
     /// - Returns: A `ComputerActionResult` containing a screenshot and other metadata.
     func executeAction(_ action: ComputerAction) async throws -> ComputerActionResult {
+        try await executeActions([action])
+    }
+
+    /// Executes a batch of computer actions sequentially and returns a single post-action screenshot.
+    /// This matches the GA computer-use contract where GPT-5.4 emits `actions[]` for one computer call.
+    func executeActions(_ actions: [ComputerAction]) async throws -> ComputerActionResult {
+        guard !actions.isEmpty else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        try await prepareWebViewForExecution()
+
+        for action in actions {
+            try await performAction(action)
+            try await settleAfterAction(action)
+        }
+
+        let screenshot = try await takeScreenshot()
+        let currentURL = webView?.url?.absoluteString
+        let output = actions.count == 1
+            ? "Action '\(actions[0].type)' completed successfully."
+            : "Executed \(actions.count) computer actions successfully."
+
+        return ComputerActionResult(screenshot: screenshot, currentURL: currentURL, output: output)
+    }
+
+    private func prepareWebViewForExecution() async throws {
         guard let webView = webView else {
             throw ComputerUseError.webViewNotAvailable
         }
@@ -195,17 +222,18 @@ class ComputerService: NSObject, WKNavigationDelegate {
         if webView.superview == nil {
             throw ComputerUseError.webViewNotAvailable
         }
+    }
 
-        // Perform the requested action.
+    private func performAction(_ action: ComputerAction) async throws {
         switch action.type {
         case "navigate":
-            guard let urlString = action.parameters["url"] as? String, let url = URL(string: urlString) else {
+            guard let urlString = action.parameters["url"] as? String,
+                  let url = URL(string: urlString) else {
                 throw ComputerUseError.invalidParameters
             }
             try await navigate(to: url)
 
         case "click":
-            // Accept Int/Double (or numeric strings) for coordinates.
             guard let x = Self.valueAsDouble(action.parameters["x"]),
                   let y = Self.valueAsDouble(action.parameters["y"]) else {
                 throw ComputerUseError.invalidParameters
@@ -213,7 +241,6 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try await click(at: CGPoint(x: x, y: y))
 
         case "double_click":
-            // Double click at coordinates
             guard let x = Self.valueAsDouble(action.parameters["x"]),
                   let y = Self.valueAsDouble(action.parameters["y"]) else {
                 throw ComputerUseError.invalidParameters
@@ -221,7 +248,6 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try await doubleClick(at: CGPoint(x: x, y: y))
 
         case "move":
-            // Move mouse to coordinates (simulate hover)
             guard let x = Self.valueAsDouble(action.parameters["x"]),
                   let y = Self.valueAsDouble(action.parameters["y"]) else {
                 throw ComputerUseError.invalidParameters
@@ -241,88 +267,70 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try await keypress(keys: keys)
 
         case "drag":
-            // Handle drag actions with path coordinates
             guard let pathArray = action.parameters["path"] as? [[String: Any]] else {
                 throw ComputerUseError.invalidParameters
             }
             try await drag(path: pathArray)
 
         case "scroll":
-            // Support both "scrollY" and shorthand "y"; default X to 0.
             let scrollY = Self.valueAsDouble(action.parameters["scrollY"]) ?? Self.valueAsDouble(action.parameters["y"]) ?? 0
             let scrollX = Self.valueAsDouble(action.parameters["scrollX"]) ?? Self.valueAsDouble(action.parameters["x"]) ?? 0
             try await scroll(x: scrollX, y: scrollY)
 
         case "screenshot":
-            // Strict mode: do not inject help pages. If about:blank, just capture the current state.
-            // If the model wants to navigate, it should issue a navigate action.
-            if webView.url == nil || webView.url?.absoluteString == "about:blank" {
-                if let urlString = action.parameters["url"] as? String, let url = URL(string: urlString) {
+            if webView?.url == nil || webView?.url?.absoluteString == "about:blank" {
+                if let urlString = action.parameters["url"] as? String,
+                   let url = URL(string: urlString) {
                     try await navigate(to: url)
                 }
-                // Else, proceed without injecting any content; the screenshot will reflect the blank state.
             }
-            // Otherwise, a screenshot simply captures the current state.
-            break
+
         case "wait":
-            // Pause execution for a short duration to allow the page/UI to settle, then continue.
-            // Accept either milliseconds (ms) or seconds parameters; default to 1s if unspecified.
-            // Also accept keys like "duration", "timeout", or "time" (milliseconds).
             let msParam = Self.valueAsDouble(action.parameters["ms"]) ??
                           Self.valueAsDouble(action.parameters["milliseconds"]) ??
                           Self.valueAsDouble(action.parameters["duration"]) ??
                           Self.valueAsDouble(action.parameters["timeout"]) ??
-                          Self.valueAsDouble(action.parameters["time"]) // assume ms
+                          Self.valueAsDouble(action.parameters["time"])
             let secParam = Self.valueAsDouble(action.parameters["seconds"]) ??
                            Self.valueAsDouble(action.parameters["secs"]) ??
-                           Self.valueAsDouble(action.parameters["s"]) // seconds
+                           Self.valueAsDouble(action.parameters["s"])
             let milliseconds: Double = msParam ?? (secParam != nil ? (secParam! * 1000.0) : 1000.0)
             let nanos = UInt64(milliseconds * 1_000_000)
             try? await Task.sleep(nanoseconds: nanos)
 
         default:
-            // Instead of throwing an error for unknown actions, log and gracefully handle
             AppLogger.log("⚠️ [ComputerService] Unknown action type: '\(action.type)'. Attempting graceful handling.", category: .general, level: .warning)
 
-            // Try to handle some common action variations that might not be in our switch
             switch action.type.lowercased() {
             case "doubleclick", "double-click":
-                // Handle variations of double_click
                 guard let x = Self.valueAsDouble(action.parameters["x"]),
                       let y = Self.valueAsDouble(action.parameters["y"]) else {
                     throw ComputerUseError.invalidParameters
                 }
                 try await doubleClick(at: CGPoint(x: x, y: y))
+
             case "mouse_move", "mousemove", "hover":
-                // Handle variations of move
                 guard let x = Self.valueAsDouble(action.parameters["x"]),
                       let y = Self.valueAsDouble(action.parameters["y"]) else {
                     throw ComputerUseError.invalidParameters
                 }
                 try await moveMouse(to: CGPoint(x: x, y: y))
+
             default:
-                // For truly unknown actions, return a meaningful result instead of crashing
                 AppLogger.log("❌ [ComputerService] Unsupported action type: '\(action.type)'. Returning screenshot of current state.", category: .general, level: .error)
-                // Don't throw - just continue to screenshot to show current state
             }
         }
+    }
 
-        // After any action, wait for content to be ready and then take a screenshot.
-        // For click actions, give extra time for JavaScript frameworks to respond
-        var extraWaitTime: UInt64 = 150_000_000 // default 150ms
+    private func settleAfterAction(_ action: ComputerAction) async throws {
+        var extraWaitTime: UInt64 = 150_000_000
         if action.type == "click" {
-            extraWaitTime = 500_000_000 // 500ms for clicks
+            extraWaitTime = 500_000_000
         }
 
-        // Ensure the web view has rendered at least once before snapshot
         try await ensureWebViewReady()
         try await waitForDomReadyAndPaint()
         try? await Task.sleep(nanoseconds: extraWaitTime)
-
-        let screenshot = try await takeScreenshot()
-        let currentURL = webView.url?.absoluteString
-
-        return ComputerActionResult(screenshot: screenshot, currentURL: currentURL, output: "Action '\(action.type)' completed successfully.")
     }
 
     // MARK: - Private Action Implementations
@@ -788,7 +796,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             script = """
             (function() {
                 var key = '\(primaryKey.sanitizedForJS())';
-                var event = new KeyboardEvent('keydown', { 
+                var event = new KeyboardEvent('keydown', {
                     key: key,
                     ctrlKey: \(keys.contains { $0.uppercased() == "CTRL" }),
                     metaKey: \(keys.contains { $0.uppercased() == "CMD" || $0.uppercased() == "META" }),
@@ -1159,11 +1167,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     })();
                     """
                     self.webView?.evaluateJavaScript(js) { result, error in
-                        if let error = error { 
+                        if let error = error {
                             print("⏳ [DOM Debug] JS error: \(error)")
                             cont.resume(returning: false)
                         }
-                        else { 
+                        else {
                             let isReady = (result as? Bool) ?? false
                             print("⏳ [DOM Debug] DOM ready result: \(isReady)")
                             cont.resume(returning: isReady)
@@ -1212,7 +1220,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
 private extension ComputerService {
     /// Determines whether the service should automatically attach a WebView.
     /// We disable auto-attach when running inside XCTest to avoid simulator crashes during CI.
-    nonisolated static func shouldAutoAttachWebView() -> Bool { 
+    nonisolated static func shouldAutoAttachWebView() -> Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
     }
 }

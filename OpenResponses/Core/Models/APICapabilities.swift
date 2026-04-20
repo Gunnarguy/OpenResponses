@@ -27,13 +27,13 @@ public enum APICapabilities {
     /// Tools allow the model to perform actions like searching the web, running code,
     /// or accessing external services.
     public enum Tool: Codable, Hashable {
-        
+
         /// Allows the model to access up-to-date information from the internet.
         case webSearch
         /// Allows deep-research models to access preview web search capability required by API.
         /// Encodes as type "web_search_preview".
         case webSearchPreview
-        
+
         /// Allows the model to search the contents of uploaded files within specified vector stores.
         /// - Parameters:
         ///   - vectorStoreIds: Array of vector store IDs to search
@@ -46,18 +46,21 @@ public enum APICapabilities {
             rankingOptions: RankingOptions?,
             filters: AttributeFilter?
         )
-        
+
         /// Allows the model to write and run Python code in a sandboxed environment.
         case codeInterpreter(containerType: String, fileIds: [String]?)
-        
+
         /// Allows the model to generate images using a text prompt.
         case imageGeneration(model: String, size: String, quality: String, outputFormat: String)
-        
+
         /// Allows the model to call custom functions defined by the application.
         case function(function: Function)
 
-        /// Allows the model to interact with the user's computer.
-        case computer(environment: String?, displayWidth: Int?, displayHeight: Int?)
+        /// Allows the model to interact with the user's computer via the GA Responses API tool.
+        case computer
+
+        /// Allows the model to interact with the user's computer via the legacy preview tool.
+        case computerPreview(environment: String?, displayWidth: Int?, displayHeight: Int?)
 
         /// Allows the model to connect to Model Context Protocol (MCP) servers.
         /// Supports either a remote server_url or a connector_id with authorization.
@@ -73,7 +76,7 @@ public enum APICapabilities {
         )
 
         // MARK: - Codable Implementation
-        
+
         private enum CodingKeys: String, CodingKey {
             case type
             case name
@@ -107,7 +110,7 @@ public enum APICapabilities {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let typeString = try container.decode(String.self, forKey: .type)
-            
+
             switch typeString {
             case "web_search":
                 self = .webSearch
@@ -138,11 +141,13 @@ public enum APICapabilities {
             case "function":
                 let function = try container.decode(Function.self, forKey: .function)
                 self = .function(function: function)
-            case "computer_use_preview", "computer":
+            case "computer":
+                self = .computer
+            case "computer_use_preview", "computer-use-preview":
                 let environment = try container.decodeIfPresent(String.self, forKey: .environment)
                 let displayWidth = try container.decodeIfPresent(Int.self, forKey: .displayWidth)
                 let displayHeight = try container.decodeIfPresent(Int.self, forKey: .displayHeight)
-                self = .computer(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
+                self = .computerPreview(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
             case "mcp":
                 let serverLabel = try container.decode(String.self, forKey: .serverLabel)
                 // Either server_url or connector_id may be present
@@ -211,8 +216,11 @@ public enum APICapabilities {
                 if let strict = function.strict {
                     try container.encode(strict, forKey: .strict)
                 }
-            case .computer(let environment, let displayWidth, let displayHeight):
+            case .computer:
                 try container.encode("computer", forKey: .type)
+
+            case .computerPreview(let environment, let displayWidth, let displayHeight):
+                try container.encode("computer_use_preview", forKey: .type)
                 if let environment = environment {
                     try container.encode(environment, forKey: .environment)
                 }
@@ -263,30 +271,30 @@ public enum APICapabilities {
 
     /// Defines the capabilities related to image generation and analysis (vision).
     public struct ImageCapability {
-        
+
         /// The model used for the operation (e.g., "gpt-image-1", "gpt-4o").
         public let model: String
-        
+
         /// Describes the two primary modes of operation for images.
         public enum Mode {
-            
+
             /// Creating a new image from a text prompt.
             case generate(prompt: String, revisedPrompt: String?, streamPartials: Int?)
-            
+
             /// Analyzing an existing image.
             case analyze(image: ImageInput, detail: DetailLevel)
         }
-        
+
         /// The mode of operation for this capability.
         public let mode: Mode
-        
+
         /// Represents the input for image analysis.
         public enum ImageInput {
             case url(URL)
             case base64(Data)
             case fileID(String)
         }
-        
+
         /// Controls the level of detail for image analysis, balancing cost, speed, and accuracy.
         public enum DetailLevel: String, Codable {
             case low, high, auto
@@ -297,7 +305,7 @@ public enum APICapabilities {
 
     /// Defines the workflow for uploading, managing, and using files.
     public struct FileManagement {
-        
+
         /// The purpose for which a file is uploaded.
         public enum Purpose: String, Codable {
             /// For files that will be used as direct input to a model (e.g., an image for analysis).
@@ -305,14 +313,14 @@ public enum APICapabilities {
             /// For files that will be part of a knowledge base for the `file_search` tool.
             case fileSearch = "file_search"
         }
-        
+
         /// Represents a file uploaded to OpenAI.
         public struct File: Codable, Hashable {
             public let id: String
             public let purpose: Purpose
             public let filename: String
         }
-        
+
         /// A container for files that have been indexed for efficient search.
         public struct VectorStore: Codable, Hashable {
             public let id: String
@@ -325,19 +333,19 @@ public enum APICapabilities {
 
     /// A collection of advanced API features for building sophisticated applications.
     public enum AdvancedFeature {
-        
+
         /// Receiving model outputs as they are generated for real-time applications.
         case streaming
-        
+
         /// Ensuring model responses conform to a specific JSON schema.
         case structuredOutput(schema: JSONSchema)
-        
+
         /// Reducing latency and cost by caching the results of frequently used prompt prefixes.
         case promptCaching
-        
+
         /// Leveraging models designed for complex problem-solving and planning.
         case reasoning(effort: ReasoningEffort)
-        
+
         public enum ReasoningEffort: String, Codable {
             case low, medium, high
         }
@@ -347,27 +355,27 @@ public enum APICapabilities {
 
     /// A guide to strategies for writing effective prompts.
     public struct Prompting {
-        
+
         /// The role of the message author, which influences the model's response.
         public enum Role: String, Codable {
             case instructions, developer, user, assistant
         }
-        
+
         /// A structured message in a conversation.
         public struct Message: Codable, Hashable {
             public let role: Role
             public let content: String
         }
-        
+
         /// The technique of providing examples to teach the model a new task.
         public struct FewShotExample: Codable, Hashable {
             public let input: String
             public let output: String
         }
     }
-    
+
     // MARK: - Helper Types
-    
+
     /// A placeholder for a JSON schema definition.
     /// In a real implementation, this would be a more robust struct that is Codable.
     /// For now, we use a dictionary, which is inherently Codable.
@@ -377,13 +385,13 @@ public enum APICapabilities {
         public init(_ value: [String: Any]) {
             self.value = value.mapValues { AnyCodable($0) }
         }
-        
+
         // Custom encoding to encode the dictionary directly without the "value" wrapper
         public func encode(to encoder: Encoder) throws {
             var container = encoder.singleValueContainer()
             try container.encode(value)
         }
-        
+
         // Custom decoding to decode the dictionary directly
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
@@ -594,20 +602,20 @@ extension KeyedDecodingContainer {
 public enum AttributeFilter: Codable, Hashable {
     case comparison(property: String, operator: ComparisonOperator, value: AttributeValue)
     case compound(operator: CompoundOperator, filters: [AttributeFilter])
-    
+
     public enum ComparisonOperator: String, Codable {
         case eq, ne, gt, gte, lt, lte
     }
-    
+
     public enum CompoundOperator: String, Codable {
         case and, or
     }
-    
+
     public enum AttributeValue: Codable, Hashable {
         case string(String)
         case int(Int)
         case double(Double)
-        
+
         public func hash(into hasher: inout Hasher) {
             switch self {
             case .string(let val): hasher.combine(val)
@@ -615,7 +623,7 @@ public enum AttributeFilter: Codable, Hashable {
             case .double(let val): hasher.combine(val)
             }
         }
-        
+
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
             if let intVal = try? container.decode(Int.self) {
@@ -628,7 +636,7 @@ public enum AttributeFilter: Codable, Hashable {
                 throw DecodingError.typeMismatch(AttributeValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported attribute value type"))
             }
         }
-        
+
         public func encode(to encoder: Encoder) throws {
             var container = encoder.singleValueContainer()
             switch self {
@@ -638,12 +646,12 @@ public enum AttributeFilter: Codable, Hashable {
             }
         }
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case type, property, value, filters
         case `operator` = "operator"
     }
-    
+
     public func hash(into hasher: inout Hasher) {
         switch self {
         case .comparison(let property, let op, let value):
@@ -657,11 +665,11 @@ public enum AttributeFilter: Codable, Hashable {
             hasher.combine(filters)
         }
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(String.self, forKey: .type)
-        
+
         switch type {
         case "and", "or":
             let op = CompoundOperator(rawValue: type)!
@@ -675,10 +683,10 @@ public enum AttributeFilter: Codable, Hashable {
             self = .comparison(property: property, operator: op, value: value)
         }
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         switch self {
         case .comparison(let property, let op, let value):
             try container.encode(op.rawValue, forKey: .type)
@@ -697,14 +705,14 @@ public enum AttributeFilter: Codable, Hashable {
 public struct RankingOptions: Codable, Hashable {
     let ranker: String // "auto" or "default-2024-08-21"
     let scoreThreshold: Double // 0.0 to 1.0
-    
+
     enum CodingKeys: String, CodingKey {
         case ranker
         case scoreThreshold = "score_threshold"
     }
-    
+
     public static let auto = RankingOptions(ranker: "auto", scoreThreshold: 0.0)
-    
+
     public init(ranker: String, scoreThreshold: Double) {
         self.ranker = ranker
         self.scoreThreshold = min(max(scoreThreshold, 0.0), 1.0)

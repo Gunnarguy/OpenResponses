@@ -100,6 +100,25 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(viewModel.activePrompt.reasoningEffort, "none")
     }
 
+    func testComputerActivationShortcutRespondsLocallyAndDoesNotCallAPI() async {
+        let api = MockOpenAIService()
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.openAIModel = "gpt-5.4"
+        viewModel.activePrompt.enableComputerUse = false
+
+        viewModel.sendUserMessage("Computer")
+
+        XCTAssertFalse(viewModel.isStreaming)
+        XCTAssertTrue(api.chatRequests.isEmpty)
+        XCTAssertEqual(viewModel.messages.count, 2)
+        XCTAssertEqual(viewModel.messages.first?.role, .user)
+        XCTAssertEqual(viewModel.messages.first?.text, "Computer")
+        XCTAssertEqual(viewModel.messages.last?.role, .assistant)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("What would you like me to do?") == true)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("open a website") == true)
+        XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
+    }
+
     func testCancelStreamingCancelsBackgroundResponse() async {
         let api = MockOpenAIService()
         api.sendChatResponse = makePendingResponse(id: "resp_background_cancel")

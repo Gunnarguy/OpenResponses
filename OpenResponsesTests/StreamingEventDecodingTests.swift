@@ -3,7 +3,90 @@ import XCTest
 @testable import OpenResponses
 
 @MainActor
-final class StreamingEventDecodingTests: XCTestCase { 
+final class StreamingEventDecodingTests: XCTestCase {
+    func testStreamingEventDecodesComputerCallActionsArray() throws {
+        let json = """
+        {
+          "type": "response.output_item.done",
+          "sequence_number": 3,
+          "item": {
+            "id": "cu_123",
+            "type": "computer_call",
+            "call_id": "call_123",
+            "actions": [
+              {
+                "type": "click",
+                "x": 120,
+                "y": 320,
+                "button": "left"
+              },
+              {
+                "type": "type",
+                "text": "penguin"
+              }
+            ]
+          }
+        }
+        """
+
+        let event = try JSONDecoder().decode(StreamingEvent.self, from: Data(json.utf8))
+
+        XCTAssertEqual(event.type, "response.output_item.done")
+        XCTAssertEqual(event.item?.type, "computer_call")
+        XCTAssertEqual(event.item?.callId, "call_123")
+        XCTAssertEqual(event.item?.actions?.count, 2)
+        XCTAssertEqual(event.item?.actions?.first?["type"]?.value as? String, "click")
+        XCTAssertEqual(event.item?.actions?.first?["x"]?.value as? Int, 120)
+        XCTAssertEqual(event.item?.actions?[1]["type"]?.value as? String, "type")
+        XCTAssertEqual(event.item?.actions?[1]["text"]?.value as? String, "penguin")
+    }
+
+    func testStreamingResponseCompletedDecodesComputerCallActionsAndSafetyChecks() throws {
+        let json = """
+        {
+          "type": "response.completed",
+          "sequence_number": 8,
+          "response": {
+            "id": "resp_computer",
+            "status": "completed",
+            "output": [
+              {
+                "id": "cu_done",
+                "type": "computer_call",
+                "call_id": "call_done",
+                "actions": [
+                  {
+                    "type": "wait",
+                    "seconds": 1
+                  },
+                  {
+                    "type": "screenshot"
+                  }
+                ],
+                "pending_safety_checks": [
+                  {
+                    "id": "safe_1",
+                    "code": "sensitive_domain",
+                    "message": "This action touches a potentially sensitive surface."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """
+
+        let event = try JSONDecoder().decode(StreamingEvent.self, from: Data(json.utf8))
+
+        XCTAssertEqual(event.type, "response.completed")
+        XCTAssertEqual(event.response?.output?.count, 1)
+        XCTAssertEqual(event.response?.output?.first?.type, "computer_call")
+        XCTAssertEqual(event.response?.output?.first?.callId, "call_done")
+        XCTAssertEqual(event.response?.output?.first?.actions?.count, 2)
+        XCTAssertEqual(event.response?.output?.first?.actions?.first?["type"]?.value as? String, "wait")
+        XCTAssertEqual(event.response?.output?.first?.pendingSafetyChecks?.first?.code, "sensitive_domain")
+    }
+
     func testStreamingEventDecodesMCPListToolsWithNulls() throws {
         let json = """
         {

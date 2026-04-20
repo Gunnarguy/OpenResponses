@@ -445,6 +445,28 @@ class OpenAIService: OpenAIServiceProtocol {
         return (environment, screenSize)
     }
 
+    private func computerToolDefinition(for modelId: String) -> APICapabilities.Tool {
+        if isDedicatedComputerUseModel(modelId) {
+            let computerConfig = defaultComputerToolConfiguration()
+            return .computerPreview(
+                environment: computerConfig.environment,
+                displayWidth: Int(computerConfig.screenSize.width),
+                displayHeight: Int(computerConfig.screenSize.height)
+            )
+        }
+
+        return .computer
+    }
+
+    private func isComputerTool(_ tool: APICapabilities.Tool) -> Bool {
+        switch tool {
+        case .computer, .computerPreview:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Builds default system instructions that are aware of computer use capabilities.
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
         if isComputerUseActive(for: prompt) {
@@ -461,7 +483,7 @@ class OpenAIService: OpenAIServiceProtocol {
             You are a precise assistant using the computer tool on a \(surfaceDescription). Do exactly what the user asks—no guesses.
 
             Core rules:
-            - If current_url is blank or "about:blank", do not screenshot/wait first. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
+            - If the page appears blank, empty, or clearly not on the right destination, do not screenshot/wait repeatedly. Navigate to a relevant page. For search-like requests ("show me", "find", "search for"), navigate to a global search engine and search the exact query; if a site/URL is named, navigate there directly.
             - Take one small, precise action at a time, then screenshot to reassess. Click only clear, visible targets at their center. If you can’t find it, say so (don’t guess).
             - Never do more than 2 consecutive waits. If nothing changes, take a concrete step (navigate/scroll/click) instead.
             - If a cookie/consent banner blocks content, click the visible "Accept all" (or equivalent) before proceeding.
@@ -595,7 +617,7 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["tools"] = encodedTools
         }
 
-        let hasComputerTool = tools.contains { if case .computer = $0 { return true } else { return false } }
+        let hasComputerTool = tools.contains(where: isComputerTool)
         let includeArray = buildIncludeArray(for: prompt, hasComputerTool: hasComputerTool)
         if !includeArray.isEmpty {
             requestObject["include"] = includeArray
@@ -696,6 +718,25 @@ class OpenAIService: OpenAIServiceProtocol {
 
             return object
         }
+
+        /// Test hook for validating computer-call follow-up request assembly.
+        func testing_buildComputerCallOutputRequestObject(
+            callId: String,
+            output: Any,
+            model: String,
+            previousResponseId: String? = nil,
+            acknowledgedSafetyChecks: [SafetyCheck]? = nil,
+            currentUrl: String? = nil
+        ) throws -> [String: Any] {
+            try buildComputerCallOutputRequestObject(
+                callId: callId,
+                output: output,
+                model: model,
+                previousResponseId: previousResponseId,
+                acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+                currentUrl: currentUrl
+            )
+        }
     #endif
 
     private func applyContinuationIdentifiers(
@@ -766,20 +807,14 @@ class OpenAIService: OpenAIServiceProtocol {
         var forceImageToolChoice = false
 
         if isDedicatedComputerUseModel(prompt.openAIModel),
-           !tools.contains(where: { if case .computer = $0 { return true } else { return false } })
+           !tools.contains(where: isComputerTool)
         {
-            let computerConfig = defaultComputerToolConfiguration()
-            tools.append(.computer(
-                environment: computerConfig.environment,
-                displayWidth: Int(computerConfig.screenSize.width),
-                displayHeight: Int(computerConfig.screenSize.height)
-            ))
+            tools.append(computerToolDefinition(for: prompt.openAIModel))
         }
 
         if isDedicatedComputerUseModel(prompt.openAIModel) {
             tools.removeAll { tool in
-                if case .computer = tool { return false }
-                return true
+                !isComputerTool(tool)
             }
         }
 
@@ -1145,18 +1180,23 @@ class OpenAIService: OpenAIServiceProtocol {
 
         if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
             AppLogger.log("Computer tool is enabled and supported", category: .openAI, level: .info)
-            let computerConfig = defaultComputerToolConfiguration()
+            let toolDefinition = computerToolDefinition(for: prompt.openAIModel)
+            tools.append(toolDefinition)
 
-            tools.append(.computer(
-                environment: computerConfig.environment,
-                displayWidth: Int(computerConfig.screenSize.width),
-                displayHeight: Int(computerConfig.screenSize.height)
-            ))
-            AppLogger.log(
-                "Added computer tool with environment=\(computerConfig.environment), width=\(Int(computerConfig.screenSize.width)), height=\(Int(computerConfig.screenSize.height))",
-                category: .openAI,
-                level: .info
-            )
+            if isDedicatedComputerUseModel(prompt.openAIModel) {
+                let computerConfig = defaultComputerToolConfiguration()
+                AppLogger.log(
+                    "Added legacy preview computer tool with environment=\(computerConfig.environment), width=\(Int(computerConfig.screenSize.width)), height=\(Int(computerConfig.screenSize.height))",
+                    category: .openAI,
+                    level: .info
+                )
+            } else {
+                AppLogger.log(
+                    "Added GA computer tool with type=computer for model=\(prompt.openAIModel)",
+                    category: .openAI,
+                    level: .info
+                )
+            }
         } else {
             AppLogger.log("Computer tool not added: enabled=\(prompt.enableComputerUse), supported=\(compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming))", category: .openAI, level: .info)
         }
@@ -2973,69 +3013,14 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.missingAPIKey
         }
 
-        // Build the required `computer_call_output` item.
-        // NOTE: The API expects `output` to be a structured content object representing the screenshot
-        // (e.g., { "type": "computer_screenshot", "image_url": "data:image/png;base64,..." }).
-        var computerOutputMessage: [String: Any] = [
-            "type": "computer_call_output",
-            "call_id": callId,
-            "output": output,
-        ]
-
-        // Add acknowledged safety checks if provided
-        if let safetyChecks = acknowledgedSafetyChecks, !safetyChecks.isEmpty {
-            computerOutputMessage["acknowledged_safety_checks"] = safetyChecks.map { safetyCheck in
-                [
-                    "id": safetyCheck.id,
-                    "code": safetyCheck.code,
-                    "message": safetyCheck.message,
-                ]
-            }
-        }
-
-        // Add current URL if provided (helps with safety checks)
-        if let url = currentUrl {
-            computerOutputMessage["current_url"] = url
-        }
-
-        // Always include the computer tool configuration on follow-ups to keep the CUA context.
-        // Use sensible defaults for environment and display if we can't derive real values here.
-        let computerConfig = defaultComputerToolConfiguration()
-
-        // Encode tool config using our codable Tool enum for correctness.
-        var toolsJSON: [Any] = []
-        do {
-            let tools: [APICapabilities.Tool] = [
-                .computer(
-                    environment: computerConfig.environment,
-                    displayWidth: Int(computerConfig.screenSize.width),
-                    displayHeight: Int(computerConfig.screenSize.height)
-                ),
-            ]
-            let encoder = JSONEncoder()
-            let toolsData = try encoder.encode(tools)
-            if let parsed = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
-                toolsJSON = parsed
-            }
-        } catch {
-            // If tool encoding fails, we still try to proceed without explicit tools (API may still accept).
-            AppLogger.log("Failed to encode computer tool for follow-up: \(error)", category: .openAI, level: .warning)
-        }
-
-        var requestObject: [String: Any] = [
-            "model": model,
-            "store": true,
-            "input": [computerOutputMessage],
-            "truncation": "auto",
-        ]
-
-        if !toolsJSON.isEmpty {
-            requestObject["tools"] = toolsJSON
-        }
-
-        if let prevId = previousResponseId {
-            requestObject["previous_response_id"] = prevId
-        }
+        let requestObject = try buildComputerCallOutputRequestObject(
+            callId: callId,
+            output: output,
+            model: model,
+            previousResponseId: previousResponseId,
+            acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+            currentUrl: currentUrl
+        )
 
         let jsonData = try JSONSerialization.data(withJSONObject: requestObject, options: .prettyPrinted)
         // Avoid manual body logging here; AnalyticsService will log this request with sanitization/omission
@@ -3075,6 +3060,98 @@ class OpenAIService: OpenAIServiceProtocol {
         } catch {
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+
+    private func buildComputerCallOutputRequestObject(
+        callId: String,
+        output: Any,
+        model: String,
+        previousResponseId: String?,
+        acknowledgedSafetyChecks: [SafetyCheck]?,
+        currentUrl: String?
+    ) throws -> [String: Any] {
+        let toolDefinition = computerToolDefinition(for: model)
+        let isGAComputerTool: Bool = {
+            if case .computer = toolDefinition {
+                return true
+            }
+            return false
+        }()
+
+        // Build the required `computer_call_output` item.
+        // NOTE: The API expects `output` to be a structured content object representing the screenshot
+        // (e.g., { "type": "computer_screenshot", "image_url": "data:image/png;base64,..." }).
+        let normalizedOutput: Any = {
+            guard isGAComputerTool,
+                  var outputDict = output as? [String: Any],
+                  outputDict["type"] as? String == "computer_screenshot"
+            else {
+                return output
+            }
+
+            if outputDict["detail"] == nil {
+                outputDict["detail"] = "original"
+            }
+            return outputDict
+        }()
+
+        var computerOutputMessage: [String: Any] = [
+            "type": "computer_call_output",
+            "call_id": callId,
+            "output": normalizedOutput,
+        ]
+
+        // Add acknowledged safety checks if provided
+        if let safetyChecks = acknowledgedSafetyChecks, !safetyChecks.isEmpty {
+            computerOutputMessage["acknowledged_safety_checks"] = safetyChecks.map { safetyCheck in
+                [
+                    "id": safetyCheck.id,
+                    "code": safetyCheck.code,
+                    "message": safetyCheck.message,
+                ]
+            }
+        }
+
+        // `current_url` belongs to the legacy preview integration. The GA `computer` tool rejects it.
+        if !isGAComputerTool, let url = currentUrl {
+            computerOutputMessage["current_url"] = url
+        }
+
+        // Always include the computer tool configuration on follow-ups to keep the CUA context.
+        // Use the GA tool shape for GPT-5.4+ and retain the preview shape for the legacy model.
+
+        // Encode tool config using our codable Tool enum for correctness.
+        var toolsJSON: [Any] = []
+        do {
+            let tools: [APICapabilities.Tool] = [
+                computerToolDefinition(for: model),
+            ]
+            let encoder = JSONEncoder()
+            let toolsData = try encoder.encode(tools)
+            if let parsed = try JSONSerialization.jsonObject(with: toolsData) as? [Any] {
+                toolsJSON = parsed
+            }
+        } catch {
+            // If tool encoding fails, we still try to proceed without explicit tools (API may still accept).
+            AppLogger.log("Failed to encode computer tool for follow-up: \(error)", category: .openAI, level: .warning)
+        }
+
+        var requestObject: [String: Any] = [
+            "model": model,
+            "store": true,
+            "input": [computerOutputMessage],
+            "truncation": "auto",
+        ]
+
+        if !toolsJSON.isEmpty {
+            requestObject["tools"] = toolsJSON
+        }
+
+        if let prevId = previousResponseId {
+            requestObject["previous_response_id"] = prevId
+        }
+
+        return requestObject
     }
 
     // MARK: - Backward compatibility methods for computer use

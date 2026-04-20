@@ -6,7 +6,7 @@ struct RequestInspectorView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var copiedToClipboard = false
-    
+
     let userMessage: String
 
     private var usesBackgroundPolling: Bool {
@@ -32,7 +32,7 @@ struct RequestInspectorView: View {
             reasoningEffort: viewModel.activePrompt.reasoningEffort
         )
     }
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -52,7 +52,7 @@ struct RequestInspectorView: View {
                     .padding()
                     .background(Color.blue.opacity(0.1))
                     .cornerRadius(12)
-                    
+
                     // JSON payload
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -67,7 +67,7 @@ struct RequestInspectorView: View {
                             }
                             .buttonStyle(.bordered)
                         }
-                        
+
                         Text(formattedJSON)
                             .font(.system(.caption, design: .monospaced))
                             .padding()
@@ -76,7 +76,7 @@ struct RequestInspectorView: View {
                             .cornerRadius(8)
                             .textSelection(.enabled)
                     }
-                    
+
                     // Request details
                     requestDetails
                 }
@@ -93,37 +93,37 @@ struct RequestInspectorView: View {
             }
         }
     }
-    
+
     // MARK: - Request Details
-    
+
     private var requestDetails: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Request Details")
                 .font(.headline)
-            
+
             DetailRow(label: "Endpoint", value: "POST /v1/responses")
             DetailRow(label: "Model", value: viewModel.activePrompt.openAIModel)
             DetailRow(label: "Streaming", value: effectiveStreamingEnabled ? "Enabled" : "Disabled")
-            
+
             if viewModel.activePrompt.enableFileSearch {
                 DetailRow(label: "file_search", value: "Enabled")
                 if let storeIds = viewModel.activePrompt.selectedVectorStoreIds {
                     DetailRow(label: "Vector Stores", value: storeIds.split(separator: ",").count.description)
                 }
             }
-            
+
             if viewModel.activePrompt.enableCodeInterpreter {
                 DetailRow(label: "code_interpreter", value: "Enabled")
             }
-            
+
             if viewModel.activePrompt.enableComputerUse {
                 DetailRow(label: "computer", value: "Enabled")
             }
-            
+
             if !viewModel.pendingFileData.isEmpty {
                 DetailRow(label: "File Attachments", value: "\(viewModel.pendingFileData.count)")
             }
-            
+
             if !viewModel.pendingImageAttachments.isEmpty {
                 DetailRow(label: "Image Attachments", value: "\(viewModel.pendingImageAttachments.count)")
             }
@@ -132,28 +132,28 @@ struct RequestInspectorView: View {
         .background(Color.secondary.opacity(0.05))
         .cornerRadius(12)
     }
-    
+
     // MARK: - JSON Generation
-    
+
     private var formattedJSON: String {
         let requestObject = buildPreviewRequest()
-        
+
         guard let jsonData = try? JSONSerialization.data(withJSONObject: requestObject, options: [.prettyPrinted, .sortedKeys]),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
             return "{}"
         }
-        
+
         return jsonString
     }
-    
+
     private func buildPreviewRequest() -> [String: Any] {
         var request: [String: Any] = [
             "model": viewModel.activePrompt.openAIModel
         ]
-        
+
         // Input array
         var inputArray: [[String: Any]] = []
-        
+
         // Add developer instructions if present
         if !viewModel.activePrompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             inputArray.append([
@@ -161,12 +161,12 @@ struct RequestInspectorView: View {
                 "content": viewModel.activePrompt.developerInstructions
             ])
         }
-        
+
         // Add user message
         var userContent: [[String: Any]] = [
             ["type": "input_text", "text": userMessage]
         ]
-        
+
         // Add file attachments
         for fileName in viewModel.pendingFileNames {
             userContent.append([
@@ -175,7 +175,7 @@ struct RequestInspectorView: View {
                 "filename": fileName
             ])
         }
-        
+
         // Add image attachments (as base64 for preview)
         for (index, _) in viewModel.pendingImageAttachments.enumerated() {
             userContent.append([
@@ -184,22 +184,22 @@ struct RequestInspectorView: View {
                 "detail": "auto"
             ])
         }
-        
+
         inputArray.append([
             "role": "user",
             "content": userContent
         ])
-        
+
         request["input"] = inputArray
-        
+
         // Instructions
         if !viewModel.activePrompt.systemInstructions.isEmpty {
             request["instructions"] = viewModel.activePrompt.systemInstructions
         }
-        
+
         // Tools
         var tools: [[String: Any]] = []
-        
+
         if viewModel.activePrompt.enableFileSearch {
             var fileSearchTool: [String: Any] = ["type": "file_search"]
             if let storeIds = viewModel.activePrompt.selectedVectorStoreIds {
@@ -207,32 +207,53 @@ struct RequestInspectorView: View {
             }
             tools.append(fileSearchTool)
         }
-        
+
         if viewModel.activePrompt.enableCodeInterpreter {
             tools.append(["type": "code_interpreter"])
         }
-        
+
         if viewModel.activePrompt.enableComputerUse {
-            tools.append([
-                "type": "computer",
-                "display_width_px": 1024,
-                "display_height_px": 768
-            ])
+            if viewModel.activePrompt.openAIModel == "computer-use-preview" {
+                #if os(iOS)
+                    let previewEnvironment = "browser"
+                    let previewWidth = 440
+                    let previewHeight = 956
+                #elseif os(macOS)
+                    let previewEnvironment = "mac"
+                    let previewWidth = 1920
+                    let previewHeight = 1080
+                #else
+                    let previewEnvironment = "browser"
+                    let previewWidth = 1920
+                    let previewHeight = 1080
+                #endif
+
+                tools.append([
+                    "type": "computer_use_preview",
+                    "environment": previewEnvironment,
+                    "display_width": previewWidth,
+                    "display_height": previewHeight
+                ])
+            } else {
+                tools.append([
+                    "type": "computer"
+                ])
+            }
         }
-        
+
         if !tools.isEmpty {
             request["tools"] = tools
         }
-        
+
         // Parameters
         if supportsTemperature, viewModel.activePrompt.temperature != 1.0 {
             request["temperature"] = viewModel.activePrompt.temperature
         }
-        
+
         if viewModel.activePrompt.maxOutputTokens > 0 {
             request["max_output_tokens"] = viewModel.activePrompt.maxOutputTokens
         }
-        
+
         if supportsTopP, viewModel.activePrompt.topP != 1.0 {
             request["top_p"] = viewModel.activePrompt.topP
         }
@@ -248,17 +269,17 @@ struct RequestInspectorView: View {
         if usesBackgroundPolling {
             request["background"] = true
         }
-        
+
         return request
     }
-    
+
     // MARK: - Copy Action
-    
+
     private func copyToClipboard() {
 #if os(iOS)
         UIPasteboard.general.string = formattedJSON
         copiedToClipboard = true
-        
+
         // Reset after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             copiedToClipboard = false
@@ -272,7 +293,7 @@ struct RequestInspectorView: View {
 struct DetailRow: View {
     let label: String
     let value: String
-    
+
     var body: some View {
         HStack {
             Text(label)

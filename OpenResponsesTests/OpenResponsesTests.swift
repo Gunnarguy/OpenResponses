@@ -26,26 +26,26 @@ final class OpenResponsesTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "savedPrompts")
         super.tearDown()
     }
-    
+
     // Test KeychainService
     func testKeychainService() {
         let testKey = "testKey"
         let testValue = "testValue"
-        
+
         // Clean up from previous test runs
         _ = KeychainService.shared.delete(forKey: testKey)
-        
+
         // Test saving
         XCTAssertTrue(KeychainService.shared.save(value: testValue, forKey: testKey), "Should save value to keychain")
-        
+
         // Test loading
         XCTAssertEqual(KeychainService.shared.load(forKey: testKey), testValue, "Should load correct value from keychain")
-        
+
         // Test deleting
         XCTAssertTrue(KeychainService.shared.delete(forKey: testKey), "Should delete value from keychain")
         XCTAssertNil(KeychainService.shared.load(forKey: testKey), "Should return nil after deletion")
     }
-    
+
     // Test ChatMessage model
     @MainActor
     func testChatMessage() {
@@ -213,7 +213,19 @@ final class OpenResponsesTests: XCTestCase {
     }
 
     func testComputerToolEncodesUsingCurrentToolType() throws {
-        let payload = [APICapabilities.Tool.computer(
+        let payload = [APICapabilities.Tool.computer]
+
+        let data = try JSONEncoder().encode(payload)
+        let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+
+        XCTAssertEqual(json?.first?["type"] as? String, "computer")
+        XCTAssertNil(json?.first?["display_width"])
+        XCTAssertNil(json?.first?["display_height"])
+        XCTAssertNil(json?.first?["environment"])
+    }
+
+    func testLegacyComputerPreviewToolEncodesUsingLegacyFields() throws {
+        let payload = [APICapabilities.Tool.computerPreview(
             environment: "browser",
             displayWidth: 1024,
             displayHeight: 768
@@ -222,9 +234,38 @@ final class OpenResponsesTests: XCTestCase {
         let data = try JSONEncoder().encode(payload)
         let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
 
-        XCTAssertEqual(json?.first?["type"] as? String, "computer")
+        XCTAssertEqual(json?.first?["type"] as? String, "computer_use_preview")
+        XCTAssertEqual(json?.first?["display_width"] as? Int, 1024)
+        XCTAssertEqual(json?.first?["display_height"] as? Int, 768)
+        XCTAssertEqual(json?.first?["environment"] as? String, "browser")
     }
-    
+
+    @MainActor
+    func testComputerShortcutActivatesLocallyAndListsCapabilities() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let viewModel = ChatViewModel(
+            storageService: ConversationStorageService(storageURL: directory),
+            startBackgroundWork: false
+        )
+        viewModel.activePrompt.openAIModel = "gpt-5.4"
+        viewModel.activePrompt.enableComputerUse = false
+
+        viewModel.sendUserMessage("Computer")
+
+        XCTAssertFalse(viewModel.isStreaming)
+        XCTAssertEqual(viewModel.messages.count, 2)
+        XCTAssertEqual(viewModel.messages.first?.role, .user)
+        XCTAssertEqual(viewModel.messages.first?.text, "Computer")
+        XCTAssertEqual(viewModel.messages.last?.role, .assistant)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("What would you like me to do?") == true)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("open a website") == true)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("take screenshots") == true)
+        XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
+    }
+
     // Test PromptLibrary
     @MainActor
     func testPromptLibraryPersistsAddUpdateAndDelete() throws {

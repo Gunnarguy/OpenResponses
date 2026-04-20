@@ -72,31 +72,31 @@ struct ChatMessage: Identifiable, Codable {
     }
 
     // MARK: - Codable Conformance
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         role = try container.decode(Role.self, forKey: .role)
         text = try container.decodeIfPresent(String.self, forKey: .text)
-        
+
         if let imageData = try container.decodeIfPresent([Data].self, forKey: .images) {
             images = imageData.compactMap { UIImage(data: $0) }
         } else {
             images = nil
         }
-        
+
         if let urlStrings = try container.decodeIfPresent([String].self, forKey: .webURLs) {
             webURLs = urlStrings.compactMap { URL(string: $0) }
         } else {
             webURLs = nil
         }
-        
+
         if let webContentURLStrings = try container.decodeIfPresent([String].self, forKey: .webContentURL) {
             webContentURL = webContentURLStrings.compactMap { URL(string: $0) }
         } else {
             webContentURL = nil
         }
-        
+
         toolsUsed = try container.decodeIfPresent([String].self, forKey: .toolsUsed)
         tokenUsage = try container.decodeIfPresent(TokenUsage.self, forKey: .tokenUsage)
         artifacts = try container.decodeIfPresent([CodeInterpreterArtifact].self, forKey: .artifacts)
@@ -109,22 +109,22 @@ struct ChatMessage: Identifiable, Codable {
         try container.encode(id, forKey: .id)
         try container.encode(role, forKey: .role)
         try container.encodeIfPresent(text, forKey: .text)
-        
+
         if let images = images {
             let imageData = images.compactMap { $0.pngData() }
             try container.encode(imageData, forKey: .images)
         }
-        
+
         if let webURLs = webURLs {
             let urlStrings = webURLs.map { $0.absoluteString }
             try container.encode(urlStrings, forKey: .webURLs)
         }
-        
+
         if let webContentURL = webContentURL {
             let webContentURLStrings = webContentURL.map { $0.absoluteString }
             try container.encode(webContentURLStrings, forKey: .webContentURL)
         }
-        
+
         try container.encodeIfPresent(toolsUsed, forKey: .toolsUsed)
         try container.encodeIfPresent(tokenUsage, forKey: .tokenUsage)
         try container.encodeIfPresent(artifacts, forKey: .artifacts)
@@ -186,20 +186,22 @@ struct OutputItem: Decodable {
     let type: String              // Type of output (e.g., "message", "reasoning", "tool_call", "image", etc.)
     let summary: [SummaryItem]?   // Chain-of-thought summary items (if reasoning summary was requested)
     let content: [ContentItem]?   // Content items (text segments, images, etc.) for this output
-    
+
     // Fields for function/tool calls
     let name: String?
     let arguments: String? // JSON string
     let callId: String?
-    
+
     // Field for computer_call items - direct action object
     let action: [String: AnyCodable]?
-    
+    /// GA computer-use action batches returned by GPT-5.4
+    let actions: [[String: AnyCodable]]?
+
     /// Safety checks that need to be acknowledged before proceeding
     let pendingSafetyChecks: [SafetyCheck]?
-    
+
     enum CodingKeys: String, CodingKey {
-        case id, type, summary, content, name, arguments, action
+        case id, type, summary, content, name, arguments, action, actions
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
     }
@@ -214,6 +216,7 @@ struct OutputItem: Decodable {
         arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
         callId = try container.decodeIfPresent(String.self, forKey: .callId)
         action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
+        actions = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .actions)
         pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
     }
 
@@ -226,6 +229,7 @@ struct OutputItem: Decodable {
         arguments: String? = nil,
         callId: String? = nil,
         action: [String: AnyCodable]? = nil,
+        actions: [[String: AnyCodable]]? = nil,
         pendingSafetyChecks: [SafetyCheck]? = nil
     ) {
         self.id = id
@@ -236,6 +240,7 @@ struct OutputItem: Decodable {
         self.arguments = arguments
         self.callId = callId
         self.action = action
+        self.actions = actions
         self.pendingSafetyChecks = pendingSafetyChecks
     }
 }
@@ -250,6 +255,7 @@ extension OutputItem {
         self.arguments = streamingItem.arguments
         self.callId = streamingItem.callId
         self.action = streamingItem.action
+        self.actions = streamingItem.actions
         self.pendingSafetyChecks = streamingItem.pendingSafetyChecks
     }
 }
@@ -264,7 +270,7 @@ struct ContentItem: Codable {
     let text: String?             // Text content (present if type is text or similar)
     let imageURL: ImageURLContent?    // Image URL content (if type is "image_url")
     let imageFile: ImageFileContent?  // Image file content (if type is "image_file")
-    
+
     enum CodingKeys: String, CodingKey {
         case type, text
         case imageURL = "image_url"
@@ -287,7 +293,7 @@ struct UsageInfo: Decodable {
     let promptTokens: Int?
     let completionTokens: Int?
     let totalTokens: Int?
-    
+
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
@@ -305,7 +311,7 @@ struct OpenAIFile: Decodable, Identifiable {
     let createdAt: Int
     let filename: String
     let purpose: String
-    
+
     enum CodingKeys: String, CodingKey {
         case id, object, bytes, filename, purpose
         case createdAt = "created_at"
@@ -333,7 +339,7 @@ struct VectorStore: Decodable, Identifiable {
     let expiresAt: Int?
     let lastActiveAt: Int?
     let metadata: [String: String]?
-    
+
     enum CodingKeys: String, CodingKey {
         case id, object, name, status, metadata
         case createdAt = "created_at"
@@ -352,7 +358,7 @@ struct FileCounts: Decodable {
     let failed: Int
     let cancelled: Int
     let total: Int
-    
+
     enum CodingKeys: String, CodingKey {
         case total, completed, failed, cancelled
         case inProgress = "in_progress"
@@ -372,7 +378,7 @@ struct VectorStoreListResponse: Decodable {
     let hasMore: Bool
     let firstId: String?
     let lastId: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case object, data
         case hasMore = "has_more"
@@ -385,21 +391,21 @@ struct VectorStoreListResponse: Decodable {
 struct ChunkingStrategy: Codable {
     let type: String // "auto" or "static"
     let `static`: StaticChunkingStrategy?
-    
+
     struct StaticChunkingStrategy: Codable {
         let maxChunkSizeTokens: Int // 100-4096
         let chunkOverlapTokens: Int // 0 to maxChunkSizeTokens/2
-        
+
         enum CodingKeys: String, CodingKey {
             case maxChunkSizeTokens = "max_chunk_size_tokens"
             case chunkOverlapTokens = "chunk_overlap_tokens"
         }
     }
-    
+
     static var auto: ChunkingStrategy {
         ChunkingStrategy(type: "auto", static: nil)
     }
-    
+
     static func staticStrategy(maxTokens: Int, overlapTokens: Int) -> ChunkingStrategy {
         ChunkingStrategy(
             type: "static",
@@ -422,7 +428,7 @@ struct VectorStoreFile: Decodable, Identifiable {
     let lastError: VectorStoreFileError?
     let chunkingStrategy: ChunkingStrategy?
     let attributes: [String: String]?
-    
+
     enum CodingKeys: String, CodingKey {
         case id, object, status, attributes
         case usageBytes = "usage_bytes"
@@ -467,37 +473,37 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// - "response.mcp_call.done" - MCP tool call completed
     /// - "response.mcp_approval_request.added" - MCP tool call requires approval
     let type: String
-    
+
     /// Sequence number to maintain ordering of events
     let sequenceNumber: Int
-    
+
     /// Full response object, present in some events like "response.created"
     let response: StreamingResponse?
-    
+
     /// Error information for standalone "type":"error" events
     let errorInfo: StreamingError?
-    
+
     /// Index in the output array where the item belongs
     let outputIndex: Int?
-    
+
     /// ID of the item this event relates to
     let itemId: String?
-    
+
     /// Index in the content array where the content belongs
     let contentIndex: Int?
-    
+
     /// Text delta for output_text.delta events
     let delta: String?
-    
+
     /// Item object for output_item events
     let item: StreamingItem?
-    
+
     /// Part object for content_part events
     let part: StreamingPart?
-    
+
     /// Partial image data for image generation events (base64 encoded)
     let partialImageB64: String?
-    
+
     /// Index of the partial image for image generation events
     let partialImageIndex: Int?
 
@@ -505,10 +511,10 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     /// We capture common alternates to improve compatibility across event shapes.
     let imageB64: String? // maps "image"
     let dataB64: String?  // maps "data"
-    
+
     /// Screenshot data for computer use events (base64 encoded)
     let screenshotB64: String?
-    
+
     /// Computer action data for computer use events
     let computerAction: String?
 
@@ -517,37 +523,37 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
     let filename: String?
     let containerId: String?
     let annotationIndex: Int?
-    
+
     /// Full annotation payload when provided as a nested object
     /// Some streaming payloads include annotation details under an `annotation` object rather than top-level fields.
     /// We decode it to improve robustness across event variants.
     let annotation: StreamingAnnotation?
-    
+
     // MCP-specific fields
     /// Server label for MCP events
     let serverLabel: String?
-    
+
     /// Tools array for mcp_list_tools events
     let tools: [[String: AnyCodable]]?
-    
+
     /// Tool name for mcp_call and mcp_approval_request events
     let name: String?
-    
+
     /// Arguments for mcp_call and mcp_approval_request events (JSON string)
     let arguments: String?
-    
+
     /// Streaming delta payload for MCP arguments (JSON string fragment)
     let argumentsDelta: String?
-    
+
     /// Output from mcp_call events (JSON string)
     let output: String?
-    
+
     /// Error from failed mcp_call events
     let error: String?
-    
+
     /// Approval request ID for mcp_approval_request events
     let approvalRequestId: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case type
         case sequenceNumber = "sequence_number"
@@ -578,11 +584,11 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         case error
         case approvalRequestId = "approval_request_id"
     }
-    
+
     /// Custom decoder to handle polymorphic error field
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         // Decode standard fields
         type = try container.decode(String.self, forKey: .type)
         sequenceNumber = try container.decode(Int.self, forKey: .sequenceNumber)
@@ -611,7 +617,7 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
         argumentsDelta = try container.decodeStringOrJSONStringIfPresent(forKey: .argumentsDelta)
         output = try container.decodeStringOrJSONStringIfPresent(forKey: .output)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
-        
+
         // Handle polymorphic error field
         // Try to decode as StreamingError object first (for standalone error events)
         if let errorObj = try? container.decodeIfPresent(StreamingError.self, forKey: .error) {
@@ -623,40 +629,40 @@ struct StreamingEvent: Decodable, CustomStringConvertible {
             error = try container.decodeIfPresent(String.self, forKey: .error)
         }
     }
-    
+
     /// Provides a readable description of the event
     var description: String {
         var desc = "StreamingEvent(type: \"\(type)\", seq: \(sequenceNumber)"
-        
+
         if let response = response {
             desc += ", response: \(response.id)"
         }
-        
+
         if let outputIndex = outputIndex {
             desc += ", outputIndex: \(outputIndex)"
         }
-        
+
         if let itemId = itemId {
             desc += ", itemId: \"\(itemId)\""
         }
-        
+
         if let contentIndex = contentIndex {
             desc += ", contentIndex: \(contentIndex)"
         }
-        
+
         if let delta = delta {
             let safeText = delta.count > 20 ? "\(delta.prefix(20))..." : delta
             desc += ", delta: \"\(safeText)\""
         }
-        
+
         if let serverLabel = serverLabel {
             desc += ", serverLabel: \"\(serverLabel)\""
         }
-        
+
         if let name = name {
             desc += ", name: \"\(name)\""
         }
-        
+
         return desc + ")"
     }
 }
@@ -685,35 +691,35 @@ struct StreamingAnnotation: Decodable {
 struct StreamingResponse: Decodable, CustomStringConvertible {
     /// Unique identifier for this response
     let id: String
-    
+
     /// Status of the response: "queued", "in_progress", "completed", "failed"
     let status: String?
-    
+
     /// Array of output items (messages, reasoning, etc.)
     let output: [StreamingOutputItem]?
-    
+
     /// Token usage statistics (only in final response.completed event)
     let usage: StreamingUsage?
-    
+
     /// Error information when status is "failed"
     let error: StreamingError?
-    
+
     /// Provides a readable description of the response
     var description: String {
         var desc = "StreamingResponse(id: \"\(id)\""
-        
+
         if let status = status {
             desc += ", status: \"\(status)\""
         }
-        
+
         if let output = output, !output.isEmpty {
             desc += ", output: [\(output.count) items]"
         }
-        
+
         if let usage = usage {
             desc += ", usage: \(usage)"
         }
-        
+
         return desc + ")"
     }
 }
@@ -722,7 +728,7 @@ struct StreamingResponse: Decodable, CustomStringConvertible {
 struct StreamingError: Decodable {
     /// Error code
     let code: String?
-    
+
     /// Error message
     let message: String
 }
@@ -731,10 +737,10 @@ struct StreamingError: Decodable {
 struct MCPToolError: Decodable {
     /// Error type (e.g., "http_error", "timeout", etc.)
     let type: String
-    
+
     /// HTTP status code or error code
     let code: Int?
-    
+
     /// Error message
     let message: String
 }
@@ -743,44 +749,56 @@ struct MCPToolError: Decodable {
 struct StreamingOutputItem: Decodable, CustomStringConvertible {
     /// Unique identifier for this output item
     let id: String
-    
+
     /// Type of output: "message", "reasoning", "tool_call", "mcp_list_tools", "mcp_call", "mcp_approval_request", etc.
     let type: String
-    
+
     /// Status of the item: "in_progress", "completed", etc.
     let status: String?
-    
+
     /// Array of content items (text, images, etc.)
     let content: [StreamingContentItem]?
 
+    /// Computer-use action batch payloads for GA computer calls.
+    let actions: [[String: AnyCodable]]?
+
+    /// Legacy single action payload for preview computer calls.
+    let action: [String: AnyCodable]?
+
+    /// Call identifier for function/computer tool calls.
+    let callId: String?
+
+    /// Safety checks that must be acknowledged before continuing.
+    let pendingSafetyChecks: [SafetyCheck]?
+
     /// Summary blocks included with reasoning items
     let summary: [SummaryItem]?
-    
+
     /// Role for message items: "user", "assistant", etc.
     let role: String?
-    
+
     // MCP-specific fields
     /// Server label for MCP items
     let serverLabel: String?
-    
+
     /// Tools array for mcp_list_tools items
     let tools: [[String: AnyCodable]]?
-    
+
     /// Tool name for mcp_call and mcp_approval_request items
     let name: String?
-    
+
     /// Arguments for mcp_call and mcp_approval_request items (JSON string)
     let arguments: String?
-    
+
     /// Output from mcp_call items (JSON string)
     let output: String?
-    
+
     /// Error from failed mcp_call items (structured error object)
     let error: MCPToolError?
-    
+
     /// Approval request ID for linking approval responses
     let approvalRequestId: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case id, type, status, content, role
         case serverLabel = "server_label"
@@ -791,6 +809,10 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         case error
         case approvalRequestId = "approval_request_id"
         case summary
+        case callId = "call_id"
+        case action
+        case actions
+        case pendingSafetyChecks = "pending_safety_checks"
     }
 
     init(from decoder: Decoder) throws {
@@ -799,6 +821,10 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         type = try container.decode(String.self, forKey: .type)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         content = try container.decodeIfPresent([StreamingContentItem].self, forKey: .content)
+        actions = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .actions)
+        action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
+        callId = try container.decodeIfPresent(String.self, forKey: .callId)
+        pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
         summary = try container.decodeIfPresent([SummaryItem].self, forKey: .summary)
         role = try container.decodeIfPresent(String.self, forKey: .role)
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
@@ -809,7 +835,7 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
         error = try container.decodeIfPresent(MCPToolError.self, forKey: .error)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
     }
-    
+
     /// Provides a readable description of the output item
     var description: String {
         var desc = "StreamingOutputItem(id: \"\(id)\", type: \"\(type)\""
@@ -827,13 +853,13 @@ struct StreamingOutputItem: Decodable, CustomStringConvertible {
 struct StreamingContentItem: Decodable, CustomStringConvertible {
     /// Type of content: "text", "image_url", etc.
     let type: String
-    
+
     /// Text content if present
     let text: String?
-    
+
     /// Image URL for screenshot or media content if present
     let imageURL: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case type
         case text
@@ -843,7 +869,7 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
     /// Provides a readable description of the content item
     var description: String {
         var desc = "StreamingContentItem(type: \"\(type)\""
-        
+
         if let text = text {
             let safeText = text.count > 20 ? "\(text.prefix(20))..." : text
             desc += ", text: \"\(safeText)\""
@@ -851,10 +877,10 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
         if let imageURL = imageURL {
             desc += ", image_url: \"\(imageURL)\""
         }
-        
+
         return desc + ")"
     }
-    
+
     /// Initialize from a ContentItem
     init(contentItem: ContentItem) {
         self.type = contentItem.type
@@ -867,51 +893,54 @@ struct StreamingContentItem: Decodable, CustomStringConvertible {
 struct StreamingItem: Decodable, CustomStringConvertible {
     /// Unique identifier for this item
     let id: String
-    
+
     /// Type of item: "message", "reasoning", "tool_call", etc.
     let type: String
-    
+
     /// Status of the item: "in_progress", "completed", etc.
     let status: String?
-    
+
     /// Array of content items (text, images, etc.)
     let content: [StreamingContentItem]?
-    
+
     /// Role for message items: "user", "assistant", etc.
     let role: String?
-    
+
     // Fields for function/tool calls
     /// Name of the tool or function (for tool_call items)
     let name: String?
-    
+
     /// JSON string of arguments (for tool_call items)
     let arguments: String?
-    
+
     /// ID of the call (for tool_call items)
     let callId: String?
-    
+
     // Fields for computer_call items
     /// Action object for computer use calls (contains type, x, y, etc.)
     let action: [String: AnyCodable]?
-    
+
+    /// GA computer-use action batches returned by GPT-5.4.
+    let actions: [[String: AnyCodable]]?
+
     /// Safety checks that need to be acknowledged before proceeding
     let pendingSafetyChecks: [SafetyCheck]?
-    
+
     // Fields for MCP approval request items
     /// Server label for MCP approval requests
     let serverLabel: String?
 
     /// Tools array for `mcp_list_tools` streaming items
     let tools: [[String: AnyCodable]]?
-    
+
     /// Approval request ID for MCP approval request items
     let approvalRequestId: String?
-    
+
     /// Structured error payload when a tool call fails (e.g., MCP call.done with status=failed)
     let error: MCPToolError?
-    
+
     enum CodingKeys: String, CodingKey {
-        case id, type, status, content, role, name, arguments, action, error, tools
+        case id, type, status, content, role, name, arguments, action, actions, error, tools
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
         case serverLabel = "server_label"
@@ -928,6 +957,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         arguments = try container.decodeStringOrJSONStringIfPresent(forKey: .arguments)
         action = try container.decodeIfPresent([String: AnyCodable].self, forKey: .action)
+        actions = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .actions)
         error = try container.decodeIfPresent(MCPToolError.self, forKey: .error)
         callId = try container.decodeIfPresent(String.self, forKey: .callId)
         pendingSafetyChecks = try container.decodeIfPresent([SafetyCheck].self, forKey: .pendingSafetyChecks)
@@ -935,12 +965,12 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
     }
-    
+
     /// Provides a readable description of the item
     var description: String {
         "StreamingItem(id: \"\(id)\", type: \"\(type)\")"
     }
-    
+
     /// Initialize from an OutputItem (used when processing final response completion)
     init(outputItem: OutputItem) {
         self.id = outputItem.id
@@ -952,13 +982,14 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         self.arguments = outputItem.arguments
         self.callId = outputItem.callId
         self.action = outputItem.action
+        self.actions = outputItem.actions
         self.pendingSafetyChecks = outputItem.pendingSafetyChecks
         self.serverLabel = nil
         self.tools = nil
         self.approvalRequestId = nil
         self.error = nil
     }
-    
+
     /// Initialize from a StreamingOutputItem (used in response completion)
     init(streamingOutputItem: StreamingOutputItem) {
         self.id = streamingOutputItem.id
@@ -968,9 +999,10 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         self.role = streamingOutputItem.role
         self.name = streamingOutputItem.name
         self.arguments = streamingOutputItem.arguments
-        self.callId = nil // StreamingOutputItem doesn't have callId
-        self.action = nil
-        self.pendingSafetyChecks = nil
+        self.callId = streamingOutputItem.callId
+        self.action = streamingOutputItem.action
+        self.actions = streamingOutputItem.actions
+        self.pendingSafetyChecks = streamingOutputItem.pendingSafetyChecks
         self.serverLabel = streamingOutputItem.serverLabel
         self.tools = streamingOutputItem.tools
         self.approvalRequestId = streamingOutputItem.approvalRequestId
@@ -982,19 +1014,19 @@ struct StreamingItem: Decodable, CustomStringConvertible {
 struct StreamingPart: Decodable, CustomStringConvertible {
     /// Type of part: "output_text", etc.
     let type: String
-    
+
     /// Text content if present
     let text: String?
-    
+
     /// Provides a readable description of the part
     var description: String {
         var desc = "StreamingPart(type: \"\(type)\""
-        
+
         if let text = text {
             let safeText = text.count > 20 ? "\(text.prefix(20))..." : text
             desc += ", text: \"\(safeText)\""
         }
-        
+
         return desc + ")"
     }
 }
@@ -1003,19 +1035,19 @@ struct StreamingPart: Decodable, CustomStringConvertible {
 struct StreamingUsage: Decodable, CustomStringConvertible {
     /// Number of tokens in the input/prompt
     let inputTokens: Int
-    
+
     /// Number of tokens in the output/completion
     let outputTokens: Int
-    
+
     /// Total number of tokens used (input + output)
     let totalTokens: Int
-    
+
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
     }
-    
+
     /// Provides a readable description of the usage
     var description: String {
         "StreamingUsage(in: \(inputTokens), out: \(outputTokens), total: \(totalTokens))"
@@ -1026,13 +1058,13 @@ struct StreamingUsage: Decodable, CustomStringConvertible {
 struct SafetyCheck: Decodable, CustomStringConvertible {
     /// Unique identifier for this safety check
     let id: String
-    
+
     /// Type of safety check: "malicious_instructions", "irrelevant_domain", "sensitive_domain"
     let code: String
-    
+
     /// Human-readable message describing the safety concern
     let message: String
-    
+
     /// Provides a readable description of the safety check
     var description: String {
         "SafetyCheck(id: \"\(id)\", code: \"\(code)\", message: \"\(message)\")"
@@ -1047,7 +1079,7 @@ struct MCPApprovalRequest: Identifiable, Codable {
     let arguments: String             // JSON string of arguments
     var status: ApprovalStatus        // pending, approved, rejected
     var reason: String?               // Optional reason for decision
-    
+
     enum ApprovalStatus: String, Codable {
         case pending
         case approved

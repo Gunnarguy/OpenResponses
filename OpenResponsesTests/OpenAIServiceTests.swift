@@ -57,6 +57,23 @@ final class OpenAIServiceTests: XCTestCase {
         )
     }
 
+    private func buildComputerCallOutputRequest(
+        model: String,
+        currentURL: String? = "https://example.com/path"
+    ) throws -> [String: Any] {
+        try service.testing_buildComputerCallOutputRequestObject(
+            callId: "call_123",
+            output: [
+                "type": "computer_screenshot",
+                "image_url": "data:image/png;base64,abcd",
+            ],
+            model: model,
+            previousResponseId: "resp_123",
+            acknowledgedSafetyChecks: nil,
+            currentUrl: currentURL
+        )
+    }
+
     func testRequestIncludesModelAndStreamFlag() {
         var prompt = Prompt.defaultPrompt()
         prompt.openAIModel = "gpt-4o"
@@ -109,6 +126,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testTemperatureIncludedWhenSupported() {
         var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-4o"
         prompt.temperature = 0.42
 
         let request = buildRequest(prompt: prompt)
@@ -189,6 +207,95 @@ final class OpenAIServiceTests: XCTestCase {
         }
 
         XCTAssertTrue(tools.contains { $0["type"] as? String == "code_interpreter" })
+    }
+
+    func testGPT54ComputerToolUsesGAShape() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.enableComputerUse = true
+        prompt.enableCodeInterpreter = false
+        prompt.enableWebSearch = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableMCPTool = false
+
+        let request = buildRequest(prompt: prompt, message: "Use the computer", stream: true)
+
+        guard let tools = request["tools"] as? [[String: Any]],
+              let computerTool = tools.first(where: { $0["type"] as? String == "computer" })
+        else {
+            return XCTFail("Expected GA computer tool payload")
+        }
+
+        XCTAssertNil(computerTool["display_width"])
+        XCTAssertNil(computerTool["display_height"])
+        XCTAssertNil(computerTool["environment"])
+    }
+
+    func testLegacyComputerUsePreviewModelUsesPreviewShape() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "computer-use-preview"
+        prompt.enableComputerUse = true
+        prompt.enableCodeInterpreter = false
+        prompt.enableWebSearch = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableMCPTool = false
+
+        let request = buildRequest(prompt: prompt, message: "Use the computer", stream: true)
+
+        guard let tools = request["tools"] as? [[String: Any]],
+              let computerTool = tools.first(where: { $0["type"] as? String == "computer_use_preview" })
+        else {
+            return XCTFail("Expected legacy preview computer tool payload")
+        }
+
+        XCTAssertNotNil(computerTool["display_width"] as? Int)
+        XCTAssertNotNil(computerTool["display_height"] as? Int)
+        XCTAssertNotNil(computerTool["environment"] as? String)
+    }
+
+    func testGPT54ComputerCallOutputOmitsCurrentURLAndUsesOriginalDetail() throws {
+        let request = try buildComputerCallOutputRequest(model: "gpt-5.4")
+
+        guard let input = request["input"] as? [[String: Any]],
+              let computerOutput = input.first,
+              let output = computerOutput["output"] as? [String: Any] else {
+            return XCTFail("Expected computer_call_output request payload")
+        }
+
+        XCTAssertEqual(computerOutput["type"] as? String, "computer_call_output")
+        XCTAssertEqual(computerOutput["call_id"] as? String, "call_123")
+        XCTAssertNil(computerOutput["current_url"])
+        XCTAssertEqual(output["type"] as? String, "computer_screenshot")
+        XCTAssertEqual(output["detail"] as? String, "original")
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+        XCTAssertEqual(tools.first?["type"] as? String, "computer")
+    }
+
+    func testLegacyPreviewComputerCallOutputRetainsCurrentURL() throws {
+        let request = try buildComputerCallOutputRequest(model: "computer-use-preview")
+
+        guard let input = request["input"] as? [[String: Any]],
+              let computerOutput = input.first,
+              let output = computerOutput["output"] as? [String: Any] else {
+            return XCTFail("Expected preview computer_call_output request payload")
+        }
+
+        XCTAssertEqual(computerOutput["current_url"] as? String, "https://example.com/path")
+        XCTAssertNil(output["detail"])
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+        XCTAssertEqual(tools.first?["type"] as? String, "computer_use_preview")
     }
 
     func testMCPConnectorToolNotIncludedWhenAuthorizationMissing() {

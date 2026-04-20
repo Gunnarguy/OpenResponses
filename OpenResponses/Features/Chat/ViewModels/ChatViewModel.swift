@@ -339,7 +339,7 @@ class ChatViewModel: ObservableObject {
         storageService: ConversationStorageService? = nil,
         startBackgroundWork: Bool = true,
         backgroundPollIntervalNanoseconds: UInt64 = 1_500_000_000
-    ) { 
+    ) {
         self.api = api ?? OpenAIService()
         self.computerService = computerService ?? ComputerService()
         self.storageService = storageService ?? ConversationStorageService.shared
@@ -356,7 +356,7 @@ class ChatViewModel: ObservableObject {
             activateConversation(conversations.first)
         }
 
-        if startBackgroundWork { 
+        if startBackgroundWork {
             setupBindings()
         }
         updateModelCompatibility()
@@ -407,6 +407,111 @@ class ChatViewModel: ObservableObject {
     private func isMissingOpenAIKey() -> Bool {
         let key = KeychainService.shared.load(forKey: "openAIKey")
         return (key == nil || key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true)
+    }
+
+    private func shouldHandleComputerActivationShortcut(_ text: String) -> Bool {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let activationPhrases: Set<String> = [
+            "computer",
+            "computer use",
+            "activate computer",
+            "activate computer use",
+            "open computer mode",
+            "computer mode"
+        ]
+
+        let hasPendingAttachments = !pendingFileAttachments.isEmpty ||
+            !pendingFileData.isEmpty ||
+            !pendingFileNames.isEmpty ||
+            !pendingImageAttachments.isEmpty
+
+        return activationPhrases.contains(normalized) && !hasPendingAttachments
+    }
+
+    @discardableResult
+    private func handleComputerActivationShortcut(_ text: String) -> Bool {
+        guard shouldHandleComputerActivationShortcut(text) else { return false }
+
+        let supportsComputer = ModelCompatibilityService.shared.isToolSupported(
+            .computer,
+            for: activePrompt.openAIModel,
+            isStreaming: effectiveStreamingEnabled
+        )
+
+        let wasEnabled = activePrompt.enableComputerUse
+        if supportsComputer && !wasEnabled {
+            activePrompt.enableComputerUse = true
+            updateModelCompatibility()
+            saveActivePrompt()
+        }
+
+        let userMessage = ChatMessage.withURLDetection(role: .user, text: text, images: nil)
+        messages.append(userMessage)
+
+        let assistantText: String
+        if supportsComputer {
+            let activationLine = wasEnabled
+                ? "🖥️ Computer mode is active."
+                : "🖥️ Computer mode activated."
+
+            assistantText = """
+            \(activationLine) What would you like me to do?
+
+            I can:
+            • open a website or navigate to a specific page
+            • click buttons, links, menus, and search boxes
+            • type text into fields and submit forms
+            • scroll pages, drag items, and press keys or shortcuts
+            • take screenshots after each step so I can reassess the UI
+
+            Try asking:
+            • Open Amazon and search for backpacks
+            • Go to Google and search for penguin facts
+            • Open GitHub and click the first issue in the list
+
+            I’ll pause for approvals when an action looks risky.
+            """
+            logActivity(wasEnabled ? "Computer tool ready" : "Computer tool activated")
+        } else {
+            assistantText = """
+            🖥️ Computer mode isn’t available on \(activePrompt.openAIModel).
+
+            To use it, switch to a model that supports the built-in computer tool, such as `gpt-5.4`, then try again.
+            """
+            logActivity("Computer tool unavailable for current model")
+        }
+
+        messages.append(ChatMessage(role: .assistant, text: assistantText, images: nil))
+
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageSent,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: text.count,
+                AnalyticsParameter.streamingEnabled: false,
+                "has_file_attachments": false,
+                "has_image_attachments": false,
+                "has_audio_attachment": false,
+                "image_count": 0,
+                "computer_activation_shortcut": true,
+            ]
+        )
+
+        AnalyticsService.shared.trackEvent(
+            name: AnalyticsEvent.messageReceived,
+            parameters: [
+                AnalyticsParameter.model: activePrompt.openAIModel,
+                AnalyticsParameter.messageLength: assistantText.count,
+                AnalyticsParameter.streamingEnabled: false,
+                "has_images": false,
+                "computer_activation_shortcut": true,
+            ]
+        )
+
+        return true
     }
 
     private func exploreDemoAssistantText(for userText: String) -> String {
@@ -531,9 +636,30 @@ class ChatViewModel: ObservableObject {
         let id = UUID()
         let checks: [SafetyCheck]
         let callId: String
-        let action: ComputerAction
+        let actions: [ComputerAction]
         let previousResponseId: String
         let messageId: UUID
+
+        var primaryAction: ComputerAction? {
+            actions.first
+        }
+
+        var actionSummary: String {
+            let labels = actions.map {
+                $0.type.replacingOccurrences(of: "_", with: " ").capitalized
+            }
+
+            switch labels.count {
+            case 0:
+                return "Unknown action"
+            case 1:
+                return labels[0]
+            case 2...3:
+                return labels.joined(separator: " → ")
+            default:
+                return labels.prefix(3).joined(separator: " → ") + " (+\(labels.count - 3) more)"
+            }
+        }
     }
 
     /// Called when the user approves the pending safety checks.
@@ -561,39 +687,22 @@ class ChatViewModel: ObservableObject {
 
     /// Continues the computer-use flow after user approval by executing the action and sending the screenshot back.
     private func executeComputerCallWithApproval(_ request: SafetyApprovalRequest) async {
-        AppLogger.log("[CUA] Proceeding after safety approval for callId=\(request.callId), action=\(request.action.type)", category: .openAI, level: .info)
+        AppLogger.log("[CUA] Proceeding after safety approval for callId=\(request.callId), actions=\(describeComputerActions(request.actions))", category: .openAI, level: .info)
         await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
         do {
-            // First-step helper (disabled in ultra-strict): pre-navigation to avoid about:blank screenshots
-            if !activePrompt.ultraStrictComputerUse {
-                if (request.action.type == "screenshot" && request.action.parameters["url"] == nil) ||
-                   (request.action.type == "click" && computerService.isOnBlankPage()) {
-                    if let derived = deriveURLForScreenshot(from: request.messageId) {
-                        AppLogger.log("[CUA] (approved) Navigating to derived URL before action: \(derived.absoluteString)", category: .openAI, level: .info)
-                        let navigateAction = ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString])
-                        _ = try await computerService.executeAction(navigateAction)
-                        try? await Task.sleep(nanoseconds: 400_000_000)
-                    }
-                }
-            }
+            let preparedActions = try await prepareComputerActionsForExecution(
+                request.actions,
+                messageId: request.messageId,
+                context: "[CUA] (approved)"
+            )
+            let result = try await computerService.executeActions(preparedActions)
+            let abortAfterOutput = updateConsecutiveWaitGuard(
+                after: preparedActions,
+                context: "[CUA] (approved)"
+            )
 
-            let result = try await computerService.executeAction(request.action)
             if let screenshot = result.screenshot, !screenshot.isEmpty {
-                // Attach screenshot to UI
-                await MainActor.run {
-                    if let index = self.messages.firstIndex(where: { $0.id == request.messageId }) {
-                        var updatedMessage = self.messages[index]
-                        if let imageData = Data(base64Encoded: screenshot), let uiImage = UIImage(data: imageData, scale: 1.0) {
-                            if updatedMessage.images == nil { updatedMessage.images = [] }
-                            updatedMessage.images?.removeAll()
-                            updatedMessage.images?.append(uiImage)
-                            var updatedMessages = self.messages
-                            updatedMessages[index] = updatedMessage
-                            self.messages = updatedMessages
-                            self.objectWillChange.send()
-                        }
-                    }
-                }
+                attachComputerScreenshot(screenshot, to: request.messageId, context: "[CUA] (approved)")
 
                 // Build output and send computer_call_output with acknowledged safety checks
                 let output: [String: Any] = [
@@ -610,8 +719,21 @@ class ChatViewModel: ObservableObject {
                         currentUrl: result.currentURL
                     )
                     await MainActor.run {
-                        self.handleNonStreamingResponse(response, for: request.messageId)
-                        self.isAwaitingComputerOutput = false
+                        if abortAfterOutput {
+                            self.consecutiveWaitCount = 0
+                            self.isAwaitingComputerOutput = false
+                            self.isStreaming = false
+                            self.streamingStatus = .idle
+                            self.lastResponseId = nil
+                            let sys = ChatMessage(
+                                role: .system,
+                                text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
+                            )
+                            self.messages.append(sys)
+                        } else {
+                            self.handleNonStreamingResponse(response, for: request.messageId)
+                            self.isAwaitingComputerOutput = false
+                        }
                     }
                 } catch {
                     await MainActor.run {
@@ -640,6 +762,135 @@ class ChatViewModel: ObservableObject {
                 self.isStreaming = false
             }
         }
+    }
+
+    private func describeComputerActions(_ actions: [ComputerAction]) -> String {
+        let actionTypes = actions.map { $0.type }
+        return actionTypes.isEmpty ? "<none>" : actionTypes.joined(separator: ", ")
+    }
+
+    private func updateConsecutiveWaitGuard(after actions: [ComputerAction], context: String) -> Bool {
+        let meaningfulTypes = actions.map(\.type).filter { $0 != "screenshot" }
+        let isWaitOnlyBatch = !meaningfulTypes.isEmpty && meaningfulTypes.allSatisfy { $0 == "wait" }
+
+        if isWaitOnlyBatch {
+            consecutiveWaitCount += 1
+            AppLogger.log("\(context) Wait action batch detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
+            if consecutiveWaitCount >= maxConsecutiveWaits {
+                AppLogger.log("\(context) Reached max consecutive waits; will send output and then halt chain.", category: .openAI, level: .error)
+                return true
+            }
+        } else {
+            consecutiveWaitCount = 0
+        }
+
+        return false
+    }
+
+    private func prepareComputerActionsForExecution(
+        _ actions: [ComputerAction],
+        messageId: UUID,
+        context: String
+    ) async throws -> [ComputerAction] {
+        guard !actions.isEmpty else { return actions }
+
+        var preparedActions = actions
+
+        if !activePrompt.ultraStrictComputerUse,
+           let firstAction = preparedActions.first,
+           firstAction.type == "screenshot",
+           firstAction.parameters["url"] == nil,
+           let derived = deriveURLForScreenshot(from: messageId) {
+            AppLogger.log("\(context) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
+            preparedActions[0] = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
+        }
+
+        if !activePrompt.ultraStrictComputerUse {
+            let firstNavigateIndex = preparedActions.firstIndex { $0.type == "navigate" }
+            let firstClickIndex = preparedActions.firstIndex { $0.type == "click" }
+
+            if let clickIndex = firstClickIndex,
+               (firstNavigateIndex == nil || clickIndex < firstNavigateIndex!),
+               computerService.isOnBlankPage(),
+               let derived = deriveURLForScreenshot(from: messageId) {
+                AppLogger.log("\(context) WebView blank before click; navigating to derived URL: \(derived.absoluteString)", category: .openAI, level: .info)
+                _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString]))
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+
+        if !activePrompt.ultraStrictComputerUse,
+           !appliedSearchOverrideForMessage.contains(messageId),
+           let searchQuery = extractExplicitSearchQuery(for: messageId) {
+            let refined = refineSearchPhrase(searchQuery)
+            AppLogger.log("\(context) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
+            do {
+                try await computerService.performSearchIfOnKnownEngine(query: refined)
+            } catch {
+                AppLogger.log("\(context) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
+            }
+            appliedSearchOverrideForMessage.insert(messageId)
+        }
+
+        if !activePrompt.ultraStrictComputerUse,
+           let clickIndex = preparedActions.firstIndex(where: { $0.type == "click" }),
+           let targetName = extractExplicitClickTarget(for: messageId) {
+            if let point = try? await computerService.findClickablePointByVisibleText(targetName) {
+                AppLogger.log("\(context) Click-by-text override resolved '\(targetName)' -> (\(point.x), \(point.y))", category: .openAI, level: .info)
+                var parameters = preparedActions[clickIndex].parameters
+                parameters["x"] = point.x
+                parameters["y"] = point.y
+                if parameters["button"] == nil {
+                    parameters["button"] = "left"
+                }
+                preparedActions[clickIndex] = ComputerAction(type: "click", parameters: parameters)
+            } else {
+                AppLogger.log("\(context) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
+            }
+        }
+
+        return preparedActions
+    }
+
+    private func attachComputerScreenshot(_ screenshot: String, to messageId: UUID, context: String) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else {
+            AppLogger.log("\(context) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
+            return
+        }
+
+        guard let imageData = Data(base64Encoded: screenshot),
+              let rawImage = UIImage(data: imageData, scale: 1.0) else {
+            AppLogger.log("\(context) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
+            return
+        }
+
+        let uiImage: UIImage
+        if rawImage.cgImage == nil,
+           let pngData = rawImage.pngData(),
+           let recreatedImage = UIImage(data: pngData) {
+            uiImage = recreatedImage
+        } else {
+            uiImage = rawImage
+        }
+
+        var updatedMessage = messages[index]
+        if updatedMessage.images == nil { updatedMessage.images = [] }
+        updatedMessage.images?.removeAll()
+        updatedMessage.images?.append(uiImage)
+
+        var updatedMessages = messages
+        updatedMessages[index] = updatedMessage
+        messages = updatedMessages
+
+        Task { @MainActor in
+            self.objectWillChange.send()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            self.objectWillChange.send()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            self.objectWillChange.send()
+        }
+
+        AppLogger.log("\(context) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
     }
 
     private func setupBindings() {
@@ -837,6 +1088,10 @@ class ChatViewModel: ObservableObject {
             return
         }
 
+        if handleComputerActivationShortcut(trimmed) {
+            return
+        }
+
         // If there is no API key and Explore Demo is not enabled, avoid making a request that will fail.
         if isMissingOpenAIKey(), !exploreModeEnabled {
             let guidance = "🔑 No OpenAI API key is configured. Open Settings → General to add one, or enable Explore Demo (offline) to try the UI without API calls."
@@ -953,7 +1208,7 @@ class ChatViewModel: ObservableObject {
                 if !probeSatisfied {
                     let labelForLog = label.isEmpty ? "(unnamed)" : label
                     AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
-                    if authHeader == nil { 
+                    if authHeader == nil {
                         let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
                         let sys = ChatMessage(role: .system, text: guidance)
                         messages.append(sys)
@@ -1268,7 +1523,7 @@ class ChatViewModel: ObservableObject {
                 }
 
                 // Only clear streaming state if no pending work
-                if !self.hasPendingFunctionCalls { 
+                if !self.hasPendingFunctionCalls {
                     self.streamingMessageId = nil
                     self.isStreaming = false // Re-enable input
                 } else {
@@ -1297,7 +1552,7 @@ class ChatViewModel: ObservableObject {
         guard activePrompt.enableComputerUse else { return false }
 
         // Prevent concurrent execution - only one resolution process at a time
-        guard !isResolvingComputerCalls else { 
+        guard !isResolvingComputerCalls else {
             AppLogger.log("[CUA] resolveAllPending: Already resolving, skipping", category: .openAI, level: .info)
             return false
         }
@@ -1330,12 +1585,15 @@ class ChatViewModel: ObservableObject {
                 // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
                 // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
                 if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
+                    let actionTypes = extractComputerActionsFromOutputItem(computerCallItem)?.map { $0.type } ?? []
+
                     // Check if this is a screenshot action - if so, halt to prevent loops
-                    if let action = computerCallItem.action,
-                       let actionType = action["type"]?.value as? String,
-                       actionType == "screenshot" {
+                    let nonScreenshotTypes = actionTypes.filter { $0 != "screenshot" }
+                    if !actionTypes.isEmpty,
+                       nonScreenshotTypes.isEmpty,
+                       actionTypes.contains("screenshot") {
                         AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains screenshot and another screenshot was requested. Halting to prevent screenshot loops.", category: .openAI, level: .info)
-                        await MainActor.run { 
+                        await MainActor.run {
                             self.streamingStatus = .idle // Final state reset
                             self.lastResponseId = nil // Clear to prevent future loops
                         }
@@ -1343,11 +1601,10 @@ class ChatViewModel: ObservableObject {
                     }
 
                     // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
-                    if safetyCounter >= 3, let action = computerCallItem.action,
-                       let actionType = action["type"]?.value as? String,
-                       (actionType == "click" || actionType == "type") {
+                    if safetyCounter >= 3,
+                       actionTypes.contains(where: { $0 == "click" || $0 == "type" }) {
                         AppLogger.log("[CUA] resolveAllPending: Loop prevention: Too many actions (\(safetyCounter)) without progress. Halting.", category: .openAI, level: .warning)
-                        await MainActor.run { 
+                        await MainActor.run {
                             self.streamingStatus = .idle
                             self.lastResponseId = nil
                         }
@@ -1355,12 +1612,11 @@ class ChatViewModel: ObservableObject {
                     }
 
                     // URGENT INTERVENTION: If still on about:blank after first action and it's trying to click, stop
-                    if safetyCounter >= 2, computerService.isOnBlankPage(),
-                       let action = computerCallItem.action,
-                       let actionType = action["type"]?.value as? String,
-                       actionType == "click" {
+                    if safetyCounter >= 2,
+                       computerService.isOnBlankPage(),
+                       actionTypes.contains("click") {
                         AppLogger.log("[CUA] resolveAllPending: URGENT: Still clicking on about:blank after attempt \(safetyCounter). AI is not using navigate action properly. Stopping.", category: .openAI, level: .error)
-                        await MainActor.run { 
+                        await MainActor.run {
                             self.streamingStatus = .idle
                             self.lastResponseId = nil
                         }
@@ -1368,7 +1624,7 @@ class ChatViewModel: ObservableObject {
                     }
 
                     // Allow navigation, clicks, typing, etc. even if there's already an image
-                    AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot action: \(String(describing: computerCallItem.action))", category: .openAI, level: .info)
+                    AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot actions: \(describeComputerActions(extractComputerActionsFromOutputItem(computerCallItem) ?? []))", category: .openAI, level: .info)
                 }
             }
 
@@ -1393,7 +1649,7 @@ class ChatViewModel: ObservableObject {
         }
 
         // Reset wait counter when computer use chain completes (successful or not)
-        await MainActor.run { 
+        await MainActor.run {
             self.consecutiveWaitCount = 0
             // Only clean up stream state if we're not currently in an active streaming session
             // The condition "lastResponseId == nil" was incorrectly triggering at the start of new streams
@@ -1413,14 +1669,8 @@ class ChatViewModel: ObservableObject {
         let callId = outputItem.callId ?? ""
         AppLogger.log("[CUA] (resume) OutputItem callId='\(callId)', id='\(outputItem.id)'", category: .openAI, level: .info)
         guard !callId.isEmpty else { throw OpenAIServiceError.invalidResponseData }
-        guard var actionData = extractComputerActionFromOutputItem(outputItem) else { throw OpenAIServiceError.invalidResponseData }
-
-        if !activePrompt.ultraStrictComputerUse {
-            if actionData.type == "screenshot", actionData.parameters["url"] == nil,
-               let derived = deriveURLForScreenshot(from: messageId) {
-                AppLogger.log("[CUA] (resume) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
-                actionData = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
-            }
+        guard let actions = extractComputerActionsFromOutputItem(outputItem), !actions.isEmpty else {
+            throw OpenAIServiceError.invalidResponseData
         }
 
         if let safetyChecks = outputItem.pendingSafetyChecks, !safetyChecks.isEmpty {
@@ -1432,7 +1682,7 @@ class ChatViewModel: ObservableObject {
                 self.pendingSafetyApproval = SafetyApprovalRequest(
                     checks: safetyChecks,
                     callId: callId,
-                    action: actionData,
+                    actions: actions,
                     previousResponseId: previousId,
                     messageId: messageId
                 )
@@ -1444,80 +1694,15 @@ class ChatViewModel: ObservableObject {
             return
         }
 
-        if !activePrompt.ultraStrictComputerUse {
-            if actionData.type == "click" && computerService.isOnBlankPage(),
-               let derived = deriveURLForScreenshot(from: messageId) {
-                AppLogger.log("[CUA] (resume) WebView blank before click; navigating to derived URL: \(derived.absoluteString)", category: .openAI, level: .info)
-                _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString]))
-                try? await Task.sleep(nanoseconds: 400_000_000)
-            }
-        }
+        let preparedActions = try await prepareComputerActionsForExecution(actions, messageId: messageId, context: "[CUA] (resume)")
 
-        if !activePrompt.ultraStrictComputerUse {
-            if !appliedSearchOverrideForMessage.contains(messageId),
-               let searchQuery = extractExplicitSearchQuery(for: messageId) {
-                let refined = refineSearchPhrase(searchQuery)
-                AppLogger.log("[CUA] (resume) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
-                do { try await computerService.performSearchIfOnKnownEngine(query: refined) } catch {
-                    AppLogger.log("[CUA] (resume) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
-                }
-                appliedSearchOverrideForMessage.insert(messageId)
-            }
-        }
-
-        if !activePrompt.ultraStrictComputerUse {
-            if actionData.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
-                if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
-                    AppLogger.log("[CUA] (resume) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
-                    actionData = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"])
-                } else {
-                    AppLogger.log("[CUA] (resume) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
-                }
-            }
-        }
-
-        AppLogger.log("[CUA] (resume) Executing action type=\(actionData.type) for callId='\(callId)'", category: .openAI)
-        let result = try await computerService.executeAction(actionData)
-
-        var abortAfterOutput = false
-        if actionData.type == "wait" {
-            consecutiveWaitCount += 1
-            AppLogger.log("[CUA] (resume) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
-            if consecutiveWaitCount >= maxConsecutiveWaits {
-                abortAfterOutput = true
-                AppLogger.log("[CUA] (resume) Reached max consecutive waits; will send output and then halt chain.", category: .openAI, level: .error)
-            }
-        } else {
-            consecutiveWaitCount = 0
-        }
+        AppLogger.log("[CUA] (resume) Executing actions=\(describeComputerActions(preparedActions)) for callId='\(callId)'", category: .openAI)
+        let result = try await computerService.executeActions(preparedActions)
+        let abortAfterOutput = updateConsecutiveWaitGuard(after: preparedActions, context: "[CUA] (resume)")
 
         if let screenshot = result.screenshot, !screenshot.isEmpty {
             AppLogger.log("[CUA] (resume) Screenshot captured (\(screenshot.count) b64 chars), adding to message", category: .openAI, level: .info)
-            await MainActor.run {
-                if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
-                    var updatedMessage = self.messages[index]
-                    if let imageData = Data(base64Encoded: screenshot), let rawImage = UIImage(data: imageData, scale: 1.0) {
-                        let uiImage = rawImage
-                        AppLogger.log("[CUA] (resume) Screenshot decoded successfully - Image size: \(uiImage.size), data length: \(imageData.count) bytes", category: .openAI, level: .info)
-                        if updatedMessage.images == nil { updatedMessage.images = [] }
-                        updatedMessage.images?.removeAll()
-                        updatedMessage.images?.append(uiImage)
-                        var updatedMessages = self.messages
-                        updatedMessages[index] = updatedMessage
-                        self.messages = updatedMessages
-                        Task { @MainActor in
-                            self.objectWillChange.send()
-                            try? await Task.sleep(nanoseconds: 50_000_000)
-                            self.objectWillChange.send()
-                        }
-                        AppLogger.log("[CUA] (resume) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
-                    } else {
-                        AppLogger.log("[CUA] (resume) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
-                    }
-                } else {
-                    AppLogger.log("[CUA] (resume) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
-                }
-            }
+            attachComputerScreenshot(screenshot, to: messageId, context: "[CUA] (resume)")
 
             let output: [String: Any] = [
                 "type": "computer_screenshot",
@@ -3508,7 +3693,7 @@ class ChatViewModel: ObservableObject {
                     conversationId: self.activeConversation?.remoteId
                 )
                 for try await chunk in stream {
-                    if Task.isCancelled { 
+                    if Task.isCancelled {
                         await MainActor.run { [weak self] in
                             self?.handleError(CancellationError())
                         }
@@ -3541,7 +3726,7 @@ class ChatViewModel: ObservableObject {
                     )
                 }
                 // Only clear streaming state if no pending work
-                if !self.hasPendingFunctionCalls { 
+                if !self.hasPendingFunctionCalls {
                     self.streamingMessageId = nil
                     self.isStreaming = false
                 } else {
@@ -3584,9 +3769,9 @@ class ChatViewModel: ObservableObject {
             // Prefer using the streaming item details directly to avoid 404s from GET /responses/{id}
             var callId: String? = item.callId
             var pendingSafety: [SafetyCheck]? = item.pendingSafetyChecks
-            var actionData: ComputerAction? = extractComputerAction(from: item)
+            var actions: [ComputerAction]? = extractComputerActions(from: item)
 
-            if callId == nil || actionData == nil {
+            if callId == nil || actions == nil {
                 // Fallback: fetch the full response only if required data is missing
                 do {
                     let fullResponse = try await api.getResponse(responseId: previousId)
@@ -3594,7 +3779,7 @@ class ChatViewModel: ObservableObject {
                     if let match = fullResponse.output.first(where: { $0.type == "computer_call" && $0.id == item.id }) {
                         if callId == nil { callId = match.callId }
                         if pendingSafety == nil { pendingSafety = match.pendingSafetyChecks }
-                        if actionData == nil { actionData = extractComputerActionFromOutputItem(match) }
+                        if actions == nil { actions = extractComputerActionsFromOutputItem(match) }
                     }
                 } catch {
                     // If fetching fails (e.g., 404), proceed with what we have if possible
@@ -3609,62 +3794,12 @@ class ChatViewModel: ObservableObject {
                 return
             }
 
-            guard let actionData = actionData else {
+            guard let actions, !actions.isEmpty else {
                 AppLogger.log("[CUA] Failed to extract action for computer_call id=\(item.id)", category: .openAI, level: .error)
                 await MainActor.run { self.lastResponseId = nil }
                 await MainActor.run { self.isAwaitingComputerOutput = false }
                 return
             }
-
-            // Minimal generic guardrails to prevent unhelpful first-step blank screenshots or clicks:
-            // - If the model requests a bare screenshot and we're effectively on about:blank, try to
-            //   derive the intended URL from the user's message and attach it to the screenshot action.
-            // - If the model attempts to click while still on about:blank, navigate first using the
-            //   same derivation to reach the likely target site.
-            var actionToExecute = actionData
-            if !activePrompt.ultraStrictComputerUse {
-                if actionToExecute.type == "screenshot", actionToExecute.parameters["url"] == nil,
-                   let derivedURL = deriveURLForScreenshot(from: messageId) {
-                    AppLogger.log("[CUA] (streaming) Auto-attaching URL to screenshot action: \(derivedURL.absoluteString)", category: .openAI, level: .info)
-                    actionToExecute = ComputerAction(type: "screenshot", parameters: ["url": derivedURL.absoluteString])
-                }
-                if actionToExecute.type == "click", computerService.isOnBlankPage(),
-                   let derivedURL = deriveURLForScreenshot(from: messageId) {
-                    AppLogger.log("[CUA] (streaming) WebView blank before click; navigating to derived URL: \(derivedURL.absoluteString)", category: .openAI, level: .info)
-                    _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derivedURL.absoluteString]))
-                    try? await Task.sleep(nanoseconds: 400_000_000)
-                }
-            }
-
-            // Intent-guided override (streaming path): if the user's instruction was an explicit search,
-            // perform the search directly on known engines BEFORE executing the model's first UI action.
-            // This prevents the model from clicking promo tiles and ensures the first screenshot shows results.
-            if !activePrompt.ultraStrictComputerUse {
-                if !appliedSearchOverrideForMessage.contains(messageId),
-                   let searchQueryRaw = extractExplicitSearchQuery(for: messageId) {
-                    let refined = refineSearchPhrase(searchQueryRaw)
-                    AppLogger.log("[CUA] (streaming) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
-                    do { try await computerService.performSearchIfOnKnownEngine(query: refined) } catch {
-                        AppLogger.log("[CUA] (streaming) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
-                    }
-                    appliedSearchOverrideForMessage.insert(messageId)
-                }
-            }
-
-            // If the action is a click and the user asked to click a named thing, resolve by text.
-            if !activePrompt.ultraStrictComputerUse {
-                if actionToExecute.type == "click", let targetName = extractExplicitClickTarget(for: messageId) {
-                    if let pt = try? await computerService.findClickablePointByVisibleText(targetName) {
-                        AppLogger.log("[CUA] (streaming) Click-by-text override resolved '\(targetName)' -> (\(pt.x), \(pt.y))", category: .openAI, level: .info)
-                        actionToExecute = ComputerAction(type: "click", parameters: ["x": pt.x, "y": pt.y, "button": "left"])
-                    } else {
-                        AppLogger.log("[CUA] (streaming) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
-                    }
-                }
-            }
-
-            // Note: We still execute the model-directed action; the above is a minimal preconditioning step.
-            AppLogger.log("[CUA] Executing action type=\(actionToExecute.type) params=\(actionToExecute.parameters)", category: .openAI)
 
             // Check for pending safety checks – pause and ask the user
             if let safetyChecks = pendingSafety, !safetyChecks.isEmpty {
@@ -3676,7 +3811,7 @@ class ChatViewModel: ObservableObject {
                     self.pendingSafetyApproval = SafetyApprovalRequest(
                         checks: safetyChecks,
                         callId: finalCallId,
-                        action: actionData,
+                        actions: actions,
                         previousResponseId: previousId,
                         messageId: messageId
                     )
@@ -3688,79 +3823,19 @@ class ChatViewModel: ObservableObject {
                 return // Wait for user decision
             }
 
+            let preparedActions = try await prepareComputerActionsForExecution(actions, messageId: messageId, context: "[CUA] (streaming)")
 
-            let result = try await computerService.executeAction(actionToExecute)
+            AppLogger.log("[CUA] Executing actions=\(describeComputerActions(preparedActions))", category: .openAI)
+            let result = try await computerService.executeActions(preparedActions)
 
             // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
             // so we can capture any screenshots or results first
-            var abortAfterOutput = false
-            if actionData.type == "wait" {
-                consecutiveWaitCount += 1
-                AppLogger.log("[CUA] (streaming) Wait action detected. Consecutive count: \(consecutiveWaitCount)/\(maxConsecutiveWaits)", category: .openAI, level: .warning)
-                if consecutiveWaitCount >= maxConsecutiveWaits {
-                    // Don't return yet; mark to abort after we send the output so the tool call is satisfied.
-                    abortAfterOutput = true
-                    AppLogger.log("[CUA] (streaming) Max consecutive waits reached; will send output and then halt chain.", category: .openAI, level: .error)
-                }
-            } else {
- consecutiveWaitCount = 0
-            }
+            let abortAfterOutput = updateConsecutiveWaitGuard(after: preparedActions, context: "[CUA] (streaming)")
 
             // Attach screenshot to UI if available
             if let screenshot = result.screenshot, !screenshot.isEmpty {
                 AppLogger.log("[CUA] (streaming) Screenshot captured (\(screenshot.count) b64 chars), adding to message", category: .openAI, level: .info)
-                await MainActor.run {
-                    if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
-                        var updatedMessage = self.messages[index]
-                        if let imageData = Data(base64Encoded: screenshot), let rawImage = UIImage(data: imageData, scale: 1.0) {
-                            // Ensure the image has a proper CGImage
-                            let uiImage: UIImage
-                            if rawImage.cgImage == nil {
-                                AppLogger.log("[CUA] (streaming) WARNING: UIImage has no CGImage, attempting to recreate", category: .openAI, level: .warning)
-                                // Try to recreate the image from PNG data
-                                if let pngData = rawImage.pngData(), let recreatedImage = UIImage(data: pngData) {
-                                    uiImage = recreatedImage
-                                } else {
-                                    AppLogger.log("[CUA] (streaming) FAILED to recreate image with CGImage", category: .openAI, level: .error)
-                                    return
-                                }
-                            } else {
-                                uiImage = rawImage
-                            }
-
-                            AppLogger.log("[CUA] (streaming) Screenshot decoded successfully - Image size: \(uiImage.size), data length: \(imageData.count) bytes", category: .openAI, level: .info)
-                            AppLogger.log("[CUA] (streaming) CGImage present: \(uiImage.cgImage != nil), orientation: \(uiImage.imageOrientation.rawValue)", category: .openAI, level: .info)
-
-                            if updatedMessage.images == nil { updatedMessage.images = [] }
-                            updatedMessage.images?.removeAll()
-                            updatedMessage.images?.append(uiImage)
-
-                            AppLogger.log("[CUA] (streaming) About to update message with \(updatedMessage.images?.count ?? 0) images", category: .openAI, level: .info)
-
-                            // Update the message in the messages array
-                            var updatedMessages = self.messages
-                            updatedMessages[index] = updatedMessage
-                            self.messages = updatedMessages  // This triggers the setter and UI update
-
-                            AppLogger.log("[CUA] (streaming) Message updated, now has \(self.messages[index].images?.count ?? 0) images", category: .openAI, level: .info)
-
-                            // Force multiple UI refresh cycles
-                            Task { @MainActor in
-                                self.objectWillChange.send()
-                                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                                self.objectWillChange.send()
-                                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                                self.objectWillChange.send()
-                            }
-
-                            AppLogger.log("[CUA] (streaming) Successfully added screenshot to message UI - Image size: \(uiImage.size)", category: .openAI, level: .info)
-                        } else {
-                            AppLogger.log("[CUA] (streaming) FAILED to decode screenshot base64 data", category: .openAI, level: .error)
-                        }
-                    } else {
-                        AppLogger.log("[CUA] (streaming) FAILED to find message with id \(messageId)", category: .openAI, level: .error)
-                    }
-                }
+                attachComputerScreenshot(screenshot, to: messageId, context: "[CUA] (streaming)")
 
                 let output: [String: Any] = [
                     "type": "computer_screenshot",
@@ -3827,7 +3902,7 @@ class ChatViewModel: ObservableObject {
             }
         } catch {
             AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
-            await MainActor.run { 
+            await MainActor.run {
                 self.lastResponseId = nil
                 self.isAwaitingComputerOutput = false
                 self.handleError(error)
@@ -3843,23 +3918,36 @@ class ChatViewModel: ObservableObject {
         }
     }
 
+    private func computerAction(from actionData: [String: AnyCodable]) -> ComputerAction? {
+        guard let actionType = actionData["type"]?.value as? String else {
+            return nil
+        }
+
+        let parameters = actionData.reduce(into: [String: Any]()) { result, entry in
+            guard entry.key != "type", let value = entry.value.value else { return }
+            result[entry.key] = value
+        }
+
+        return ComputerAction(type: actionType, parameters: parameters)
+    }
+
+    private func extractComputerActionsFromOutputItem(_ item: OutputItem) -> [ComputerAction]? {
+        guard item.type == "computer_call" else { return nil }
+
+        if let actions = item.actions?.compactMap(computerAction(from:)), !actions.isEmpty {
+            return actions
+        }
+
+        if let action = item.action.flatMap(computerAction(from:)) {
+            return [action]
+        }
+
+        return nil
+    }
+
     /// Extracts computer action from a full response OutputItem (has complete action data)
     private func extractComputerActionFromOutputItem(_ item: OutputItem) -> ComputerAction? {
-        guard item.type == "computer_call", let actionData = item.action else {
-            return nil
-        }
-
-        let actionDict = actionData.reduce(into: [String: Any]()) { result, entry in
-            if let value = entry.value.value {
-                result[entry.key] = value
-            }
-        }
-
-        guard let actionType = actionDict["type"] as? String else {
-            return nil
-        }
-
-        return ComputerAction(type: actionType, parameters: actionDict)
+        extractComputerActionsFromOutputItem(item)?.first
     }
 
     /// Derives a URL to navigate to for a screenshot-only action when the model didn't provide one.
@@ -3975,14 +4063,6 @@ class ChatViewModel: ObservableObject {
                 if let match = Self.keywordURLMap.first(where: { lower.contains($0.key) })?.value,
                    let url = URL(string: match) {
                     return url
-                }
-                // FINAL FALLBACK: if message is short and single-word like "acer", try https://acer.com
-                let trimmed = lower.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.count > 1,
-                   !trimmed.contains(" "),
-                   !trimmed.contains("."),
-                   trimmed.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
-                    if let url = URL(string: "https://\(trimmed).com") { return url }
                 }
                 // Fallback: if instruction looks like a query (e.g., "search OpenAI in that field"), go to Google
                 if lower.contains("search") {
@@ -4186,23 +4266,22 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Extracts computer action from streaming item
+    private func extractComputerActions(from item: StreamingItem) -> [ComputerAction]? {
+        guard item.type == "computer_call" else { return nil }
+
+        if let actions = item.actions?.compactMap(computerAction(from:)), !actions.isEmpty {
+            return actions
+        }
+
+        if let action = item.action.flatMap(computerAction(from:)) {
+            return [action]
+        }
+
+        return nil
+    }
+
     private func extractComputerAction(from item: StreamingItem) -> ComputerAction? {
-        guard item.type == "computer_call", let actionDict = item.action else {
-            return nil
-        }
-
-        guard let actionType = actionDict["type"]?.value as? String else {
-            return nil
-        }
-
-        var parameters: [String: Any] = [:]
-        for (key, anyCodableValue) in actionDict {
-            if key != "type" {
-                parameters[key] = anyCodableValue.value
-            }
-        }
-
-        return ComputerAction(type: actionType, parameters: parameters)
+        extractComputerActions(from: item)?.first
     }
 
     /// Sends computer call output back to OpenAI API

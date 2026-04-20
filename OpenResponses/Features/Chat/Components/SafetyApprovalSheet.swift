@@ -25,9 +25,28 @@ struct SafetyApprovalSheet: View {
                         Text("Requested action:")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("\(request.action.type.capitalized)")
+                        Text(request.actionSummary)
                             .font(.body)
                             .fontWeight(.medium)
+
+                        if request.actions.count > 1 {
+                            Text("\(request.actions.count) actions will run in sequence")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    if request.actions.count > 1 {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Action sequence")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            ForEach(Array(request.actions.enumerated()), id: \.offset) { index, action in
+                                Text("\(index + 1). \(action.type.replacingOccurrences(of: "_", with: " ").capitalized)")
+                                    .font(.footnote)
+                            }
+                        }
                     }
 
                     // List safety checks
