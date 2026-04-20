@@ -18,34 +18,6 @@ final class MCPConfigurationService {
     func bootstrap(chatViewModel: ChatViewModel) {
         var prompt = chatViewModel.activePrompt
 
-        // SAFETY: Auto-clear broken Notion MCP configuration
-        // The official mcp.notion.com endpoint requires OAuth tokens, not integration tokens.
-        // Users with integration tokens (ntn_*) should use Direct Notion Integration instead.
-        if prompt.mcpServerURL.lowercased().contains("mcp.notion.com") {
-            AppLogger.log("🚨 Auto-clearing broken Notion MCP config (requires OAuth, not integration tokens)", category: .mcp, level: .warning)
-
-            // Clear all MCP configuration
-            let label = prompt.mcpServerLabel
-            if !label.isEmpty {
-                KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
-                KeychainService.shared.delete(forKey: "mcp_auth_\(label)")
-            }
-
-            prompt.enableMCPTool = false
-            prompt.mcpServerURL = ""
-            prompt.mcpServerLabel = ""
-            prompt.mcpAllowedTools = ""
-            prompt.mcpRequireApproval = "never"
-            prompt.mcpIsConnector = false
-            prompt.mcpConnectorId = nil
-
-            chatViewModel.replaceActivePrompt(with: prompt)
-            chatViewModel.saveActivePrompt()
-
-            AppLogger.log("✅ Notion MCP config cleared. Use 'Direct Notion Integration' in Settings → MCP tab instead.", category: .mcp, level: .info)
-            return
-        }
-
         // If the user explicitly chose a connector, keep it, just ensure MCP is enabled and defaults are safe.
         if prompt.mcpIsConnector, let connectorId = prompt.mcpConnectorId, !connectorId.isEmpty {
             prompt.enableMCPTool = true

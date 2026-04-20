@@ -104,7 +104,7 @@ struct MCPConnectorGalleryView: View {
                 .foregroundColor(.secondary)
 
             // Note about Direct Notion Integration
-            Text("For Notion: Use 'Direct Notion Integration' in Settings → MCP tab (recommended path)")
+            Text("For Notion: Direct Notion Integration is the easiest path. Official and self-hosted Notion MCP templates are also available below if you already have the right OAuth or server token.")
                 .font(.caption)
                 .foregroundColor(.orange)
                 .padding(.top, 4)
@@ -164,7 +164,7 @@ struct MCPConnectorGalleryView: View {
                     GridItem(.flexible()),
                 ], spacing: 16) {
                     ForEach(filteredConnectors) { connector in
-                        ConnectorCard(connector: connector, viewModel: viewModel) { 
+                        ConnectorCard(connector: connector, viewModel: viewModel) {
                             selectedConnector = connector
                             if connector.requiresRemoteServer {
                                 showingRemoteServerSetup = true
@@ -1214,9 +1214,28 @@ private struct RemoteServerTemplateSetupSheet: View {
         RemoteMCPServer.officialServers.contains(where: { $0.label == template.label })
     }
 
+    private var isNotionOfficialServer: Bool {
+        template.label == "notion-mcp-official"
+    }
+
+    private var tokenLooksLikeNotionIntegration: Bool {
+        let lower = authToken.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
+        return tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_")
+    }
+
     private var isURLValid: Bool {
         guard let url = URL(string: serverURL) else { return false }
         return url.scheme == "https" || url.scheme == "http"
+    }
+
+    private var canConnect: Bool {
+        guard isURLValid, !isSaving else { return false }
+        if isNotionOfficialServer {
+            let trimmed = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !trimmed.isEmpty && !tokenLooksLikeNotionIntegration
+        }
+        return true
     }
 
     var body: some View {
@@ -1292,7 +1311,7 @@ private struct RemoteServerTemplateSetupSheet: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .disabled(!isURLValid || authToken.isEmpty || isSaving)
+                    .disabled(!canConnect)
                 }
             }
             .navigationTitle("Set Up \(template.displayLabel ?? template.label)")
@@ -1307,6 +1326,23 @@ private struct RemoteServerTemplateSetupSheet: View {
                 if isOfficialServer {
                     serverURL = template.serverURL
                 }
+
+                let prompt = viewModel.activePrompt
+                if prompt.enableMCPTool,
+                   !prompt.mcpIsConnector,
+                   prompt.mcpServerLabel == template.label
+                {
+                    serverURL = prompt.mcpServerURL
+
+                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(template.label)"), !stored.isEmpty {
+                        if let data = stored.data(using: .utf8),
+                           let headers = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                            authToken = NotionAuthService.shared.stripBearer(headers["Authorization"] ?? "")
+                        } else {
+                            authToken = NotionAuthService.shared.stripBearer(stored)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1318,15 +1354,19 @@ private struct RemoteServerTemplateSetupSheet: View {
         case "stripe":
             return "Use a Stripe OAuth access token from your Stripe dashboard."
         case "deepwiki":
-            return "DeepWiki doesn't require authentication. Leave empty or use 'none'."
+            return "DeepWiki is public. Leave the token blank unless your deployment adds auth."
         case "cloudflare":
             return "Use a Cloudflare API token with appropriate permissions."
         case "sentry":
             return "Generate a Sentry auth token from your account settings."
         case "linear":
             return "Use a Linear OAuth token or personal API key."
+        case "notion-mcp-official":
+            return "Paste a Notion OAuth access token. Do not paste a Notion integration token (ntn_/secret_)."
+        case "notion-mcp-custom", "notion-gcloud":
+            return "Use the Bearer token issued by your self-hosted Notion MCP server."
         default:
-            return "Enter the authentication token required by this MCP server."
+            return "Enter an OAuth/API token if this server requires one. Public MCP servers can leave this blank."
         }
     }
 
@@ -1334,17 +1374,33 @@ private struct RemoteServerTemplateSetupSheet: View {
         isSaving = true
         errorMessage = nil
 
-        // Build the authorization header
-        var headers: [String: String] = [:]
-        if !authToken.isEmpty, authToken.lowercased() != "none" {
-            let token = authToken.hasPrefix("Bearer ") ? authToken : "Bearer \(authToken)"
-            headers["Authorization"] = token
+        let trimmedToken = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if isNotionOfficialServer {
+            if trimmedToken.isEmpty {
+                isSaving = false
+                errorMessage = "Notion hosted MCP requires an OAuth access token. Paste one here or use Direct Notion Integration instead."
+                return
+            }
+
+            if tokenLooksLikeNotionIntegration {
+                isSaving = false
+                errorMessage = "A Notion integration token won't work with the hosted Notion MCP. Paste a Notion OAuth access token instead."
+                return
+            }
         }
 
-        // Save to keychain
+        // Build the authorization header
+        var headers: [String: String] = [:]
+        if !trimmedToken.isEmpty, trimmedToken.lowercased() != "none" {
+            headers["Authorization"] = NotionAuthService.shared.normalizeAuthorizationValue(trimmedToken)
+        }
+
         let keychainKey = "mcp_manual_\(template.label)"
-        if let headersData = try? JSONEncoder().encode(headers),
-           let headersString = String(data: headersData, encoding: .utf8)
+        if headers.isEmpty {
+            _ = KeychainService.shared.delete(forKey: keychainKey)
+        } else if let headersData = try? JSONEncoder().encode(headers),
+                  let headersString = String(data: headersData, encoding: .utf8)
         {
             _ = KeychainService.shared.save(value: headersString, forKey: keychainKey)
         }

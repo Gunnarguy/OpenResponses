@@ -1188,7 +1188,22 @@ class ChatViewModel: ObservableObject {
                 let headers = activePrompt.secureMCPHeaders
                 let desiredKeyRaw = activePrompt.mcpAuthHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 let desiredKey = desiredKeyRaw.isEmpty ? "Authorization" : desiredKeyRaw
-                let authHeader = headers[desiredKey] ?? headers["Authorization"]
+                let authHeader: String? = {
+                    if let header = headers[desiredKey] ?? headers["Authorization"] {
+                        return header
+                    }
+
+                    guard let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty else {
+                        return nil
+                    }
+
+                    if let data = stored.data(using: .utf8),
+                       let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                        return parsed[desiredKey] ?? parsed["Authorization"]
+                    }
+
+                    return stored
+                }()
 
                 // 24h freshness window
                 let maxAgeSeconds: Double = 86_400
@@ -1196,8 +1211,17 @@ class ChatViewModel: ObservableObject {
 
                 // Light Notion guardrail for remote HTTP MCP: integration tokens are invalid here
                 let isNotionHostedMCP = url.lowercased().contains("mcp.notion.com")
-                if isNotionHostedMCP {
-                    let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP (mcp.notion.com) is OAuth-based and isn't supported by this app yet. Use Direct Notion Integration instead, or configure a self-hosted MCP server with its own server-issued Bearer token.")
+                if isNotionHostedMCP, let raw = authHeader {
+                    let lower = raw.lowercased()
+                    let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
+                    if tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_") {
+                        let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP requires an OAuth access token, not a Notion integration token. Paste a valid OAuth access token in Settings → MCP, or use Direct Notion Integration instead.")
+                        messages.append(sys)
+                        return
+                    }
+                }
+                if isNotionHostedMCP && authHeader == nil {
+                    let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP usually requires an OAuth access token. Paste one in Settings → MCP, or use Direct Notion Integration instead.")
                     messages.append(sys)
                     return
                 }
@@ -1224,19 +1248,22 @@ class ChatViewModel: ObservableObject {
                     return nil
                 }()
                 let prStoredHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
-                let prHashMatch = (prStoredHash != nil && currentHash != nil && prStoredHash == currentHash)
+                let prHashMatch: Bool = {
+                    switch (prStoredHash, currentHash) {
+                    case (nil, nil):
+                        return true
+                    case let (stored?, current?):
+                        return stored == current
+                    default:
+                        return false
+                    }
+                }()
 
                 let probeSatisfied = prOk && prFresh && prHashMatch
 
                 if !probeSatisfied {
                     let labelForLog = label.isEmpty ? "(unnamed)" : label
                     AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
-                    if authHeader == nil {
-                        let guidance = "MCP server needs validation. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). No Authorization header found in current configuration."
-                        let sys = ChatMessage(role: .system, text: guidance)
-                        messages.append(sys)
-                        return
-                    }
                     logActivity("Running MCP tool diagnostics")
                     Task { [weak self] in
                         guard let self = self else { return }
@@ -1249,6 +1276,8 @@ class ChatViewModel: ObservableObject {
                                 if let authHeader = authHeader {
                                     let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
                                     d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
+                                } else {
+                                    d.removeObject(forKey: "mcp_probe_token_hash_\(label)")
                                 }
                                 d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
                                 AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send", category: .openAI, level: .info)

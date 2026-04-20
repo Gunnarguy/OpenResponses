@@ -1878,17 +1878,7 @@ class OpenAIService: OpenAIServiceProtocol {
             }
             .joined(separator: "-")
 
-        // Identify official Notion HTTP MCP host.
-        // Note: Notion's hosted MCP is designed to be connected via OAuth (Notion app / supported AI tools).
-        // This app does not currently implement that OAuth flow for mcp.notion.com, so we do NOT attempt to
-        // inject integration tokens or rewrite auth into top-level fields.
-        let isNotionHost = prompt.mcpServerURL.lowercased().contains("mcp.notion.com")
         let sessionId = getOrCreateMCPSessionId(label: prompt.mcpServerLabel.isEmpty ? "default" : prompt.mcpServerLabel)
-
-        if isNotionHost {
-            AppLogger.log("Notion MCP (mcp.notion.com) is OAuth-based; skipping manual auth injection. Use Direct Notion Integration instead.", category: .mcp, level: .warning)
-            return (nil, ["mcp-session-id": sessionId])
-        }
 
         // Prefer structured secure headers so we can support multiple header values.
         let secureHeaders = prompt.secureMCPHeaders
@@ -1903,15 +1893,15 @@ class OpenAIService: OpenAIServiceProtocol {
             if normalizedDesiredKey == "Authorization" {
                 if let tokenVal = sanitizedHeaders["Authorization"] {
                     let tokenClean = ensureBearerPrefix(tokenVal)
+                    let accessToken = NotionAuthService.shared.stripBearer(tokenClean)
 
-                    // Non-Notion servers:
                     if prompt.mcpKeepAuthInHeaders {
                         // Keep in headers only
                         sanitizedHeaders["Authorization"] = tokenClean
                         topLevelAuth = nil
                     } else {
                         // Use top-level to avoid API 400s; keep headers for session id
-                        topLevelAuth = tokenClean
+                        topLevelAuth = accessToken
                         sanitizedHeaders.removeValue(forKey: "Authorization")
                     }
                 }

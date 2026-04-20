@@ -48,8 +48,11 @@ struct SettingsHomeView: View {
                         showingNotionQuickConnect: $showingNotionQuickConnect,
                         showingFileManager: $showingFileManager
                     )
-                    // MCP tab hidden for 1.0 launch
-                    // case .mcp: MCPTab(...)
+                    case .mcp: MCPTab(
+                        showingConnectorGallery: $showingMCPGallery,
+                        showingRemoteSetup: $showingRemoteMCPSheet,
+                        showingNotionQuickConnect: $showingNotionQuickConnect
+                    )
                     case .advanced: AdvancedTab()
                     }
                 }
@@ -149,15 +152,14 @@ private enum ApiKeySaveState: Equatable {
 // MARK: - Tabs
 
 private enum SettingsTab: CaseIterable {
-    case general, model, tools, advanced
-    // MCP tab hidden for 1.0 launch - will re-enable in point release
-    // case mcp
+    case general, model, tools, mcp, advanced
 
     var title: String {
         switch self {
         case .general:  return "General"
         case .model:    return "Model"
         case .tools:    return "Tools"
+        case .mcp:      return "MCP"
         case .advanced: return "Advanced"
         }
     }
@@ -179,7 +181,7 @@ private struct GeneralTab: View {
         Form {
             // MARK: API Key
 
-            Section { 
+            Section {
                 HStack(spacing: 8) {
                     SecureField("sk-...", text: $apiKey)
                         .textInputAutocapitalization(.never)
@@ -206,7 +208,7 @@ private struct GeneralTab: View {
             }
 
             // MARK: Explore Demo (conditional)
-            if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.exploreModeEnabled { 
+            if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.exploreModeEnabled {
                 Section {
                     Toggle("Demo Mode", isOn: Binding(
                         get: { viewModel.exploreModeEnabled },
@@ -562,7 +564,7 @@ private struct ToolsTab: View {
                     }
                     .buttonStyle(.plain)
 
-                    if !hasNotionIntegrationToken { 
+                    if !hasNotionIntegrationToken {
                         Text("Connect your Notion workspace to search pages, query databases, and create content.")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -620,7 +622,7 @@ private struct ToolsTab: View {
                         .font(.caption)
                 }
             }
-        } else { 
+        } else {
             // Selected stores shown as removable chips
             if !selectedVectorStores.isEmpty {
                 ForEach(selectedVectorStores) { store in
@@ -688,7 +690,7 @@ private struct ToolsTab: View {
     @ViewBuilder
     private var fileSelectionView: some View {
         if isLoadingFiles {
-            HStack { 
+            HStack {
                 ProgressView()
                 Text("Loading files...")
                     .font(.caption)
@@ -742,7 +744,7 @@ private struct ToolsTab: View {
                         Button {
                             fileDisplayCount += 5
                         } label: {
-                            HStack { 
+                            HStack {
                                 Text("Load \(min(5, filteredFiles.count - fileDisplayCount)) more")
                                 Text("(\(filteredFiles.count - fileDisplayCount) remaining)")
                                     .foregroundColor(.secondary)
@@ -1349,11 +1351,19 @@ private struct MCPTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Binding var showingConnectorGallery: Bool
     @Binding var showingRemoteSetup: Bool
+    @Binding var showingNotionQuickConnect: Bool
     @State private var isTesting = false
     @State private var diagStatus: String?
     @State private var showClearConfirm = false
 
     private var prompt: Prompt { viewModel.activePrompt }
+    private var isMCPSupported: Bool {
+        ModelCompatibilityService.shared.isToolSupported(
+            .mcp,
+            for: prompt.openAIModel,
+            isStreaming: prompt.enableStreaming && !prompt.backgroundMode
+        )
+    }
     private var remoteConfigured: Bool {
         !prompt.mcpIsConnector &&
         !prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -1379,15 +1389,20 @@ private struct MCPTab: View {
                         viewModel.saveActivePrompt()
                     }
                 ))
+                .disabled(!isMCPSupported)
             } header: {
                 Label("MCP Status", systemImage: "power")
             } footer: {
-                Text(mcpEnabled ? "MCP tool calls are active." : "MCP is configured but disabled.")
+                if isMCPSupported {
+                    Text(mcpEnabled ? "MCP tool calls are active." : "MCP is configured but disabled.")
+                } else {
+                    Text("The selected model doesn’t support MCP. Use gpt-5.4, gpt-5.4-mini, or gpt-5.4-nano.")
+                }
             }
 
             // MARK: Configuration
 
-            Section { 
+            Section {
                 if remoteConfigured {
                     configuredRemoteRow
                 } else if connectorConfigured {
@@ -1402,9 +1417,9 @@ private struct MCPTab: View {
 
             // MARK: Diagnostics
             if remoteConfigured {
-                Section { 
+                Section {
                     if isTesting {
-                        HStack { 
+                        HStack {
                             ProgressView()
                             Text("Testing…")
                         }
@@ -1427,11 +1442,15 @@ private struct MCPTab: View {
             // MARK: Actions
 
             Section {
+                Button { showingNotionQuickConnect = true } label: {
+                    Label("Direct Notion Integration", systemImage: "square.grid.2x2.fill")
+                }
+
                 Button { showingConnectorGallery = true } label: {
                     Label("Browse Connectors", systemImage: "square.grid.2x2.fill")
                 }
 
-                Button { showingRemoteSetup = true } label: { 
+                Button { showingRemoteSetup = true } label: {
                     Label("Configure Remote Server", systemImage: "server.rack")
                 }
 
@@ -1454,7 +1473,7 @@ private struct MCPTab: View {
     }
 
     private var configuredRemoteRow: some View {
-        VStack(alignment: .leading, spacing: 4) { 
+        VStack(alignment: .leading, spacing: 4) {
             Text(prompt.mcpServerLabel).font(.headline)
             Text(prompt.mcpServerURL).font(.caption).foregroundColor(.secondary)
             HStack {
@@ -1469,9 +1488,9 @@ private struct MCPTab: View {
     }
 
     private var configuredConnectorRow: some View {
-        VStack(alignment: .leading, spacing: 4) { 
+        VStack(alignment: .leading, spacing: 4) {
             if let connectorId = prompt.mcpConnectorId,
-               let connector = MCPConnector.connector(for: connectorId) { 
+               let connector = MCPConnector.connector(for: connectorId) {
                 Text(connector.name).font(.headline)
                 Text(connector.description).font(.caption).foregroundColor(.secondary)
             } else {
@@ -1519,6 +1538,7 @@ private struct MCPTab: View {
         }
         if !oldLabel.isEmpty {
             KeychainService.shared.delete(forKey: "mcp_manual_\(oldLabel)")
+            KeychainService.shared.delete(forKey: "mcp_auth_\(oldLabel)")
         }
 
         prompt.enableMCPTool = false
@@ -1797,17 +1817,17 @@ private struct AppleIntegrationsCard: View {
         contactsAccess = CNContactStore.authorizationStatus(for: .contacts)
     }
 
-    private func requestPermissions() { 
+    private func requestPermissions() {
         isRequesting = true
         Task {
-            do { 
+            do {
                 try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)
                 await MainActor.run {
                     refreshStatus()
                     isRequesting = false
                 }
             } catch {
-                await MainActor.run { 
+                await MainActor.run {
                     refreshStatus()
                     isRequesting = false
                 }

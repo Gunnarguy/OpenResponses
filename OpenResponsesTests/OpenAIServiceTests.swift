@@ -421,6 +421,81 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(mcpTool["authorization"] as? String, "test-oauth-token")
     }
 
+    func testRemoteMCPToolIncludedWithoutAuthorizationForPublicServer() {
+        let label = "deepwiki"
+        _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableMCPTool = true
+        prompt.mcpIsConnector = false
+        prompt.mcpServerLabel = label
+        prompt.mcpServerURL = "https://mcp.deepwiki.com/mcp"
+        prompt.mcpRequireApproval = "never"
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableWebSearch = false
+        prompt.enableCodeInterpreter = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+
+        let request = buildRequest(prompt: prompt, message: "Use MCP tools")
+
+        guard let tools = request["tools"] as? [[String: Any]],
+              let mcpTool = tools.first(where: {
+                  $0["type"] as? String == "mcp" && ($0["server_url"] as? String) == "https://mcp.deepwiki.com/mcp"
+              }) else {
+            return XCTFail("Expected remote mcp tool for public server")
+        }
+
+        XCTAssertEqual(mcpTool["server_label"] as? String, label)
+        XCTAssertEqual(mcpTool["require_approval"] as? String, "never")
+        XCTAssertNil(mcpTool["authorization"])
+
+        guard let headers = mcpTool["headers"] as? [String: String] else {
+            return XCTFail("Expected session headers for public remote MCP server")
+        }
+
+        XCTAssertNil(headers["Authorization"])
+        XCTAssertNotNil(headers["mcp-session-id"])
+    }
+
+    func testRemoteMCPToolUsesRawAuthorizationAndKeepsSessionHeader() {
+        let label = "github"
+        _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableMCPTool = true
+        prompt.mcpIsConnector = false
+        prompt.mcpServerLabel = label
+        prompt.mcpServerURL = "https://api.githubcopilot.com/mcp/"
+        prompt.mcpRequireApproval = "always"
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableWebSearch = false
+        prompt.enableCodeInterpreter = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+        prompt.secureMCPHeaders = ["Authorization": "Bearer github-oauth-token"]
+
+        let request = buildRequest(prompt: prompt, message: "Use MCP tools")
+
+        guard let tools = request["tools"] as? [[String: Any]],
+              let mcpTool = tools.first(where: {
+                  $0["type"] as? String == "mcp" && ($0["server_url"] as? String) == "https://api.githubcopilot.com/mcp/"
+              }) else {
+            return XCTFail("Expected remote mcp tool for GitHub")
+        }
+
+        XCTAssertEqual(mcpTool["authorization"] as? String, "github-oauth-token")
+
+        guard let headers = mcpTool["headers"] as? [String: String] else {
+            return XCTFail("Expected MCP headers")
+        }
+
+        XCTAssertNil(headers["Authorization"])
+        XCTAssertNotNil(headers["mcp-session-id"])
+    }
+
     func testFileSearchToolCarriesVectorStoreIds() {
         var prompt = Prompt.defaultPrompt()
         prompt.enableFileSearch = true

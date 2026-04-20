@@ -142,9 +142,9 @@ struct MCPConnector: Identifiable, Codable, Hashable {
         ),
 
         // Productivity
-        // REMOVED: Notion MCP connector (broken - use Direct Notion Integration instead)
-        // The connector_notion entry has been removed because mcp.notion.com requires OAuth tokens
-        // not integration tokens. Use Settings → MCP → Direct Notion Integration for working access.
+        // Note: Notion is intentionally surfaced as remote MCP templates instead of an
+        // OpenAI connector_id. Users can choose Direct Notion Integration or configure
+        // hosted/self-hosted Notion MCP from the MCP gallery.
     ]
 
     /// Get connector by ID
@@ -199,7 +199,7 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     static let notionOfficial = RemoteMCPServer(
         label: "notion-mcp-official",
         serverURL: "https://mcp.notion.com/mcp",
-        serverDescription: "Notion hosted MCP server (OAuth-based). This app does not currently support connecting to mcp.notion.com via OAuth, so this template is informational only.",
+        serverDescription: "Official Notion hosted MCP server. Requires a Notion OAuth access token (not an integration token).",
         requireApproval: .never,
         allowedTools: nil, // Empty = all tools available
         displayLabel: "Notion MCP (Official)"
@@ -350,6 +350,7 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     /// Popular MCP server templates for quick setup
     static let templates: [RemoteMCPServer] = [
         // Official third-party servers (verified URLs)
+        .notionOfficial,
         .github,
         .stripe,
         .deepwiki,
@@ -357,6 +358,8 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
         .sentry,
         .linear,
         // Self-hosted templates (require user URL)
+        .notionCustom,
+        .notionGCloud,
         .figma,
         .slack,
         .asana,
@@ -367,6 +370,7 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
 
     /// Categorized templates for UI display
     static let officialServers: [RemoteMCPServer] = [
+        .notionOfficial,
         .github,
         .stripe,
         .deepwiki,
@@ -376,6 +380,8 @@ struct RemoteMCPServer: Identifiable, Codable, Hashable {
     ]
 
     static let communityServers: [RemoteMCPServer] = [
+        .notionCustom,
+        .notionGCloud,
         .figma,
         .slack,
         .asana,

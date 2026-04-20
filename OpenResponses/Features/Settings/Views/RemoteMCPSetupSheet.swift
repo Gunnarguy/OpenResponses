@@ -20,11 +20,22 @@ struct RemoteMCPSetupSheet: View {
         let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let url = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let tkn = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !lbl.isEmpty, !url.isEmpty, !tkn.isEmpty else { return false }
+        guard !lbl.isEmpty, !url.isEmpty else { return false }
         guard url.lowercased().hasPrefix("https://") else { return false }
-        // Notion hosted MCP requires OAuth; this app does not support that flow for remote MCP config.
-        if url.lowercased().contains("mcp.notion.com") { return false }
+        if isNotionHostedMCP {
+            return !tkn.isEmpty && !tokenLooksLikeNotionIntegration
+        }
         return true
+    }
+
+    private var isNotionHostedMCP: Bool {
+        serverURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains("mcp.notion.com")
+    }
+
+    private var tokenLooksLikeNotionIntegration: Bool {
+        let lower = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
+        return tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_")
     }
 
     var body: some View {
@@ -40,12 +51,12 @@ struct RemoteMCPSetupSheet: View {
                 }
 
                 Section(header: Label("Authorization", systemImage: "key.fill"),
-                        footer: Text("Notion's hosted MCP (mcp.notion.com) is OAuth-based and isn't supported here. For Notion, use Direct Notion Integration. For self-hosted MCP servers, paste the server-issued Bearer token.").font(.caption))
+                        footer: Text("Provide an OAuth/API token only when your server requires one. Public MCP servers can leave this blank. For mcp.notion.com, paste a Notion OAuth access token—not an ntn_/secret_ integration token.").font(.caption))
                 {
                     TextField("Header Key (default: Authorization)", text: $authHeaderKey)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
-                    SecureField("Token", text: $token)
+                    SecureField("Token (optional for public servers)", text: $token)
                 }
 
                 Section(header: Label("Policy", systemImage: "checkmark.seal")) {
@@ -82,21 +93,31 @@ struct RemoteMCPSetupSheet: View {
                                 let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
                                 let urlStr = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
                                 let headerKey = authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Authorization" : authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(token)
+                                let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(trimmedToken)
                                 let isNotionOfficial = urlStr.lowercased().contains("mcp.notion.com")
-                                if isNotionOfficial {
-                                    diagStatus = "Notion hosted MCP (mcp.notion.com) requires OAuth and isn't supported here. Use Direct Notion Integration instead."
+                                if isNotionOfficial && trimmedToken.isEmpty {
+                                    diagStatus = "Notion hosted MCP requires a Notion OAuth access token. Paste one here, or use Direct Notion Integration instead."
+                                    isTesting = false
+                                    return
+                                }
+                                if isNotionOfficial && tokenLooksLikeNotionIntegration {
+                                    diagStatus = "A Notion integration token (ntn_/secret_) won't work with the hosted Notion MCP. Paste a Notion OAuth access token instead."
                                     isTesting = false
                                     return
                                 }
 
                                 // Persist minimal auth for probe (matches OpenAIService.resolveMCPAuthorization expectations)
-                                // Headers JSON
-                                let headers = [headerKey: normalizedAuth]
-                                if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
-                                   let str = String(data: data, encoding: .utf8)
-                                {
-                                    _ = KeychainService.shared.save(value: str, forKey: "mcp_manual_\(lbl)")
+                                if trimmedToken.isEmpty {
+                                    _ = KeychainService.shared.delete(forKey: "mcp_manual_\(lbl)")
+                                    _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
+                                } else {
+                                    let headers = [headerKey: normalizedAuth]
+                                    if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
+                                       let str = String(data: data, encoding: .utf8)
+                                    {
+                                        _ = KeychainService.shared.save(value: str, forKey: "mcp_manual_\(lbl)")
+                                    }
                                 }
 
                                 var probePrompt = viewModel.activePrompt
@@ -118,10 +139,15 @@ struct RemoteMCPSetupSheet: View {
                                        let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
                                     {
                                         let ah = obj[headerKey] ?? obj["Authorization"] ?? ""
-                                        let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: ah)
-                                        d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
+                                        if ah.isEmpty {
+                                            d.removeObject(forKey: "mcp_probe_token_hash_\(foundLabel)")
+                                        } else {
+                                            let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: ah)
+                                            d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
+                                        }
+                                    } else if trimmedToken.isEmpty {
+                                        d.removeObject(forKey: "mcp_probe_token_hash_\(foundLabel)")
                                     } else {
-                                        // If top-level storage (raw token), hash directly
                                         let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: normalizedAuth)
                                         d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
                                     }
@@ -173,6 +199,18 @@ struct RemoteMCPSetupSheet: View {
                     if approvalMode.isEmpty { approvalMode = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval }
                     if authHeaderKey.isEmpty { authHeaderKey = prompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : prompt.mcpAuthHeaderKey }
                     if allowedToolsCSV.isEmpty { allowedToolsCSV = prompt.mcpAllowedTools }
+
+                    if token.isEmpty,
+                       let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"),
+                       !stored.isEmpty
+                    {
+                        if let data = stored.data(using: .utf8),
+                           let headers = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                            token = NotionAuthService.shared.stripBearer(headers[authHeaderKey] ?? headers["Authorization"] ?? "")
+                        } else {
+                            token = NotionAuthService.shared.stripBearer(stored)
+                        }
+                    }
                 }
             }
         }
@@ -184,8 +222,8 @@ struct RemoteMCPSetupSheet: View {
         let headerKey = authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Authorization" : authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let tkn = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let allowed = allowedToolsCSV.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !lbl.isEmpty, !url.isEmpty, !tkn.isEmpty else {
-            errorMessage = "Please provide a label, URL, and token."
+        guard !lbl.isEmpty, !url.isEmpty else {
+            errorMessage = "Please provide a label and URL."
             return
         }
         guard url.lowercased().hasPrefix("https://") else {
@@ -194,8 +232,14 @@ struct RemoteMCPSetupSheet: View {
         }
 
         if url.lowercased().contains("mcp.notion.com") {
-            errorMessage = "Notion hosted MCP (mcp.notion.com) requires OAuth and isn't supported here. Use Direct Notion Integration instead."
-            return
+            if tkn.isEmpty {
+                errorMessage = "Notion hosted MCP requires a Notion OAuth access token. Paste one here, or use Direct Notion Integration instead."
+                return
+            }
+            if tokenLooksLikeNotionIntegration {
+                errorMessage = "A Notion integration token (ntn_/secret_) won't work with the hosted Notion MCP. Paste a Notion OAuth access token instead."
+                return
+            }
         }
 
         // Normalize token value for headers
@@ -211,16 +255,21 @@ struct RemoteMCPSetupSheet: View {
         prompt.mcpRequireApproval = approvalMode
         prompt.mcpAuthHeaderKey = headerKey
 
-        var headers = prompt.secureMCPHeaders
-        headers[headerKey] = normalizedAuth
-        prompt.secureMCPHeaders = headers
+        if tkn.isEmpty {
+            prompt.mcpHeaders = ""
+            _ = KeychainService.shared.delete(forKey: "mcp_manual_\(lbl)")
+            _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
+        } else {
+            var headers = prompt.secureMCPHeaders
+            headers.removeValue(forKey: "Authorization")
+            headers.removeValue(forKey: headerKey)
+            headers[headerKey] = normalizedAuth
+            prompt.secureMCPHeaders = headers
+            _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
+        }
 
         viewModel.replaceActivePrompt(with: prompt)
         viewModel.saveActivePrompt()
-
-        // Persist token copies for parity with disconnectRemote()
-        _ = KeychainService.shared.save(value: normalizedAuth, forKey: "mcp_manual_\(lbl)")
-        _ = KeychainService.shared.save(value: normalizedAuth, forKey: "mcp_auth_\(lbl)")
 
         dismiss()
     }

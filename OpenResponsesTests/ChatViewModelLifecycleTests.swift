@@ -120,6 +120,40 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
     }
 
+    func testSendUserMessageAllowsPublicRemoteMCPServerAfterProbe() async {
+        let label = "deepwiki"
+        UserDefaults.standard.removeObject(forKey: "mcp_probe_ok_\(label)")
+        UserDefaults.standard.removeObject(forKey: "mcp_probe_ok_at_\(label)")
+        UserDefaults.standard.removeObject(forKey: "mcp_probe_token_hash_\(label)")
+        UserDefaults.standard.removeObject(forKey: "mcp_probe_tool_count_\(label)")
+        _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
+
+        let api = MockOpenAIService()
+        api.probeMCPListToolsResult = (label: label, count: 2)
+        api.sendChatResponse = makeTextResponse(id: "resp_public_mcp", text: "Public MCP ready.")
+
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.enableStreaming = false
+        viewModel.activePrompt.storeResponses = false
+        viewModel.applyDraftStorePreference(false)
+        viewModel.activePrompt.openAIModel = "gpt-5.4"
+        viewModel.activePrompt.enableMCPTool = true
+        viewModel.activePrompt.mcpIsConnector = false
+        viewModel.activePrompt.mcpServerLabel = label
+        viewModel.activePrompt.mcpServerURL = "https://mcp.deepwiki.com/mcp"
+        viewModel.activePrompt.mcpRequireApproval = "never"
+
+        viewModel.sendUserMessage("Use the public MCP server.")
+
+        XCTAssertTrue(await waitUntil(timeout: 1.5) {
+            api.chatRequests.count == 1 && viewModel.messages.contains { $0.text == "Public MCP ready." }
+        })
+
+        XCTAssertEqual(api.chatRequests.first?.userMessage, "Use the public MCP server.")
+        XCTAssertFalse(viewModel.messages.contains { $0.text?.contains("No Authorization header found") == true })
+        XCTAssertEqual(UserDefaults.standard.integer(forKey: "mcp_probe_tool_count_\(label)"), 2)
+    }
+
     func testCancelStreamingCancelsBackgroundResponse() async {
         let api = MockOpenAIService()
         api.sendChatResponse = makePendingResponse(id: "resp_background_cancel")
@@ -446,6 +480,8 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
     var sendFunctionOutputCalls: [FunctionOutputCall] = []
     var sendFunctionOutputsCalls: [FunctionOutputsBatchCall] = []
     var streamFunctionOutputsCalls: [FunctionOutputsBatchCall] = []
+    var probeMCPListToolsResult: (label: String, count: Int)?
+    var probeMCPListToolsError: Error?
 
     var sendChatResponse = OpenAIResponse(
         id: "resp_default",
@@ -708,6 +744,12 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
     }
 
     func probeMCPListTools(prompt: Prompt) async throws -> (label: String, count: Int) {
+        if let probeMCPListToolsError {
+            throw probeMCPListToolsError
+        }
+        if let probeMCPListToolsResult {
+            return probeMCPListToolsResult
+        }
         throw OpenAIServiceError.invalidRequest("Unused in tests")
     }
 

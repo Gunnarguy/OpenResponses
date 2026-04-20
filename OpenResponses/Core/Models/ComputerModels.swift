@@ -42,18 +42,18 @@ struct ComputerAction: Decodable {
         case type
         case parameters
     }
-    
+
     /// Custom initializer for creating an action programmatically.
     init(type: String, parameters: [String: Any]) {
         self.type = type
         self.parameters = parameters
     }
-    
+
     /// Decodes a `ComputerAction` from a decoder, handling flexible parameter types.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
-        
+
         // The parameters can be a mix of types, so we decode them into [String: AnyCodable]
         // and then extract the underlying `Any` value.
         if let params = try? container.decode([String: AnyCodable].self, forKey: .parameters) {
