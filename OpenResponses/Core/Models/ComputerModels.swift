@@ -77,3 +77,39 @@ struct ComputerActionResult {
     /// Any textual output from the action (e.g., from a "getText" action).
     let output: String?
 }
+
+/// A compact description of an interactive or navigational element that is visible on the page.
+struct BrowserElementDescriptor: Codable, Hashable {
+    let text: String
+    let hint: String?
+    let type: String?
+    let href: String?
+    let role: String?
+}
+
+/// A DOM-aware snapshot of the currently visible page state for the live browser harness.
+struct BrowserPageState: Codable, Hashable {
+    let url: String?
+    let title: String
+    let readyState: String
+    let visibleTextPreview: String
+    let headings: [String]
+    let buttons: [BrowserElementDescriptor]
+    let links: [BrowserElementDescriptor]
+    let inputs: [BrowserElementDescriptor]
+}
+
+/// The result of a DOM-aware browser automation command.
+struct BrowserAutomationResult {
+    let state: BrowserPageState
+    let screenshot: String?
+    let currentURL: String?
+    let output: String?
+}
+
+/// Encodes a browser automation step so the model gets structured, compact page state back.
+struct BrowserAutomationToolPayload: Codable {
+    let action: String
+    let output: String?
+    let page: BrowserPageState
+}

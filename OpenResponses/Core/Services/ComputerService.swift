@@ -1286,6 +1286,469 @@ class ComputerService: NSObject, WKNavigationDelegate {
         return true
     }
 
+    /// Navigates the persistent live browser session and returns a DOM-aware page snapshot.
+    func liveBrowserNavigate(to urlString: String) async throws -> BrowserAutomationResult {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        guard let url = URL(string: trimmed.hasPrefix("http") ? trimmed : "https://\(trimmed)") else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        try await prepareWebViewForExecution()
+        try await navigate(to: url)
+        try await waitForDomReadyAndPaint()
+        return try await captureBrowserAutomationResult(actionOutput: "Navigated to \(url.absoluteString)")
+    }
+
+    /// Returns a compact DOM-aware snapshot of the current page state.
+    func liveBrowserRead() async throws -> BrowserAutomationResult {
+        try await captureBrowserAutomationResult(actionOutput: "Read current page state")
+    }
+
+    /// Searches within the current site or a known search destination and returns the updated page state.
+    func liveBrowserSearch(query: String, site: String?) async throws -> BrowserAutomationResult {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        try await prepareWebViewForExecution()
+
+        if let directURL = directSearchURL(query: trimmedQuery, site: site) {
+            try await navigate(to: directURL)
+            try await waitForDomReadyAndPaint()
+            return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedQuery) via \(directURL.absoluteString)")
+        }
+
+        _ = try await performSearchIfOnKnownEngine(query: trimmedQuery)
+        return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedQuery)")
+    }
+
+    /// Clicks a visible control by text/label in the live DOM and returns the updated page state.
+    func liveBrowserClick(targetText: String) async throws -> BrowserAutomationResult {
+        let trimmedTarget = targetText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTarget.isEmpty else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        try await prepareWebViewForExecution()
+        let clickMessage = try await clickVisibleElement(matching: trimmedTarget)
+        try await waitForDomReadyAndPaint()
+        return try await captureBrowserAutomationResult(actionOutput: clickMessage)
+    }
+
+    /// Types into a visible field in the live DOM and optionally submits the form.
+    func liveBrowserType(text: String, fieldHint: String?, submit: Bool) async throws -> BrowserAutomationResult {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            throw ComputerUseError.invalidParameters
+        }
+
+        try await prepareWebViewForExecution()
+        let typeMessage = try await typeIntoVisibleField(text: trimmedText, fieldHint: fieldHint, submit: submit)
+        try await waitForDomReadyAndPaint()
+        return try await captureBrowserAutomationResult(actionOutput: typeMessage)
+    }
+
+    /// Scrolls the live page and returns the updated DOM-aware snapshot.
+    func liveBrowserScroll(direction: String, amount: Int?) async throws -> BrowserAutomationResult {
+        try await prepareWebViewForExecution()
+
+        let normalizedDirection = direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let baseAmount = max(200, min(amount ?? 700, 2400))
+        let deltaY: Double = normalizedDirection == "up" ? Double(-baseAmount) : Double(baseAmount)
+        try await scroll(x: 0, y: deltaY)
+        try await waitForDomReadyAndPaint()
+        return try await captureBrowserAutomationResult(actionOutput: "Scrolled \(normalizedDirection == "up" ? "up" : "down") by \(baseAmount) points")
+    }
+
+    private func directSearchURL(query: String, site: String?) -> URL? {
+        let trimmedSite = site?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !trimmedSite.isEmpty {
+            if let direct = Self.searchResultsURL(forSiteKeyword: trimmedSite, query: query) {
+                return direct
+            }
+
+            if let parsedURL = URL(string: trimmedSite),
+               let host = parsedURL.host?.lowercased(),
+               let direct = Self.searchResultsURL(forSiteKeyword: host, query: query) {
+                return direct
+            }
+
+            let sanitizedHost = trimmedSite
+                .replacingOccurrences(of: "https://", with: "")
+                .replacingOccurrences(of: "http://", with: "")
+                .split(separator: "/")
+                .first
+                .map(String.init) ?? trimmedSite
+
+            if let direct = Self.searchResultsURL(forSiteKeyword: sanitizedHost, query: query) {
+                return direct
+            }
+        }
+
+        if let direct = Self.searchResultsURL(for: webView?.url, query: query) {
+            return direct
+        }
+
+        return Self.searchResultsURL(forSiteKeyword: "google", query: query)
+    }
+
+    private func captureBrowserAutomationResult(actionOutput: String?) async throws -> BrowserAutomationResult {
+        try await prepareWebViewForExecution()
+        try await ensureWebViewReady()
+        try await waitForDomReadyAndPaint()
+
+        let state = try await readBrowserPageState()
+        let screenshot = try await takeScreenshot()
+        let currentURL = state.url ?? webView?.url?.absoluteString
+
+        return BrowserAutomationResult(
+            state: state,
+            screenshot: screenshot,
+            currentURL: currentURL,
+            output: actionOutput
+        )
+    }
+
+    private func readBrowserPageState(maxVisibleTextChars: Int = 1800, maxElementsPerSection: Int = 12) async throws -> BrowserPageState {
+        let script = """
+        (function() {
+            function normalizeText(value) {
+                return (value || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            function isVisible(el) {
+                if (!el) return false;
+                var style = window.getComputedStyle(el);
+                if (!style) return false;
+                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
+                    return false;
+                }
+                var rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0;
+            }
+
+            function textOf(el) {
+                if (!el) return '';
+                return normalizeText(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('value') || '');
+            }
+
+            function labelForInput(el) {
+                if (!el) return '';
+                var aria = normalizeText(el.getAttribute('aria-label') || '');
+                if (aria) return aria;
+                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
+                if (placeholder) return placeholder;
+                if (el.labels && el.labels.length > 0) {
+                    var labelText = normalizeText(Array.from(el.labels).map(function(label){ return label.innerText || label.textContent || ''; }).join(' '));
+                    if (labelText) return labelText;
+                }
+                if (el.id) {
+                    var explicitLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                    var explicitText = normalizeText(explicitLabel ? (explicitLabel.innerText || explicitLabel.textContent || '') : '');
+                    if (explicitText) return explicitText;
+                }
+                var name = normalizeText(el.getAttribute('name') || '');
+                if (name) return name;
+                return normalizeText(el.id || el.tagName || '');
+            }
+
+            function takeUnique(items) {
+                var seen = new Set();
+                return items.filter(function(item) {
+                    var key = JSON.stringify(item);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            }
+
+            function describeElements(selector, mapper) {
+                return takeUnique(Array.from(document.querySelectorAll(selector))
+                    .filter(isVisible)
+                    .map(mapper)
+                    .filter(function(item) { return item && item.text; }))
+                    .slice(0, \(maxElementsPerSection));
+            }
+
+            var bodyText = normalizeText(document.body ? (document.body.innerText || document.body.textContent || '') : '');
+            if (bodyText.length > \(maxVisibleTextChars)) {
+                bodyText = bodyText.slice(0, \(maxVisibleTextChars)) + '…';
+            }
+
+            var headings = takeUnique(Array.from(document.querySelectorAll('h1, h2, h3'))
+                .filter(isVisible)
+                .map(function(el) { return textOf(el); })
+                .filter(Boolean))
+                .slice(0, \(maxElementsPerSection));
+
+            var buttons = describeElements('button, [role="button"], input[type="button"], input[type="submit"], summary', function(el) {
+                return {
+                    text: textOf(el),
+                    hint: normalizeText(el.getAttribute('aria-label') || el.getAttribute('title') || ''),
+                    type: normalizeText(el.getAttribute('type') || el.tagName.toLowerCase()),
+                    href: null,
+                    role: normalizeText(el.getAttribute('role') || el.tagName.toLowerCase())
+                };
+            });
+
+            var links = describeElements('a[href]', function(el) {
+                return {
+                    text: textOf(el),
+                    hint: normalizeText(el.getAttribute('title') || el.getAttribute('aria-label') || ''),
+                    type: 'link',
+                    href: el.href || null,
+                    role: normalizeText(el.getAttribute('role') || 'link')
+                };
+            });
+
+            var inputs = describeElements('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]', function(el) {
+                var inputType = normalizeText(el.getAttribute('type') || (el.tagName ? el.tagName.toLowerCase() : 'input'));
+                return {
+                    text: labelForInput(el),
+                    hint: normalizeText(el.getAttribute('placeholder') || el.getAttribute('aria-label') || ''),
+                    type: inputType,
+                    href: null,
+                    role: normalizeText(el.getAttribute('role') || (inputType === 'search' ? 'searchbox' : 'textbox'))
+                };
+            });
+
+            return {
+                url: window.location.href || null,
+                title: normalizeText(document.title || ''),
+                readyState: document.readyState || 'unknown',
+                visibleTextPreview: bodyText,
+                headings: headings,
+                buttons: buttons,
+                links: links,
+                inputs: inputs
+            };
+        })();
+        """
+
+        let rawState = try await evaluateJavaScript(script)
+
+        guard let stateObject = rawState as? [String: Any],
+              JSONSerialization.isValidJSONObject(stateObject) else {
+            throw ComputerUseError.invalidResponse
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: stateObject, options: [])
+        return try JSONDecoder().decode(BrowserPageState.self, from: data)
+    }
+
+    private func clickVisibleElement(matching text: String) async throws -> String {
+        let escaped = text.sanitizedForJS()
+        let script = """
+        (function() {
+            function normalizeText(value) {
+                return (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            }
+
+            function isVisible(el) {
+                if (!el) return false;
+                var style = window.getComputedStyle(el);
+                if (!style) return false;
+                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
+                    return false;
+                }
+                var rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }
+
+            function textOf(el) {
+                return (el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('value') || '').replace(/\\s+/g, ' ').trim();
+            }
+
+            var target = normalizeText('\(escaped)');
+            var candidates = Array.from(document.querySelectorAll('a[href], button, [role="button"], input[type="button"], input[type="submit"], summary, label'))
+                .filter(isVisible)
+                .map(function(el) {
+                    var text = textOf(el);
+                    var normalized = normalizeText(text);
+                    var exact = normalized === target;
+                    var contains = normalized.includes(target) || normalizeText(el.getAttribute('aria-label') || '').includes(target);
+                    var score = exact ? 100 : (contains ? 70 - Math.max(0, normalized.length - target.length) : -1);
+                    return { el: el, text: text, score: score };
+                })
+                .filter(function(candidate) { return candidate.score >= 0; })
+                .sort(function(lhs, rhs) { return rhs.score - lhs.score; });
+
+            if (!candidates.length) {
+                return { clicked: false, message: 'No visible control matched "\(escaped)".' };
+            }
+
+            var best = candidates[0].el;
+            var label = candidates[0].text || best.getAttribute('aria-label') || best.getAttribute('title') || best.tagName;
+
+            try { best.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' }); } catch (e) {}
+            try { if (best.focus) best.focus({ preventScroll: true }); } catch (e) { if (best.focus) best.focus(); }
+            try {
+                ['mousedown', 'mouseup', 'click'].forEach(function(type) {
+                    best.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+                });
+            } catch (e) {}
+            try { if (best.click) best.click(); } catch (e) {}
+
+            return { clicked: true, message: 'Clicked "' + label + '".' };
+        })();
+        """
+
+        if let result = try await evaluateJavaScript(script) as? [String: Any],
+           let message = result["message"] as? String {
+            return message
+        }
+
+        return "Attempted to click \(text)."
+    }
+
+    private func typeIntoVisibleField(text: String, fieldHint: String?, submit: Bool) async throws -> String {
+        let escapedText = text.sanitizedForJS()
+        let escapedHint = fieldHint?.trimmingCharacters(in: .whitespacesAndNewlines).sanitizedForJS() ?? ""
+        let submitLiteral = submit ? "true" : "false"
+        let script = """
+        (function() {
+            function normalizeText(value) {
+                return (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            }
+
+            function isVisible(el) {
+                if (!el) return false;
+                var style = window.getComputedStyle(el);
+                if (!style) return false;
+                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
+                    return false;
+                }
+                var rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            }
+
+            function isEditable(el) {
+                if (!el) return false;
+                if (el.isContentEditable) return true;
+                var tag = (el.tagName || '').toUpperCase();
+                if (tag === 'TEXTAREA') return true;
+                if (tag !== 'INPUT') return false;
+                var type = (el.getAttribute('type') || 'text').toLowerCase();
+                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
+            }
+
+            function labelForInput(el) {
+                var aria = normalizeText(el.getAttribute('aria-label') || '');
+                if (aria) return aria;
+                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
+                if (placeholder) return placeholder;
+                if (el.labels && el.labels.length > 0) {
+                    var labelText = normalizeText(Array.from(el.labels).map(function(label){ return label.innerText || label.textContent || ''; }).join(' '));
+                    if (labelText) return labelText;
+                }
+                if (el.id) {
+                    var explicitLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+                    var explicitText = normalizeText(explicitLabel ? (explicitLabel.innerText || explicitLabel.textContent || '') : '');
+                    if (explicitText) return explicitText;
+                }
+                var name = normalizeText(el.getAttribute('name') || '');
+                if (name) return name;
+                return normalizeText(el.id || el.tagName || '');
+            }
+
+            function describe(el) {
+                return labelForInput(el) || normalizeText(el.getAttribute('placeholder') || '') || normalizeText(el.getAttribute('aria-label') || '') || normalizeText(el.tagName || 'field');
+            }
+
+            function fireInputEvents(el) {
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+            }
+
+            var targetHint = normalizeText('\(escapedHint)');
+            var targetText = '\(escapedText)';
+            var shouldSubmit = \(submitLiteral);
+            var activeElement = document.activeElement;
+            var candidates = Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]'))
+                .filter(function(el) { return isVisible(el) && isEditable(el); });
+
+            var best = null;
+            var bestScore = -1;
+
+            candidates.forEach(function(el, index) {
+                var descriptor = describe(el);
+                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
+                var aria = normalizeText(el.getAttribute('aria-label') || '');
+                var fieldType = normalizeText(el.getAttribute('type') || 'text');
+                var score = 0;
+
+                if (el === activeElement && isEditable(el)) score += 40;
+                if (fieldType === 'search' || placeholder.includes('search') || aria.includes('search') || descriptor.includes('search')) score += 10;
+
+                if (targetHint) {
+                    if (descriptor === targetHint || placeholder === targetHint || aria === targetHint) {
+                        score += 100;
+                    } else if (descriptor.includes(targetHint) || placeholder.includes(targetHint) || aria.includes(targetHint)) {
+                        score += 70;
+                    } else {
+                        score -= 5;
+                    }
+                }
+
+                score -= Math.min(index, 10);
+
+                if (score > bestScore) {
+                    best = el;
+                    bestScore = score;
+                }
+            });
+
+            if (!best) {
+                return { typed: false, message: 'No visible input matched the requested field.' };
+            }
+
+            try { best.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' }); } catch (e) {}
+            try { if (best.focus) best.focus({ preventScroll: true }); } catch (e) { if (best.focus) best.focus(); }
+
+            if (best.isContentEditable) {
+                best.textContent = targetText;
+                fireInputEvents(best);
+            } else {
+                try { if (typeof best.select === 'function') best.select(); } catch (e) {}
+                best.value = targetText;
+                fireInputEvents(best);
+            }
+
+            if (shouldSubmit) {
+                if (best.form && typeof best.form.requestSubmit === 'function') {
+                    try { best.form.requestSubmit(); } catch (e) {}
+                } else if (best.form) {
+                    try { best.form.submit(); } catch (e) {}
+                } else {
+                    try {
+                        best.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                        best.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                    } catch (e) {}
+                }
+            }
+
+            var description = describe(best) || 'field';
+            return {
+                typed: true,
+                message: (shouldSubmit ? 'Filled and submitted ' : 'Filled ') + '"' + description + '".'
+            };
+        })();
+        """
+
+        if let result = try await evaluateJavaScript(script) as? [String: Any],
+           let message = result["message"] as? String {
+            return message
+        }
+
+        return submit ? "Filled a field and submitted it." : "Filled a field."
+    }
+
     /// Evaluates a JavaScript string in the web view.
     private func evaluateJavaScript(_ script: String) async throws -> Any? {
         try await withCheckedThrowingContinuation { continuation in

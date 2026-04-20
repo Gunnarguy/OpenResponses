@@ -410,6 +410,16 @@ class OpenAIService: OpenAIServiceProtocol {
         modelId == "computer-use-preview"
     }
 
+    private func supportsLiveBrowserHarness(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
+        guard prompt.enableComputerUse, !prompt.ultraStrictComputerUse else { return false }
+        let effectiveStreaming = isStreaming ?? (prompt.enableStreaming && !prompt.backgroundMode)
+        return ModelCompatibilityService.shared.isToolSupported(
+            .function,
+            for: prompt.openAIModel,
+            isStreaming: effectiveStreaming
+        )
+    }
+
     private func supportsComputerUse(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
         let effectiveStreaming = isStreaming ?? (prompt.enableStreaming && !prompt.backgroundMode)
         return ModelCompatibilityService.shared.isToolSupported(
@@ -467,10 +477,127 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
+    private func liveBrowserAutomationTools() -> [APICapabilities.Tool] {
+        [
+            .function(function: APICapabilities.Function(
+                name: "browserNavigate",
+                description: "Navigate the persistent live browser session to a URL and return compact page state from the live DOM.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "url": [
+                            "type": "string",
+                            "description": "The URL or host to open, such as 'https://example.com' or 'amazon.com'."
+                        ]
+                    ],
+                    "required": ["url"]
+                ]),
+                strict: false
+            )),
+            .function(function: APICapabilities.Function(
+                name: "browserRead",
+                description: "Inspect the current live browser DOM and return the current URL, title, headings, buttons, links, inputs, and a visible-text preview.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [:]
+                ]),
+                strict: false
+            )),
+            .function(function: APICapabilities.Function(
+                name: "browserSearch",
+                description: "Search using the persistent live browser. Provide a query and optionally a site hint like google, amazon, youtube, github, or bing.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "query": [
+                            "type": "string",
+                            "description": "The exact search query to run."
+                        ],
+                        "site": [
+                            "type": "string",
+                            "description": "Optional site or engine hint, such as 'google', 'amazon', 'youtube', or 'github'."
+                        ]
+                    ],
+                    "required": ["query"]
+                ]),
+                strict: false
+            )),
+            .function(function: APICapabilities.Function(
+                name: "browserClick",
+                description: "Click a visible button, link, or control in the persistent live browser by matching its visible text or accessible label.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "targetText": [
+                            "type": "string",
+                            "description": "The visible text or accessible label of the control to click."
+                        ]
+                    ],
+                    "required": ["targetText"]
+                ]),
+                strict: false
+            )),
+            .function(function: APICapabilities.Function(
+                name: "browserType",
+                description: "Type into a visible input field in the persistent live browser. Optionally provide a field hint and whether to submit afterward.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "text": [
+                            "type": "string",
+                            "description": "The text to enter into the field."
+                        ],
+                        "fieldHint": [
+                            "type": "string",
+                            "description": "Optional label, placeholder, or hint describing the target field, such as 'search', 'email', or 'password'."
+                        ],
+                        "submit": [
+                            "type": "boolean",
+                            "description": "Set to true to submit the form or press Enter after typing."
+                        ]
+                    ],
+                    "required": ["text"]
+                ]),
+                strict: false
+            )),
+            .function(function: APICapabilities.Function(
+                name: "browserScroll",
+                description: "Scroll the persistent live browser up or down and return updated page state.",
+                parameters: APICapabilities.JSONSchema([
+                    "type": "object",
+                    "properties": [
+                        "direction": [
+                            "type": "string",
+                            "description": "The scroll direction: 'up' or 'down'."
+                        ],
+                        "amount": [
+                            "type": "integer",
+                            "description": "Optional approximate scroll amount in points. Defaults to a page-like step."
+                        ]
+                    ],
+                    "required": ["direction"]
+                ]),
+                strict: false
+            ))
+        ]
+    }
+
     /// Builds default system instructions that are aware of computer use capabilities.
     private func buildDefaultComputerUseInstructions(prompt: Prompt) -> String {
         if isComputerUseActive(for: prompt) {
             let computerConfig = defaultComputerToolConfiguration()
+            let liveBrowserGuidance: String
+            if supportsLiveBrowserHarness(for: prompt) {
+                liveBrowserGuidance = """
+
+                Live browser harness:
+                - Prefer the live browser function tools (`browserNavigate`, `browserRead`, `browserSearch`, `browserClick`, `browserType`, `browserScroll`) for normal website work. They operate on a persistent live webpage DOM and return structured page state.
+                - Use `browserRead` after navigation or major actions to reassess the page through DOM state.
+                - Use the built-in `computer` tool only when the task truly needs visual interaction, such as canvas work, drag-and-drop that the DOM tools cannot express, or ambiguous UI that requires screenshot inspection.
+                """
+            } else {
+                liveBrowserGuidance = ""
+            }
             let surfaceDescription: String
             switch computerConfig.environment {
             case "mac":
@@ -487,6 +614,8 @@ class OpenAIService: OpenAIServiceProtocol {
             - Take one small, precise action at a time, then screenshot to reassess. Click only clear, visible targets at their center. If you can’t find it, say so (don’t guess).
             - Never do more than 2 consecutive waits. If nothing changes, take a concrete step (navigate/scroll/click) instead.
             - If a cookie/consent banner blocks content, click the visible "Accept all" (or equivalent) before proceeding.
+
+            \(liveBrowserGuidance)
 
             Available actions: click, double_click, scroll, type, keypress, wait, screenshot, move, drag.
             """
@@ -1179,6 +1308,11 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         if prompt.enableComputerUse, compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming) {
+            if supportsLiveBrowserHarness(for: prompt, isStreaming: isStreaming) {
+                tools.append(contentsOf: liveBrowserAutomationTools())
+                AppLogger.log("Added live browser harness function tools for model=\(prompt.openAIModel)", category: .openAI, level: .info)
+            }
+
             AppLogger.log("Computer tool is enabled and supported", category: .openAI, level: .info)
             let toolDefinition = computerToolDefinition(for: prompt.openAIModel)
             tools.append(toolDefinition)

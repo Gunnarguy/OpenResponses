@@ -234,6 +234,68 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertNil(computerTool["environment"])
     }
 
+    func testComputerUseAlsoAddsLiveBrowserFunctionTools() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.enableComputerUse = true
+        prompt.enableCodeInterpreter = false
+        prompt.enableWebSearch = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableMCPTool = false
+
+        let request = buildRequest(prompt: prompt, message: "Use the browser", stream: true)
+
+        guard let tools = request["tools"] as? [[String: Any]] else {
+            return XCTFail("Expected tools payload")
+        }
+
+        let functionNames = Set(
+            tools
+                .filter { $0["type"] as? String == "function" }
+                .compactMap { $0["name"] as? String }
+        )
+
+        XCTAssertTrue(functionNames.contains("browserNavigate"))
+        XCTAssertTrue(functionNames.contains("browserRead"))
+        XCTAssertTrue(functionNames.contains("browserSearch"))
+        XCTAssertTrue(functionNames.contains("browserClick"))
+        XCTAssertTrue(functionNames.contains("browserType"))
+        XCTAssertTrue(functionNames.contains("browserScroll"))
+
+        let instructions = request["instructions"] as? String
+        XCTAssertTrue(instructions?.contains("Prefer the live browser function tools") == true)
+    }
+
+    func testUltraStrictComputerUseSkipsLiveBrowserFunctionTools() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.enableComputerUse = true
+        prompt.ultraStrictComputerUse = true
+        prompt.enableCodeInterpreter = false
+        prompt.enableWebSearch = false
+        prompt.enableImageGeneration = false
+        prompt.enableFileSearch = false
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableMCPTool = false
+
+        let request = buildRequest(prompt: prompt, message: "Use the browser", stream: true)
+
+        let tools = (request["tools"] as? [[String: Any]]) ?? []
+        let functionNames = Set(
+            tools
+                .filter { $0["type"] as? String == "function" }
+                .compactMap { $0["name"] as? String }
+        )
+
+        XCTAssertFalse(functionNames.contains("browserNavigate"))
+        XCTAssertFalse(functionNames.contains("browserRead"))
+        XCTAssertTrue(tools.contains { $0["type"] as? String == "computer" })
+    }
+
     func testLegacyComputerUsePreviewModelUsesPreviewShape() {
         var prompt = Prompt.defaultPrompt()
         prompt.openAIModel = "computer-use-preview"

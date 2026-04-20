@@ -467,11 +467,12 @@ class ChatViewModel: ObservableObject {
             \(activationLine) What would you like me to do?
 
             I can:
-            • open a website or navigate to a specific page
-            • click buttons, links, menus, and search boxes
+            • open a website or navigate to a specific page in a persistent live browser
+            • read the current page state from the live webpage DOM
+            • click buttons, links, menus, and search boxes by visible text
             • type text into fields and submit forms
             • scroll pages, drag items, and press keys or shortcuts
-            • take screenshots after each step so I can reassess the UI
+            • fall back to screenshots when visual context actually matters
 
             Try asking:
             • Open Amazon and search for backpacks
@@ -2217,6 +2218,110 @@ class ChatViewModel: ObservableObject {
         var output: String?
 
         switch functionName {
+        case "browserNavigate":
+            struct BrowserNavigateArgs: Decodable {
+                let url: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for browserNavigate."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(BrowserNavigateArgs.self, from: argsData)
+                logActivity("🌐 Live browser: navigating to \(decodedArgs.url)")
+                let result = try await computerService.liveBrowserNavigate(to: decodedArgs.url)
+                output = encodeBrowserAutomationResult(result, action: "browserNavigate", messageId: messageId)
+            } catch {
+                output = "Error processing browserNavigate: \(error.localizedDescription)"
+            }
+
+        case "browserRead":
+            do {
+                logActivity("🌐 Live browser: reading current page")
+                let result = try await computerService.liveBrowserRead()
+                output = encodeBrowserAutomationResult(result, action: "browserRead", messageId: messageId)
+            } catch {
+                output = "Error processing browserRead: \(error.localizedDescription)"
+            }
+
+        case "browserSearch":
+            struct BrowserSearchArgs: Decodable {
+                let query: String
+                let site: String?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for browserSearch."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(BrowserSearchArgs.self, from: argsData)
+                let siteDescription = decodedArgs.site?.trimmingCharacters(in: .whitespacesAndNewlines)
+                logActivity("🔎 Live browser: searching \"\(decodedArgs.query)\"\(siteDescription?.isEmpty == false ? " on \(siteDescription!)" : "")")
+                let result = try await computerService.liveBrowserSearch(query: decodedArgs.query, site: decodedArgs.site)
+                output = encodeBrowserAutomationResult(result, action: "browserSearch", messageId: messageId)
+            } catch {
+                output = "Error processing browserSearch: \(error.localizedDescription)"
+            }
+
+        case "browserClick":
+            struct BrowserClickArgs: Decodable {
+                let targetText: String
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for browserClick."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(BrowserClickArgs.self, from: argsData)
+                logActivity("🖱️ Live browser: clicking \"\(decodedArgs.targetText)\"")
+                let result = try await computerService.liveBrowserClick(targetText: decodedArgs.targetText)
+                output = encodeBrowserAutomationResult(result, action: "browserClick", messageId: messageId)
+            } catch {
+                output = "Error processing browserClick: \(error.localizedDescription)"
+            }
+
+        case "browserType":
+            struct BrowserTypeArgs: Decodable {
+                let text: String
+                let fieldHint: String?
+                let submit: Bool?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for browserType."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(BrowserTypeArgs.self, from: argsData)
+                let fieldDescription = decodedArgs.fieldHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+                logActivity("⌨️ Live browser: typing into \(fieldDescription?.isEmpty == false ? fieldDescription! : "visible field")")
+                let result = try await computerService.liveBrowserType(
+                    text: decodedArgs.text,
+                    fieldHint: decodedArgs.fieldHint,
+                    submit: decodedArgs.submit ?? false
+                )
+                output = encodeBrowserAutomationResult(result, action: "browserType", messageId: messageId)
+            } catch {
+                output = "Error processing browserType: \(error.localizedDescription)"
+            }
+
+        case "browserScroll":
+            struct BrowserScrollArgs: Decodable {
+                let direction: String
+                let amount: Int?
+            }
+            guard let argsData = call.arguments?.data(using: .utf8) else {
+                output = "Error: Invalid arguments for browserScroll."
+                break
+            }
+            do {
+                let decodedArgs = try JSONDecoder().decode(BrowserScrollArgs.self, from: argsData)
+                logActivity("↕️ Live browser: scrolling \(decodedArgs.direction)")
+                let result = try await computerService.liveBrowserScroll(direction: decodedArgs.direction, amount: decodedArgs.amount)
+                output = encodeBrowserAutomationResult(result, action: "browserScroll", messageId: messageId)
+            } catch {
+                output = "Error processing browserScroll: \(error.localizedDescription)"
+            }
+
         case "searchNotion":
             struct NotionSearchArgs: Decodable {
                 let query: String
@@ -2751,6 +2856,28 @@ class ChatViewModel: ObservableObject {
         }
 
         return output
+    }
+
+    private func encodeBrowserAutomationResult(_ result: BrowserAutomationResult, action: String, messageId: UUID) -> String {
+        if let screenshot = result.screenshot, !screenshot.isEmpty {
+            attachComputerScreenshot(screenshot, to: messageId, context: "[Live Browser]")
+        }
+
+        let payload = BrowserAutomationToolPayload(
+            action: action,
+            output: result.output,
+            page: result.state
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        if let data = try? encoder.encode(payload),
+           let json = String(data: data, encoding: .utf8) {
+            return json
+        }
+
+        return result.output ?? result.currentURL ?? "{}"
     }
 
     /// Handles a function call from the API by executing the function and sending the result back.

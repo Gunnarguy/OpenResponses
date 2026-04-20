@@ -261,8 +261,8 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.first?.text, "Computer")
         XCTAssertEqual(viewModel.messages.last?.role, .assistant)
         XCTAssertTrue(viewModel.messages.last?.text?.contains("What would you like me to do?") == true)
-        XCTAssertTrue(viewModel.messages.last?.text?.contains("open a website") == true)
-        XCTAssertTrue(viewModel.messages.last?.text?.contains("take screenshots") == true)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("persistent live browser") == true)
+        XCTAssertTrue(viewModel.messages.last?.text?.contains("live webpage DOM") == true)
         XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
     }
 
