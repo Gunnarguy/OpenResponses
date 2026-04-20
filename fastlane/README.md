@@ -31,6 +31,14 @@ Upload App Store metadata without a binary
 
 Build the app and upload the binary plus metadata to App Store Connect
 
+### ios submit_existing_build
+
+```sh
+[bundle exec] fastlane ios submit_existing_build
+```
+
+Select an existing App Store build for review submission
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

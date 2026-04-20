@@ -64,4 +64,31 @@ platform :ios do
       submit_for_review: false
     )
   end
+
+  desc "Select an existing App Store build for review submission"
+  lane :submit_existing_build do |options|
+    api_key = app_store_api_key
+    version = options[:app_version] || app_store_version
+    build_number = options[:build_number] || ENV["BUILD_NUMBER"]
+
+    UI.user_error!("A build_number is required") if build_number.to_s.strip.empty?
+
+    upload_to_app_store(
+      api_key: api_key,
+      app_version: version,
+      build_number: build_number,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: true,
+      force: true,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false,
+      submission_information: {
+        export_compliance_uses_encryption: false
+      },
+      submit_for_review: true,
+      reject_if_possible: true,
+      version_check_wait_retry_limit: 20
+    )
+  end
 end
