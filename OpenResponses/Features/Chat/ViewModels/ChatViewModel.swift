@@ -306,9 +306,15 @@ class ChatViewModel: ObservableObject {
     // MARK: - Computer Use Circuit Breaker
     private var consecutiveWaitCount: Int = 0
     private let maxConsecutiveWaits: Int = 3
-    // Tracks which messages have already applied the intent-aware search override,
-    // so we don't run it twice (streaming path + resume path).
-    private var appliedSearchOverrideForMessage = Set<UUID>()
+    private struct SearchOverrideRecord: Equatable {
+        let normalizedQuery: String
+        let host: String?
+    }
+
+    // Tracks which messages have already applied the intent-aware search override
+    // on a specific host so we can retry after the initial screenshot/navigation turn,
+    // but avoid re-submitting the same search forever.
+    private var appliedSearchOverrideForMessage: [UUID: SearchOverrideRecord] = [:]
 
     // Single-shot Screenshot Mode removed
 
@@ -820,16 +826,32 @@ class ChatViewModel: ObservableObject {
         }
 
         if !activePrompt.ultraStrictComputerUse,
-           !appliedSearchOverrideForMessage.contains(messageId),
            let searchQuery = extractExplicitSearchQuery(for: messageId) {
             let refined = refineSearchPhrase(searchQuery)
-            AppLogger.log("\(context) Intent override: performing search for query '\(refined)' on current engine", category: .openAI, level: .info)
-            do {
-                try await computerService.performSearchIfOnKnownEngine(query: refined)
-            } catch {
-                AppLogger.log("\(context) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
+            let normalizedQuery = normalizedSearchOverrideQuery(refined)
+            let currentHost = currentComputerHost()
+            let currentRecord = SearchOverrideRecord(normalizedQuery: normalizedQuery, host: currentHost)
+
+            if !normalizedQuery.isEmpty,
+               appliedSearchOverrideForMessage[messageId] != currentRecord {
+                AppLogger.log("\(context) Intent override: attempting search for query '\(refined)' on current engine", category: .openAI, level: .info)
+                do {
+                    let didSubmitSearch = try await computerService.performSearchIfOnKnownEngine(query: refined)
+                    if didSubmitSearch {
+                        let appliedHost = currentComputerHost() ?? currentHost
+                        appliedSearchOverrideForMessage[messageId] = SearchOverrideRecord(
+                            normalizedQuery: normalizedQuery,
+                            host: appliedHost
+                        )
+                        AppLogger.log("\(context) Search override succeeded; refreshing screenshot instead of replaying stale UI actions", category: .openAI, level: .info)
+                        return [ComputerAction(type: "screenshot", parameters: [:])]
+                    }
+
+                    AppLogger.log("\(context) Search override deferred because no compatible search UI was available yet", category: .openAI, level: .debug)
+                } catch {
+                    AppLogger.log("\(context) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
+                }
             }
-            appliedSearchOverrideForMessage.insert(messageId)
         }
 
         if !activePrompt.ultraStrictComputerUse,
@@ -3953,6 +3975,8 @@ class ChatViewModel: ObservableObject {
     /// Derives a URL to navigate to for a screenshot-only action when the model didn't provide one.
     /// Tries to parse the user's last message for a renderable URL; otherwise returns nil.
     private func deriveURLForScreenshot(from messageId: UUID) -> URL? {
+        let explicitSearchQuery = extractExplicitSearchQuery(for: messageId).map(refineSearchPhrase)
+
         // Find the user's message immediately before the assistant messageId
         guard let idx = messages.firstIndex(where: { $0.id == messageId }), idx > 0 else { return nil }
         // Search backwards for the nearest user message
@@ -4008,6 +4032,10 @@ class ChatViewModel: ObservableObject {
                         }
                         // NEW: Handle concatenated domain like "strykercom" -> "stryker.com"
                         if let concatenated = urlFromConcatenatedDomain(tokenLower) { return concatenated }
+                        if let explicitSearchQuery,
+                           let directSearchURL = ComputerService.searchResultsURL(forSiteKeyword: tokenLower, query: explicitSearchQuery) {
+                            return directSearchURL
+                        }
                         // Map common brand to canonical URL
                         if let mapped = Self.keywordURLMap.first(where: { tokenLower.contains($0.key) })?.value,
                            let url = URL(string: mapped) {
@@ -4023,6 +4051,11 @@ class ChatViewModel: ObservableObject {
 
                 // Heuristic 2: explicit "search <query>" or "find <query>" → Google search
                 if lower.contains("search ") || lower.contains("find ") {
+                    if let explicitSearchQuery,
+                       let directGoogleSearch = ComputerService.searchResultsURL(forSiteKeyword: "google", query: explicitSearchQuery) {
+                        return directGoogleSearch
+                    }
+
                     let trigger = lower.contains("search ") ? "search " : "find "
                     if let range = lower.range(of: trigger) {
                         let q = String(lower[range.upperBound...]).trimmingCharacters(in: .whitespaces)
@@ -4087,6 +4120,34 @@ class ChatViewModel: ObservableObject {
             let m = messages[i]
             guard m.role == .user, let text = m.text else { continue }
             let lower = text.lowercased()
+            let uiNouns: Set<String> = ["bar","box","field","icon","button","tab","area","input"]
+
+            func stripTrailingSearchUIFiller(_ value: String) -> String {
+                let suffixes = [
+                    " in the search bar", " in that search bar", " into the search bar",
+                    " in the search box", " in that search box", " into the search box",
+                    " in the search field", " in that search field", " into the search field",
+                    " in the bar", " in that bar", " into the bar",
+                    " in the box", " in that box", " into the box",
+                    " in the field", " in that field", " into the field",
+                    " and press enter", " then press enter",
+                    " and hit enter", " then hit enter",
+                    " and submit", " then submit"
+                ]
+
+                var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                var removedSuffix = true
+                while removedSuffix {
+                    removedSuffix = false
+                    let lowerTrimmed = trimmed.lowercased()
+                    if let suffix = suffixes.first(where: { lowerTrimmed.hasSuffix($0) }) {
+                        trimmed = String(trimmed.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        removedSuffix = true
+                    }
+                }
+
+                return trimmed
+            }
 
             // Accept both Substring and String to avoid call-site mismatch
             func cleanQuery(_ raw: Substring) -> String? {
@@ -4096,14 +4157,18 @@ class ChatViewModel: ObservableObject {
                     q = String(q.dropFirst(4)).trimmingCharacters(in: .whitespaces)
                 }
                 q = q.trimmingCharacters(in: CharacterSet(charactersIn: "\"'` "))
+                q = stripTrailingSearchUIFiller(q)
+                let collapsed = q
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                if uiNouns.contains(collapsed.lowercased()) {
+                    return nil
+                }
                 // Avoid obviously empty/trivial
                 if q.isEmpty { return nil }
                 return q
             }
             func cleanQuery(_ raw: String) -> String? { return cleanQuery(raw[raw.startIndex...]) }
-
-            // UI nouns we should not interpret as queries (e.g., "search bar")
-            let uiNouns: Set<String> = ["bar","box","field","icon","button","tab","area","input"]
 
             // Pattern 0: "type <query> in (…bar/box/field)" — common phrasing
             if let r = lower.range(of: "type ") {
@@ -4259,10 +4324,56 @@ class ChatViewModel: ObservableObject {
                 break
             }
         }
+
+        let trailingPhrases = [
+            " in the search bar", " in that search bar", " into the search bar",
+            " in the search box", " in that search box", " into the search box",
+            " in the search field", " in that search field", " into the search field",
+            " in the bar", " in that bar", " into the bar",
+            " in the box", " in that box", " into the box",
+            " in the field", " in that field", " into the field",
+            " and press enter", " then press enter",
+            " and hit enter", " then hit enter",
+            " and submit", " then submit"
+        ]
+        var removedPhrase = true
+        while removedPhrase {
+            removedPhrase = false
+            let lowerQ = q.lowercased()
+            if let suffix = trailingPhrases.first(where: { lowerQ.hasSuffix($0) }) {
+                q = String(q.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                removedPhrase = true
+            }
+        }
+
         // Strip trivial trailing filler
         let trailing = [" please", " thanks", ".", ",", "!"]
-        for t in trailing { if q.lowercased().hasSuffix(t) { q = String(q.dropLast(t.count)) } }
+        var removedToken = true
+        while removedToken {
+            removedToken = false
+            let lowerQ = q.lowercased()
+            if let suffix = trailing.first(where: { lowerQ.hasSuffix($0) }) {
+                q = String(q.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                removedToken = true
+            }
+        }
         return q.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func normalizedSearchOverrideQuery(_ query: String) -> String {
+        query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+    }
+
+    private func currentComputerHost() -> String? {
+        guard let urlString = computerService.currentURL(),
+              let url = URL(string: urlString) else {
+            return nil
+        }
+
+        return url.host?.lowercased()
     }
 
     /// Extracts computer action from streaming item
@@ -4671,6 +4782,7 @@ class ChatViewModel: ObservableObject {
         conversation.lastResponseId = nil
 
         // Clear performance caches
+        appliedSearchOverrideForMessage.removeAll()
         containerFileCache.removeAll()
         processedAnnotations.removeAll()
         deltaBuffers.removeAll()
@@ -4692,6 +4804,7 @@ class ChatViewModel: ObservableObject {
         else { return }
 
         conversation.messages.remove(at: index)
+        appliedSearchOverrideForMessage.removeValue(forKey: message.id)
         streamingReasoningTextByMessageId.removeValue(forKey: message.id)
         streamingReasoningTraceIdByMessageId.removeValue(forKey: message.id)
         updateActiveConversation(conversation)
@@ -5546,6 +5659,36 @@ extension ChatViewModel {
         return max(1, (byChars + byWords) / 2)
     }
 }
+
+#if DEBUG
+extension ChatViewModel {
+    func testing_extractExplicitSearchQuery(from userText: String) -> String? {
+        let originalMessages = messages
+        let assistantMessageId = UUID()
+        messages = [
+            ChatMessage(role: .user, text: userText, images: nil),
+            ChatMessage(id: assistantMessageId, role: .assistant, text: "", images: nil)
+        ]
+        defer { messages = originalMessages }
+        return extractExplicitSearchQuery(for: assistantMessageId)
+    }
+
+    func testing_refineSearchPhrase(_ raw: String) -> String {
+        refineSearchPhrase(raw)
+    }
+
+    func testing_derivedScreenshotURL(from userText: String) -> String? {
+        let originalMessages = messages
+        let assistantMessageId = UUID()
+        messages = [
+            ChatMessage(role: .user, text: userText, images: nil),
+            ChatMessage(id: assistantMessageId, role: .assistant, text: "", images: nil)
+        ]
+        defer { messages = originalMessages }
+        return deriveURLForScreenshot(from: assistantMessageId)?.absoluteString
+    }
+}
+#endif
 
 // MARK: - Non-Streaming Response Handling
 extension ChatViewModel {

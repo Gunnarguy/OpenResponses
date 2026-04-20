@@ -266,6 +266,59 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
     }
 
+    @MainActor
+    func testSearchQueryExtractionStripsSearchBarSuffixes() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let viewModel = ChatViewModel(
+            storageService: ConversationStorageService(storageURL: directory),
+            startBackgroundWork: false
+        )
+
+        XCTAssertEqual(
+            viewModel.testing_extractExplicitSearchQuery(from: "Open Google and search for penguin facts in the search bar"),
+            "penguin facts"
+        )
+        XCTAssertEqual(
+            viewModel.testing_refineSearchPhrase("backpacks in the search box and press enter"),
+            "backpacks"
+        )
+    }
+
+    @MainActor
+    func testDerivedScreenshotURLUsesKnownEngineSearchResultsForExplicitSearches() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let viewModel = ChatViewModel(
+            storageService: ConversationStorageService(storageURL: directory),
+            startBackgroundWork: false
+        )
+
+        XCTAssertEqual(
+            viewModel.testing_derivedScreenshotURL(from: "Open Google and search for penguin facts in the search bar"),
+            "https://www.google.com/search?q=penguin%20facts"
+        )
+        XCTAssertEqual(
+            viewModel.testing_derivedScreenshotURL(from: "Open Amazon and search for backpacks"),
+            "https://www.amazon.com/s?k=backpacks"
+        )
+    }
+
+    func testComputerServiceBuildsDirectSearchResultURLs() {
+        XCTAssertEqual(
+            ComputerService.testing_searchResultsURL(currentURL: "https://www.google.com", query: "penguin facts"),
+            "https://www.google.com/search?q=penguin%20facts"
+        )
+        XCTAssertEqual(
+            ComputerService.testing_searchResultsURL(siteKeyword: "amazon", query: "best value backpack"),
+            "https://www.amazon.com/s?k=best%20value%20backpack"
+        )
+    }
+
     // Test PromptLibrary
     @MainActor
     func testPromptLibraryPersistsAddUpdateAndDelete() throws {

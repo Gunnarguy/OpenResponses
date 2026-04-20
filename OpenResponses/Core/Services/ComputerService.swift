@@ -421,6 +421,38 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 if (s.visibility === 'hidden' || s.display === 'none' || s.pointerEvents === 'none' || parseFloat(s.opacity||'1') === 0) return false;
                 return true;
             }
+            function isEditable(el){
+                if (!el) return false;
+                if (el.isContentEditable) return true;
+                var tag = (el.tagName || '').toUpperCase();
+                if (tag === 'TEXTAREA') return true;
+                if (tag !== 'INPUT') return false;
+                var type = (el.getAttribute('type') || 'text').toLowerCase();
+                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
+            }
+            function findEditableDescendant(root){
+                if (!root) return null;
+                if (root.control && isEditable(root.control) && isVisible(root.control)) return root.control;
+                if (isEditable(root) && isVisible(root)) return root;
+                if (!root.querySelectorAll) return null;
+                var candidates = Array.from(root.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).filter(isVisible);
+                return candidates.find(isEditable) || null;
+            }
+            function pickEditableFromPoint(x,y){
+                var list = (document.elementsFromPoint ? document.elementsFromPoint(x,y) : [document.elementFromPoint(x,y)].filter(Boolean));
+                for (var i=0;i<list.length;i++){
+                    var el = list[i];
+                    if (isEditable(el) && isVisible(el)) return el;
+                    var nested = findEditableDescendant(el);
+                    if (nested) return nested;
+                    if (el.closest) {
+                        var labelled = el.closest('label, form, [role="search"]');
+                        var labelledEditable = findEditableDescendant(labelled);
+                        if (labelledEditable) return labelledEditable;
+                    }
+                }
+                return null;
+            }
             function looksLikeConsentOverlay(node){
                 if (!node || node === document.body) return false;
                 var txt = ((node.innerText||'') + ' ' + (node.className||'') + ' ' + (node.id||'')).toLowerCase();
@@ -494,7 +526,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     return "Refused click: no menu-like control visible near top-left.";
                 }
             } else {
-                el = pickClickableFromPoint(px, py);
+                el = pickEditableFromPoint(px, py) || pickClickableFromPoint(px, py);
                 // If the selected element appears to be a consent/cookie overlay container,
                 // prefer a visible consent button within it (e.g., "Accept All").
                 var overlay = el && looksLikeConsentOverlay(el) ? el : (el ? findAncestorOverlay(el) : null);
@@ -504,8 +536,16 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 }
             }
             if (!el) { return "No element found at point (" + px + ", " + py + ")."; }
+            var editableTarget = findEditableDescendant(el);
+            if (!isEditable(el) && editableTarget) {
+                el = editableTarget;
+            }
             try { el.scrollIntoView({block:'center', inline:'center', behavior:'auto'}); } catch(e) {}
-            var el2 = pickClickableFromPoint(px, py) || el; el = el2;
+            var el2 = pickEditableFromPoint(px, py) || pickClickableFromPoint(px, py) || el; el = el2;
+            var refinedEditableTarget = findEditableDescendant(el);
+            if (!isEditable(el) && refinedEditableTarget) {
+                el = refinedEditableTarget;
+            }
             var rect = el.getBoundingClientRect();
             var clickX = Math.round(rect.left + Math.min(rect.width/2, Math.max(1, rect.width - 1)));
             var clickY = Math.round(rect.top + Math.min(rect.height/2, Math.max(1, rect.height - 1)));
@@ -662,10 +702,70 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private func type(text: String) async throws {
         let script = """
         (function() {
+            function isVisible(el){
+                if (!el) return false;
+                var style = window.getComputedStyle(el);
+                var rect = el.getBoundingClientRect();
+                return style && style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+            }
+            function isEditable(el){
+                if (!el) return false;
+                if (el.isContentEditable) return true;
+                var tag = (el.tagName || '').toUpperCase();
+                if (tag === 'TEXTAREA') return true;
+                if (tag !== 'INPUT') return false;
+                var type = (el.getAttribute('type') || 'text').toLowerCase();
+                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
+            }
+            function allEditableCandidates(){
+                return Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).filter(function(el){
+                    return isVisible(el) && isEditable(el);
+                });
+            }
+            function looksSearchLike(el){
+                if (!el || !el.getAttribute) return false;
+                var attrs = [
+                    el.getAttribute('type') || '',
+                    el.getAttribute('name') || '',
+                    el.getAttribute('id') || '',
+                    el.getAttribute('aria-label') || '',
+                    el.getAttribute('placeholder') || ''
+                ].join(' ').toLowerCase();
+                return attrs.includes('search') || attrs.includes('query') || attrs === 'q';
+            }
+            function fireInputEvents(el){
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
+                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(e) {}
+            }
+
             var el = document.activeElement;
-            if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-                el.value += '\(text.sanitizedForJS())';
-                return "Typed text into " + el.tagName;
+            if (!isEditable(el) && el && el.querySelectorAll) {
+                var nested = Array.from(el.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).find(function(candidate){
+                    return isVisible(candidate) && isEditable(candidate);
+                });
+                if (nested) el = nested;
+            }
+
+            if (!isEditable(el)) {
+                var candidates = allEditableCandidates();
+                el = candidates.find(looksSearchLike) || candidates[0] || null;
+            }
+
+            if (el && isEditable(el)) {
+                if (el.focus) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
+                var value = '\(text.sanitizedForJS())';
+                if (el.isContentEditable) {
+                    el.textContent = value;
+                    fireInputEvents(el);
+                    return "Filled text into contenteditable element";
+                }
+
+                if (typeof el.select === 'function') {
+                    try { el.select(); } catch(e) {}
+                }
+                el.value = value;
+                fireInputEvents(el);
+                return "Filled text into " + el.tagName;
             }
             return "No active editable element found.";
         })();
@@ -738,6 +838,18 @@ class ComputerService: NSObject, WKNavigationDelegate {
             (function() {
                 var el = document.activeElement;
                 if (el) {
+                    if (el.form && typeof el.form.requestSubmit === 'function') {
+                        try {
+                            el.form.requestSubmit();
+                            return "Submitted form via requestSubmit from " + el.tagName;
+                        } catch (e) {}
+                    }
+                    if (el.form) {
+                        try {
+                            el.form.submit();
+                            return "Submitted form via submit from " + el.tagName;
+                        } catch (e) {}
+                    }
                     var event = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 });
                     el.dispatchEvent(event);
                     var event2 = new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13 });
@@ -1022,16 +1134,65 @@ class ComputerService: NSObject, WKNavigationDelegate {
         return nil
     }
 
+    nonisolated static func searchResultsURL(for currentURL: URL?, query: String) -> URL? {
+        guard let host = currentURL?.host?.lowercased() else { return nil }
+        return searchResultsURL(forHost: host, query: query)
+    }
+
+    nonisolated static func searchResultsURL(forSiteKeyword keyword: String, query: String) -> URL? {
+        searchResultsURL(forHost: keyword.lowercased(), query: query)
+    }
+
+    private nonisolated static func searchResultsURL(forHost host: String, query: String) -> URL? {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return nil }
+        guard let encodedQuery = trimmedQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return nil
+        }
+
+        if host.contains("google") {
+            return URL(string: "https://www.google.com/search?q=\(encodedQuery)")
+        }
+        if host.contains("bing") {
+            return URL(string: "https://www.bing.com/search?q=\(encodedQuery)")
+        }
+        if host.contains("duckduckgo") {
+            return URL(string: "https://duckduckgo.com/?q=\(encodedQuery)")
+        }
+        if host.contains("amazon") {
+            return URL(string: "https://www.amazon.com/s?k=\(encodedQuery)")
+        }
+        if host.contains("youtube") {
+            return URL(string: "https://www.youtube.com/results?search_query=\(encodedQuery)")
+        }
+        if host.contains("github") {
+            return URL(string: "https://github.com/search?q=\(encodedQuery)")
+        }
+
+        return nil
+    }
+
     /// Focuses a site search box (if present), types the query, and submits it.
     ///
     /// Behavior:
+    /// - Prefer direct results URLs for known search engines/sites.
     /// - Amazon: uses specific selectors and prefers clicking the submit button (avoids intercepts).
     /// - Other sites (incl. Google/Bing): tries a broad set of search selectors and submits via form or Enter.
     /// - Adds a short post-submit click suppression window to avoid immediate promo/suggestion clicks.
-    func performSearchIfOnKnownEngine(query: String) async throws {
-        guard let webView = webView else { return }
+    @discardableResult
+    func performSearchIfOnKnownEngine(query: String) async throws -> Bool {
+        guard let webView = webView else { return false }
         let host = webView.url?.host?.lowercased()
         let isAmazon = (host?.contains("amazon.") ?? false)
+
+        if let directSearchURL = Self.searchResultsURL(for: webView.url, query: query) {
+            AppLogger.log("🔎 [Search Override] Navigating directly to search results: \(directSearchURL.absoluteString)", category: .general, level: .info)
+            try await navigate(to: directSearchURL)
+            self.suppressClicksUntil = Date().addingTimeInterval(1.0)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            try await waitForDomReadyAndPaint()
+            return true
+        }
 
         let escaped = query.sanitizedForJS()
         let js: String
@@ -1042,9 +1203,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 var sel = document.querySelector('#twotabsearchtextbox, input[name="field-keywords"], input[aria-label="Search Amazon"], input[type="search"][name="k"]');
                 if(!sel){ return 'No Amazon search box found'; }
                 if (sel.focus) sel.focus();
+                sel.value = '';
                 sel.value = '\(escaped)';
                 try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
                 try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
+                try { sel.dispatchEvent(new Event('change', {bubbles:true})); } catch(e) {}
                 // Prefer clicking the submit button to avoid Amazon intercepts
                 var submitBtn = document.querySelector('#nav-search-submit-button, input[type="submit"][value], input[type="submit"]');
                 if (submitBtn) {
@@ -1084,9 +1247,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 }
                 if(!sel){ return 'No search box found'; }
                 if (sel.focus) sel.focus();
+                sel.value = '';
                 sel.value = '\(escaped)';
                 try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
                 try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
+                try { sel.dispatchEvent(new Event('change', {bubbles:true})); } catch(e) {}
                 // Try to submit via nearby submit button first, then form.submit, then Enter
                 var submitted = false;
                 try {
@@ -1094,6 +1259,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     var btn = root.querySelector('button[type="submit"], input[type="submit"], [aria-label="Search" i][role="button"], [type="image"][name="btnG"]');
                     if (btn && isVisible(btn)) { btn.click(); submitted = true; }
                 } catch(e) {}
+                if (!submitted && sel.form && typeof sel.form.requestSubmit === 'function') {
+                    try { sel.form.requestSubmit(); submitted = true; } catch(e) {}
+                }
                 if (!submitted && sel.form) { try { sel.form.submit(); submitted = true; } catch(e) {} }
                 if (!submitted) {
                     try {
@@ -1106,12 +1274,16 @@ class ComputerService: NSObject, WKNavigationDelegate {
             })();
             """
         }
-        _ = try await evaluateJavaScript(js)
+        let searchResult = (try await evaluateJavaScript(js) as? String) ?? ""
+        let didSubmit = searchResult.lowercased().contains("submitted")
+        AppLogger.log("🔎 [Search Override] \(searchResult)", category: .general, level: didSubmit ? .info : .debug)
+        guard didSubmit else { return false }
         // Start a short suppression window to ignore model-originated clicks right after programmatic submit
         self.suppressClicksUntil = Date().addingTimeInterval(1.0)
         // Give the page time to navigate and paint results
         try? await Task.sleep(nanoseconds: 700_000_000) // 700ms
         try await waitForDomReadyAndPaint()
+        return true
     }
 
     /// Evaluates a JavaScript string in the web view.
@@ -1256,3 +1428,15 @@ extension String {
             .replacingOccurrences(of: "\r", with: "\\r")
     }
 }
+
+#if DEBUG
+extension ComputerService {
+    nonisolated static func testing_searchResultsURL(currentURL: String, query: String) -> String? {
+        searchResultsURL(for: URL(string: currentURL), query: query)?.absoluteString
+    }
+
+    nonisolated static func testing_searchResultsURL(siteKeyword: String, query: String) -> String? {
+        searchResultsURL(forSiteKeyword: siteKeyword, query: query)?.absoluteString
+    }
+}
+#endif
