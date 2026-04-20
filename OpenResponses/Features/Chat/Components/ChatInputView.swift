@@ -10,7 +10,7 @@ struct ChatInputView: View {
     var onVectorStoreUpload: (() -> Void)? = nil // Callback for vector store file upload
     var vectorStoreCount: Int = 0 // Number of selected vector stores (0, 1, or 2)
     var fileSearchEnabled: Bool = false // Whether file search is enabled
-    var currentModel: String = "gpt-4o"
+    var currentModel: String = Prompt.defaultPrompt().openAIModel
 
     @ScaledMetric private var buttonPadding: CGFloat = 8
     @ScaledMetric private var containerPadding: CGFloat = 10

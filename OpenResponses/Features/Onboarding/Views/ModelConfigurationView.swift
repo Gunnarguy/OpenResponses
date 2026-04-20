@@ -90,7 +90,7 @@ struct ModelConfigurationView: View {
             Spacer()
 
             Button("Reset to Default") {
-                activePrompt.openAIModel = "gpt-4o"
+                activePrompt.openAIModel = Prompt.defaultPrompt().openAIModel
                 activePrompt.enableComputerUse = false
                 onSave()
             }

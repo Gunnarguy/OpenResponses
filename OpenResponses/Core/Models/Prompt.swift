@@ -198,7 +198,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     static func defaultPrompt() -> Prompt {
         return Prompt(
             name: "Default",
-            openAIModel: "gpt-4o",
+            openAIModel: "gpt-5.4",
             reasoningEffort: "medium",
             reasoningSummary: "", // Added
             temperature: 1.0,

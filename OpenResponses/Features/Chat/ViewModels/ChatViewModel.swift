@@ -3152,7 +3152,7 @@ class ChatViewModel: ObservableObject {
             // Validate the model name - if it's a UUID or invalid, reset to default
             if isInvalidModelName(prompt.openAIModel) {
                 print("Invalid model name detected: \(prompt.openAIModel), resetting to default")
-                prompt.openAIModel = "gpt-4o"
+                prompt.openAIModel = Prompt.defaultPrompt().openAIModel
                 needsSave = true
             }
 
