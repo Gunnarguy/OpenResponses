@@ -20,4 +20,4 @@ Notes:
 - This review key has active billing and is intended for App Review verification only.
 - Camera, Photos/Files, Calendar, Contacts, Reminders, and Local Network permissions are requested only if related features are used.
 - Computer Use is optional and off by default.
-- MCP is removed from the shipping UI for this submission.
+- Optional third-party connector configuration is not part of this shipping build.

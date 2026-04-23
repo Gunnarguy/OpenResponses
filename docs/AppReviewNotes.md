@@ -48,7 +48,7 @@
 ## App Review focus for this submission
 
 - This version adds an explicit in-app disclosure and permission step before the first OpenAI request and updates the privacy policy to match, addressing App Review Guidelines 5.1.1(i), 5.1.1(ii), and 5.1.2(i).
-- MCP has been removed from the shipping UI for this submission to reduce third-party configuration surface area during review.
+- Optional third-party connector configuration is not part of this shipping build, keeping the review flow focused on core AI chat, Apple integrations, and computer use.
 
 ## Support contact
 
