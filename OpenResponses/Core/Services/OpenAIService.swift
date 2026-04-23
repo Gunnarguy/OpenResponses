@@ -648,7 +648,7 @@ class OpenAIService: OpenAIServiceProtocol {
         // Add MCP-specific guidance if MCP is enabled
         // Note: The model automatically receives tool schemas from OpenAI's framework
         // We just need to encourage proactive usage
-        if prompt.enableMCPTool {
+        if AppFeatureFlags.isMCPAvailable && prompt.enableMCPTool {
             if prompt.mcpIsConnector, let connectorId = prompt.mcpConnectorId {
                 // Connector-specific instructions
                 let connectorName = MCPConnector.library.first(where: { $0.id == connectorId })?.name ?? connectorId
@@ -1745,7 +1745,7 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         // MCP Tool (Connector or Remote Server)
-        if prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
+        if AppFeatureFlags.isMCPAvailable, prompt.enableMCPTool, compatibilityService.isToolSupported(APICapabilities.ToolType.mcp, for: prompt.openAIModel, isStreaming: isStreaming) {
             // Check if this is a connector (OpenAI-maintained) or remote server (custom)
             if prompt.mcpIsConnector {
                 // Connector path: requires connector_id and OAuth token from keychain

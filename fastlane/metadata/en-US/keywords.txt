@@ -1,1 +1,1 @@
-gpt5,gpt54,reasoning,o3,assistant,mcp,calendar,reminders,contacts,websearch,imagegen,code,ios
+gpt5,gpt54,reasoning,o3,assistant,privacy,calendar,reminders,contacts,websearch,imagegen,code,ios

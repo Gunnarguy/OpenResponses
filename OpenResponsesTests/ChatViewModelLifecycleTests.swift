@@ -9,6 +9,7 @@ final class ChatViewModelLifecycleTests: XCTestCase {
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removeObject(forKey: "activePrompt")
+        UserDefaults.standard.set(AppFeatureFlags.aiDataSharingConsentVersion, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
         _ = KeychainService.shared.save(value: "test-key", forKey: "openAIKey")
     }
 
@@ -19,6 +20,7 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         temporaryDirectories.removeAll()
         _ = KeychainService.shared.delete(forKey: "openAIKey")
         UserDefaults.standard.removeObject(forKey: "activePrompt")
+        UserDefaults.standard.removeObject(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
         super.tearDown()
     }
 
@@ -120,7 +122,7 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertTrue(viewModel.activePrompt.enableComputerUse)
     }
 
-    func testSendUserMessageAllowsPublicRemoteMCPServerAfterProbe() async {
+    func testSendUserMessageIgnoresMCPConfigurationWhenFeatureFlagDisabled() async {
         let label = "deepwiki"
         UserDefaults.standard.removeObject(forKey: "mcp_probe_ok_\(label)")
         UserDefaults.standard.removeObject(forKey: "mcp_probe_ok_at_\(label)")
@@ -150,8 +152,68 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         })
 
         XCTAssertEqual(api.chatRequests.first?.userMessage, "Use the public MCP server.")
-        XCTAssertFalse(viewModel.messages.contains { $0.text?.contains("No Authorization header found") == true })
-        XCTAssertEqual(UserDefaults.standard.integer(forKey: "mcp_probe_tool_count_\(label)"), 2)
+        XCTAssertTrue(api.createConversationCalls.count >= 0)
+        XCTAssertEqual(UserDefaults.standard.integer(forKey: "mcp_probe_tool_count_\(label)"), 0)
+        XCTAssertTrue(api.chatRequests.count == 1)
+    }
+
+    func testSendUserMessageRequiresConsentBeforeCallingAPI() async {
+        UserDefaults.standard.removeObject(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
+
+        let api = MockOpenAIService()
+        api.sendChatResponse = makeTextResponse(id: "resp_consent_pending", text: "Should not send yet.")
+
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.enableStreaming = false
+        viewModel.activePrompt.storeResponses = false
+        viewModel.applyDraftStorePreference(false)
+
+        viewModel.sendUserMessage("Please wait for consent.")
+
+        XCTAssertTrue(api.chatRequests.isEmpty)
+        XCTAssertNotNil(viewModel.pendingAIDataSharingConsent)
+    }
+
+    func testApprovingConsentResumesQueuedSend() async {
+        UserDefaults.standard.removeObject(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
+
+        let api = MockOpenAIService()
+        api.sendChatResponse = makeTextResponse(id: "resp_consent_ok", text: "Consent approved.")
+
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.enableStreaming = false
+        viewModel.activePrompt.storeResponses = false
+        viewModel.applyDraftStorePreference(false)
+
+        viewModel.sendUserMessage("Send after approval.")
+        XCTAssertNotNil(viewModel.pendingAIDataSharingConsent)
+
+        viewModel.approveAIDataSharingConsent()
+
+        XCTAssertTrue(await waitUntil {
+            api.chatRequests.count == 1 && viewModel.messages.contains { $0.text == "Consent approved." }
+        })
+
+        XCTAssertEqual(api.chatRequests.first?.userMessage, "Send after approval.")
+    }
+
+    func testDenyingConsentDoesNotSendRequest() async {
+        UserDefaults.standard.removeObject(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
+
+        let api = MockOpenAIService()
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.enableStreaming = false
+        viewModel.activePrompt.storeResponses = false
+        viewModel.applyDraftStorePreference(false)
+
+        viewModel.sendUserMessage("Do not send this.")
+        XCTAssertNotNil(viewModel.pendingAIDataSharingConsent)
+
+        viewModel.denyAIDataSharingConsent()
+
+        XCTAssertTrue(api.chatRequests.isEmpty)
+        XCTAssertNil(viewModel.pendingAIDataSharingConsent)
+        XCTAssertTrue(viewModel.messages.contains { $0.text?.contains("No data was sent to OpenAI") == true })
     }
 
     func testCancelStreamingCancelsBackgroundResponse() async {

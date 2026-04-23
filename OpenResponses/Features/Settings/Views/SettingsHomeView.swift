@@ -154,6 +154,14 @@ private enum ApiKeySaveState: Equatable {
 private enum SettingsTab: CaseIterable {
     case general, model, tools, mcp, advanced
 
+    static var allCases: [SettingsTab] {
+        if AppFeatureFlags.isMCPAvailable {
+            return [.general, .model, .tools, .mcp, .advanced]
+        }
+
+        return [.general, .model, .tools, .advanced]
+    }
+
     var title: String {
         switch self {
         case .general:  return "General"
@@ -174,6 +182,7 @@ private struct GeneralTab: View {
     let isApiKeyDirty: Bool
     let saveApiKeyNow: () -> Void
     @Binding var showingPromptLibrary: Bool
+    @AppStorage("aiDataSharingConsentVersion") private var aiDataSharingConsentVersion = 0
     @State private var resetConfirm = false
     @State private var showAdvancedIdentity = false
 
@@ -228,6 +237,34 @@ private struct GeneralTab: View {
                 } footer: {
                     Text("Try the app with simulated responses—no API key needed.")
                 }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Prompts, attachments, and request-related tool data are only sent to OpenAI after you approve the first live request.")
+                        .font(.subheadline)
+
+                    Text(aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion ? "First-send consent has already been granted on this device." : "You’ll see the data-sharing notice before the first live AI request.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Link(destination: URL(string: "https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md")!) {
+                        Label("Open Privacy Policy", systemImage: "lock.shield")
+                    }
+
+                    if aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion {
+                        Button(role: .destructive) {
+                            aiDataSharingConsentVersion = 0
+                            viewModel.resetAIDataSharingConsent()
+                        } label: {
+                            Label("Reset First-Send Consent", systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                }
+            } header: {
+                Label("AI Data Sharing", systemImage: "externaldrive.badge.icloud")
+            } footer: {
+                Text("Explore Demo remains offline and never sends requests to OpenAI.")
             }
 
             // MARK: Streaming

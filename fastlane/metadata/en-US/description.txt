@@ -21,8 +21,7 @@ Tools Included
 - Image Generation with gpt-image-1
 - File Search and vector store workflows
 - Computer Use preview with explicit approval steps
-- MCP connectors and remote servers with connector gallery support
-- Direct Notion integration and updated MCP compatibility
+- Direct Notion integration and Apple system tools when you choose to enable them
 
 Built for Apple
 
@@ -33,6 +32,7 @@ Built for Apple
 Privacy
 
 - Your OpenAI API key is stored in the iOS Keychain
+- Before the first live AI request, the app shows an in-app OpenAI data sharing notice and requires explicit approval
 - No required account
 - Conversation history stays on device unless you choose to send or export it
 

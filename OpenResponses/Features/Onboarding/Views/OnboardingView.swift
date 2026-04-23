@@ -20,6 +20,12 @@ struct OnboardingView: View {
             color: .green
         ),
         OnboardingPage(
+            title: "Your Data, Your Choice",
+            description: "Explore Demo stays offline. Live prompts, attachments, and request-related tool data are sent to OpenAI only after you choose Allow & Send.",
+            imageName: "lock.shield.fill",
+            color: .purple
+        ),
+        OnboardingPage(
             title: "API Key Required",
             description: "To get started, you'll need an OpenAI API key. Your key stays on this device, and the assistant may still produce inaccurate answers—review everything before acting.",
             imageName: "key.fill",
@@ -52,7 +58,7 @@ struct OnboardingView: View {
                     }
                 }
 
-                VStack(spacing: 8) { 
+                VStack(spacing: 8) {
                     Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
 
                     Text("By using this app, you agree to the [Terms of Use (EULA)](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) and confirm you are 17+.")

@@ -16,6 +16,8 @@ final class MCPConfigurationService {
     /// - Does not override an explicitly configured connector flow.
     @MainActor
     func bootstrap(chatViewModel: ChatViewModel) {
+        guard AppFeatureFlags.isMCPAvailable else { return }
+
         var prompt = chatViewModel.activePrompt
 
         // If the user explicitly chose a connector, keep it, just ensure MCP is enabled and defaults are safe.

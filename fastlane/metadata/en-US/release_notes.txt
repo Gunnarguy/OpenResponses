@@ -1,8 +1,8 @@
-OpenResponses 1.0.1 is a major update since the original App Store launch.
+OpenResponses 2.0 is a major update since the original App Store launch.
 
 - Added GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5-mini, refreshed model aliases, and better model compatibility controls
 - Added Apple Calendar, Contacts, and Reminders tools with safer permission flows and improved local-time handling
 - Added Explore Demo, camera capture, better file and image attachments, message quick actions, and cleaner chat and settings UI
 - Added Request Inspector, activity feed, reasoning traces, token usage, and more reliable streaming and tool-call follow-through
-- Expanded MCP with connector gallery improvements, direct Notion integration guidance, remote server hardening, and newer Notion support
-- Strengthened App Store disclosures, safety prompts, and approval flows for computer use and other sensitive actions
+- Added an explicit first-send OpenAI data sharing notice with Allow & Send consent before live requests leave the device
+- Strengthened App Store disclosures, privacy copy, and approval flows for computer use and other sensitive actions

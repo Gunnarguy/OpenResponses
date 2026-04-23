@@ -74,20 +74,22 @@ struct ContentView: View {
         if !hasCompletedOnboarding {
             // Show onboarding first
             showingOnboarding = true
-        } else if isMissingOpenAIKey, !viewModel.exploreModeEnabled { 
+        } else if isMissingOpenAIKey, !viewModel.exploreModeEnabled {
             // If onboarding is done but no API key, offer Explore Demo or Settings
             showingExploreWelcome = true
         }
-        // Ensure MCP is bootstrapped ubiquitously once a configuration exists
-        MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
+        if AppFeatureFlags.isMCPAvailable {
+            MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
+        }
     }
 
     private func checkAPIKey() {
-        if isMissingOpenAIKey, !viewModel.exploreModeEnabled { 
+        if isMissingOpenAIKey, !viewModel.exploreModeEnabled {
             self.showingExploreWelcome = true
         }
-        // Re-apply MCP bootstrap after onboarding or API key updates
-        MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
+        if AppFeatureFlags.isMCPAvailable {
+            MCPConfigurationService.shared.bootstrap(chatViewModel: viewModel)
+        }
     }
 
     private var isMissingOpenAIKey: Bool {

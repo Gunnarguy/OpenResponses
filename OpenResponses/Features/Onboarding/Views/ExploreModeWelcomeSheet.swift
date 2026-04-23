@@ -52,7 +52,7 @@ struct ExploreModeWelcomeSheet: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Connect OpenAI", systemImage: "key.fill")
                             .font(.headline)
-                        Text("To generate real responses, add your OpenAI API key. The key is stored only in your iOS Keychain and can be removed anytime.")
+                        Text("To generate real responses, add your OpenAI API key. The key is stored only in your iOS Keychain, and the app will ask permission before the first request is sent to OpenAI.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 

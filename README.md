@@ -1,6 +1,6 @@
 # OpenResponses
 
-SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use, code interpreter, file search, image generation, and MCP integrations—all wrapped in a production-ready iOS experience with deep observability and safety rails.
+SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use, code interpreter, file search, image generation, and privacy-first Apple integrations—all wrapped in a production-ready iOS experience with deep observability and safety rails.
 
 [![iOS CI](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml)
 [![Release Checks](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml)
@@ -33,7 +33,7 @@ SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use
 
 OpenResponses is an end-to-end iOS, iPadOS, and macOS (Catalyst) client for the OpenAI Responses API. It targets developers and advanced users who need:
 
-- Full coverage of the current tool surface (computer use, code interpreter, file/vector search, image generation, MCP connectors).
+- Full coverage of the current tool surface (computer use, code interpreter, file/vector search, image generation, and Apple system tools).
 - Rich observability—streaming analytics, reasoning trace playback, and API inspectors that make debugging and demos effortless.
 - Enterprise-ready safeguards—Keychain credential storage, explicit approval flows for automation, and a minimal privacy footprint.
 
@@ -45,7 +45,7 @@ The app follows a productized workflow: everything you need to test, ship, and s
 
 - **Model Playground:** Live model catalogue with compatibility gating, preset management, and advanced request controls (streaming flags, prompt cache IDs, reasoning toggles).
 - **Observability Surface:** Streaming activity feed, live token usage, “Assistant Thinking” trace viewer, analytics events, and structured logging for every tool event.
-- **Tooling Portfolio:** Computer use with safety approvals, code interpreter with artifact viewer, multi-vector file search, direct file and image attachments, Notion/MCP connectors, custom function calls.
+- **Tooling Portfolio:** Computer use with safety approvals, code interpreter with artifact viewer, multi-vector file search, direct file and image attachments, direct Notion support, and custom function calls.
 - **Knowledge Workflows:** Vector store management flows, file conversion pipeline, and document picker enhancements built on `FileConverterService`.
 - **Native Shell:** SwiftUI UI with accessibility support, keyboard shortcuts, share sheets, prompt library, onboarding, and settings tuned for fast iteration.
 
@@ -93,7 +93,7 @@ open OpenResponses.xcodeproj
 2. Complete onboarding (3 screens summarizing capabilities and key requirements).
 3. When prompted, paste your OpenAI API key. It is stored in the iOS Keychain (`KeychainService`) and never checked into source control.
 4. Use Settings → General to toggle streaming, published prompts, and prompt cache IDs.
-5. Enable tools (code interpreter, computer use, file search, MCP) in Settings → Tools. Each capability enforces additional confirmation flows as required.
+5. Enable tools (code interpreter, computer use, file search, Apple integrations) in Settings → Tools. Each capability enforces additional confirmation flows as required.
 
 Secrets are intentionally absent from the repo. Run `python3 scripts/secret_scan.py` anytime to validate.
 
@@ -101,23 +101,23 @@ Secrets are intentionally absent from the repo. Run `python3 scripts/secret_scan
 
 ## Toolbox at a Glance
 
-| Capability | Details |
-| --- | --- |
-| **Computer Use** | Navigate/click/scroll automation with safety approval sheets, blank-page recovery, screenshot attachments, and status updates. |
-| **Code Interpreter** | Sandboxed Python execution with artifact viewer, status heartbeats, and result summarization. |
-| **File Search & Vector Stores** | Upload files, manage vector stores, toggle file search per prompt, and configure rankers or thresholds. |
-| **Image Generation** | Trigger image creation with optional detail level control and inline previews. |
-| **MCP Connectors** | Register local/remote MCP servers, inspect tools, and gate usage through approval UI with Keychain-backed auth. |
-| **Prompt Library** | Save and reuse prompt presets including reasoning/model settings and safety identifiers. |
-| **Observability** | Activity feed, streaming status chips, token usage counters, API inspector, debug console, and analytics hooks. |
+| Capability                      | Details                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Computer Use**                | Navigate/click/scroll automation with safety approval sheets, blank-page recovery, screenshot attachments, and status updates. |
+| **Code Interpreter**            | Sandboxed Python execution with artifact viewer, status heartbeats, and result summarization.                                  |
+| **File Search & Vector Stores** | Upload files, manage vector stores, toggle file search per prompt, and configure rankers or thresholds.                        |
+| **Image Generation**            | Trigger image creation with optional detail level control and inline previews.                                                 |
+| **Privacy-first consent**       | The first live OpenAI request is gated behind an in-app disclosure and explicit Allow & Send approval.                         |
+| **Prompt Library**              | Save and reuse prompt presets including reasoning/model settings and safety identifiers.                                       |
+| **Observability**               | Activity feed, streaming status chips, token usage counters, API inspector, debug console, and analytics hooks.                |
 
 ---
 
 ## Privacy, Safety, and Compliance
 
 - **Credentials:** API keys and integration tokens live only in the Keychain. No secrets ship with the app or reside on disk.
-- **Data Residency:** Conversations and attachments stay on device until you explicitly send them to OpenAI or an MCP tool.
-- **Permissions:** The app currently requests Photos, Files, Calendars, Contacts, Reminders, and Local Network usage descriptions. Camera, microphone, speech recognition, and location are intentionally excluded in v1.0.0.
+- **Data Residency:** Conversations and attachments stay on device until you explicitly approve and send them to OpenAI or an optional connected integration.
+- **Permissions:** The app currently requests Camera, Photos, Files, Calendars, Contacts, Reminders, and Local Network usage descriptions. Microphone, speech recognition, and precise location are intentionally excluded in 2.0.
 - **Computer Use Safeguards:** Every automation step requires review; declines cancel the chain immediately. Status updates ensure reviewers see what is happening at all times.
 - **Docs:** See `PRIVACY.md` for the privacy summary and `docs/AppReviewNotes.md` for reviewer instructions.
 
@@ -154,7 +154,7 @@ The Minimal Viable App-Store Submission (MVAS) plan captures everything needed t
 - `docs/PRODUCTION_CHECKLIST.md` — manual QA and release verification steps.
 - `docs/Advanced.md`, `docs/Tools.md`, `docs/Files.md`, `docs/Images.md` — feature-specific how-tos.
 - `docs/AppReviewNotes.md` — one-pager for App Store reviewers.
-- `Notion/` — MCP connector setup guides.
+- `Notion/` — Direct Notion integration guides.
 
 ---
 

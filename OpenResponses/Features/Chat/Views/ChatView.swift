@@ -81,6 +81,10 @@ struct ChatView: View {
                 }
             }
         }
+        .sheet(item: $viewModel.pendingAIDataSharingConsent) { _ in
+            AIDataSharingConsentSheet()
+                .environmentObject(viewModel)
+        }
         // Safety approval sheet for computer-use actions
         .sheet(
             isPresented: Binding(

@@ -390,7 +390,7 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertFalse(hasDropboxConnector)
     }
 
-    func testMCPConnectorToolIncludedWhenAuthorizationPresent() {
+    func testMCPConnectorToolOmittedWhenFeatureFlagDisabledEvenWithAuthorization() {
         let connectorId = "connector_dropbox"
         let authKey = "mcp_connector_\(connectorId)"
         XCTAssertTrue(KeychainService.shared.save(value: "test-oauth-token", forKey: authKey))
@@ -408,20 +408,13 @@ final class OpenAIServiceTests: XCTestCase {
 
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
-        guard let tools = request["tools"] as? [[String: Any]] else {
-            return XCTFail("Expected tools payload")
-        }
-
-        guard let mcpTool = tools.first(where: { tool in
+        let tools = (request["tools"] as? [[String: Any]]) ?? []
+        XCTAssertFalse(tools.contains { tool in
             tool["type"] as? String == "mcp" && (tool["connector_id"] as? String == connectorId)
-        }) else {
-            return XCTFail("Expected mcp tool with connector_id=\(connectorId)")
-        }
-
-        XCTAssertEqual(mcpTool["authorization"] as? String, "test-oauth-token")
+        })
     }
 
-    func testRemoteMCPToolIncludedWithoutAuthorizationForPublicServer() {
+    func testRemoteMCPToolOmittedWhenFeatureFlagDisabledForPublicServer() {
         let label = "deepwiki"
         _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
 
@@ -440,26 +433,13 @@ final class OpenAIServiceTests: XCTestCase {
 
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
-        guard let tools = request["tools"] as? [[String: Any]],
-              let mcpTool = tools.first(where: {
-                  $0["type"] as? String == "mcp" && ($0["server_url"] as? String) == "https://mcp.deepwiki.com/mcp"
-              }) else {
-            return XCTFail("Expected remote mcp tool for public server")
-        }
-
-        XCTAssertEqual(mcpTool["server_label"] as? String, label)
-        XCTAssertEqual(mcpTool["require_approval"] as? String, "never")
-        XCTAssertNil(mcpTool["authorization"])
-
-        guard let headers = mcpTool["headers"] as? [String: String] else {
-            return XCTFail("Expected session headers for public remote MCP server")
-        }
-
-        XCTAssertNil(headers["Authorization"])
-        XCTAssertNotNil(headers["mcp-session-id"])
+        let tools = (request["tools"] as? [[String: Any]]) ?? []
+        XCTAssertFalse(tools.contains { tool in
+            tool["type"] as? String == "mcp" && (tool["server_url"] as? String) == "https://mcp.deepwiki.com/mcp"
+        })
     }
 
-    func testRemoteMCPToolUsesRawAuthorizationAndKeepsSessionHeader() {
+    func testRemoteMCPToolOmittedWhenFeatureFlagDisabledWithAuthorization() {
         let label = "github"
         _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
 
@@ -479,21 +459,10 @@ final class OpenAIServiceTests: XCTestCase {
 
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
-        guard let tools = request["tools"] as? [[String: Any]],
-              let mcpTool = tools.first(where: {
-                  $0["type"] as? String == "mcp" && ($0["server_url"] as? String) == "https://api.githubcopilot.com/mcp/"
-              }) else {
-            return XCTFail("Expected remote mcp tool for GitHub")
-        }
-
-        XCTAssertEqual(mcpTool["authorization"] as? String, "github-oauth-token")
-
-        guard let headers = mcpTool["headers"] as? [String: String] else {
-            return XCTFail("Expected MCP headers")
-        }
-
-        XCTAssertNil(headers["Authorization"])
-        XCTAssertNotNil(headers["mcp-session-id"])
+        let tools = (request["tools"] as? [[String: Any]]) ?? []
+        XCTAssertFalse(tools.contains { tool in
+            tool["type"] as? String == "mcp" && (tool["server_url"] as? String) == "https://api.githubcopilot.com/mcp/"
+        })
     }
 
     func testFileSearchToolCarriesVectorStoreIds() {

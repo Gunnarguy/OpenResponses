@@ -5,17 +5,17 @@ import Foundation
 struct Prompt: Codable, Identifiable, Equatable {
     // MARK: - Properties
     var name: String
-    
+
     // Model and Generation
     var openAIModel: String
     var reasoningEffort: String
     var reasoningSummary: String // Added
     var temperature: Double
-    
+
     // Instructions
     var systemInstructions: String
     var developerInstructions: String
-    
+
     // Tools
     var enableWebSearch: Bool
     var webSearchMode: String
@@ -35,13 +35,13 @@ struct Prompt: Codable, Identifiable, Equatable {
     var imageGenerationBackground: String
     var enableFileSearch: Bool
     var selectedVectorStoreIds: String?
-    
+
     // File Search Advanced Options
     var fileSearchMaxResults: Int? // 1-50
     var fileSearchRanker: String? // "auto" or "default-2024-08-21"
     var fileSearchScoreThreshold: Double? // 0.0-1.0
     var fileSearchFiltersJSON: String?
-    
+
     var enableMCPTool: Bool
     var enableCustomTool: Bool
     var enableComputerUse: Bool
@@ -56,11 +56,11 @@ struct Prompt: Codable, Identifiable, Equatable {
     var mcpAllowedTools: String
     var mcpAuthHeaderKey: String // e.g., "Authorization", "X-Auth-Token"
     var mcpKeepAuthInHeaders: Bool // If true and using Authorization, also send as header in addition to top-level
-    
+
     // MARK: - MCP Connector Support
     var mcpConnectorId: String? // e.g., "connector_dropbox", "connector_gmail"
     var mcpIsConnector: Bool // True if using a connector, false if using a remote server
-    
+
     // MARK: - Secure MCP Auth Helper
     /// Gets the MCP headers, preferring secure keychain storage over the mcpHeaders string
     var secureMCPHeaders: [String: String] {
@@ -71,13 +71,13 @@ struct Prompt: Codable, Identifiable, Equatable {
                let authDict = try? JSONSerialization.jsonObject(with: Data(authData.utf8)) as? [String: String] {
                 return authDict
             }
-            
+
             // Fall back to parsing mcpHeaders string (legacy)
             if let data = mcpHeaders.data(using: .utf8),
                let parsedHeaders = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
                 return parsedHeaders
             }
-            
+
             return [:]
         }
         set {
@@ -103,13 +103,13 @@ struct Prompt: Codable, Identifiable, Equatable {
     var customToolExecutionType: String
     // Optional webhook URL for executionType == "webhook"
     var customToolWebhookURL: String
-    
+
     // Web Search Location
     var userLocationCity: String?
     var userLocationCountry: String?
     var userLocationRegion: String?
     var userLocationTimezone: String?
-    
+
     // Advanced API
     var backgroundMode: Bool
     var maxOutputTokens: Int
@@ -126,14 +126,14 @@ struct Prompt: Codable, Identifiable, Equatable {
     var promptCacheKey: String = ""
     var safetyIdentifier: String = ""
     var verbosity: String = "medium"
-    
+
     // Text Formatting
     var textFormatType: String
     var jsonSchemaName: String
     var jsonSchemaDescription: String
     var jsonSchemaStrict: Bool
     var jsonSchemaContent: String
-    
+
     // Advanced Includes
     var includeCodeInterpreterOutputs: Bool
     var includeComputerCallOutput: Bool
@@ -144,33 +144,33 @@ struct Prompt: Codable, Identifiable, Equatable {
     var includeOutputLogprobs: Bool
     var includeReasoningContent: Bool
     var includeComputerUseOutput: Bool = false
-    
+
     // Behavior Controls
     /// When true, the app will not apply any helper heuristics around computer-use actions
     /// (no pre-navigation URL derivation, no intent-aware search submission, no click-by-text overrides).
     /// The agent will execute exactly the model's actions. Useful for purists and debugging.
     var ultraStrictComputerUse: Bool = false
-    
+
     // Streaming and Published Prompts
     var enableStreaming: Bool
     var enablePublishedPrompt: Bool
     var publishedPromptId: String
     var publishedPromptVersion: String
-    
+
     // Misc
     var toolChoice: String
     var metadata: String?
     var searchContextSize: String?
-    
+
     // Input Modalities (audio removed)
-    
+
     /// A flag to indicate if this prompt is a saved preset.
     /// This is a runtime-only property and is not persisted.
     var isPreset: Bool = false
-    
+
     // MARK: - Identifiable
     var id: UUID = UUID()
-    
+
     // MARK: - Codable
     enum CodingKeys: String, CodingKey {
         // Explicitly list all properties to be encoded/decoded
@@ -193,7 +193,7 @@ struct Prompt: Codable, Identifiable, Equatable {
         case id // Make sure 'id' is included
         // 'isPreset' is intentionally omitted from Codable to prevent it from being persisted.
     }
-    
+
     // MARK: - Default Prompt
     static func defaultPrompt() -> Prompt {
         return Prompt(
@@ -224,7 +224,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             fileSearchRanker: nil,
             fileSearchScoreThreshold: nil,
             fileSearchFiltersJSON: nil,
-            enableMCPTool: true,
+            enableMCPTool: AppFeatureFlags.isMCPAvailable,
             enableCustomTool: false,
             enableComputerUse: false,
             enableNotionIntegration: true,

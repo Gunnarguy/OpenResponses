@@ -30,6 +30,8 @@ class ChatViewModel: ObservableObject {
     // Computer-use preview removed
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
+    /// When non-nil, the user must approve first-send OpenAI data sharing before a live request is sent.
+    @Published var pendingAIDataSharingConsent: AIDataSharingConsentRequest?
 
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
@@ -407,12 +409,68 @@ class ChatViewModel: ObservableObject {
     }
 
     private func exploreDemoWelcomeText() -> String {
-        return "Hi! I’m a demo assistant. I can’t call the OpenAI API yet (no key configured), but you can explore the app’s UI and what it *can* do.\n\nTry asking things like:\n• \"Write a SwiftUI view for a settings screen\"\n• \"Summarize a PDF\" (attach a file once you add a key)\n• \"Use web search to find today’s news\"\n• \"Connect Notion via MCP\"\n\nWhen you’re ready: Settings → General → paste your OpenAI API key."
+        return "Hi! I’m a demo assistant. I can’t call the OpenAI API yet (no key configured), but you can explore the app’s UI and what it *can* do.\n\nTry asking things like:\n• \"Write a SwiftUI view for a settings screen\"\n• \"Summarize a PDF\" (attach a file once you add a key)\n• \"Use web search to find today’s news\"\n• \"Connect Notion\"\n\nWhen you’re ready: Settings → General → paste your OpenAI API key."
     }
 
     private func isMissingOpenAIKey() -> Bool {
         let key = KeychainService.shared.load(forKey: "openAIKey")
         return (key == nil || key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true)
+    }
+
+    var hasApprovedAIDataSharingConsent: Bool {
+        UserDefaults.standard.integer(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey) >= AppFeatureFlags.aiDataSharingConsentVersion
+    }
+
+    struct AIDataSharingConsentRequest: Identifiable {
+        let id = UUID()
+        let text: String
+        let bypassMCPGate: Bool
+        let hasFileAttachments: Bool
+        let hasImageAttachments: Bool
+        let usesEnabledTools: Bool
+    }
+
+    func resetAIDataSharingConsent() {
+        UserDefaults.standard.set(0, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
+    }
+
+    private func shouldRequireAIDataSharingConsent() -> Bool {
+        !exploreModeEnabled && !isMissingOpenAIKey() && !hasApprovedAIDataSharingConsent
+    }
+
+    private func stageAIDataSharingConsent(for text: String, bypassMCPGate: Bool) {
+        pendingAIDataSharingConsent = AIDataSharingConsentRequest(
+            text: text,
+            bypassMCPGate: bypassMCPGate,
+            hasFileAttachments: !pendingFileData.isEmpty || !pendingFileAttachments.isEmpty || !pendingFileNames.isEmpty,
+            hasImageAttachments: !pendingImageAttachments.isEmpty,
+            usesEnabledTools: activePrompt.enableWebSearch ||
+                activePrompt.enableCodeInterpreter ||
+                activePrompt.enableFileSearch ||
+                activePrompt.enableImageGeneration ||
+                activePrompt.enableComputerUse ||
+                activePrompt.enableNotionIntegration ||
+                activePrompt.enableAppleIntegrations
+        )
+    }
+
+    func approveAIDataSharingConsent() {
+        guard let request = pendingAIDataSharingConsent else { return }
+        UserDefaults.standard.set(AppFeatureFlags.aiDataSharingConsentVersion, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)
+        pendingAIDataSharingConsent = nil
+        sendUserMessage(request.text, bypassMCPGate: request.bypassMCPGate, bypassAIDataSharingConsent: true)
+    }
+
+    func denyAIDataSharingConsent() {
+        guard pendingAIDataSharingConsent != nil else { return }
+        pendingAIDataSharingConsent = nil
+        messages.append(
+            ChatMessage(
+                role: .system,
+                text: "No data was sent to OpenAI. You can review the notice in Settings → General and try again whenever you’re ready.",
+                images: nil
+            )
+        )
     }
 
     private func shouldHandleComputerActivationShortcut(_ text: String) -> Bool {
@@ -565,15 +623,16 @@ class ChatViewModel: ObservableObject {
             """
         }
 
-        if lower.contains("mcp") || lower.contains("notion") || lower.contains("connector") {
+        if lower.contains("notion") || lower.contains("connector") || lower.contains("integration") {
             return """
-            (Demo) I support the **Model Context Protocol (MCP)**. This means you can connect me to your personal tools like:
+            (Demo) I support optional integrations so you can connect the assistant to your own data and workflows.
 
-            - **Notion** (read/write pages for you)
-            - **Google Drive** (search files)
-            - **Local Filesystem** (safe local access)
+            **Examples:**
+            - **Notion** for pages and databases
+            - **Apple apps** like Calendar, Reminders, and Contacts
+            - **OpenAI tools** like web search, file search, and code interpreter
 
-            Once connected in **Settings → MCP**, I can read your notes and answer questions like *"What is on my reading list in Notion?"*
+            Once enabled in **Settings**, I can answer questions like *"What is on my reading list in Notion?"* or *"What’s on my calendar today?"*
             """
         }
 
@@ -1101,7 +1160,7 @@ class ChatViewModel: ObservableObject {
 
     /// Sends a user message and processes the assistant's response.
     /// This appends the user message to the chat and interacts with the OpenAI service.
-    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false) {
+    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false, bypassAIDataSharingConsent: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Do not allow sending a new message while a computer-use step is pending.
@@ -1175,11 +1234,16 @@ class ChatViewModel: ObservableObject {
             return
         }
 
+        if !bypassAIDataSharingConsent, shouldRequireAIDataSharingConsent() {
+            stageAIDataSharingConsent(for: trimmed, bypassMCPGate: bypassMCPGate)
+            return
+        }
+
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
 
         // MCP gate for remote servers: require a successful list_tools probe with fresh token hash
-        if activePrompt.enableMCPTool && !bypassMCPGate {
+        if AppFeatureFlags.isMCPAvailable && activePrompt.enableMCPTool && !bypassMCPGate {
             let label = activePrompt.mcpServerLabel
             let url = activePrompt.mcpServerURL
             let isRemote = activePrompt.enableMCPTool && !activePrompt.mcpIsConnector && !label.isEmpty && !url.isEmpty
@@ -3440,6 +3504,17 @@ class ChatViewModel: ObservableObject {
         if prompt.backgroundMode && !prompt.storeResponses {
             prompt.backgroundMode = false
             didChange = true
+        }
+
+        if !AppFeatureFlags.isMCPAvailable {
+            if prompt.enableMCPTool {
+                prompt.enableMCPTool = false
+                didChange = true
+            }
+            if prompt.mcpIsConnector {
+                prompt.mcpIsConnector = false
+                didChange = true
+            }
         }
 
         return didChange
