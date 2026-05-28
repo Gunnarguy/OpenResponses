@@ -2,11 +2,11 @@
 
 ## 1. Purpose & Current Scope
 
-OpenResponses is a SwiftUI playground for the modern OpenAI platform. The app is built for power users who need to explore the entire Responses API surface – switching between models, streaming modes, and tools without swapping projects or shell scripts. Version 2025.11 focuses on production-ready coverage of every Phase 1 roadmap feature while preparing the codebase for Phase 2's Conversations API migration.
+OpenResponses is a SwiftUI playground for the modern OpenAI platform. The app is built for people who want the practical OpenAI Playground experience on iPhone, iPad, and Mac: switching models, trying prompts, attaching files or images, running tools, and inspecting what happened without swapping projects or shell scripts. Version 2025.11 focuses on production-ready coverage of the Phase 1 features that make that mobile Playground experience work, while preparing the codebase for deeper Phase 2 conversation sync.
 
-- **Primary goal:** Deliver a trustworthy chat client that exposes advanced OpenAI features (computer use, MCP connectors, reasoning models, file search, image generation) with the ergonomics of a native Apple app.
-- **Audience:** Engineers, developer advocates, and QA teams validating OpenAI capabilities ahead of their own integrations.
-- **Non-goals:** Audio capture or realtime voice interfaces (explicitly out of scope for 2025) and speculative Phase 3 UI redesigns.
+- **Primary goal:** Deliver a trustworthy chat client that exposes the OpenAI features most people expect from a Playground-style app: model controls, reasoning, attachments, web/file search, code interpreter, image generation, computer use, custom tools/MCP, and clear request diagnostics.
+- **Audience:** Builders, technical power users, developer advocates, QA teams, and curious non-specialists who need a capable native client without learning every OpenAI API detail.
+- **Non-goals:** Fine-tuning, evals, batch jobs, admin APIs, audio capture, realtime voice agents, video workflows, and speculative Phase 3 UI redesigns.
 
 ## 2. High-Level Architecture
 
@@ -51,8 +51,8 @@ OpenResponses follows a strict MVVM structure with dependency injection via `App
 
 ### 3.5 Persistence & Conversations
 
-- Conversations currently persist locally with `ConversationStorageService` (JSON per conversation, cached in memory).
-- The **Phase 2** objective is to transition to backend-managed history via `/v1/conversations`, keeping local storage as an offline cache. Supporting work includes augmenting the `Conversation` model with remote IDs/metadata and adding sync logic to the storage service and view model.
+- Conversations persist locally with `ConversationStorageService` (JSON per conversation, cached in memory), which keeps the app useful offline and avoids surprising server-side storage.
+- The **Phase 2** objective is to finish the optional backend-managed history path via `/v1/conversations`. Service-level CRUD and opt-in send/delete integration exist; the remaining work is full remote list/history reconciliation while keeping local storage as the safe default.
 
 ### 3.6 Security & Privacy
 
@@ -69,7 +69,7 @@ OpenResponses follows a strict MVVM structure with dependency injection via `App
 
 ## 5. Near-Term Focus (Phase 2 Highlights)
 
-1. **Backend-managed conversations:** Implement `/v1/conversations` CRUD, add sync logic with offline cache fallback, and expose conversation metadata where useful (titles, tags).
+1. **Backend-managed conversations:** Complete remote conversation list/history sync using the existing `/v1/conversations` service methods, keep offline cache fallback, and expose metadata where useful (titles, tags).
 2. **Annotation rendering:** Extend `ChatMessage` to store output annotations (file, URL citations) and update `FormattedTextView` to render inline links/badges.
 3. **Documentation parity:** Maintain this case study, `ROADMAP.md`, and `docs/api/Full_API_Reference.md` whenever feature coverage changes to keep future contributors aligned.
 

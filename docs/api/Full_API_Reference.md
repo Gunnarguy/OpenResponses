@@ -54,9 +54,20 @@ Audio input is not supported. This feature was removed from the app.
 
 ## Introduction
 
-This document provides an exhaustive, field-level analysis of the OpenAI APIs used by the OpenResponses iOS application. Its purpose is to serve as a single source of truth for all developers, both human and AI, to understand the full capabilities of the backend and how they are currently implemented within the Swift codebase.
+This document maps the OpenAI APIs that matter for OpenResponses as an **iOS version of the OpenAI Playground**. It is intentionally scoped to the product: model experimentation, prompt controls, attachments, tools, streaming, request inspection, and conversation continuity.
 
-Each API feature is mapped directly to the relevant files, classes, and functions. "App Status" indicates the current level of integration, and "Implementation Details & Gap Analysis" provides a precise, actionable description of the existing code and the work required to achieve full functionality.
+It is not an exhaustive inventory of every OpenAI platform endpoint. Fine-tuning, evals, batch jobs, admin APIs, realtime voice agents, and video workflows are only relevant if the app product direction expands to include them.
+
+Each feature below is mapped to the relevant files, classes, and functions. "App Status" describes whether that feature is ready for Playground-style use, needs important polish, or is out of scope.
+
+### Practical product scope
+
+| Bucket                              | Included capabilities                                                                                                                                                                                                                                                                |
+| :---------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Core Playground functionality**   | Responses create/stream/retrieve/cancel, model listing, system/developer/user input, model parameters, reasoning controls, file/image attachments, web search, file search, code interpreter, image generation, computer use, custom functions/MCP, request and response inspection. |
+| **Persistence and trust**           | Local conversation storage, optional backend conversation IDs, Keychain credential storage, privacy controls, preflight validation, understandable errors, safety approvals for risky tool/computer actions.                                                                         |
+| **Important but not blocking**      | Full backend conversation reconciliation, citation/annotation rendering, richer artifact browser, export/share flows, and release smoke-test coverage for tool-heavy workflows.                                                                                                      |
+| **Not required for this app today** | Audio/realtime voice, fine-tuning, evals, batches, admin APIs, organization management, video generation, and training-data operations.                                                                                                                                              |
 
 ---
 
@@ -115,10 +126,10 @@ The app correctly wraps the user's text in an `InputMessage` structure. However,
 
 | Property    | Type     | Required | Description                           | App Status & Implementation Details                                                                                                                                              |
 | :---------- | :------- | :------- | :------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`      | `String` | **Yes**  | Must be `"input_file"`.               | **Partially Implemented**. `OpenAIService.buildInputMessages` sends `{ "type": "input_file", "file_id": ... }` for attachments. No `InputFile` struct is required for this path. |
-| `filename`  | `String` | No       | The name of the file.                 | **Not Implemented**.                                                                                                                                                             |
-| `file_data` | `String` | No       | Base64 encoded file content.          | **Not Implemented**. Files are uploaded first via the Files API; only `file_id` references are sent in `input` messages.                                                         |
-| `file_id`   | `String` | No       | The ID of a previously uploaded file. | **Implemented**. The app uploads files (`ChatViewModel.attachFile`) and sends the resulting `file_id` in `input`.                                                                |
+| `type`      | `String` | **Yes**  | Must be `"input_file"`.               | **Implemented**. `OpenAIService.buildInputMessages` sends `input_file` content items for file attachments. |
+| `filename`  | `String` | No       | The name of the file.                 | **Implemented for direct file data**. Direct small-file payloads include `filename`; most UI flows prefer Files API upload plus `file_id` for reliability. |
+| `file_data` | `String` | No       | Base64 encoded file content.          | **Implemented where appropriate**. The request builder supports direct `file_data`, while larger/user-selected files are typically uploaded first and sent as `file_id`. |
+| `file_id`   | `String` | No       | The ID of a previously uploaded file. | **Implemented**. The app uploads files through the Files API and sends the resulting `file_id` in `input`. |
 
 **D. Input Audio**
 
@@ -290,8 +301,8 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 **B. Annotations**
 
 - **API Description:** The `OutputText` object can contain an `annotations` array with rich metadata linked to the text.
-- **App Status:** **Not Implemented**.
-- **Gap Analysis:** The `ChatMessage` model only contains a `text` property and has no structure to store annotations. `FormattedTextView.swift` renders Markdown but has no logic to parse annotations. To implement, `ChatMessage` would need an `[Annotation]` property and `FormattedTextView` would need to process annotations to render `url_citation` as clickable links and `file_citation` with appropriate styling.
+- **App Status:** **Important polish / partial**. The app already renders readable text and tool activity, but rich inline citation rendering is still a gap.
+- **Product impact:** This is not required for basic Playground-style chat, but it matters for trust when users rely on web/file search sources. To complete it, `ChatMessage` should persist annotations and `FormattedTextView` should render `url_citation`, `file_citation`, and `container_file_citation` as tappable/source-aware UI.
 - **Annotation Types:**
   - `file_citation`: Contains `file_id`, `filename`, provides source attribution
   - `url_citation`: Contains `url`, `title`, `start_index`, `end_index`, enables clickable web links
@@ -301,7 +312,7 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 
 ## 3. The Conversations API: Implementation Analysis
 
-**App Status:** **Not Implemented**. The app manages conversations entirely through local storage via `ConversationStorageService.swift`. The backend Conversations API is not used.
+**App Status:** **Partial / important polish**. Local conversation history is complete and remains the default. `OpenAIService` now exposes Conversations API CRUD methods, and `ChatViewModel` can create/use a backend conversation ID for opt-in remote storage. Full remote list/history reconciliation is still Phase 2 work.
 
 ### 3.1. Current Local Implementation
 
@@ -312,35 +323,35 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 - **Operations:** `loadConversations()`, `saveConversation()`, `deleteConversation()`
 - **UI Integration:** `ConversationListView.swift` displays conversations from local storage
 
-### 3.2. Missing API Integration
+### 3.2. Backend API Integration Status
 
-| Endpoint                 | Method   | Purpose                       | Implementation Gap     |
-| :----------------------- | :------- | :---------------------------- | :--------------------- |
-| `/v1/conversations`      | `POST`   | Create backend conversation   | No network call exists |
-| `/v1/conversations`      | `GET`    | List all conversations        | No network call exists |
-| `/v1/conversations/{id}` | `GET`    | Retrieve conversation history | No network call exists |
-| `/v1/conversations/{id}` | `POST`   | Update conversation           | No network call exists |
-| `/v1/conversations/{id}` | `DELETE` | Delete conversation           | No network call exists |
+| Endpoint                 | Method   | Purpose                       | Product status                                                                                                                         |
+| :----------------------- | :------- | :---------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/conversations`      | `POST`   | Create backend conversation   | Implemented in `OpenAIService.createConversation`; used by `ChatViewModel.ensureRemoteConversationIfNeeded` for opt-in remote storage. |
+| `/v1/conversations`      | `GET`    | List all conversations        | Service method exists; full cloud-backed conversation-list UI reconciliation is pending.                                               |
+| `/v1/conversations/{id}` | `GET`    | Retrieve conversation history | Service method exists; hydrating local threads from remote history is pending.                                                         |
+| `/v1/conversations/{id}` | `POST`   | Update conversation metadata  | Implemented in service for metadata/archive updates.                                                                                   |
+| `/v1/conversations/{id}` | `DELETE` | Delete conversation           | Implemented for remote-backed local deletes.                                                                                           |
 
-### 3.3. Implementation Requirements for Full API Integration
+### 3.3. Remaining Work for Playground-Quality Sync
 
-**A. Network Service Layer**
+**A. Sync layer**
 
-- Add conversation management methods to `OpenAIService.swift`
-- Replace local storage calls with API calls in `ConversationStorageService.swift`
-- Handle API errors and offline fallback scenarios
+- Use existing `OpenAIService` conversation methods to hydrate cloud-backed threads into the local cache.
+- Add conflict handling between local JSON history and remote conversation state.
+- Preserve local/offline mode as the default privacy-first behavior.
 
 **B. Data Model Updates**
 
-- Ensure `Conversation` model matches API response format
-- Add server-side conversation IDs and metadata
-- Handle conversation synchronization between local and remote
+- Keep `remoteId`, sync state, metadata, and local cache fields aligned.
+- Store enough remote metadata to distinguish local-only vs. cloud-backed threads.
+- Avoid exposing backend implementation details in the main chat UI.
 
 **C. UI Considerations**
 
-- Add loading states for network operations
-- Handle online/offline scenarios gracefully
-- Provide sync status indicators in `ConversationListView`
+- Add simple sync status language in `ConversationListView`.
+- Handle online/offline scenarios gracefully.
+- Make cloud-backed history understandable to non-technical users.
 
 ---
 
@@ -430,8 +441,8 @@ This document serves as the definitive reference for understanding the current i
 **B. Annotations**
 
 - **API Description:** The `OutputText` object can contain an `annotations` array with rich metadata linked to the text.
-- **App Status:** **Not Implemented**.
-- **Gap Analysis:** The `ChatMessage` model is just a `String` and has no property to store an array of annotation objects. The `FormattedTextView.swift`, which renders the Markdown, has no logic to parse these annotations. To implement, `ChatMessage` would need an `[Annotation]` property. `FormattedTextView` would need to be rewritten to process the text and its associated annotations, rendering `url_citation` as a tappable link and `file_citation` with a specific icon or style.
+- **App Status:** **Important polish / partial**. Assistant text renders today, but source-aware annotation UI is still pending.
+- **Product impact:** Not required for basic Playground chat, but important for trust when web search, file search, or code interpreter responses cite sources. To implement, `ChatMessage` should store structured annotations and `FormattedTextView.swift` should render `url_citation`, `file_citation`, and `container_file_citation` as understandable links or badges.
 - **Annotation Types:**
   - `file_citation`: Contains `file_id`, `filename`.
   - `url_citation`: Contains `url`, `title`, `start_index`, `end_index`.

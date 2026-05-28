@@ -9,17 +9,25 @@ Phase 1 is locked: every shipping Responses API tool (computer, code interprete
 
 ## 1. Objective
 
-This document serves as the comprehensive playbook for upgrading the OpenResponses app from its current state to 100% compliance with the latest OpenAI and Apple capabilities. It outlines every feature, API endpoint, and architectural improvement required to create a best-in-class, multimodal AI experience.
+This roadmap is **not** a checklist for every OpenAI endpoint. The product target is simpler: make OpenResponses feel like the **OpenAI Playground brought to iOS**—model selection, prompt controls, attachments, tools, streaming, request visibility, and safe conversation history in a native app.
 
-This roadmap is organized into five distinct phases, guiding a systematic implementation from core functionality to advanced features and polish.
+Work is prioritized by whether it affects normal Playground-style use. If a capability helps a user test models, inspect requests, attach files/images, run tools, or continue a conversation safely, it belongs here. If it is an admin, training, batch-processing, or voice-agent endpoint, it is only tracked when the app product explicitly needs it.
+
+### Product scope: what “fully functioning” means
+
+| Priority                                          | What belongs in scope                                                                                                                                                                                                                                                                                                            | Why it matters                                                                                                            |
+| :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| **Essential**                                     | Model picker, prompt/system/developer instructions, streaming and non-streaming chat, reasoning controls, file/image input, web search, file search, code interpreter, image generation, computer use, custom functions/MCP, request/response inspection, Keychain API-key storage, local conversation history, friendly errors. | These are the features that make the app a useful mobile Playground rather than just a chat screen.                       |
+| **Important polish**                              | Backend conversation sync, citation/annotation rendering, better artifact previews, background response management, clearer tool diagnostics, export/share flows, accessibility and App Store QA.                                                                                                                                | These make the app trustworthy and understandable for regular users, but most do not block core Playground functionality. |
+| **Out of scope unless product direction changes** | Fine-tuning, evals, batch jobs, admin APIs, realtime voice agents, speech-to-speech, video generation, large-scale training-data workflows.                                                                                                                                                                                      | These are OpenAI platform features, but they are not required for a native Playground-style client.                       |
 
 ---
 
-## 2. Current Status & API Coverage
+## 2. Current Status & Playground Coverage
 
 🎉 **MAJOR MILESTONE: Phase 1 Complete!** - All input modalities and advanced tool integrations have been successfully implemented with production-ready quality.
 
-This section provides a comprehensive overview of the current implementation status based on the `Full_API_Reference.md`.
+This section summarizes whether the app covers the core Playground experience, not whether it implements every OpenAI API endpoint.
 
 | API Feature Category        | Implementation Level        | Details                                                                                                                                                                                                 |
 | :-------------------------- | :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -28,7 +36,7 @@ This section provides a comprehensive overview of the current implementation sta
 | **File Input**              | ✅ **Complete**              | Full support for both `file_id` references and direct file uploads with `file_data`. 43+ supported file types.                                                                                          |
 | **Audio Input**             | ❌ **Intentionally Removed** | Audio input UI and APIs were intentionally removed from the app to focus on core functionality.                                                                                                         |
 | **Basic Tools**             | ✅ **Complete**              | Web search, code interpreter (with full artifact support), and file search fully integrated with advanced configurations.                                                                               |
-| **Advanced Tools**          | ✅ **Complete**              | Computer Use tool complete with bulletproof error handling; Custom Function tools complete; the shipping experience centers on core OpenAI tools, Apple integrations, and privacy-first approval flows. |
+| **Advanced Tools**          | ✅ **Complete**              | Computer Use harness, Custom Function tools, MCP connectors, Apple integrations, and privacy-first approval flows are implemented for the current product scope. |
 | **Streaming Response**      | ✅ **Complete**              | Comprehensive handling for text, tool calls, image generation events, and computer use with real-time status updates.                                                                                   |
 | **Rich Content Output**     | 🟡 **Partial**               | Text rendering is complete with copy functionality; media previews implemented; annotations parsing needs enhancement.                                                                                  |
 | **Conversation Management** | 🟡 **Partial / Phase 2**     | Local storage complete; `/v1/conversations` service methods and opt-in send/delete integration exist, but full remote list/history sync and cross-device reconciliation are still pending.             |
@@ -36,9 +44,9 @@ This section provides a comprehensive overview of the current implementation sta
 
 ---
 
-## 3. Implementation Playbook: From Partial to Full Compliance
+## 3. Implementation Playbook: From Useful to Polished
 
-This playbook details every feature and improvement required to reach 100% API and feature compliance.
+This playbook focuses on the work needed to make the app feel complete and understandable as an iOS Playground: fewer raw endpoint checklists, more user-visible capability, reliability, and clarity.
 
 ### 🎉 Phase 1: Input & Tool Completion - **100% COMPLETE**
 
