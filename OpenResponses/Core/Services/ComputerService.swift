@@ -273,8 +273,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try await drag(path: pathArray)
 
         case "scroll":
-            let scrollY = Self.valueAsDouble(action.parameters["scrollY"]) ?? Self.valueAsDouble(action.parameters["y"]) ?? 0
-            let scrollX = Self.valueAsDouble(action.parameters["scrollX"]) ?? Self.valueAsDouble(action.parameters["x"]) ?? 0
+            if let x = Self.valueAsDouble(action.parameters["x"]),
+               let y = Self.valueAsDouble(action.parameters["y"]) {
+                try? await moveMouse(to: CGPoint(x: x, y: y))
+            }
+            let scrollY = Self.valueAsDouble(action.parameters["scroll_y"]) ?? Self.valueAsDouble(action.parameters["scrollY"]) ?? 0
+            let scrollX = Self.valueAsDouble(action.parameters["scroll_x"]) ?? Self.valueAsDouble(action.parameters["scrollX"]) ?? 0
             try await scroll(x: scrollX, y: scrollY)
 
         case "screenshot":

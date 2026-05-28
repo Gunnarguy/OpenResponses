@@ -171,7 +171,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testReasoningPayloadForReasoningModel() {
         var prompt = Prompt.defaultPrompt()
-        prompt.openAIModel = "o1-preview"
+        prompt.openAIModel = "o3-mini"
         prompt.reasoningEffort = "high"
         prompt.reasoningSummary = "concise"
 

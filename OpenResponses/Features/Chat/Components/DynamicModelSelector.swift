@@ -13,7 +13,11 @@ struct DynamicModelSelector: View {
 
     // Fallback chat models in case the API call fails
     private let fallbackModels = [
-        // Latest chat models (2025)
+        // Latest chat models (2026)
+        "gpt-5.5",
+        "gpt-5.5-pro",
+        "gpt-5.5-mini",
+        "gpt-5.5-nano",
         "gpt-5.4",
         "gpt-5.4-mini",
         "gpt-5.4-nano",
@@ -26,23 +30,17 @@ struct DynamicModelSelector: View {
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
-    // Dedicated computer-use model
-    "computer-use-preview",
+
+        // Dedicated computer-use model
+        "computer-use-preview",
 
         // Latest reasoning models
         "o3",
-        "o4-mini",
+        "o3-mini",
 
         // Proven chat models
         "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-4",
-        "gpt-3.5-turbo",
-
-        // Existing reasoning models
-        "o1-preview",
-        "o1-mini"
+        "gpt-4o-mini"
     ]
 
     var body: some View {
@@ -153,14 +151,22 @@ struct DynamicModelSelector: View {
 
             // Specific descriptions for each model type
             if id.contains("gpt-5") {
-                if id.contains("gpt-5.4-pro") {
-                    return "🧠 Maximum compute for the toughest work"
+                if id.contains("gpt-5.5-pro") {
+                    return "🧠 Maximum compute for the toughest work (GPT‑5.5)"
+                } else if id.contains("gpt-5.5-mini") {
+                    return "💨 Strong mini model with computer use (GPT‑5.5)"
+                } else if id.contains("gpt-5.5-nano") {
+                    return "⚡ Cheapest GPT‑5.5-class model"
+                } else if id.contains("gpt-5.5") {
+                    return "🚀 Latest flagship with computer use (GPT‑5.5)"
+                } else if id.contains("gpt-5.4-pro") {
+                    return "🧠 Extra compute for tougher problems (Legacy)"
                 } else if id.contains("gpt-5.4-mini") {
-                    return "💨 Strong mini model with computer use"
+                    return "💨 Strong mini model with computer use (Legacy)"
                 } else if id.contains("gpt-5.4-nano") {
                     return "⚡ Cheapest GPT‑5.4-class model"
                 } else if id.contains("gpt-5.4") {
-                    return "🚀 Latest flagship with computer use"
+                    return "🚀 Flagship with computer use (Legacy)"
                 } else if id.contains("gpt-5.2-pro") {
                     return "🧠 Extra compute for tougher problems"
                 } else if id.contains("gpt-5.2") {
@@ -182,24 +188,20 @@ struct DynamicModelSelector: View {
                 } else {
                     return "🔥 Most advanced GPT model"
                 }
-            } else if id.contains("o4") {
-                return "🧠 Advanced reasoning with efficiency"
             } else if id.contains("o3") {
-                return "🤔 Deep reasoning and problem-solving"
+                if id.contains("mini") {
+                    return "💨 Fast reasoning and problem-solving (o3-mini)"
+                } else {
+                    return "🤔 Deep reasoning and problem-solving (o3)"
+                }
             } else if id.contains("gpt-4o") {
                 if id.contains("mini") {
                     return "⚡ Fast, cost-effective"
                 } else {
                     return "🎯 Versatile and reliable"
                 }
-            } else if id.contains("o1") {
-                return "🧩 Step-by-step reasoning"
             } else if id.contains("computer-use-preview") {
                 return "🖥️ Legacy Computer Use preview"
-            } else if id.contains("gpt-4") {
-                return "💪 Powerful general-purpose"
-            } else if id.contains("gpt-3.5") {
-                return "💰 Budget-friendly option"
             }
 
             return model.isReasoningModel ? "🧠 Reasoning model" : "💬 Chat model"
@@ -208,14 +210,22 @@ struct DynamicModelSelector: View {
         // Fallback descriptions for when model isn't loaded yet
         let id = selectedModel.lowercased()
         if id.contains("gpt-5") {
-            if id.contains("gpt-5.4-pro") {
-                return "🧠 Maximum compute for the toughest work"
+            if id.contains("gpt-5.5-pro") {
+                return "🧠 Maximum compute for the toughest work (GPT‑5.5)"
+            } else if id.contains("gpt-5.5-mini") {
+                return "💨 Strong mini model with computer use (GPT‑5.5)"
+            } else if id.contains("gpt-5.5-nano") {
+                return "⚡ Cheapest GPT‑5.5-class model"
+            } else if id.contains("gpt-5.5") {
+                return "🚀 Latest flagship with computer use (GPT‑5.5)"
+            } else if id.contains("gpt-5.4-pro") {
+                return "🧠 Extra compute for tougher problems (Legacy)"
             } else if id.contains("gpt-5.4-mini") {
-                return "💨 Strong mini model with computer use"
+                return "💨 Strong mini model with computer use (Legacy)"
             } else if id.contains("gpt-5.4-nano") {
                 return "⚡ Cheapest GPT‑5.4-class model"
             } else if id.contains("gpt-5.4") {
-                return "🚀 Latest flagship with computer use"
+                return "🚀 Flagship with computer use (Legacy)"
             } else if id.contains("gpt-5.2-pro") {
                 return "🧠 Extra compute for tougher problems"
             } else if id.contains("gpt-5.2") {
@@ -231,12 +241,10 @@ struct DynamicModelSelector: View {
             return "🚀 GPT‑5 family"
         } else if id.contains("gpt-4.1") {
             return "🔥 Most advanced GPT model"
-        } else if id.contains("o4") || id.contains("o3") {
+        } else if id.contains("o3") {
             return "🧠 Advanced reasoning model"
         } else if id.contains("gpt-4o") {
             return "🎯 Versatile and reliable"
-        } else if id.contains("o1") {
-            return "🧩 Step-by-step reasoning"
         } else if id.contains("computer-use-preview") {
             return "🖥️ Legacy Computer Use preview"
         } else {
@@ -265,6 +273,7 @@ struct DynamicModelSelector: View {
                         // Explicit allowlist of known working chat models
                         let allowedModels: Set<String> = [
                             // Latest models
+                            "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano",
                             "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
                             "gpt-5.2", "gpt-5.2-pro",
                             "gpt-5.1",
@@ -277,11 +286,9 @@ struct DynamicModelSelector: View {
                             // Current GPT models
                             "gpt-4o", "gpt-4o-mini",
                             "gpt-4o-2024-08-06", "gpt-4o-mini-2024-07-18",
-                            "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
 
                             // Reasoning models
-                            "o3", "o4-mini", "o3-mini",
-                            "o1-preview", "o1-mini"
+                            "o3", "o3-mini"
                         ]
 
                         // Check if model is in allowlist
@@ -289,17 +296,13 @@ struct DynamicModelSelector: View {
                             return true
                         }
 
-                        // Allow GPT-5.2 / GPT-5.1 snapshots (but avoid ChatGPT-only aliases).
-                        if id.hasPrefix("gpt-5.2-") || id.hasPrefix("gpt-5.1-"), !id.contains("chat-latest") {
-                            return true
-                        }
-
-                        if id.hasPrefix("gpt-5.4-"), !id.contains("chat-latest") {
+                        // Allow GPT-5.5 / GPT-5.4 / GPT-5.2 snapshots (but avoid ChatGPT-only aliases).
+                        if id.hasPrefix("gpt-5.5-") || id.hasPrefix("gpt-5.4-") || id.hasPrefix("gpt-5.2-") || id.hasPrefix("gpt-5.1-"), !id.contains("chat-latest") {
                             return true
                         }
 
                         // Allow o-series models that might have different naming
-                        if (id.hasPrefix("o1-") || id.hasPrefix("o3-") || id.hasPrefix("o4-")) &&
+                        if id.hasPrefix("o3-") &&
                            !id.contains("image") && !id.contains("audio") && !id.contains("vision") { // exclude audio/vision-only variants
                             return true
                         }
@@ -323,8 +326,12 @@ struct DynamicModelSelector: View {
                         let firstId = first.id.lowercased()
                         let secondId = second.id.lowercased()
 
-                        // Priority order: gpt-5.2-pro > gpt-5.2 > gpt-5.1 > gpt-5 > gpt-4.1 > o4 > o3 > gpt-4o > CUA > o1 > gpt-4 > gpt-3.5
+                        // Priority order: gpt-5.5-pro > gpt-5.5 > gpt-5.5-mini > gpt-5.5-nano > gpt-5.4-pro > gpt-5.4 > o4 > o4-mini > o3 > o3-mini > gpt-4o > CUA > gpt-4o-mini
                         let modelPriority: [String: Int] = [
+                            "gpt-5.5-pro": 1300,
+                            "gpt-5.5": 1290,
+                            "gpt-5.5-mini": 1280,
+                            "gpt-5.5-nano": 1270,
                             "gpt-5.4-pro": 1200,
                             "gpt-5.4": 1150,
                             "gpt-5.4-mini": 990,
@@ -338,17 +345,11 @@ struct DynamicModelSelector: View {
                             "gpt-4.1": 900,
                             "gpt-4.1-mini": 890,
                             "gpt-4.1-nano": 880,
-                            "o4-mini": 800,
                             "o3": 700,
                             "o3-mini": 690,
                             "gpt-4o": 600,
                             "gpt-4o-mini": 590,
-                            "computer-use-preview": 550,
-                            "o1-preview": 500,
-                            "o1-mini": 490,
-                            "gpt-4-turbo": 400,
-                            "gpt-4": 300,
-                            "gpt-3.5-turbo": 200
+                            "computer-use-preview": 550
                         ]
 
                         let firstPriority = modelPriority[firstId] ?? 0
@@ -423,8 +424,8 @@ struct ModelPickerView: View {
     var body: some View {
         List {
             if isOffline {
-                let computerCapableFallbackModels = ["gpt-5.4", "gpt-5.4-mini", "computer-use-preview"]
-                let latestFallbackModels = ["gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]
+                let computerCapableFallbackModels = ["gpt-5.5", "gpt-5.5-mini", "gpt-5.4", "gpt-5.4-mini", "computer-use-preview"]
+                let latestFallbackModels = ["gpt-5.5-pro", "gpt-5.5-nano", "gpt-5.4-pro", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"]
 
                 Section("🖥️ Computer Capable") {
                     ForEach(computerCapableFallbackModels, id: \.self) { modelId in
@@ -456,7 +457,7 @@ struct ModelPickerView: View {
                 }
 
                 Section("🧠 Reasoning Models") {
-                    ForEach(["o3", "o4-mini", "o1-preview", "o1-mini"], id: \.self) { modelId in
+                    ForEach(["o3", "o3-mini"], id: \.self) { modelId in
                         ModelPickerRow(
                             modelId: modelId,
                             displayName: tempModelDisplayName(for: modelId),
@@ -470,7 +471,7 @@ struct ModelPickerView: View {
                 }
 
                 Section("💬 Standard Models") {
-                    ForEach(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"], id: \.self) { modelId in
+                    ForEach(["gpt-4o", "gpt-4o-mini"], id: \.self) { modelId in
                         ModelPickerRow(
                             modelId: modelId,
                             displayName: tempModelDisplayName(for: modelId),
@@ -488,14 +489,14 @@ struct ModelPickerView: View {
                     isComputerCapableModel($0.id)
                 }
                 let latestModels = models.filter {
-                    ($0.id.contains("gpt-5") || $0.id.contains("gpt-4.1") || $0.id.contains("o4")) &&
+                    ($0.id.contains("gpt-5") || $0.id.contains("gpt-4.1")) &&
                     !isComputerCapableModel($0.id)
                 }
                 let reasoningModels = models.filter { 
-                    ($0.id.contains("o3") || $0.id.contains("o1")) && !$0.id.contains("o4")
+                    $0.id.contains("o3") || $0.id.contains("o3-mini")
                 }
                 let standardModels = models.filter { 
-                    ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4") || $0.id.contains("gpt-3.5")) &&
+                    ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4o-mini")) &&
                     !$0.id.contains("gpt-4.1")
                 }
 
@@ -580,14 +581,22 @@ struct ModelPickerView: View {
     private func tempModelDescription(for modelId: String) -> String {
         let id = modelId.lowercased()
         if id.contains("gpt-5") {
-            if id.contains("gpt-5.4-pro") {
-                return "🧠 Maximum compute for the toughest work"
+            if id.contains("gpt-5.5-pro") {
+                return "🧠 Maximum compute for the toughest work (GPT‑5.5)"
+            } else if id.contains("gpt-5.5-mini") {
+                return "💨 Strong mini model with computer use (GPT‑5.5)"
+            } else if id.contains("gpt-5.5-nano") {
+                return "⚡ Cheapest GPT‑5.5-class model"
+            } else if id.contains("gpt-5.5") {
+                return "🚀 Latest flagship with computer use (GPT‑5.5)"
+            } else if id.contains("gpt-5.4-pro") {
+                return "🧠 Extra compute for tougher problems (Legacy)"
             } else if id.contains("gpt-5.4-mini") {
-                return "💨 Strong mini model with computer use"
+                return "💨 Strong mini model with computer use (Legacy)"
             } else if id.contains("gpt-5.4-nano") {
                 return "⚡ Cheapest GPT‑5.4-class model"
             } else if id.contains("gpt-5.4") {
-                return "🚀 Latest flagship with computer use"
+                return "🚀 Flagship with computer use (Legacy)"
             } else if id.contains("gpt-5.2-pro") {
                 return "🧠 Extra compute for tougher problems"
             } else if id.contains("gpt-5.2") {
@@ -609,24 +618,20 @@ struct ModelPickerView: View {
             } else {
                 return "🔥 Most advanced GPT model"
             }
-        } else if id.contains("o4") {
-            return "🧠 Advanced reasoning with efficiency"
         } else if id.contains("o3") {
-            return "🤔 Deep reasoning and problem-solving"
+            if id.contains("mini") {
+                return "💨 Fast reasoning and problem-solving (o3-mini)"
+            } else {
+                return "🤔 Deep reasoning and problem-solving (o3)"
+            }
         } else if id.contains("gpt-4o") {
             if id.contains("mini") {
                 return "⚡ Fast, cost-effective"
             } else {
                 return "🎯 Versatile and reliable"
             }
-        } else if id.contains("o1") {
-            return "🧩 Step-by-step reasoning"
         } else if id.contains("computer-use-preview") {
             return "🖥️ Legacy Computer Use preview"
-        } else if id.contains("gpt-4") {
-            return "💪 Powerful general-purpose"
-        } else if id.contains("gpt-3.5") {
-            return "💰 Budget-friendly option"
         }
         return "💬 Chat model"
     }

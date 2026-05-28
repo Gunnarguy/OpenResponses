@@ -7,7 +7,7 @@ struct WebContentView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var loadingTimer: Timer?
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header with URL and controls
@@ -27,7 +27,7 @@ struct WebContentView: View {
             .padding(.vertical, 8)
             .background(.ultraThinMaterial)
             .cornerRadius(8)
-            
+
             // Web content container
             if let error = error {
                 VStack {
@@ -37,7 +37,7 @@ struct WebContentView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    
+
                     Button("Retry") {
                         isLoading = true
                         self.error = nil
@@ -59,7 +59,7 @@ struct WebContentView: View {
                             .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                     )
             }
-            
+
             // Action buttons
             HStack {
                 Button("Open in Safari") {
@@ -67,7 +67,7 @@ struct WebContentView: View {
                 }
                 .font(.caption)
                 .foregroundColor(.blue)
-                
+
                 Spacer()
             }
             .padding(.horizontal, 4)
@@ -81,7 +81,7 @@ struct WebContentView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Web content from \(url.host ?? "unknown site")")
     }
-    
+
     private func startLoadingTimer() {
         loadingTimer?.invalidate()
         loadingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { _ in
@@ -98,73 +98,83 @@ struct WebView: UIViewRepresentable {
     let url: URL
     @Binding var isLoading: Bool
     @Binding var error: String?
-    
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        
+
         // Configure for better experience and ad blocking
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.suppressesIncrementalRendering = false
-        
+
         // Create the web view with enhanced configuration
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
-        
+
         // Set a proper desktop user agent to avoid mobile redirects/ads
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        
+
         // Configure web view settings for better compatibility
         webView.allowsBackForwardNavigationGestures = false
         webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        
+
         // Load the initial URL with cache policy to get fresh content
+        let request = createRequest(for: url)
+        webView.load(request)
+
+        // Keep track of the requested URL in coordinator
+        context.coordinator.lastRequestedURL = url
+
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        // Only load if the requested URL has actually changed.
+        // Comparing with context.coordinator.lastRequestedURL prevents infinite reload loops
+        // triggered by SwiftUI updates (such as scroll events or streaming state changes)
+        // while the page is still loading or has redirected.
+        if context.coordinator.lastRequestedURL != url {
+            context.coordinator.lastRequestedURL = url
+            let request = createRequest(for: url)
+            webView.load(request)
+        }
+    }
+
+    private func createRequest(for url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = 15.0 // 15 second timeout
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        webView.load(request)
-        
-        return webView
+        return request
     }
-    
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        // Only reload if the URL has actually changed
-        if webView.url != url {
-            var request = URLRequest(url: url)
-            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            request.timeoutInterval = 15.0 // 15 second timeout
-            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-            webView.load(request)
-        }
-    }
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     class Coordinator: NSObject, WKNavigationDelegate {
         let parent: WebView
-        
+        var lastRequestedURL: URL?
+
         init(_ parent: WebView) {
             self.parent = parent
         }
-        
+
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
             parent.isLoading = true
             parent.error = nil
         }
-        
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.isLoading = false
         }
-        
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
             let nsError = error as NSError
-            
+
             // Handle specific error cases
             if nsError.code == NSURLErrorCancelled {
                 // Don't show error for cancelled loads (usually redirects or ad blocks)
@@ -181,11 +191,11 @@ struct WebView: UIViewRepresentable {
                 parent.error = error.localizedDescription
             }
         }
-        
+
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             parent.isLoading = false
             let nsError = error as NSError
-            
+
             // Handle specific error cases
             if nsError.code == NSURLErrorCancelled {
                 // Don't show error for cancelled loads (usually redirects or ad blocks)
@@ -202,29 +212,29 @@ struct WebView: UIViewRepresentable {
                 parent.error = error.localizedDescription
             }
         }
-        
+
         // Handle link navigation within the web view
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else {
                 decisionHandler(.cancel)
                 return
             }
-            
+
             // Block common ad and tracking domains
             let blockedDomains = [
-                "googleads.com", "doubleclick.net", "googlesyndication.com", 
-                "adsystem.com", "amazon-adsystem.com", "facebook.com/tr", 
+                "googleads.com", "doubleclick.net", "googlesyndication.com",
+                "adsystem.com", "amazon-adsystem.com", "facebook.com/tr",
                 "google-analytics.com", "taboola.com", "outbrain.com",
                 "recaptcha", "captcha"
             ]
-            
+
             if let host = url.host?.lowercased() {
                 if blockedDomains.contains(where: { host.contains($0) }) {
                     decisionHandler(.cancel)
                     return
                 }
             }
-            
+
             // Only block user-initiated clicks to completely external domains
             // Allow all redirects, iframes, and same-domain navigation
             if navigationAction.navigationType == .linkActivated,
@@ -236,7 +246,7 @@ struct WebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            
+
             // Allow all other navigation (same domain, redirects, iframes, forms, etc.)
             decisionHandler(.allow)
         }

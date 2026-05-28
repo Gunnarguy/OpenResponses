@@ -544,7 +544,7 @@ class ChatViewModel: ObservableObject {
             assistantText = """
             🖥️ Computer mode isn’t available on \(activePrompt.openAIModel).
 
-            To use it, switch to a model that supports the built-in computer tool, such as `gpt-5.4`, then try again.
+            To use it, switch to a model that supports the built-in computer tool, such as `gpt-5.5`, then try again.
             """
             logActivity("Computer tool unavailable for current model")
         }

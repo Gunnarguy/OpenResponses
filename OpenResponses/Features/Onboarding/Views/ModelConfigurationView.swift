@@ -226,6 +226,9 @@ struct ModelConfigurationView: View {
 
     private func reasoningEffortOptions(for modelId: String) -> [String] {
         let id = modelId.lowercased()
+        if id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        }
         if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {
             return ["none", "minimal", "low", "medium", "high", "xhigh"]
         }

@@ -26,6 +26,22 @@ class OpenAIService: OpenAIServiceProtocol {
     /// can appear in saved presets or imported configs.
     private func normalizeModelIdForAPI(_ modelId: String) -> String {
         switch modelId {
+        case "gpt-5.5-thinking":
+            return "gpt-5.5"
+        case "gpt-5.5-thinking-pro":
+            return "gpt-5.5-pro"
+        case "gpt-5.5-thinking-mini":
+            return "gpt-5.5-mini"
+        case "gpt-5.5-thinking-nano":
+            return "gpt-5.5-nano"
+        case "gpt-5.4-thinking":
+            return "gpt-5.4"
+        case "gpt-5.4-thinking-pro":
+            return "gpt-5.4-pro"
+        case "gpt-5.4-thinking-mini":
+            return "gpt-5.4-mini"
+        case "gpt-5.4-thinking-nano":
+            return "gpt-5.4-nano"
         case "gpt-5-thinking":
             return "gpt-5"
         case "gpt-5-thinking-mini":

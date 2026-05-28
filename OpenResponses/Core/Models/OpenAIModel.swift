@@ -15,7 +15,15 @@ struct OpenAIModel: Codable, Identifiable {
     /// Human-readable display name for the model
     var displayName: String {
         switch id {
-        // Latest GPT models (2025)
+        // Latest GPT models (2026)
+        case "gpt-5.5":
+            return "gpt-5.5"
+        case "gpt-5.5-pro":
+            return "gpt-5.5-pro"
+        case "gpt-5.5-mini":
+            return "gpt-5.5-mini"
+        case "gpt-5.5-nano":
+            return "gpt-5.5-nano"
         case "gpt-5.4":
             return "gpt-5.4"
         case "gpt-5.4-pro":
@@ -56,31 +64,17 @@ struct OpenAIModel: Codable, Identifiable {
             return "gpt-4o (2024-08-06)"
         case "gpt-4o-mini-2024-07-18":
             return "gpt-4o-mini (2024-07-18)"
-        case "gpt-4-turbo":
-            return "gpt-4-turbo"
-        case "gpt-4":
-            return "gpt-4"
-        case "gpt-3.5-turbo":
-            return "gpt-3.5-turbo"
         case "computer-use-preview":
             return "computer-use-preview"
 
-        // Reasoning models (o-series) - keep original formatting
+        // Reasoning models (o-series)
         case "o3":
             return "o3"
-        case "o4-mini":
-            return "o4-mini"
         case "o3-mini":
             return "o3-mini"
-        case "o1-preview":
-            return "o1-preview"
-        case "o1-mini":
-            return "o1-mini"
         case let model where model.hasPrefix("o1"):
             return model // Keep original formatting with hyphens
         case let model where model.hasPrefix("o3"):
-            return model // Keep original formatting with hyphens
-        case let model where model.hasPrefix("o4"):
             return model // Keep original formatting with hyphens
 
         default:
@@ -91,7 +85,7 @@ struct OpenAIModel: Codable, Identifiable {
 
     /// Whether this is a reasoning model (O-series or GPT-5)
     var isReasoningModel: Bool {
-        return id.hasPrefix("o1") || id.hasPrefix("o3") || id.hasPrefix("o4") || id.hasPrefix("gpt-5")
+        return id.hasPrefix("o1") || id.hasPrefix("o3") || id.hasPrefix("gpt-5")
     }
 }
 

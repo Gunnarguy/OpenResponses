@@ -101,15 +101,15 @@ Secrets are intentionally absent from the repo. Run `python3 scripts/secret_scan
 
 ## Toolbox at a Glance
 
-| Capability | Details |
-| --- | --- |
-| **Computer Use** | Navigate/click/scroll automation with safety approval sheets, blank-page recovery, screenshot attachments, and status updates. |
-| **Code Interpreter** | Sandboxed Python execution with artifact viewer, status heartbeats, and result summarization. |
-| **File Search & Vector Stores** | Upload files, manage vector stores, toggle file search per prompt, and configure rankers or thresholds. |
-| **Image Generation** | Trigger image creation with optional detail level control and inline previews. |
-| **Privacy-first consent** | The first live OpenAI request is gated behind an in-app disclosure and explicit Allow & Send approval. |
-| **Prompt Library** | Save and reuse prompt presets including reasoning/model settings and safety identifiers. |
-| **Observability** | Activity feed, streaming status chips, token usage counters, API inspector, debug console, and analytics hooks. |
+| Capability                      | Details                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Computer Use**                | Navigate/click/scroll automation with safety approval sheets, blank-page recovery, screenshot attachments, and status updates. |
+| **Code Interpreter**            | Sandboxed Python execution with artifact viewer, status heartbeats, and result summarization.                                  |
+| **File Search & Vector Stores** | Upload files, manage vector stores, toggle file search per prompt, and configure rankers or thresholds.                        |
+| **Image Generation**            | Trigger image creation with optional detail level control and inline previews.                                                 |
+| **Privacy-first consent**       | The first live OpenAI request is gated behind an in-app disclosure and explicit Allow & Send approval.                         |
+| **Prompt Library**              | Save and reuse prompt presets including reasoning/model settings and safety identifiers.                                       |
+| **Observability**               | Activity feed, streaming status chips, token usage counters, API inspector, debug console, and analytics hooks.                |
 
 ---
 

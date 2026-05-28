@@ -1171,7 +1171,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("• Context size not supported on o3, o4-mini, deep research models")
+                    Text("• Context size not supported on o3, deep research models")
                     Text("• Domain filtering: up to 20 allowed domains")
                     Text("• Location not supported on deep research models")
                 }
@@ -1279,7 +1279,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
             }
 
         if !isComputerUseSupported {
-            Text("Requires a computer-capable model such as gpt-5.4 or gpt-5.4-mini.")
+            Text("Requires a computer-capable model such as gpt-5.5 or gpt-5.5-mini.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         } else if viewModel.activePrompt.enableComputerUse {
@@ -1433,7 +1433,7 @@ private struct MCPTab: View {
                 if isMCPSupported {
                     Text(mcpEnabled ? "MCP tool calls are active." : "MCP is configured but disabled.")
                 } else {
-                    Text("The selected model doesn’t support MCP. Use gpt-5.4, gpt-5.4-mini, or gpt-5.4-nano.")
+                    Text("The selected model doesn’t support MCP. Use gpt-5.5, gpt-5.5-mini, or gpt-5.5-nano.")
                 }
             }
 
