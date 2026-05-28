@@ -492,10 +492,10 @@ struct ModelPickerView: View {
                     ($0.id.contains("gpt-5") || $0.id.contains("gpt-4.1")) &&
                     !isComputerCapableModel($0.id)
                 }
-                let reasoningModels = models.filter { 
+                let reasoningModels = models.filter {
                     $0.id.contains("o3") || $0.id.contains("o3-mini")
                 }
-                let standardModels = models.filter { 
+                let standardModels = models.filter {
                     ($0.id.contains("gpt-4o") || $0.id.contains("gpt-4o-mini")) &&
                     !$0.id.contains("gpt-4.1")
                 }

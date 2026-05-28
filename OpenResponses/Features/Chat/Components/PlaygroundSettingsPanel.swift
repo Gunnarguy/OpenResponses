@@ -44,7 +44,7 @@ struct PlaygroundSettingsPanel: View {
             reasoningEffort: viewModel.activePrompt.reasoningEffort
         )
     }
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -85,15 +85,15 @@ struct PlaygroundSettingsPanel: View {
                         }
                     }
                 }
-                
+
                 // MARK: - Tools Section
                 Section("Tools") {
                     Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
                         .toggleStyle(SwitchToggleStyle(tint: .purple))
-                    
+
                     Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
                         .toggleStyle(SwitchToggleStyle(tint: .orange))
-                    
+
                     Toggle("Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
                         .toggleStyle(SwitchToggleStyle(tint: .indigo))
                         .disabled(!isComputerUseSupported)
@@ -104,7 +104,7 @@ struct PlaygroundSettingsPanel: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
+
                 // MARK: - Parameters Section
                 Section("Parameters") {
                     if supportsTemperature {
@@ -124,7 +124,7 @@ struct PlaygroundSettingsPanel: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    
+
                     // Max Output Tokens
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -144,7 +144,7 @@ struct PlaygroundSettingsPanel: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
-                    
+
                     if supportsTopP {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -169,7 +169,7 @@ struct PlaygroundSettingsPanel: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
+
                 // MARK: - Files & Vector Stores Section
                 Section("Files & Vector Stores") {
                     // Attached files
@@ -181,7 +181,7 @@ struct PlaygroundSettingsPanel: View {
                                 .font(.subheadline)
                         }
                     }
-                    
+
                     // Attached images
                     if !viewModel.pendingImageAttachments.isEmpty {
                         HStack {
@@ -191,7 +191,7 @@ struct PlaygroundSettingsPanel: View {
                                 .font(.subheadline)
                         }
                     }
-                    
+
                     // Active vector stores
                     if !activeVectorStoreIds.isEmpty {
                         HStack {
@@ -201,13 +201,13 @@ struct PlaygroundSettingsPanel: View {
                                 .font(.subheadline)
                         }
                     }
-                    
+
                     // Info text
                     Text("Use the Files icon in Settings or attachment buttons in chat to manage files and vector stores")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 // MARK: - Advanced Section
                 Section("Advanced") {
                     Button {
@@ -215,12 +215,12 @@ struct PlaygroundSettingsPanel: View {
                     } label: {
                         Label("Export & Import", systemImage: "arrow.up.arrow.down.circle")
                     }
-                    
+
                     Text("Export conversation as JSON or import previous conversations")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 // MARK: - Reset Section
                 Section {
                     Button(role: .destructive) {
@@ -245,14 +245,14 @@ struct PlaygroundSettingsPanel: View {
                 .environmentObject(viewModel)
         }
     }
-    
+
     // MARK: - Actions
-    
+
     private func resetToDefaults() {
         viewModel.activePrompt.temperature = 1.0
         viewModel.activePrompt.maxOutputTokens = 2048
         viewModel.activePrompt.topP = 1.0
-        
+
         // Haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
