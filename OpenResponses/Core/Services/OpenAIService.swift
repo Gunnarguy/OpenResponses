@@ -25,32 +25,7 @@ class OpenAIService: OpenAIServiceProtocol {
     /// This is intentionally conservative: it only rewrites known alias patterns that
     /// can appear in saved presets or imported configs.
     private func normalizeModelIdForAPI(_ modelId: String) -> String {
-        switch modelId {
-        case "gpt-5.5-thinking":
-            return "gpt-5.5"
-        case "gpt-5.5-thinking-pro":
-            return "gpt-5.5-pro"
-        case "gpt-5.5-thinking-mini":
-            return "gpt-5.5-mini"
-        case "gpt-5.5-thinking-nano":
-            return "gpt-5.5-nano"
-        case "gpt-5.4-thinking":
-            return "gpt-5.4"
-        case "gpt-5.4-thinking-pro":
-            return "gpt-5.4-pro"
-        case "gpt-5.4-thinking-mini":
-            return "gpt-5.4-mini"
-        case "gpt-5.4-thinking-nano":
-            return "gpt-5.4-nano"
-        case "gpt-5-thinking":
-            return "gpt-5"
-        case "gpt-5-thinking-mini":
-            return "gpt-5-mini"
-        case "gpt-5-thinking-nano":
-            return "gpt-5-nano"
-        default:
-            return modelId
-        }
+        ModelCompatibilityService.shared.normalizedModelId(for: modelId)
     }
 
     private struct ErrorResponse: Decodable {
@@ -423,7 +398,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     private func isDedicatedComputerUseModel(_ modelId: String) -> Bool {
-        modelId == "computer-use-preview"
+        normalizeModelIdForAPI(modelId) == "computer-use-preview"
     }
 
     private func supportsLiveBrowserHarness(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
@@ -2608,7 +2583,7 @@ class OpenAIService: OpenAIServiceProtocol {
         inputItems.append(functionOutputMessage)
 
         var requestObject: [String: Any] = [
-            "model": model,
+            "model": normalizeModelIdForAPI(model),
             "store": true,
             "input": inputItems,
         ]
@@ -2696,7 +2671,7 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         var requestObject: [String: Any] = [
-            "model": model,
+            "model": normalizeModelIdForAPI(model),
             "store": true,
             "input": inputArray,
         ]
@@ -3210,7 +3185,8 @@ class OpenAIService: OpenAIServiceProtocol {
         acknowledgedSafetyChecks: [SafetyCheck]?,
         currentUrl: String?
     ) throws -> [String: Any] {
-        let toolDefinition = computerToolDefinition(for: model)
+        let apiModelId = normalizeModelIdForAPI(model)
+        let toolDefinition = computerToolDefinition(for: apiModelId)
         let isGAComputerTool: Bool = {
             if case .computer = toolDefinition {
                 return true
@@ -3264,7 +3240,7 @@ class OpenAIService: OpenAIServiceProtocol {
         var toolsJSON: [Any] = []
         do {
             let tools: [APICapabilities.Tool] = [
-                computerToolDefinition(for: model),
+                toolDefinition,
             ]
             let encoder = JSONEncoder()
             let toolsData = try encoder.encode(tools)
@@ -3277,11 +3253,14 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         var requestObject: [String: Any] = [
-            "model": model,
+            "model": apiModelId,
             "store": true,
             "input": [computerOutputMessage],
-            "truncation": "auto",
         ]
+
+        if !isGAComputerTool {
+            requestObject["truncation"] = "auto"
+        }
 
         if !toolsJSON.isEmpty {
             requestObject["tools"] = toolsJSON
@@ -3619,13 +3598,13 @@ class OpenAIService: OpenAIServiceProtocol {
 
     // MARK: - File Management Functions
 
-    /// Uploads a file to OpenAI for use with assistants, fine-tuning, or vector stores
+    /// Uploads a file to OpenAI for use with Responses input items or vector stores.
     /// - Parameters:
     ///   - fileData: The file data to upload
     ///   - filename: The name of the file
-    ///   - purpose: The purpose of the file (e.g., "assistants", "fine-tune", "vision")
+    ///   - purpose: The purpose of the file. Use `user_data` for Responses input files and file search.
     /// - Returns: The uploaded file information
-    func uploadFile(fileData: Data, filename: String, purpose: String = "assistants") async throws -> OpenAIFile {
+    func uploadFile(fileData: Data, filename: String, purpose: String = "user_data") async throws -> OpenAIFile {
         AppLogger.log("📤 Starting file upload: \(filename) (\(formatBytes(fileData.count)))", category: .openAI, level: .info)
 
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
@@ -3744,12 +3723,12 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.missingAPIKey
         }
 
-        var urlString = "https://api.openai.com/v1/files"
-        if let purpose = purpose {
-            urlString += "?purpose=\(purpose)"
+        var urlComponents = URLComponents(string: "https://api.openai.com/v1/files")!
+        if let purpose = purpose?.trimmingCharacters(in: .whitespacesAndNewlines), !purpose.isEmpty {
+            urlComponents.queryItems = [URLQueryItem(name: "purpose", value: purpose)]
         }
 
-        guard let url = URL(string: urlString) else {
+        guard let url = urlComponents.url else {
             throw OpenAIServiceError.invalidResponseData
         }
 

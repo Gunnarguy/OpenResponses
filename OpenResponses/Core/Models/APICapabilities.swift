@@ -107,6 +107,16 @@ public enum APICapabilities {
             case serverDescription = "server_description"
         }
 
+        private struct CodeInterpreterContainer: Codable, Hashable {
+            let type: String
+            let fileIds: [String]?
+
+            enum CodingKeys: String, CodingKey {
+                case type
+                case fileIds = "file_ids"
+            }
+        }
+
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let typeString = try container.decode(String.self, forKey: .type)
@@ -128,9 +138,16 @@ public enum APICapabilities {
                     filters: filters
                 )
             case "code_interpreter":
-                let containerInfo = try container.decodeIfPresent([String: String].self, forKey: .container)
-                let containerType = containerInfo?["type"] ?? "auto"
-                let fileIds = try container.decodeIfPresent([String].self, forKey: .fileIds)
+                let containerInfo: CodeInterpreterContainer?
+                do {
+                    containerInfo = try container.decodeIfPresent(CodeInterpreterContainer.self, forKey: .container)
+                } catch {
+                    containerInfo = nil
+                }
+                let explicitContainerId = try? container.decodeIfPresent(String.self, forKey: .container)
+                let containerType = containerInfo?.type ?? explicitContainerId ?? "auto"
+                let legacyTopLevelFileIds = try container.decodeIfPresent([String].self, forKey: .fileIds)
+                let fileIds = containerInfo?.fileIds ?? legacyTopLevelFileIds
                 self = .codeInterpreter(containerType: containerType, fileIds: fileIds)
             case "image_generation":
                 let model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-image-1"
@@ -198,9 +215,18 @@ public enum APICapabilities {
                 }
             case .codeInterpreter(let containerType, let fileIds):
                 try container.encode("code_interpreter", forKey: .type)
-                try container.encode(["type": containerType], forKey: .container)
-                if let fileIds = fileIds, !fileIds.isEmpty {
-                    try container.encode(fileIds, forKey: .fileIds)
+                let normalizedContainerType = containerType.isEmpty ? "auto" : containerType
+
+                if normalizedContainerType == "auto" || (fileIds?.isEmpty == false) {
+                    try container.encode(
+                        CodeInterpreterContainer(
+                            type: normalizedContainerType,
+                            fileIds: fileIds?.isEmpty == false ? fileIds : nil
+                        ),
+                        forKey: .container
+                    )
+                } else {
+                    try container.encode(normalizedContainerType, forKey: .container)
                 }
             case .imageGeneration(let model, let size, let quality, let outputFormat):
                 try container.encode("image_generation", forKey: .type)

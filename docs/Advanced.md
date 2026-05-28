@@ -7,7 +7,7 @@ This project is paused in a "super beta" state. Major recent work includes:
 
 - Ultra-strict computer-use mode (toggle disables all app-side helpers; see below)
 - Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
-- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- Model/tool compatibility gating: GA computer use is enabled for computer-capable GPT-5.x models in the app (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) using the `computer` tool. The legacy dedicated `computer-use-preview` model remains supported with its preview-only `computer_use_preview` payload. Non-computer models such as gpt-4o, gpt-4.1, o3, and GPT-5 variants without computer access remain disabled by design.
 - All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
 
 **To resume:** Review this section, ROADMAP.md, and the case study for a full summary of what’s done and what’s next.

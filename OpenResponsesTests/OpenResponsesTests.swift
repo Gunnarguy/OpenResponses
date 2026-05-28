@@ -353,6 +353,29 @@ final class OpenResponsesTests: XCTestCase {
         )
     }
 
+    func testComputerServiceNormalizesComputerUseMouseMetadata() {
+        XCTAssertEqual(ComputerService.testing_mouseButtonCode("left"), 0)
+        XCTAssertEqual(ComputerService.testing_mouseButtonCode("middle"), 1)
+        XCTAssertEqual(ComputerService.testing_mouseButtonCode("right"), 2)
+        XCTAssertEqual(ComputerService.testing_mouseButtonsMask(for: 0), 1)
+        XCTAssertEqual(ComputerService.testing_mouseButtonsMask(for: 1), 4)
+        XCTAssertEqual(ComputerService.testing_mouseButtonsMask(for: 2), 2)
+
+        let flags = ComputerService.testing_mouseModifierFlags(keys: ["CTRL", "Shift", "Option", "Meta"])
+        XCTAssertEqual(flags["ctrl"], true)
+        XCTAssertEqual(flags["shift"], true)
+        XCTAssertEqual(flags["alt"], true)
+        XCTAssertEqual(flags["meta"], true)
+    }
+
+    func testComputerServiceNormalizesComputerUseKeyboardKeys() {
+        XCTAssertEqual(ComputerService.testing_normalizedKeyboardKey("ARROWLEFT"), "ArrowLeft")
+        XCTAssertEqual(ComputerService.testing_normalizedKeyboardKey("pagedown"), "PageDown")
+        XCTAssertEqual(ComputerService.testing_normalizedKeyboardKey("ESC"), "Escape")
+        XCTAssertEqual(ComputerService.testing_normalizedKeyboardKey("SPACE"), " ")
+        XCTAssertEqual(ComputerService.testing_normalizedKeyboardKey("a"), "a")
+    }
+
     // Test PromptLibrary
     @MainActor
     func testPromptLibraryPersistsAddUpdateAndDelete() throws {

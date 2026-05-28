@@ -38,7 +38,7 @@ OpenResponses follows a strict MVVM structure with dependency injection via `App
 
 ### 3.3 Tool Orchestration
 
-- Computer use tool delivers 100% action coverage with guardrails (navigate-first logic, wait limits, safety approval sheet, auto retries, blank-page avoidance).
+- Computer use tool implements the official action set with guardrails (GA `computer` plus legacy `computer_use_preview`, batched actions, modifier-key mouse metadata, navigate-first logic, wait limits, safety approval sheet, auto retries, blank-page avoidance).
 - Code interpreter integrates artifact parsing for 43 file types with a sandbox cache to avoid repeat downloads.
 - File search supports multi-vector-store queries with advanced controls (max results, ranker override).
 - MCP connectors feature discovery, approval workflows, Keychain-secured credentials, and health probes before streaming begins.

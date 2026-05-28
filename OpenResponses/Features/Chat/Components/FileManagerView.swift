@@ -225,7 +225,7 @@ struct FileManagerView: View {
 
             // MARK: File Search Configuration
 
-            Section { 
+            Section {
                 Toggle("Enable File Search", isOn: $viewModel.activePrompt.enableFileSearch)
                     .onChange(of: viewModel.activePrompt.enableFileSearch) { _, newValue in
                         if !newValue {
@@ -329,7 +329,7 @@ HStack(spacing: 8) {
                                     .foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Button { 
+                                Button {
                                     removeVectorStore(store.id)
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
@@ -367,7 +367,7 @@ HStack(spacing: 8) {
                         .filter { !$0.isEmpty }
                         .count
 
-                    HStack { 
+                    HStack {
                         Image(systemName: "doc.on.doc")
                             .foregroundColor(.orange)
                         Text("\(preloadCount) files pre-loaded")
@@ -960,7 +960,9 @@ HStack(spacing: 8) {
 
         do {
             // Load files and first page of vector stores concurrently
-            async let filesTask = api.listFiles(purpose: "assistants")
+            // List all files so users can see both newer Responses `user_data` uploads and
+            // older `assistants` uploads created before the purpose migration.
+            async let filesTask = api.listFiles(purpose: nil)
             async let vectorStoresTask = api.listVectorStoresPaginated(limit: 20, after: nil)
 
             files = try await filesTask

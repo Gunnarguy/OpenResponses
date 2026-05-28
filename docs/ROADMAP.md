@@ -3,7 +3,7 @@
 ---
 
 **[2025-11-07] Status Snapshot:**
-Phase 1 is locked: every shipping Responses API tool (computer, code interpreter, file search, image generation, and custom function workflows) is production-ready with SwiftUI polish. Recent work introduced the Assistant Thinking panel, revamped prompt ergonomics, and safety upgrades for computer use. Conversations still persist locally while Phase 2 work scopes the migration to `/v1/conversations`.
+Phase 1 is locked: every shipping Responses API tool (computer, code interpreter, file search, image generation, and custom function workflows) is production-ready with SwiftUI polish. Recent work introduced the Assistant Thinking panel, revamped prompt ergonomics, and safety upgrades for computer use. Conversations still persist locally by default; the app now has partial `/v1/conversations` service/send integration for opt-in remote storage, while full cross-device reconciliation remains Phase 2 work.
 
 **To resume:** Review this roadmap, `docs/CASE_STUDY.md`, and `docs/api/Full_API_Reference.md` before picking up implementation work. Those documents track architectural context, coverage, and outstanding gaps.
 
@@ -31,7 +31,7 @@ This section provides a comprehensive overview of the current implementation sta
 | **Advanced Tools**          | ✅ **Complete**              | Computer Use tool complete with bulletproof error handling; Custom Function tools complete; the shipping experience centers on core OpenAI tools, Apple integrations, and privacy-first approval flows. |
 | **Streaming Response**      | ✅ **Complete**              | Comprehensive handling for text, tool calls, image generation events, and computer use with real-time status updates.                                                                                   |
 | **Rich Content Output**     | 🟡 **Partial**               | Text rendering is complete with copy functionality; media previews implemented; annotations parsing needs enhancement.                                                                                  |
-| **Conversation Management** | ❌ **Phase 2 Target**        | Local storage complete; backend Conversations API integration planned for Phase 2.                                                                                                                      |
+| **Conversation Management** | 🟡 **Partial / Phase 2**     | Local storage complete; `/v1/conversations` service methods and opt-in send/delete integration exist, but full remote list/history sync and cross-device reconciliation are still pending.             |
 | **Advanced Parameters**     | ✅ **Complete**              | All API parameters exposed including `tool_choice`, `include`, background mode, reasoning controls, and model-specific configurations.                                                                  |
 
 ---
@@ -60,7 +60,7 @@ This playbook details every feature and improvement required to reach 100% API a
 
 ### Model Compatibility & Ultra-strict Mode (2025-09-13)
 
-- **Computer-use is only available on the `computer-use-preview` model.** For gpt-4o, gpt-4-turbo, and others, the tool is disabled by design (see `ModelCompatibilityService.swift`).
+- **Computer-use compatibility is model-gated.** GA `computer` tool support is enabled for the app's computer-capable GPT-5.x models (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`). The legacy dedicated `computer-use-preview` model remains supported with its preview `computer_use_preview` payload. For gpt-4o, gpt-4.1, o3, and other non-computer models, the tool is disabled by design (see `ModelCompatibilityService.swift`).
 - **Ultra-strict mode** disables all app-side helpers (pre-navigation, intent-aware search, click-by-text, loop-prevention) for purist/diagnostic use. Toggle in Settings → Debugging.
 - All recent changes are documented in `CASE_STUDY.md` and `Full_API_Reference.md` for easy resumption.
 
@@ -70,9 +70,9 @@ This playbook details every feature and improvement required to reach 100% API a
 
 | Feature / Improvement                      | Rationale & Evidence                                                                                                   | Required Actions & Affected Files/Classes                                                                                                                                                                                                                                               | Importance |
 | :----------------------------------------- | :--------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------- |
-| **Backend-Managed Conversations**          | The app uses local storage only. Without server sync, conversations are not accessible across devices.                 | - Implement `createConversation`, `listConversations`, `getConversation`, `updateConversation`, and `deleteConversation` in `OpenAIService`.<br>- Update `ConversationStorageService` to fetch and sync conversations with the backend.<br>- Add offline fallback to use a local cache. | 0.9        |
+| **Backend-Managed Conversations**          | Local storage remains the default. Service-level `/v1/conversations` CRUD and opt-in send/delete integration exist, but remote list/history reconciliation is not complete. | - Use existing `OpenAIService` conversation methods to populate `ConversationListView` from the backend.<br>- Add bidirectional reconciliation between remote conversation history and local JSON cache.<br>- Preserve offline fallback and conflict handling. | 0.9        |
 | **Conversation-Level Metadata**            | The Conversations API supports metadata for custom tags, topics, or user preferences.                                  | - Update the `Conversation` data model to include a `metadata` dictionary.<br>- Provide UI for tagging and searching conversations in `ConversationListView`.                                                                                                                           | 0.4        |
-| **Conversation State & `store` Parameter** | Use the `conversation` object instead of `previous_response_id` for state. Allow disabling storage via `store: false`. | - Adjust `OpenAIService.buildRequestObject()` to include the full conversation object or ID.<br>- Provide a toggle for the `store` parameter in `SettingsView` for privacy-sensitive sessions.                                                                                          | 0.6        |
+| **Conversation State & `store` Parameter** | Use backend conversation IDs when the user opts into remote storage and continue supporting local-only `previous_response_id` state. | - Harden the existing `conversation` ID path with more end-to-end smoke tests.<br>- Continue exposing `store` controls for privacy-sensitive sessions.<br>- Add UI that clearly distinguishes local-only from cloud-backed threads. | 0.6        |
 | **Hierarchical Roles**                     | The API introduces new roles: `platform`, `system`, `developer`. Developer messages override user content.             | - Modify `InputMessage` to support roles beyond `system`/`user`.<br>- Update UI to allow creation of `developer` and `system` messages, perhaps in an advanced settings screen.                                                                                                         | 0.5        |
 
 ### Phase 3: UI/UX & Apple Framework Integration
@@ -115,20 +115,21 @@ This playbook details every feature and improvement required to reach 100% API a
 
 | Endpoint                    | Method | Description & Tasks                                                                                                    | Current Status      |
 | :-------------------------- | :----- | :--------------------------------------------------------------------------------------------------------------------- | :------------------ |
-| `/v1/responses`             | POST   | Create a new model response. Already implemented but must be expanded to support all parameters from the playbook.     | **Partial**         |
-| `/v1/responses/{id}`        | GET    | Retrieve a response. Needed for background-mode polling and error recovery. Add `getResponse(id:)` in `OpenAIService`. | **Not Implemented** |
-| `/v1/responses/{id}`        | DELETE | Delete a response. Rarely needed but required for full API support.                                                    | **Not Implemented** |
-| `/v1/responses/{id}/cancel` | POST   | Cancel a background response. Add UI control and call `cancelResponse(id:)`.                                           | **Not Implemented** |
+| `/v1/responses`             | POST   | Create a new model response through `sendChatRequest` / `streamChatRequest`.                                          | **Implemented**     |
+| `/v1/responses/{id}`        | GET    | Retrieve a response for background polling, computer-call fallback, and recovery.                                      | **Implemented**     |
+| `/v1/responses/{id}`        | DELETE | Delete a response.                                                                                                    | **Implemented**     |
+| `/v1/responses/{id}/cancel` | POST   | Cancel a background response.                                                                                         | **Implemented**     |
+| `/v1/responses/{id}/input_items` | GET | List input items for a response.                                                                                      | **Implemented**     |
 
 ### Conversations API (`/v1/conversations`)
 
 | Endpoint                 | Method | Description & Tasks                                                                                    | Current Status      |
 | :----------------------- | :----- | :----------------------------------------------------------------------------------------------------- | :------------------ |
-| `/v1/conversations`      | POST   | Create a new conversation. Replace local creation in `ConversationStorageService` with a network call. | **Not Implemented** |
-| `/v1/conversations`      | GET    | List conversations. Replace local storage retrieval with a network call.                               | **Not Implemented** |
-| `/v1/conversations/{id}` | GET    | Retrieve conversation history. Use when a user selects a conversation.                                 | **Not Implemented** |
-| `/v1/conversations/{id}` | POST   | Update a conversation (e.g., rename). Add editing UI and a network call.                               | **Not Implemented** |
-| `/v1/conversations/{id}` | DELETE | Delete a conversation from the backend. Add a UI action and network call.                              | **Not Implemented** |
+| `/v1/conversations`      | POST   | Create a remote conversation for opt-in backend-managed state.                                        | **Implemented**     |
+| `/v1/conversations`      | GET    | List conversations. Service exists; full UI reconciliation still pending.                              | **Partial**         |
+| `/v1/conversations/{id}` | GET    | Retrieve conversation history. Service exists; local hydration/sync still pending.                     | **Partial**         |
+| `/v1/conversations/{id}` | POST   | Update metadata/archive state.                                                                         | **Implemented**     |
+| `/v1/conversations/{id}` | DELETE | Delete a remote-backed conversation from the backend and local cache.                                  | **Implemented**     |
 
 ### Streaming Events (Server-Sent Events)
 

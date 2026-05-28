@@ -1498,7 +1498,7 @@ class ChatViewModel: ObservableObject {
                             let uploadedFile = try await api.uploadFile(
                                 fileData: dataToUpload,
                                 filename: filenameToUpload,
-                                purpose: "assistants"
+                                purpose: "user_data"
                             )
                             uploadedFileIds.append(uploadedFile.id)
 

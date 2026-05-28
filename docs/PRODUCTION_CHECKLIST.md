@@ -19,7 +19,7 @@ This checklist keeps release candidates honest. Run it before tagging a build or
 
 ### 3.1 Computer Use
 
-- [ ] Enable the `computer` tool with the `computer-use-preview` model.
+- [ ] Enable Computer Use with a GA computer-capable GPT-5.x model (for example `gpt-5.5` or `gpt-5.4`) and confirm the request uses the `computer` tool. Run one legacy smoke test with `computer-use-preview` only if maintaining backwards compatibility.
 - [ ] Issue a navigation request ("Open [openai.com](https://openai.com)") and confirm:
   - [ ] Navigate-first helper avoids blank screenshots.
   - [ ] Screenshots attach to the assistant message and render in chat.

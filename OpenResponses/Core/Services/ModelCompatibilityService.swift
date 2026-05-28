@@ -5,6 +5,39 @@ class ModelCompatibilityService {
     static let shared = ModelCompatibilityService()
     private init() {}
 
+    /// Normalizes non-API aliases (often used in docs/system cards or older saved presets)
+    /// to concrete API model IDs before any capability lookup or request assembly occurs.
+    public func normalizedModelId(for modelId: String) -> String {
+        let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch trimmed {
+        case "gpt-5.5-thinking":
+            return "gpt-5.5"
+        case "gpt-5.5-thinking-pro":
+            return "gpt-5.5-pro"
+        case "gpt-5.5-thinking-mini":
+            return "gpt-5.5-mini"
+        case "gpt-5.5-thinking-nano":
+            return "gpt-5.5-nano"
+        case "gpt-5.4-thinking":
+            return "gpt-5.4"
+        case "gpt-5.4-thinking-pro":
+            return "gpt-5.4-pro"
+        case "gpt-5.4-thinking-mini":
+            return "gpt-5.4-mini"
+        case "gpt-5.4-thinking-nano":
+            return "gpt-5.4-nano"
+        case "gpt-5-thinking":
+            return "gpt-5"
+        case "gpt-5-thinking-mini":
+            return "gpt-5-mini"
+        case "gpt-5-thinking-nano":
+            return "gpt-5-nano"
+        default:
+            return trimmed
+        }
+    }
+
     // MARK: - Compatibility Types
 
     /// Represents a tool's compatibility and usage status
@@ -269,6 +302,26 @@ class ModelCompatibilityService {
             supportsReasoningEffort: true,
             supportsTemperature: true
         ),
+        "gpt-5.4-pro": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
+            parameters: [
+                "reasoning_effort",
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .disabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
         "gpt-5.4-mini": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
@@ -483,13 +536,42 @@ class ModelCompatibilityService {
         return modelId.contains("deep-research")
     }
 
+    /// Returns the registry key to use for a concrete model ID.
+    ///
+    /// Exact model IDs win first. If the OpenAI Models API returns dated snapshots such as
+    /// `gpt-5.4-mini-2026-05-28`, fall back to the base family so tool/parameter gating stays
+    /// aligned with the model actually sent to the API.
+    private func capabilityKey(for modelId: String) -> String {
+        let normalized = normalizedModelId(for: modelId)
+        if modelCapabilities[normalized] != nil {
+            return normalized
+        }
+
+        let familyPrefixes = [
+            "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.5",
+            "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4",
+            "gpt-5.2-pro", "gpt-5.2",
+            "gpt-5.1",
+            "gpt-5-mini", "gpt-5-nano", "gpt-5",
+            "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1",
+            "gpt-4o-mini", "gpt-4o",
+            "o3-mini", "o3",
+        ]
+
+        if let fallback = familyPrefixes.first(where: { normalized.hasPrefix("\($0)-") }) {
+            return fallback
+        }
+
+        return normalized
+    }
+
     // MARK: - Public API
 
     /// Returns the capabilities for a given model.
     /// - Parameter modelId: The model identifier.
     /// - Returns: The model capabilities, or nil if the model is not supported.
     public func getCapabilities(for modelId: String) -> ModelCapabilities? {
-        return modelCapabilities[modelId]
+        return modelCapabilities[capabilityKey(for: modelId)]
     }
 
     /// Checks if a tool is supported by a given model.
@@ -499,7 +581,7 @@ class ModelCompatibilityService {
     ///   - isStreaming: Whether streaming is enabled (affects some tools).
     /// - Returns: True if the tool is supported, false otherwise.
     public func isToolSupported(_ toolType: APICapabilities.ToolType, for modelId: String, isStreaming: Bool = false) -> Bool {
-        guard let capabilities = modelCapabilities[modelId] else {
+        guard let capabilities = getCapabilities(for: modelId) else {
             return false
         }
 
@@ -547,10 +629,11 @@ class ModelCompatibilityService {
 
     /// Checks if a parameter is supported by a given model, optionally considering reasoning effort.
     ///
-    /// GPT-5.4, GPT-5.2, and GPT-5.1 have API-level restrictions where some parameters
+    /// GPT-5.5, GPT-5.4, GPT-5.2, and GPT-5.1 have API-level restrictions where some parameters
     /// (e.g., temperature/top_p/logprobs) are only valid when reasoning effort is `none`.
-    public func isParameterSupported(_ parameter: String, for modelId: String, reasoningEffort: String?) -> Bool { 
-        guard let capabilities = modelCapabilities[modelId] else {
+    public func isParameterSupported(_ parameter: String, for modelId: String, reasoningEffort: String?) -> Bool {
+        let key = capabilityKey(for: modelId)
+        guard let capabilities = modelCapabilities[key] else {
             return false
         }
 
@@ -559,10 +642,10 @@ class ModelCompatibilityService {
         }
 
         let normalizedEffort = reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let isGPT55Family = (modelId == "gpt-5.5") || (modelId == "gpt-5.5-pro") || (modelId == "gpt-5.5-mini") || (modelId == "gpt-5.5-nano") || modelId.hasPrefix("gpt-5.5-")
-        let isGPT54Family = (modelId == "gpt-5.4") || (modelId == "gpt-5.4-mini") || (modelId == "gpt-5.4-nano") || modelId.hasPrefix("gpt-5.4-")
-        let isGPT52Family = (modelId == "gpt-5.2") || (modelId == "gpt-5.2-pro") || modelId.hasPrefix("gpt-5.2-")
-        let isGPT51Family = (modelId == "gpt-5.1") || modelId.hasPrefix("gpt-5.1-")
+        let isGPT55Family = key == "gpt-5.5" || key == "gpt-5.5-pro" || key == "gpt-5.5-mini" || key == "gpt-5.5-nano"
+        let isGPT54Family = key == "gpt-5.4" || key == "gpt-5.4-pro" || key == "gpt-5.4-mini" || key == "gpt-5.4-nano"
+        let isGPT52Family = key == "gpt-5.2" || key == "gpt-5.2-pro"
+        let isGPT51Family = key == "gpt-5.1"
 
         if isGPT55Family || isGPT54Family || isGPT52Family || isGPT51Family {
             switch parameter {
@@ -578,38 +661,36 @@ class ModelCompatibilityService {
     }
 
     public func defaultReasoningEffort(for modelId: String) -> String? {
-        guard let capabilities = modelCapabilities[modelId],
+        guard let capabilities = getCapabilities(for: modelId),
               capabilities.supportsReasoningEffort else {
             return nil
         }
 
-        let normalizedModelId = modelId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedModelId = capabilityKey(for: modelId).lowercased()
 
         if normalizedModelId == "gpt-5.5" ||
             normalizedModelId == "gpt-5.5-pro" ||
             normalizedModelId == "gpt-5.5-mini" ||
-            normalizedModelId == "gpt-5.5-nano" ||
-            normalizedModelId.hasPrefix("gpt-5.5-")
+            normalizedModelId == "gpt-5.5-nano"
         {
             return "none"
         }
 
         if normalizedModelId == "gpt-5.4" ||
+            normalizedModelId == "gpt-5.4-pro" ||
             normalizedModelId == "gpt-5.4-mini" ||
-            normalizedModelId == "gpt-5.4-nano" ||
-            normalizedModelId.hasPrefix("gpt-5.4-")
+            normalizedModelId == "gpt-5.4-nano"
         {
             return "none"
         }
 
         if normalizedModelId == "gpt-5.2" ||
-            normalizedModelId == "gpt-5.2-pro" ||
-            normalizedModelId.hasPrefix("gpt-5.2-")
+            normalizedModelId == "gpt-5.2-pro"
         {
             return "none"
         }
 
-        if normalizedModelId == "gpt-5.1" || normalizedModelId.hasPrefix("gpt-5.1-") {
+        if normalizedModelId == "gpt-5.1" {
             return "none"
         }
 

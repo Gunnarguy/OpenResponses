@@ -51,7 +51,7 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(["gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "computer-use-preview"], id: \.self) { model in
+                        ForEach(["gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "computer-use-preview"], id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }

@@ -443,9 +443,9 @@ Agentic tools empower the model to perform complex, multi-step tasks by interact
 
 ### The `computer` Tool
 
-The primary agentic tool is `computer`. When enabled, the model can perform actions like clicking, typing, scrolling, and navigating on a virtual browser interface. **OpenResponses features a complete, production-ready implementation** with 100% action coverage, enhanced reliability features, and comprehensive error handling.
+The primary agentic tool is `computer`. When enabled, the model can perform actions like clicking, typing, scrolling, and navigating on a virtual browser interface. OpenResponses implements the current GA `computer` loop for supported GPT-5.x models, keeps the legacy `computer_use_preview` path for compatibility, and covers the official action set with safety approvals and WebView guardrails.
 
-**Current Status**: ✅ **Production Ready** - All computer use functionality is fully implemented and tested.
+**Current Status**: ✅ **Production-ready harness, still smoke-test per site** - the API loop and official actions are implemented, but real websites remain variable and should be verified with the production checklist.
 
 ### Building Agents
 

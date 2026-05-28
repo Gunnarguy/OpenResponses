@@ -3,13 +3,13 @@
 OpenResponses has successfully completed Phase 1 of its development roadmap! All input modalities and advanced tool integrations are now production-ready:
 
 - ✅ **Direct File Uploads**: Complete implementation with 43+ supported file types
-- ✅ **Computer Use Tool**: 100% bulletproof with all OpenAI actions and comprehensive error handling
+- ✅ **Computer Use Tool**: Current GA/legacy action harness with all official actions, safety approvals, and comprehensive error handling
 - ✅ **Image Generation**: Full streaming support with real-time feedback
 - ✅ **Code Interpreter**: Full artifact parsing with rich UI for all 43 file types
 - ✅ **File Search**: Multi-vector-store search with advanced configurations
 - ✅ **Performance Optimizations**: Ultra-intuitive UI with 3x faster updates and reduced overhead
 
-**To resume Phase 2:** Focus on backend Conversations API integration and cross-device sync capabilities. All foundational systems are complete and robust.
+**To resume Phase 2:** Focus on full backend conversation reconciliation and cross-device sync. Service-level Conversations API methods and opt-in send/delete integration exist, but complete remote list/history hydration remains pending.
 
 ---
 
@@ -18,7 +18,7 @@ This project is paused in a "super beta" state. Major recent work includes:
 
 - Ultra-strict computer-use mode (toggle disables all app-side helpers; see Advanced.md)
 - Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
-- Model/tool compatibility gating: computer-use is only available on the dedicated model (`computer-use-preview`), not gpt-4o/gpt-4-turbo/etc.
+- Model/tool compatibility gating: GA computer use is enabled only on computer-capable GPT-5.x models in the app (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) with the `computer` tool. The legacy dedicated `computer-use-preview` model remains supported with the preview `computer_use_preview` tool. Other models remain disabled by compatibility gates.
 - All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
 
 **To resume:** Review this section, ROADMAP.md, and the case study for a full summary of what’s done and what’s next.
@@ -76,7 +76,7 @@ This table details every parameter in the root of the JSON request body sent to 
 | :------------- | :------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `model`        | `String`             | **Yes**  | The ID of the model to use for this request (e.g., `gpt-4-turbo`).                                                                     | **Implemented**. In `OpenAIService.swift`, the `buildRequestObject` function retrieves the model ID from `prompt.model.id`. The user selects this in `SettingsView.swift`, which updates the `activePrompt` in `ChatViewModel`.              |
 | `input`        | `String` or `Array`  | **Yes**  | The core content for the model. Can be a simple string for user input or a rich array of `InputItem` objects for multimodal content.   | **✅ Implemented**. The `buildRequestObject` function handles both text strings and multimodal input arrays. `buildInputMessages` supports `input_text`, `input_image`, and `input_file` with both `file_id` and direct `file_data` uploads. |
-| `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Not Implemented**. The app manages state locally by passing `previous_response_id`. It does not use the Conversations API.                                                                                                                 |
+| `conversation` | `String` or `Object` | No       | The conversation this response belongs to. Can be a conversation ID string or a full conversation object. Manages state automatically. | **Partially Implemented**. `ChatViewModel.prepareConversationContextForSend` uses `conversation` IDs when a local conversation is opted into remote storage and falls back to `previous_response_id` for local-only/offline flows. |
 | `stream`       | `Bool`               | No       | If `true`, the server streams back Server-Sent Events (SSE) as the response is generated. Defaults to `false`.                         | **Implemented**. Streaming covers text deltas, reasoning traces, computer use, MCP list/call flows (including `response.mcp_call.arguments.*`), image generation previews, and container file annotations.                                |
 | `background`   | `Bool`               | No       | If `true`, the model response runs in the background. Defaults to `false`.                                                             | **Implemented**. Controlled by `Prompt.backgroundMode`; included by `OpenAIService.buildRequestObject` when enabled.                                                                                                                         |
 | `tools`        | `Array`              | No       | A list of tool configurations the model can use, such as `web_search`, `code_interpreter`, etc.                                        | **✅ Implemented**. Builds `web_search`, `code_interpreter`, `file_search`, `image_generation`, `computer`, Custom Function tools, and OpenAI-hosted MCP connectors (Dropbox, Gmail, SharePoint, etc.) as well as remote MCP servers (including Notion's official hosted endpoint per <https://modelcontextprotocol.io/docs/getting-started/intro>) with secure OAuth tokens. Remote Notion connections now persist structured headers in the Keychain (Authorization + Notion-Version) to satisfy the official API and eliminate recurring 401 errors.                                                                      |
@@ -175,16 +175,17 @@ The app has extensive tool integration through the `buildTools` function in `Ope
 
 **G. Computer Use**
 
-- **Type:** `computer_use_preview`
+- **Types:** `computer` for GA computer-capable GPT-5.x models; `computer_use_preview` for the legacy dedicated preview model.
 - **App Status:** **🎉 COMPLETE & PRODUCTION-READY**. Fully functional native implementation with all technical issues resolved.
-- **Model Compatibility:** **❌ Limited**. Hosted computer use is only supported via the dedicated `computer-use-preview` model. Disabled for gpt-5, gpt-4.1 series, gpt-4o, gpt-4-turbo, gpt-4, o3, and others.
+- **Model Compatibility:** GA computer use is enabled for `gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, and `gpt-5.4-mini`. The dedicated `computer-use-preview` model is still supported through the preview payload shape. Computer use remains disabled for gpt-5.5-pro, gpt-5.5-nano, gpt-5.4-pro, gpt-5.4-nano, gpt-5.2/5.1/5, gpt-4.1 series, gpt-4o, o3, and other non-computer models.
 - **Implementation Status:**
-  - ✅ Tool configuration in `APICapabilities.swift` using `computer_use_preview` type
-  - ✅ Tool building in `OpenAIService.buildTools()` with environment/display parameters
+  - ✅ Tool configuration in `APICapabilities.swift` using `computer` and `computer_use_preview` types
+  - ✅ Tool building in `OpenAIService.buildTools()` with GA vs. preview payload selection
   - ✅ UI toggle in `SettingsView` ("Computer Use")
   - ✅ Model compatibility checking in `ModelCompatibilityService`
   - ✅ API include parameter (`computer_call_output.output.image_url`)
   - ✅ Streaming event handling for computer screenshots and action confirmations
+  - ✅ GA follow-up payloads send `computer_call_output` with `output.type = "computer_screenshot"`, `detail = "original"`, and no legacy `current_url`/`truncation` fields. Legacy `computer-use-preview` follow-ups retain `computer_use_preview`, `current_url`, and `truncation: "auto"`.
   - ✅ Fixed main thread issues in screen size detection
   - ✅ Automatic pending call resolution system in `ChatViewModel.resolvePendingComputerCallsIfNeeded()` that prevents 400 "No tool output found for computer call" errors
   - 🎉 **PRODUCTION-READY**: Native `ComputerService.swift` with proper WebView frame initialization (440x956)
@@ -197,10 +198,10 @@ The app has extensive tool integration through the `buildTools` function in `Ope
   - 🎉 **PRODUCTION-READY**: Intent-aware search with site fallbacks — on Google/Bing/Amazon and most sites with search fields, the app programmatically focuses the search box, types and submits the query. After submission, a brief click-suppression window avoids accidental clicks on suggestions/promos.
   - ⚠️ **Limitation:** Disabled for gpt-5 models due to API restrictions
 - **Available Actions in API:**
-  - ✅ `Click(x, y, button)`: Mouse clicks with element targeting and focus management
-  - ✅ `DoubleClick(x, y)`: Double-click actions with proper MouseEvent simulation
-  - ✅ `Drag(path: [{x, y}, ...])`: Drag operations with multi-point path interpolation and smooth gestures
-  - ✅ `KeyPress(keys: ["key1", ...])`: Complete keyboard simulation including modifiers (Ctrl+A/C/V/Z, Enter, Escape, Tab, etc.)
+  - ✅ `Click(x, y, button, keys)`: Mouse clicks with element targeting, button mapping (left/middle/right), and modifier-key event metadata
+  - ✅ `DoubleClick(x, y, button, keys)`: Double-click actions with proper MouseEvent simulation and modifier support
+  - ✅ `Drag(path: [{x, y}, ...], keys)`: Drag operations replaying the full model-provided path, including modifier-key metadata
+  - ✅ `KeyPress(keys: ["key1", ...])`: Keyboard simulation with normalized special keys (Ctrl/Cmd/Alt/Shift, arrows, Enter, Escape, Tab, PageUp/Down, etc.)
   - ✅ `Move(x, y)`: Mouse movement with hover effects and mouseover event dispatch
   - ✅ `Screenshot()`: High-quality screen capture with retry logic and proper DOM readiness
   - ✅ `Scroll(x, y, scroll_x, scroll_y)`: Smooth scrolling with configurable X/Y offsets
@@ -278,7 +279,7 @@ Assistant reasoning payloads captured from `reasoning` output items are now pers
 
 ### 2.3. Output Content and Annotations
 
-Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation successfully captures and displays screenshots in chat interface. Single-shot mode prevents infinite loops. Status chips work correctly. WebView frame initialization and rendering issues fully resolved. **Available only with the `computer-use-preview` model** per current API; disabled on other chat models.
+Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation successfully captures and displays screenshots in chat interface. Single-shot mode prevents infinite loops. Status chips work correctly. WebView frame initialization and rendering issues fully resolved. GA computer use is enabled for the app's computer-capable GPT-5.x models (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) using the `computer` tool, while `computer-use-preview` remains supported as the legacy dedicated preview path.
 
 🎉 **PRODUCTION MILESTONE**: All computer use functionality is working correctly - screenshots capture actual webpage content, display properly in the UI, and the system handles both simple screenshot requests and complex multi-step interactions seamlessly.
 
@@ -354,10 +355,10 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 | **File Input**              | ✅ **Complete**              | Full support for both `file_id` references and direct file uploads with `file_data` - 43+ supported file types                     |
 | **Audio Input**             | ❌ **Intentionally Removed** | Audio capture and API integration intentionally removed from the app to focus on core features                                     |
 | **Basic Tools**             | ✅ **Complete**              | Web search, code interpreter, file search fully integrated with advanced configurations                                            |
-| **Advanced Tools**          | ✅ **Complete**              | Computer Use (100% bulletproof), Custom Functions (full implementation), OpenAI-hosted MCP connectors (Dropbox, Gmail, SharePoint, etc.) with OAuth onboarding, and guided remote MCP templates (including Notion's official hosted server). Notion search responses are automatically compacted (<=25 items with property summaries) so tool outputs stay within the GPT-5 context window.                                                            |
+| **Advanced Tools**          | ✅ **Complete**              | Computer Use current-action harness, Custom Functions (full implementation), OpenAI-hosted MCP connectors (Dropbox, Gmail, SharePoint, etc.) with OAuth onboarding, and guided remote MCP templates (including Notion's official hosted server). Notion search responses are automatically compacted (<=25 items with property summaries) so tool outputs stay within the GPT-5 context window.                                                            |
 | **Streaming Response**      | ✅ **Complete**              | Comprehensive handling for text deltas, tool calls, image generation, computer use, with real-time status                          |
 | **Rich Content Output**     | 🟡 **Partial**               | Text rendering complete with copy functionality; artifact parsing complete for 43 file types; some annotation enhancements pending |
-| **Conversation Management** | ❌ **Phase 2 Target**        | Local storage complete and robust; backend Conversations API integration is the next major milestone                               |
+| **Conversation Management** | 🟡 **Partial / Phase 2**     | Local storage complete and robust; service-level Conversations API CRUD and opt-in send/delete integration exist, while full remote list/history sync remains pending |
 | **Advanced Parameters**     | ✅ **Complete**              | All API parameters supported including tool_choice, include arrays, background mode, reasoning controls                            |
 | **Include Parameters**      | ✅ **Complete**              | All include options implemented (web/file/logprobs/reasoning/image URLs/computer screenshots)                                      |
 
@@ -367,7 +368,7 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 
 1. ✅ **Direct File Uploads**: Complete `DocumentPicker` implementation with 43+ supported file types
 2. ✅ **Image Input Processing**: Full image attachment system with detail level control and base64 encoding
-3. ✅ **Computer Use Tool**: 100% bulletproof implementation with all OpenAI actions and comprehensive error handling
+3. ✅ **Computer Use Tool**: GA/legacy computer-use harness with all official actions, safety approvals, and comprehensive error handling
 4. ✅ **Image Generation**: Complete streaming support with real-time feedback and high-quality output
 5. ✅ **Code Interpreter**: Complete artifact parsing for all 43 file types with rich UI and copy functionality
 6. ✅ **File Search**: Multi-vector-store search with advanced configurations
@@ -442,15 +443,16 @@ This document serves as the definitive reference for understanding the current i
 
 This API allows for explicit, backend-managed conversation history.
 
-- **App Status:** **Not Implemented**.
-- **Gap Analysis:** The app manages conversations locally via `ConversationStorageService.swift` using the file system (Application Support). There is no backend sync. To implement this, add Conversations API calls in `OpenAIService.swift` and adapt `ConversationStorageService`/`ChatViewModel` for remote sync with offline fallback.
+- **App Status:** **Partial service + opt-in send integration implemented**.
+- **Coverage:** `OpenAIService.swift` exposes list/create/get/update/delete methods, and `ChatViewModel` can create a remote conversation, send subsequent Responses requests with the `conversation` ID, and delete the remote conversation when the local conversation is deleted. Local JSON storage remains the offline cache and default behavior.
+- **Remaining Gap:** Full cloud browsing/sync of remote conversation history into `ConversationListView` is still incomplete. The service methods exist, but there is not yet a full cross-device reconciliation pipeline.
 
 ### 3.1. API Endpoints
 
-| Endpoint                 | Method   | Description                                     | App Status & Implementation Details                                                                   |
-| :----------------------- | :------- | :---------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-| `/v1/conversations`      | `POST`   | Create a new conversation.                      | **Not Implemented**. `OpenAIService` would need a `createConversation` function.                      |
-| `/v1/conversations`      | `GET`    | List all conversations.                         | **Not Implemented**. `ConversationStorageService` would call this to populate `ConversationListView`. |
-| `/v1/conversations/{id}` | `GET`    | Retrieve a single conversation's full history.  | **Not Implemented**. This would be used when a user taps on a conversation in `ConversationListView`. |
-| `/v1/conversations/{id}` | `POST`   | Update a conversation (e.g., add/modify items). | **Not Implemented**.                                                                                  |
-| `/v1/conversations/{id}` | `DELETE` | Delete a conversation.                          | **Not Implemented**. Would need to be triggered from the UI, likely in `ConversationListView`.        |
+| Endpoint                 | Method   | Description                                    | App Status & Implementation Details                                                                                                                                                     |
+| :----------------------- | :------- | :--------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/conversations`      | `POST`   | Create a new conversation.                     | **Implemented in service and send flow.** `OpenAIService.createConversation`; `ChatViewModel.ensureRemoteConversationIfNeeded` creates a remote conversation for opt-in remote storage. |
+| `/v1/conversations`      | `GET`    | List all conversations.                        | **Service implemented; UI sync partial.** `OpenAIService.listConversations` exists, but automatic cross-device list reconciliation is still pending.                                    |
+| `/v1/conversations/{id}` | `GET`    | Retrieve a single conversation's full history. | **Service implemented; UI sync partial.** `OpenAIService.getConversation` exists; full remote-history hydration into local conversations is still pending.                              |
+| `/v1/conversations/{id}` | `POST`   | Update a conversation metadata/archive state.  | **Service implemented.** `OpenAIService.updateConversation` supports metadata/title and archived state.                                                                                 |
+| `/v1/conversations/{id}` | `DELETE` | Delete a conversation.                         | **Implemented for remote-backed local deletes.** `ChatViewModel.deleteConversation` calls `OpenAIService.deleteConversation` when `remoteId` exists.                                    |

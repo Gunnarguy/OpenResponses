@@ -238,14 +238,18 @@ class ComputerService: NSObject, WKNavigationDelegate {
                   let y = Self.valueAsDouble(action.parameters["y"]) else {
                 throw ComputerUseError.invalidParameters
             }
-            try await click(at: CGPoint(x: x, y: y))
+            let buttonCode = Self.mouseButtonCode(from: action.parameters["button"])
+            let modifierKeys = Self.valueAsStringArray(action.parameters["keys"])
+            try await click(at: CGPoint(x: x, y: y), buttonCode: buttonCode, modifierKeys: modifierKeys)
 
         case "double_click":
             guard let x = Self.valueAsDouble(action.parameters["x"]),
                   let y = Self.valueAsDouble(action.parameters["y"]) else {
                 throw ComputerUseError.invalidParameters
             }
-            try await doubleClick(at: CGPoint(x: x, y: y))
+            let buttonCode = Self.mouseButtonCode(from: action.parameters["button"])
+            let modifierKeys = Self.valueAsStringArray(action.parameters["keys"])
+            try await doubleClick(at: CGPoint(x: x, y: y), buttonCode: buttonCode, modifierKeys: modifierKeys)
 
         case "move":
             guard let x = Self.valueAsDouble(action.parameters["x"]),
@@ -270,7 +274,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
             guard let pathArray = action.parameters["path"] as? [[String: Any]] else {
                 throw ComputerUseError.invalidParameters
             }
-            try await drag(path: pathArray)
+            let buttonCode = Self.mouseButtonCode(from: action.parameters["button"])
+            let modifierKeys = Self.valueAsStringArray(action.parameters["keys"])
+            try await drag(path: pathArray, buttonCode: buttonCode, modifierKeys: modifierKeys)
 
         case "scroll":
             if let x = Self.valueAsDouble(action.parameters["x"]),
@@ -311,7 +317,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
                       let y = Self.valueAsDouble(action.parameters["y"]) else {
                     throw ComputerUseError.invalidParameters
                 }
-                try await doubleClick(at: CGPoint(x: x, y: y))
+                let buttonCode = Self.mouseButtonCode(from: action.parameters["button"])
+                let modifierKeys = Self.valueAsStringArray(action.parameters["keys"])
+                try await doubleClick(at: CGPoint(x: x, y: y), buttonCode: buttonCode, modifierKeys: modifierKeys)
 
             case "mouse_move", "mousemove", "hover":
                 guard let x = Self.valueAsDouble(action.parameters["x"]),
@@ -358,7 +366,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
     /// Simulates a click at a specific point on the web page.
     /// Uses multiple strategies to ensure clicks work on modern JavaScript-heavy sites.
-    private func click(at point: CGPoint) async throws {
+    private func click(at point: CGPoint, buttonCode: Int = 0, modifierKeys: [String] = []) async throws {
         // If a post-search suppression window is active, skip executing the click to avoid misclicks
         if let until = suppressClicksUntil, Date() < until {
             AppLogger.log("🛡️ [Click Guard] Suppressing click during post-search stabilization window", category: .general, level: .info)
@@ -366,6 +374,8 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
         // Adjust for high-DPI screenshots: model might send coordinates in physical pixels.
         // Convert to CSS pixels by dividing by devicePixelRatio when coordinates exceed viewport.
+        let modifierFlags = Self.mouseModifierFlags(from: modifierKeys)
+        let buttonsMask = Self.mouseButtonsMask(for: buttonCode)
         let script = """
         (function() {
             // Generic top-left hamburger/menu guardrail: if the point is near the top-left corner,
@@ -513,6 +523,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
             }
             var px = \(point.x);
             var py = \(point.y);
+            var buttonCode = \(buttonCode);
+            var buttonsMask = \(buttonsMask);
+            var ctrlKey = \(modifierFlags.ctrl ? "true" : "false");
+            var metaKey = \(modifierFlags.meta ? "true" : "false");
+            var altKey = \(modifierFlags.alt ? "true" : "false");
+            var shiftKey = \(modifierFlags.shift ? "true" : "false");
             var dpr = (window.devicePixelRatio || 1);
             var vw = window.innerWidth || document.documentElement.clientWidth || 0;
             var vh = window.innerHeight || document.documentElement.clientHeight || 0;
@@ -560,10 +576,38 @@ class ComputerService: NSObject, WKNavigationDelegate {
             try {
                 if (el.focus) el.focus();
                 ['mousedown','mouseup','click'].forEach(function(type){
-                    var ev = new MouseEvent(type, {bubbles:true, cancelable:true, view:window, clientX:clickX, clientY:clickY, button:0, buttons:(type==='mousedown'?1:0)});
+                    var ev = new MouseEvent(type, {
+                        bubbles:true,
+                        cancelable:true,
+                        view:window,
+                        clientX:clickX,
+                        clientY:clickY,
+                        button:buttonCode,
+                        buttons:(type==='mousedown'?buttonsMask:0),
+                        ctrlKey:ctrlKey,
+                        metaKey:metaKey,
+                        altKey:altKey,
+                        shiftKey:shiftKey
+                    });
                     el.dispatchEvent(ev);
                 });
-                if (el.click) el.click();
+                if (buttonCode === 2) {
+                    el.dispatchEvent(new MouseEvent('contextmenu', {
+                        bubbles:true,
+                        cancelable:true,
+                        view:window,
+                        clientX:clickX,
+                        clientY:clickY,
+                        button:2,
+                        buttons:0,
+                        ctrlKey:ctrlKey,
+                        metaKey:metaKey,
+                        altKey:altKey,
+                        shiftKey:shiftKey
+                    }));
+                } else if (buttonCode === 0 && el.click) {
+                    el.click();
+                }
                 if (el.href && el.tagName === 'A') { result += " (Link: " + el.href + ")"; }
             } catch(e) { result += " (Error: " + e.message + ")"; }
             return result;
@@ -632,11 +676,17 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     /// Simulates a double-click at a specific point on the web page.
-    private func doubleClick(at point: CGPoint) async throws {
+    private func doubleClick(at point: CGPoint, buttonCode: Int = 0, modifierKeys: [String] = []) async throws {
+        let modifierFlags = Self.mouseModifierFlags(from: modifierKeys)
         let script = """
         (function() {
             var px = \(point.x);
             var py = \(point.y);
+            var buttonCode = \(buttonCode);
+            var ctrlKey = \(modifierFlags.ctrl ? "true" : "false");
+            var metaKey = \(modifierFlags.meta ? "true" : "false");
+            var altKey = \(modifierFlags.alt ? "true" : "false");
+            var shiftKey = \(modifierFlags.shift ? "true" : "false");
             var dpr = (window.devicePixelRatio || 1);
             var vw = window.innerWidth || document.documentElement.clientWidth || 0;
             var vh = window.innerHeight || document.documentElement.clientHeight || 0;
@@ -652,7 +702,11 @@ class ComputerService: NSObject, WKNavigationDelegate {
                     cancelable: true,
                     clientX: px,
                     clientY: py,
-                    button: 0
+                    button: buttonCode,
+                    ctrlKey: ctrlKey,
+                    metaKey: metaKey,
+                    altKey: altKey,
+                    shiftKey: shiftKey
                 });
                 el.dispatchEvent(event);
                 return "Double-clicked element: " + el.tagName;
@@ -781,6 +835,8 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private func keypress(keys: [String]) async throws {
         // Handle common keyboard shortcuts via JavaScript
         let keyCombo = keys.joined(separator: "+").uppercased()
+        let primaryKey = Self.normalizedKeyboardKey(keys.last ?? keys.first ?? "")
+        let modifierFlags = Self.mouseModifierFlags(from: keys)
 
         var script = ""
 
@@ -908,16 +964,15 @@ class ComputerService: NSObject, WKNavigationDelegate {
             """
         default:
             // For unhandled key combinations, try to create a basic keyboard event
-            let primaryKey = keys.last ?? keys.first ?? ""
             script = """
             (function() {
                 var key = '\(primaryKey.sanitizedForJS())';
                 var event = new KeyboardEvent('keydown', {
                     key: key,
-                    ctrlKey: \(keys.contains { $0.uppercased() == "CTRL" }),
-                    metaKey: \(keys.contains { $0.uppercased() == "CMD" || $0.uppercased() == "META" }),
-                    altKey: \(keys.contains { $0.uppercased() == "ALT" }),
-                    shiftKey: \(keys.contains { $0.uppercased() == "SHIFT" })
+                    ctrlKey: \(modifierFlags.ctrl),
+                    metaKey: \(modifierFlags.meta),
+                    altKey: \(modifierFlags.alt),
+                    shiftKey: \(modifierFlags.shift)
                 });
                 var el = document.activeElement || document.body;
                 el.dispatchEvent(event);
@@ -930,88 +985,108 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     /// Performs a drag gesture along the specified path
-    private func drag(path: [[String: Any]]) async throws {
-        guard path.count >= 2 else {
+    private func drag(path: [[String: Any]], buttonCode: Int = 0, modifierKeys: [String] = []) async throws {
+        let normalizedPath: [[String: Double]] = path.compactMap { point in
+            guard let x = Self.valueAsDouble(point["x"]),
+                  let y = Self.valueAsDouble(point["y"]) else {
+                return nil
+            }
+            return ["x": x, "y": y]
+        }
+
+        guard normalizedPath.count >= 2 else {
             throw ComputerUseError.invalidParameters
         }
 
-        // Extract start and end points from path
-        guard let startDict = path.first,
-              let endDict = path.last,
-              let startX = Self.valueAsDouble(startDict["x"]),
-              let startY = Self.valueAsDouble(startDict["y"]),
-              let endX = Self.valueAsDouble(endDict["x"]),
-              let endY = Self.valueAsDouble(endDict["y"]) else {
+        let pathData = try JSONSerialization.data(withJSONObject: normalizedPath, options: [])
+        guard let pathJSON = String(data: pathData, encoding: .utf8) else {
             throw ComputerUseError.invalidParameters
         }
+
+        let modifierFlags = Self.mouseModifierFlags(from: modifierKeys)
+        let buttonsMask = Self.mouseButtonsMask(for: buttonCode)
 
         let script = """
         (function() {
-            var startX = \(startX); var startY = \(startY); var endX = \(endX); var endY = \(endY);
+            var rawPath = \(pathJSON);
+            var buttonCode = \(buttonCode);
+            var buttonsMask = \(buttonsMask);
+            var ctrlKey = \(modifierFlags.ctrl ? "true" : "false");
+            var metaKey = \(modifierFlags.meta ? "true" : "false");
+            var altKey = \(modifierFlags.alt ? "true" : "false");
+            var shiftKey = \(modifierFlags.shift ? "true" : "false");
             var dpr = (window.devicePixelRatio || 1);
             var vw = window.innerWidth || document.documentElement.clientWidth || 0;
             var vh = window.innerHeight || document.documentElement.clientHeight || 0;
             function normX(v){ if (v>vw||v<0) v = v/dpr; return Math.max(0, Math.min(vw-1, v)); }
             function normY(v){ if (v>vh||v<0) v = v/dpr; return Math.max(0, Math.min(vh-1, v)); }
-            startX = normX(startX); startY = normY(startY);
-            endX = normX(endX); endY = normY(endY);
+            var points = rawPath.map(function(point) {
+                return { x: normX(point.x), y: normY(point.y) };
+            });
+            var start = points[0];
+            var end = points[points.length - 1];
 
-            var startElement = document.elementFromPoint(startX, startY);
+            var startElement = document.elementFromPoint(start.x, start.y);
             if (!startElement) {
-                return "No element found at start point (" + startX + ", " + startY + ")";
+                return "No element found at start point (" + start.x + ", " + start.y + ")";
             }
 
             // Create mouse events for drag operation
             var mouseDownEvent = new MouseEvent('mousedown', {
                 bubbles: true,
                 cancelable: true,
-                clientX: startX,
-                clientY: startY,
-                button: 0
-            });
-
-            var mouseMoveEvent = new MouseEvent('mousemove', {
-                bubbles: true,
-                cancelable: true,
-                clientX: endX,
-                clientY: endY,
-                button: 0
+                clientX: start.x,
+                clientY: start.y,
+                button: buttonCode,
+                buttons: buttonsMask,
+                ctrlKey: ctrlKey,
+                metaKey: metaKey,
+                altKey: altKey,
+                shiftKey: shiftKey
             });
 
             var mouseUpEvent = new MouseEvent('mouseup', {
                 bubbles: true,
                 cancelable: true,
-                clientX: endX,
-                clientY: endY,
-                button: 0
+                clientX: end.x,
+                clientY: end.y,
+                button: buttonCode,
+                buttons: 0,
+                ctrlKey: ctrlKey,
+                metaKey: metaKey,
+                altKey: altKey,
+                shiftKey: shiftKey
             });
 
             // Execute drag sequence
             startElement.dispatchEvent(mouseDownEvent);
 
-            // Simulate movement with multiple intermediate points for smoother drag
-            var steps = 5;
-            for (var i = 1; i <= steps; i++) {
-                var x = startX + (endX - startX) * (i / steps);
-                var y = startY + (endY - startY) * (i / steps);
+            // Replay the full model-provided path instead of reducing it to a straight line.
+            for (var i = 1; i < points.length; i++) {
+                var point = points[i];
                 var moveEvent = new MouseEvent('mousemove', {
                     bubbles: true,
                     cancelable: true,
-                    clientX: x,
-                    clientY: y,
-                    button: 0
+                    clientX: point.x,
+                    clientY: point.y,
+                    button: buttonCode,
+                    buttons: buttonsMask,
+                    ctrlKey: ctrlKey,
+                    metaKey: metaKey,
+                    altKey: altKey,
+                    shiftKey: shiftKey
                 });
                 document.dispatchEvent(moveEvent);
             }
 
-            var endElement = document.elementFromPoint(endX, endY);
+            var endElement = document.elementFromPoint(end.x, end.y);
             if (endElement) {
                 endElement.dispatchEvent(mouseUpEvent);
             } else {
                 document.dispatchEvent(mouseUpEvent);
             }
 
-            return "Drag from (" + startX + ", " + startY + ") to (" + endX + ", " + endY + ") completed";
+            return "Drag from (" + start.x + ", " + start.y + ") to (" + end.x + ", " + end.y + ") completed via " + points.length + " points";
         })();
         """
 
@@ -2012,7 +2087,7 @@ private extension ComputerService {
 extension ComputerService {
     /// Coerces a heterogenous value (Int/Double/Float/String) into a Double.
     /// Returns nil if the value cannot be interpreted as a number.
-    fileprivate static func valueAsDouble(_ value: Any?) -> Double? {
+    fileprivate nonisolated static func valueAsDouble(_ value: Any?) -> Double? {
         switch value {
         case let d as Double: return d
         case let i as Int: return Double(i)
@@ -2021,6 +2096,90 @@ extension ComputerService {
             // Allow numeric strings like "12" or "12.34"
             return Double(s.trimmingCharacters(in: .whitespacesAndNewlines))
         default: return nil
+        }
+    }
+
+    /// Coerces array-like key inputs from the Responses API into a `[String]`.
+    fileprivate nonisolated static func valueAsStringArray(_ value: Any?) -> [String] {
+        switch value {
+        case let strings as [String]:
+            return strings
+        case let values as [Any]:
+            return values.compactMap { value in
+                if let string = value as? String { return string }
+                return nil
+            }
+        case let string as String:
+            return [string]
+        default:
+            return []
+        }
+    }
+
+    fileprivate nonisolated static func mouseButtonCode(from value: Any?) -> Int {
+        let normalized: String
+        if let string = value as? String {
+            normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        } else if let number = valueAsDouble(value) {
+            switch Int(number) {
+            case 1: return 1
+            case 2: return 2
+            default: return 0
+            }
+        } else {
+            normalized = "left"
+        }
+
+        switch normalized {
+        case "middle", "aux", "auxiliary", "wheel", "1":
+            return 1
+        case "right", "secondary", "context", "2":
+            return 2
+        default:
+            return 0
+        }
+    }
+
+    fileprivate nonisolated static func mouseButtonsMask(for buttonCode: Int) -> Int {
+        switch buttonCode {
+        case 1: return 4
+        case 2: return 2
+        default: return 1
+        }
+    }
+
+    fileprivate nonisolated static func mouseModifierFlags(from keys: [String]) -> (ctrl: Bool, meta: Bool, alt: Bool, shift: Bool) {
+        let normalized = Set(keys.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() })
+        return (
+            ctrl: normalized.contains("CTRL") || normalized.contains("CONTROL"),
+            meta: normalized.contains("CMD") || normalized.contains("COMMAND") || normalized.contains("META") || normalized.contains("SUPER"),
+            alt: normalized.contains("ALT") || normalized.contains("OPTION"),
+            shift: normalized.contains("SHIFT")
+        )
+    }
+
+    fileprivate nonisolated static func normalizedKeyboardKey(_ rawKey: String) -> String {
+        let normalized = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch normalized.uppercased() {
+        case "ENTER", "RETURN": return "Enter"
+        case "SPACE", "SPACEBAR": return " "
+        case "ESC", "ESCAPE": return "Escape"
+        case "TAB": return "Tab"
+        case "BACKSPACE": return "Backspace"
+        case "DELETE", "DEL": return "Delete"
+        case "ARROWLEFT", "LEFT": return "ArrowLeft"
+        case "ARROWRIGHT", "RIGHT": return "ArrowRight"
+        case "ARROWUP", "UP": return "ArrowUp"
+        case "ARROWDOWN", "DOWN": return "ArrowDown"
+        case "HOME": return "Home"
+        case "END": return "End"
+        case "PAGEUP", "PGUP": return "PageUp"
+        case "PAGEDOWN", "PGDN": return "PageDown"
+        case "CTRL", "CONTROL": return "Control"
+        case "CMD", "COMMAND", "META", "SUPER": return "Meta"
+        case "ALT", "OPTION": return "Alt"
+        case "SHIFT": return "Shift"
+        default: return normalized
         }
     }
 }
@@ -2053,6 +2212,28 @@ extension ComputerService {
             submit: submit,
             currentURL: currentURL.flatMap(URL.init(string:))
         )
+    }
+
+    nonisolated static func testing_mouseButtonCode(_ value: Any?) -> Int {
+        mouseButtonCode(from: value)
+    }
+
+    nonisolated static func testing_mouseButtonsMask(for buttonCode: Int) -> Int {
+        mouseButtonsMask(for: buttonCode)
+    }
+
+    nonisolated static func testing_mouseModifierFlags(keys: [String]) -> [String: Bool] {
+        let flags = mouseModifierFlags(from: keys)
+        return [
+            "ctrl": flags.ctrl,
+            "meta": flags.meta,
+            "alt": flags.alt,
+            "shift": flags.shift,
+        ]
+    }
+
+    nonisolated static func testing_normalizedKeyboardKey(_ rawKey: String) -> String {
+        normalizedKeyboardKey(rawKey)
     }
 }
 #endif
