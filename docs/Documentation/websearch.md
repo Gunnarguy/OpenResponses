@@ -9,7 +9,7 @@ There are three main types of web search available with OpenAI models:
 
 1.  Non‑reasoning web search: The non-reasoning model sends the user’s query to the web search tool, which returns the response based on top results. There’s no internal planning and the model simply passes along the search tool’s responses. This method is fast and ideal for quick lookups.
 2.  Agentic search with reasoning models is an approach where the model actively manages the search process. It can perform web searches as part of its chain of thought, analyze results, and decide whether to keep searching. This flexibility makes agentic search well suited to complex workflows, but it also means searches take longer than quick lookups. For example, you can adjust GPT-5’s reasoning level to change both the depth and latency of the search.
-3.  Deep research is a specialized, agent-driven method for in-depth, extended investigations by reasoning models. The model conducts web searches as part of its chain of thought, often tapping into hundreds of sources. Deep research can run for several minutes and is best used with background mode. These tasks typically use models like `o3-deep-research`, `o4-mini-deep-research`, or `gpt-5` with reasoning level set to `high`.
+3.  Deep research is a specialized, agent-driven method for in-depth, extended investigations by reasoning models. The model conducts web searches as part of its chain of thought, often tapping into hundreds of sources. Deep research can run for several minutes and is best used with background mode. These tasks typically use models like `o3-deep-research` or `gpt-5` with reasoning level set to `high`.
 
 Using the [Responses API](/docs/api-reference/responses), you can enable web search by configuring it in the `tools` array in an API request to generate content. Like any other tool, the model can choose to search the web or not based on the content of the input prompt.
 
@@ -63,7 +63,7 @@ The `web_search` tool is generally available with the Responses API, and is comp
 *   gpt-4o
 *   gpt-4.1-mini
 *   gpt-4.1
-*   o4-mini
+*   o3-mini
 *   o3
 *   gpt-5 with reasoning levels `low`, `medium` and `high`
 
@@ -229,7 +229,7 @@ from openai import OpenAI
 client = OpenAI()
 
 response = client.responses.create(
-    model="o4-mini",
+    model="o3-mini",
     tools=[{
         "type": "web_search",
         "user_location": {
@@ -250,7 +250,7 @@ import OpenAI from "openai";
 const openai = new OpenAI();
 
 const response = await openai.responses.create({
-    model: "o4-mini",
+    model: "o3-mini",
     tools: [{
         type: "web_search",
         user_location: {
@@ -270,7 +270,7 @@ curl "https://api.openai.com/v1/responses" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $OPENAI_API_KEY" \
     -d '{
-        "model": "o4-mini",
+        "model": "o3-mini",
         "tools": [{
             "type": "web_search",
             "user_location": {
@@ -301,7 +301,7 @@ Available values:
 *   **`medium`** (default): Balanced context and latency.
 *   **`low`**: Least context, fastest response, but potentially lower answer quality.
 
-Context size configuration is not supported for o3, o3-pro, o4-mini, and deep research models.
+Context size configuration is not supported for o3, o3-pro, o3-mini, and deep research models.
 
 Customizing search context size
 

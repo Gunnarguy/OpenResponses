@@ -216,7 +216,7 @@ console.log("Final output:");
 console.log(JSON.stringify(response.output, null, 2));
 ```
 
-Note that for reasoning models like GPT-5 or o4-mini, any reasoning items returned in model responses with tool calls must also be passed back with tool call outputs.
+Note that for reasoning models like GPT-5 or o3, any reasoning items returned in model responses with tool calls must also be passed back with tool call outputs.
 
 Defining functions
 ------------------

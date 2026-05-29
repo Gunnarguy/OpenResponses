@@ -18,7 +18,7 @@ Release reference for populating every App Store Connect field for OpenResponses
    - *Note:* Exclude Mainland China due to Generative AI filing requirements (CAC).
 - **Primary Language:** English (U.S.)
 - **Release Type:** Manual release with 7-day phased rollout
-- **Model Coverage:** GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, GPT-5-mini, o3, o4-mini, GPT-4.1 family, GPT-4o
+- **Model Coverage:** GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, GPT-5-mini, o3, GPT-4.1 family, GPT-4o
 
 ## Promotional Text (≤170 characters)
 
@@ -31,7 +31,7 @@ OpenResponses is a native iPhone client for the OpenAI Responses API built for p
 ### Model Lineup
 
 - GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, and GPT-5-mini
-- o3 and o4-mini reasoning models with configurable effort
+- o3 reasoning models with configurable effort
 - GPT-4.1 family, GPT-4o, and gpt-image-1
 
 ### What Makes It Different

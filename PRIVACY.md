@@ -1,59 +1,55 @@
-# OpenResponses Privacy Summary
+# OpenResponses Privacy Overview
 
-**Last updated:** April 23, 2026
+Last updated: 2026-05-29
 
-OpenResponses runs entirely on your device until you decide to contact an external service. The app’s primary network traffic is to OpenAI when you send a live AI request, plus any optional services you explicitly enable, such as Notion.
+OpenResponses is a native iOS client for the OpenAI Responses API. The app is built with a local-first design philosophy: your documents, API keys, and conversation logs are persisted locally and never routed through any developer-owned servers. This document provides a transparent map of our data processing pipeline, device permissions, and integrations.
 
-## What stays on your device
+---
 
-- **API credentials:** Your OpenAI key and any optional integration tokens are saved in the iOS Keychain and never leave your device unless they are used to contact the service you configured.
-- **Conversations:** Message history, prompts, and tool results are stored locally. You can delete any thread or remove the app to erase the data.
-- **File handling:** Attachments are processed in memory, optionally converted on device, then sent only to the selected service. The app does not persist extra copies.
+## On-Device Storage Boundaries
 
-## In-app permission before data is sent
+The following information is persisted locally inside the sandboxed iOS environment:
+* **API Credentials:** Keys and connection tokens (such as OpenAI API keys and Notion tokens) reside strictly within the secure iOS Keychain. Standard `UserDefaults` are never used for sensitive tokens.
+* **Local Conversation History:** Saved prompt templates, message feeds, and tool outputs are stored locally on-device. No data is stored in iCloud or cloud sync networks unless you explicitly opt in to the cloud-backed history.
+* **Security-Scoped Bookmarks:** When attaching local documents or folder locations, the app generates security-scoped bookmarks stored on-device to retain access permission across launches.
+* **Local Diagnostic Logs:** The logs displayed in the developer log console are transient, saved in memory and local file logs, and never exported unless manually triggered by the user.
 
-- Before the first live AI request, OpenResponses shows an in-app disclosure that explains what may be sent to **OpenAI** and asks for explicit permission.
-- Nothing is sent to OpenAI until the user taps **Allow & Send**.
-- Explore Demo remains offline and does not make OpenAI API calls.
+---
 
-## Data sent upon user request
+## Data Sent Off-Device
 
-- **OpenAI Responses API:** User prompts, optional attachments, and request-related tool inputs or outputs are sent to OpenAI to generate a reply. Nothing is sent automatically, and the app asks permission before the first live request.
-- **Computer Use bridge (optional):** When you approve an automation step, the app streams the approved action, screenshot, and follow-up instructions to your trusted computer-use server on the local network.
-- **Optional connected services:** If you enable integrations such as Notion, the assistant forwards only the prompts and parameters needed for the action you requested. Those services apply their own privacy policies.
+To perform completions and run tools, OpenResponses contacts external endpoints directly over secure HTTPS. We do not use intermediary backend servers. Below is the data destinations map:
 
-## How data is used
+| Destination Service | Exact Data Shared | Purpose of Transmission | User Opt-Out / Controls |
+| :--- | :--- | :--- | :--- |
+| **OpenAI Responses API** | Prompt messages, active settings parameters, uploaded file data, and tool definitions. | Process natural language inputs and stream completed text or reasoning results. | Complete control over model parameters. The first live request is gated behind an explicit permission notice. |
+| **OpenAI Embeddings API** | Text blocks or query text from document attachments. | Create semantic vector representations for file search. | Can be disabled by turning off File Search capabilities in settings. |
+| **Notion API** *(optional)* | Notion Workspace access tokens and database schema fields. | Allow the assistant to query, create, or update Notion database records. | Disabled by default. Can be disconnected or revoked in settings at any time. |
+| **Local Network Bridge** *(optional)* | Screen captures (screenshots), mouse clicks, mouse scroll values, and system commands. | Automate user actions via the local `computer` or `computer_use_preview` tools. | Gated by a local network permission prompt and an explicit step-by-step UI approval dialog. |
 
-- OpenAI receives request data solely to generate the assistant response or tool result you asked for.
-- Optional connected providers receive only the request data needed to carry out the specific action you initiated.
-- OpenResponses does not sell conversation data and does not use conversation content for advertising.
+---
 
-## Requested device permissions
+## Exclusions & SDK Declarations
 
-- **Photo library & Files:** Lets you attach screenshots, documents, and other files to a chat.
-- **Calendars, Reminders, Contacts:** Enables the assistant to create or update items you explicitly authorize.
-- **Local network:** Required to reach the computer-use bridge running on your network. No other local scanning occurs.
+* **Third-Party Tracking:** OpenResponses does **not** integrate third-party analytics SDKs, user behavior tracking trackers, or diagnostic reporting networks (like Firebase, Mixpanel, or Amplitude).
+* **Advertising:** The application does **not** include mobile advertising networks, user identification tokens, or ad-delivery SDKs.
+* **Crash Reports:** Crash diagnostics are managed natively by Apple's opt-in system reporting. These reports contain stack traces and do **not** include API keys or message contents.
 
-The app does not request microphone, speech recognition, or precise location access in the 2.0 release.
+---
 
-## Computer Use safety
+## In-App Approvals & Revocation
 
-- Every automation step is surfaced in a review UI before execution.
-- You can reject any action; declining cancels the chain and nothing runs in the background.
-- The app never executes commands without a visible audit trail in the chat.
+### The First-Send Consent Notice
+Prior to executing the first live connection to OpenAI, the application presents a data-sharing notice detailing that inputs are sent to OpenAI and requires a tap of **Allow & Send**. No network payloads are sent before this confirmation. You can reset this notice from **Settings → General**.
 
-## Analytics and crash data
+### Setting Resets
+You can completely reset the application without deleting it from your device. Under **Settings → General**, tapping **Reset All Settings** will:
+1. Erase all Keychain-backed credentials.
+2. Purge local history databases.
+3. Revoke folder and file bookmark consents.
+4. Return the app to the onboarding phase.
 
-- Optional, anonymous usage metrics can be enabled in Settings. They default to **off** and never include conversation content or credentials.
-- Crash diagnostics come from Apple’s opt-in system reports; they contain no chat transcripts or API keys.
+---
 
-## Retention, revocation, and deletion
-
-- Remove keys or disconnect integrations from Settings at any time.
-- Delete individual conversations or clear all history from the conversation list.
-- Reset the first-send OpenAI consent prompt from Settings → General.
-- Uninstalling the app removes all local content and credentials.
-
-If you want data removed from an external provider, you must also follow that provider’s deletion process for any content already sent there.
-
-Questions? File an issue at <https://github.com/Gunnarguy/OpenResponses/issues>. OpenResponses is open source (MIT licensed) so you can audit anything described here.
+## Contact
+For privacy inquiries or support, email [support@gunnarguy.com](mailto:support@gunnarguy.com).

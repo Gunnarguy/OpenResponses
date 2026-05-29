@@ -12,7 +12,7 @@ A native iOS client for GPT-5.2 and reasoning models. Bring your own API key, st
 
 MODELS
 • GPT-5.2, GPT-5.2-pro, GPT-5.1, GPT-5, and GPT-5-mini
-• o3 and o4-mini reasoning models with configurable effort
+• o3 reasoning models with configurable effort
 • GPT-4.1 family, GPT-4o, and legacy fallbacks
 
 BUILT-IN TOOLS

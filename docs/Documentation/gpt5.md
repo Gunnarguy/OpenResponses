@@ -69,7 +69,7 @@ Coding and agentic tasks
 
 GPT-5 is great at reasoning through complex tasks. **For complex tasks like coding and multi-step planning, use high reasoning effort.**  
   
-Use these configurations when replacing tasks you might have used o3 to tackle. We expect GPT-5 to produce better results than o3 and o4-mini under most circumstances.
+Use these configurations when replacing tasks you might have used o3 to tackle. We expect GPT-5 to produce better results than o3 under most circumstances.
 
 Slower, high reasoning tasks
 
@@ -338,7 +338,7 @@ When migrating to GPT-5 from an older OpenAI model, start by experimenting with 
 
 *   **o3**: `gpt-5` with `medium` or `high` reasoning is a great replacement. Start with `medium` reasoning with prompt tuning, then increasing to `high` if you aren't getting the results you want.
 *   **gpt-4.1**: `gpt-5` with `minimal` or `low` reasoning is a strong alternative. Start with `minimal` and tune your prompts; increase to `low` if you need better performance.
-*   **o4-mini or gpt-4.1-mini**: `gpt-5-mini` with prompt tuning is a great replacement.
+*   **gpt-4.1-mini**: `gpt-5-mini` with prompt tuning is a great replacement.
 *   **gpt-4.1-nano**: `gpt-5-nano` with prompt tuning is a great replacement.
 
 ### Migrating from Chat Completions to Responses API

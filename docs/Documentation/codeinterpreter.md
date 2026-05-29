@@ -8,7 +8,7 @@ The Code Interpreter tool allows models to write and run Python code in a sandbo
 *   Processing files with diverse data and formatting
 *   Generating files with data and images of graphs
 *   Writing and running code iteratively to solve problems—for example, a model that writes code that fails to run can keep rewriting and running that code until it succeeds
-*   Boosting visual intelligence in our latest reasoning models (like [o3](/docs/models/o3) and [o4-mini](/docs/models/o4-mini)). The model can use this tool to crop, zoom, rotate, and otherwise process and transform images.
+*   Boosting visual intelligence in our latest reasoning models (like [o3](/docs/models/o3)). The model can use this tool to crop, zoom, rotate, and otherwise process and transform images.
 
 Here's an example of calling the [Responses API](/docs/api-reference/responses) with a tool call to Code Interpreter:
 

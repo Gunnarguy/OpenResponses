@@ -1,193 +1,257 @@
 # OpenResponses
 
-SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use, code interpreter, file search, image generation, and privacy-first Apple integrations—all wrapped in a production-ready iOS experience with deep observability and safety rails.
+SwiftUI-powered AI assistant and developer playground for the OpenAI Responses API. Featuring local-first architecture, sandboxed Python code execution, browser automation, and secure Keychain storage, OpenResponses delivers deep API observability with production-grade safety rails.
 
 [![iOS CI](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml)
 [![Release Checks](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **Status — November 2025:** Phase 1 is complete. OpenResponses ships with local conversation storage, full Responses tool support, and the Minimal Viable App-Store Submission (MVAS) checklist. Phase 2 focuses on Conversations API migration and cross-device sync.
+Last updated: 2026-05-29
 
 ---
 
 ## Table of Contents
-
 - [Overview](#overview)
-- [Core Features](#core-features)
-- [Architecture](#architecture)
-- [Getting Started](#getting-started)
-- [Initial Configuration](#initial-configuration)
-- [Toolbox at a Glance](#toolbox-at-a-glance)
-- [Privacy, Safety, and Compliance](#privacy-safety-and-compliance)
-- [Testing & Quality Gates](#testing--quality-gates)
-- [Release Workflow](#release-workflow)
-- [Documentation Hub](#documentation-hub)
-- [Roadmap Snapshot](#roadmap-snapshot)
-- [Contributing](#contributing)
-- [Support](#support)
+- [End-to-End User Journey](#end-to-end-user-journey)
+- [System Architecture](#system-architecture)
+- [Workflow Pipelines](#workflow-pipelines)
+- [Configuration Catalog](#configuration-catalog)
+- [Developer Onboarding](#developer-onboarding)
+- [Documentation Index](#documentation-index)
 - [License](#license)
 
 ---
 
 ## Overview
 
-OpenResponses is an end-to-end iOS, iPadOS, and macOS (Catalyst) client for the OpenAI Responses API. It targets developers and advanced users who need:
-
-- Full coverage of the current tool surface (computer use, code interpreter, file/vector search, image generation, and Apple system tools).
-- Rich observability—streaming analytics, reasoning trace playback, and API inspectors that make debugging and demos effortless.
-- Enterprise-ready safeguards—Keychain credential storage, explicit approval flows for automation, and a minimal privacy footprint.
-
-The app follows a productized workflow: everything you need to test, ship, and submit to the App Store—including privacy docs, tracking scripts, and the MVAS tracker—is built into the repository.
+OpenResponses is a native iOS and macOS (Catalyst) client that interfaces directly with the OpenAI Responses API. It serves developers, prompt engineers, and technical creators as a mobile playground. Key characteristics include:
+* **Direct Network Boundary:** OpenResponses establishes direct HTTPS connections to OpenAI. It does not run intermediary proxy servers.
+* **Keychain Security:** API keys, Notion tokens, and MCP credentials reside strictly within the secure iOS Keychain.
+* **Observe-in-Real-Time:** Displays token counts, activity indicators, expandable reasoning traces, and raw JSON payload structures for every query.
 
 ---
 
-## Core Features
+## End-to-End User Journey
 
-- **Model Playground:** Live model catalogue with compatibility gating, preset management, and advanced request controls (streaming flags, prompt cache IDs, reasoning toggles).
-- **Observability Surface:** Streaming activity feed, live token usage, “Assistant Thinking” trace viewer, analytics events, and structured logging for every tool event.
-- **Tooling Portfolio:** Computer use with safety approvals, code interpreter with artifact viewer, multi-vector file search, direct file and image attachments, direct Notion support, and custom function calls.
-- **Knowledge Workflows:** Vector store management flows, file conversion pipeline, and document picker enhancements built on `FileConverterService`.
-- **Native Shell:** SwiftUI UI with accessibility support, keyboard shortcuts, share sheets, prompt library, onboarding, and settings tuned for fast iteration.
+```mermaid
+flowchart TD
+    subgraph Launch["1. Onboarding & Credentials"]
+        Start([App Launched]) --> OnboardingCheck{Onboarding Complete?}
+        OnboardingCheck -->|No| OB[Onboarding Pages] --> AddKey[Key Submission]
+        OnboardingCheck -->|Yes| Main[Main View]
+        AddKey --> Validate{Key Valid?}
+        Validate -->|No| AddKey
+        Validate -->|Yes| SaveKey[Store in iOS Keychain] --> Main
+    end
 
----
+    subgraph PromptSetup["2. Model & Settings Setup"]
+        Main --> ModelPick[Select OpenAI Model]
+        ModelPick --> ParamSet[Configure Temperature, Tools, and Metadata]
+        ParamSet --> UserPrompt[Enter Chat Prompt]
+    end
 
-## Architecture
+    subgraph Execution["3. Network & Tool Pipeline"]
+        UserPrompt --> ConsentCheck{First-send Consent Granted?}
+        ConsentCheck -->|No| Notice[AI Data Sharing Notice] --> Consent{User Agrees?}
+        Consent -->|No| UserPrompt
+        Consent -->|Yes| Send[Transmit Payload]
+        ConsentCheck -->|Yes| Send
+        Send --> SSE[Parse Server-Sent Events]
+        SSE --> ToolCheck{Tool Call Triggered?}
+        ToolCheck -->|Web Search| RunWeb[Query Web Search API] --> Send
+        ToolCheck -->|Code Interpreter| RunCode[Execute sandboxed Python] --> Send
+        ToolCheck -->|Computer Use| ConfirmComputer{Approve step in UI?}
+        ConfirmComputer -->|No| Cancel[Cancel Chain] --> UserPrompt
+        ConfirmComputer -->|Yes| RunComp[Transmit action to local network bridge] --> Send
+        ToolCheck -->|No| FinalStream[Stream response.output_text.delta]
+    end
 
-OpenResponses follows MVVM with dependency injection through `AppContainer`.
+    subgraph Completion["4. Output Display"]
+        FinalStream --> Display[Render Answer with Citations & Thinking Traces]
+    end
 
-- **Views:** SwiftUI views such as `ChatView`, `MessageBubbleView`, and modular settings/onboarding screens.
-- **View Models:** `ChatViewModel` orchestrates conversations, state, and tool execution; extensions such as `ChatViewModel+Streaming` handle 40+ streaming event types.
-- **Services:** `OpenAIService` wraps the Responses API, `ComputerService` automates the computer-use browser, `ConversationStorageService` persists local history, `KeychainService` stores secrets, and compatibility helpers gate tooling per model.
-- **Data Models:** Rich types for streaming events, function calls, computer-use actions, artifacts, and reasoning traces keep decoding resilient and expressive.
-
-> Dive deeper in `docs/CASE_STUDY.md` for component diagrams, request flows, and design decisions.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Xcode 16.1 (or newer)
-- macOS Sonoma
-- An OpenAI API key (sk-… project key)
-
-### Clone & Open
-
-```sh
-git clone https://github.com/Gunnarguy/OpenResponses.git
-cd OpenResponses
-open OpenResponses.xcodeproj
+    style Start fill:#4CAF50,color:#fff
+    style Display fill:#2196F3,color:#fff
+    style Cancel fill:#f44336,color:#fff
 ```
 
-### Build Targets
+---
 
-- **OpenResponses (iOS/iPadOS):** Run on simulator or device.
-- **OpenResponses (macOS Catalyst):** Build/run via “My Mac (Designed for iPad)” scheme.
+## System Architecture
+
+The application follows the **MVVM-S (Model-View-ViewModel-Service)** pattern to isolate UI components from connection logic:
+
+```mermaid
+flowchart LR
+    subgraph Views["Views (SwiftUI)"]
+        CV[ChatView]
+        SH[SettingsHomeView]
+        OV[OnboardingView]
+    end
+
+    subgraph ViewModels["ViewModels"]
+        CVM[ChatViewModel]
+    end
+
+    subgraph Services["Services Layer"]
+        OAS[OpenAIService]
+        CS[ComputerService]
+        KCS[KeychainService]
+        CSS[ConversationStorageService]
+        FCS[FileConverterService]
+        NS[NotionService]
+    end
+
+    subgraph External["External Services"]
+        Keychain[(Secure Keychain)]
+        LocalFiles[(Local JSON files)]
+        OpenAIAPI[(OpenAI API)]
+        NotionAPI[(Notion API)]
+        LocalBridge[(Local network bridge)]
+    end
+
+    CV <--->|binds / observes| CVM
+    SH <--->|binds / observes| CVM
+    OV --->|initializes keys| CVM
+
+    CVM <--->|requests / streams| OAS
+    CVM <--->|automations| CS
+    CVM <--->|read / write| CSS
+    CVM -.->|OAuth state| NS
+
+    OAS -.->|load key| KCS
+    NS -.->|load Notion token| KCS
+    OAS <--->|HTTP / SSE| OpenAIAPI
+    NS <--->|HTTP REST| NotionAPI
+    KCS <--->|SecItem| Keychain
+    CSS <--->|Serialization| LocalFiles
+    CS <--->|HTTP REST| LocalBridge
+```
 
 ---
 
-## Initial Configuration
+## Workflow Pipelines
 
-1. Launch the app.
-2. Complete onboarding (3 screens summarizing capabilities and key requirements).
-3. When prompted, paste your OpenAI API key. It is stored in the iOS Keychain (`KeychainService`) and never checked into source control.
-4. Use Settings → General to toggle streaming, published prompts, and prompt cache IDs.
-5. Enable tools (code interpreter, computer use, file search, Apple integrations) in Settings → Tools. Each capability enforces additional confirmation flows as required.
+### Browser Automation / Computer Use Loop
+```mermaid
+flowchart TD
+    Start[Agent requests computer action] --> Parse[Extract action parameters mouse/keyboard]
+    Parse --> DisplaySheet[Surface Safety Approval Dialog]
+    DisplaySheet --> Approval{User Approves?}
+    Approval -->|No| Terminate[Cancel tool chain and return failure event]
+    Approval -->|Yes| CaptureMouse[Move cursor position x, y]
+    CaptureMouse --> Exec[Run action: click/type/scroll]
+    Exec --> Screenshot[Capture WKWebView viewport screenshot]
+    Screenshot --> Transmit[Send screenshot and result to Responses API]
+    Transmit --> Next[Await model's next action decision]
 
-Secrets are intentionally absent from the repo. Run `python3 scripts/secret_scan.py` anytime to validate.
+    style Start fill:#4CAF50,color:#fff
+    style Terminate fill:#f44336,color:#fff
+```
 
----
+### Model Context Protocol (MCP) Discovery & Execution
+```mermaid
+flowchart TD
+    Launch[Select index / namespace with MCP enabled] --> Probe[Send health probe request to MCP Server]
+    Probe --> Status{Server Online?}
+    Status -->|No| Offline[Mark connector offline & log failure]
+    Status -->|Yes| Discover[Get available tools list via JSON payload]
+    Discover --> AllowList[Filter tools against Allowed Tools config]
+    AllowList --> Register[Register tools in Responses API request configuration]
+    Register --> Stream[Stream Chat completions]
+    Stream --> Invoke{Model requests MCP run?}
+    Invoke -->|No| Output[Finalize chat answer]
+    Invoke -->|Yes| ApproveCheck{mcpRequireApproval == 'always'?/Tool sensitive?}
+    ApproveCheck -->|Yes| UserConfirm{User approves Tool run?}
+    UserConfirm -->|No| Refuse[Send tool error delta to stream] --> Stream
+    UserConfirm -->|Yes| Call[POST request to mcpServerURL/tools/call] --> Stream
+    ApproveCheck -->|No| Call
 
-## Toolbox at a Glance
-
-| Capability                      | Details                                                                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **Computer Use**                | Navigate/click/scroll automation with safety approval sheets, blank-page recovery, screenshot attachments, and status updates. |
-| **Code Interpreter**            | Sandboxed Python execution with artifact viewer, status heartbeats, and result summarization.                                  |
-| **File Search & Vector Stores** | Upload files, manage vector stores, toggle file search per prompt, and configure rankers or thresholds.                        |
-| **Image Generation**            | Trigger image creation with optional detail level control and inline previews.                                                 |
-| **Privacy-first consent**       | The first live OpenAI request is gated behind an in-app disclosure and explicit Allow & Send approval.                         |
-| **Prompt Library**              | Save and reuse prompt presets including reasoning/model settings and safety identifiers.                                       |
-| **Observability**               | Activity feed, streaming status chips, token usage counters, API inspector, debug console, and analytics hooks.                |
-
----
-
-## Privacy, Safety, and Compliance
-
-- **Credentials:** API keys and integration tokens live only in the Keychain. No secrets ship with the app or reside on disk.
-- **Data Residency:** Conversations and attachments stay on device until you explicitly approve and send them to OpenAI or an optional connected integration.
-- **Permissions:** The app currently requests Camera, Photos, Files, Calendars, Contacts, Reminders, and Local Network usage descriptions. Microphone, speech recognition, and precise location are intentionally excluded in 2.0.
-- **Computer Use Safeguards:** Every automation step requires review; declines cancel the chain immediately. Status updates ensure reviewers see what is happening at all times.
-- **Docs:** See `PRIVACY.md` for the privacy summary and `docs/AppReviewNotes.md` for reviewer instructions.
-
----
-
-## Testing & Quality Gates
-
-- **Unit & Snapshot Tests:** Run inside Xcode (`⌘U`) or via `xcodebuild` on `OpenResponsesTests`, `StreamingEventDecodingTests`, and related targets.
-- **Secret Scan:** `python3 scripts/secret_scan.py`
-- **Preflight Check:** `bash scripts/preflight_check.sh` verifies Info.plist usage descriptions and reruns the secret scan.
-- **Manual QA:** Follow `docs/PRODUCTION_CHECKLIST.md` for streaming, tooling, accessibility, and documentation checks.
-- **API Coverage:** Update `docs/api/Full_API_Reference.md` when adding request fields, tool types, or event handling.
+    style Launch fill:#4CAF50,color:#fff
+    style Offline fill:#f44336,color:#fff
+```
 
 ---
 
-## Release Workflow
+## Configuration Catalog
 
-The Minimal Viable App-Store Submission (MVAS) plan captures everything needed to submit OpenResponses to TestFlight/App Store with ~6–12 hours of effort.
+The configuration parameters are defined inside the `Prompt` model. They map to `UserDefaults` keys (persisted as JSON structures or preferences) or the secure iOS Keychain.
 
-1. Track progress in `docs/MVAS_SUBMISSION_TRACKER.md` (checklist + decision log).
-2. Ensure privacy copy is current (`PRIVACY.md`, App Store metadata, `docs/AppReviewNotes.md`).
-3. Run `bash scripts/preflight_check.sh` to confirm secrets and Info.plist values are clean.
-4. Archive in Xcode → Organizer → Validate/Upload.
-5. Invite internal TestFlight testers for the sanity pass (onboarding, chat, computer use).
-6. Submit to App Review with the dossier from `docs/AppReviewNotes.md`.
+### 1. API Credentials & Auth
+| Config Name | Storage Location | Default Value | Purpose |
+| :--- | :--- | :--- | :--- |
+| **OpenAI API Key** | Keychain (`openAIKey`) | None | Authenticates all OpenAI requests. |
+| **Notion Token** | Keychain (`notionApiKey`) | None | Authenticates Notion integration queries. |
+| **MCP Manual Headers** | Keychain (`mcp_manual_[label]`) | None | Custom headers payload (JSON) for custom MCP. |
 
----
+### 2. Model & Execution Parameters
+| Config Name | Storage Location | Default Value | Bounds / Ranges |
+| :--- | :--- | :--- | :--- |
+| **OpenAI Model** | `activePrompt` | `gpt-5.4` | List of allowed chat models. |
+| **Reasoning Effort** | `activePrompt` | `medium` | `none`, `low`, `medium`, `high`, `max`. |
+| **Temperature** | `activePrompt` | `1.0` | `0.0` to `2.0` (disabled for reasoning models). |
+| **Top P** | `activePrompt` | `1.0` | `0.0` to `1.0` (nucleus sampling). |
+| **Stream Responses** | `activePrompt` | `true` | Boolean. Enable Server-Sent Events (SSE). |
+| **Store Responses** | `activePrompt` | `true` | Boolean. Keep history records on OpenAI servers. |
+| **Prompt Cache Key** | `activePrompt` | `""` | String. Reuse cached context. |
+| **Safety Identifier** | `activePrompt` | `""` | String. Abuse detection hashed tag. |
+| **Tool Choice** | `activePrompt` | `auto` | `auto`, `required`, `none`. |
+| **Parallel Tool Calls** | `activePrompt` | `true` | Boolean. Allow concurrent tool execution. |
+| **Background Mode** | `activePrompt` | `false` | Boolean. Allows processing behind active UI. |
+| **Max Tool Calls** | `activePrompt` | `0` (Disabled) | `1` to `32` (stepper constraint). |
+| **Truncation Strategy** | `activePrompt` | `auto` | `auto` (automatic sliding window) or `disabled`. |
 
-## Documentation Hub
-
-- `docs/ROADMAP.md` — phased rollout plan with current status.
-- `docs/CASE_STUDY.md` — architecture narrative including diagrams and streaming lifecycle.
-- `docs/api/Full_API_Reference.md` — field-by-field implementation status for Responses.
-- `docs/PRODUCTION_CHECKLIST.md` — manual QA and release verification steps.
-- `docs/Advanced.md`, `docs/Tools.md`, `docs/Files.md`, `docs/Images.md` — feature-specific how-tos.
-- `docs/AppReviewNotes.md` — one-pager for App Store reviewers.
-- `Notion/` — Direct Notion integration guides.
-
----
-
-## Roadmap Snapshot
-
-- **Phase 1 (Complete):** Multi-modal inputs, full Responses tool coverage, computer-use hardening, vector workflow, observability overhaul.
-- **Phase 2 (In Progress):** Conversations API adoption, annotation rendering, cross-device sync, enhanced conversation metadata.
-- **Beyond:** Apple Intelligence integration, richer UI polish, offline caching, and advanced prompt caching (see `docs/ROADMAP.md`).
-
----
-
-## Contributing
-
-We welcome pull requests aligned with the roadmap.
-
-1. Fork the repo and branch from `main` or the active release branch.
-2. Implement the change with tests where applicable.
-3. Run unit tests and `bash scripts/preflight_check.sh`.
-4. Update relevant docs (`docs/`, `PRIVACY.md`, `README.md`, etc.).
-5. Submit a PR describing the change, test evidence, and any roadmap linkage.
-
-Please open an issue before large architectural work so we can coordinate on Phase 2 priorities.
+### 3. Enabled API Tools
+| Config Name | Storage Location | Default Value | Description |
+| :--- | :--- | :--- | :--- |
+| **Web Search** | `activePrompt` | `true` | Toggle OpenAI search tool. |
+| **Code Interpreter** | `activePrompt` | `true` | Toggle sandboxed Python container. |
+| **Image Generation** | `activePrompt` | `true` | Toggle image production capabilities. |
+| **File Search** | `activePrompt` | `false` | Toggle OpenAI vector stores search. |
+| **Computer Use** | `activePrompt` | `false` | Toggle WKWebView automations. |
+| **Notion Integration** | `activePrompt` | `true` | Toggle Notion tools payload registration. |
+| **Apple Integrations** | `activePrompt` | `true` | Toggle Calendar, Reminders, and Contacts access. |
 
 ---
 
-## Support
+## Developer Onboarding
 
-- Email: [support@gunnarguy.com](mailto:support@gunnarguy.com)
-- Issues: <https://github.com/Gunnarguy/OpenResponses/issues>
-- Discussions and roadmap queries: see `docs/ROADMAP.md` and `docs/MVAS_SUBMISSION_TRACKER.md`
+### Local Setup Walkthrough
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Gunnarguy/OpenResponses.git
+   cd OpenResponses
+   ```
+2. **Open in Xcode:**
+   Open `OpenResponses.xcodeproj` in Xcode 16.1 or newer.
+3. **Environment Setup (Xcode Schemes):**
+   * Edit Scheme (`Product > Scheme > Edit Scheme...`).
+   * Under **Arguments**, configure environment variables for debug runs:
+     * `OPENAI_API_KEY`: Developer testing token.
+     * `NOTION_API_KEY`: Notion developer key.
+
+### CLI Setup scripts (VS Code config)
+Run the helper script to configure VS Code extensions, lint setups, and build targets:
+```bash
+bash scripts/setup-pi-mcp.sh
+```
+
+---
+
+## Documentation Index
+
+| File | Description |
+| :--- | :--- |
+| [README.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/README.md) | Central entry point and architecture walkthrough. |
+| [ARCHITECTURE.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/ARCHITECTURE.md) | Deep dive into MVVM-S patterns and API endpoints mappings. |
+| [ROADMAP.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/ROADMAP.md) | Phased project progression and OpenAssistant archive details. |
+| [SECURITY.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/SECURITY.md) | Details Keychain partitions, scan utilities, and build guards. |
+| [PRIVACY.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/PRIVACY.md) | Sandboxing bounds, data sharing notice, and opt-out tables. |
+| [APP_STORE.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/APP_STORE.md) | Promotional copy listings and reviewer testing walkthrough. |
+| [docs/CASE_STUDY.md](file:///Users/gunnarhostetler/Documents/GitHub/OpenResponses/docs/CASE_STUDY.md) | Case study of production milestones and issues solved. |
 
 ---
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+OpenResponses is released under the [MIT License](LICENSE).

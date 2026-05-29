@@ -39,5 +39,6 @@
     "**/DerivedData": true,
     "**/build": true,
     "**/*.xcuserstate": true
-  }
+  },
+  "chat.sessionSync.enabled": true
 }

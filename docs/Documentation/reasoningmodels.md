@@ -213,7 +213,7 @@ curl https://api.openai.com/v1/responses \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{
-    "model": "o4-mini",
+    "model": "o3-mini",
     "reasoning": {"effort": "medium"},
     "input": "What is the weather like today?",
     "tools": [ ... function config here ... ],
@@ -228,7 +228,7 @@ Reasoning summaries
 
 While we don't expose the raw reasoning tokens emitted by the model, you can view a summary of the model's reasoning using the the `summary` parameter. See our [model documentation](/docs/models) to check which reasoning models support summaries.
 
-Different models support different reasoning summary settings. For example, our computer use model supports the `concise` summarizer, while o4-mini supports `detailed`. To access the most detailed summarizer available for a model, set the value of this parameter to `auto`. `auto` will be equivalent to `detailed` for most reasoning models today, but there may be more granular settings in the future.
+Different models support different reasoning summary settings. For example, our computer use model supports the `concise` summarizer, while o3-mini supports `detailed`. To access the most detailed summarizer available for a model, set the value of this parameter to `auto`. `auto` will be equivalent to `detailed` for most reasoning models today, but there may be more granular settings in the future.
 
 Reasoning summary output is part of the `summary` array in the `reasoning` [output item](/docs/api-reference/responses/object#responses/object-output). This output will not be included unless you explicitly opt in to including reasoning summaries.
 

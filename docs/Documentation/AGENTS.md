@@ -27,7 +27,7 @@ Models
 
 |Model|Agentic Strengths|
 |---|---|
-|o3 and o4-mini|Best for long-term planning, hard tasks, and reasoning.|
+|o3-mini and o3|Best for long-term planning, hard tasks, and reasoning.|
 |GPT-4.1|Best for agentic execution.|
 |GPT-4.1-mini|Good balance of agentic capability and latency.|
 |GPT-4.1-nano|Best for low-latency.|

@@ -327,7 +327,7 @@ struct DynamicModelSelector: View {
                         let firstId = first.id.lowercased()
                         let secondId = second.id.lowercased()
 
-                        // Priority order: gpt-5.5-pro > gpt-5.5 > gpt-5.5-mini > gpt-5.5-nano > gpt-5.4-pro > gpt-5.4 > o4 > o4-mini > o3 > o3-mini > gpt-4o > CUA > gpt-4o-mini
+                        // Priority order: gpt-5.5-pro > gpt-5.5 > gpt-5.5-mini > gpt-5.5-nano > gpt-5.4-pro > gpt-5.4 > o3 > o3-mini > gpt-4o > CUA > gpt-4o-mini
                         let modelPriority: [String: Int] = [
                             "gpt-5.5-pro": 1300,
                             "gpt-5.5": 1290,

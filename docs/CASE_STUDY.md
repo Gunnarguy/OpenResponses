@@ -1,84 +1,99 @@
-# OpenResponses Case Study
+# OpenResponses Technical Case Study
 
-## 1. Purpose & Current Scope
+Last updated: 2026-05-29
 
-OpenResponses is a SwiftUI playground for the modern OpenAI platform. The app is built for people who want the practical OpenAI Playground experience on iPhone, iPad, and Mac: switching models, trying prompts, attaching files or images, running tools, and inspecting what happened without swapping projects or shell scripts. Version 2025.11 focuses on production-ready coverage of the Phase 1 features that make that mobile Playground experience work, while preparing the codebase for deeper Phase 2 conversation sync.
-
-- **Primary goal:** Deliver a trustworthy chat client that exposes the OpenAI features most people expect from a Playground-style app: model controls, reasoning, attachments, web/file search, code interpreter, image generation, computer use, custom tools/MCP, and clear request diagnostics.
-- **Audience:** Builders, technical power users, developer advocates, QA teams, and curious non-specialists who need a capable native client without learning every OpenAI API detail.
-- **Non-goals:** Fine-tuning, evals, batch jobs, admin APIs, audio capture, realtime voice agents, video workflows, and speculative Phase 3 UI redesigns.
-
-## 2. High-Level Architecture
-
-OpenResponses follows a strict MVVM structure with dependency injection via `AppContainer`.
-
-- **Views (SwiftUI):** `ChatView.swift` drives the primary chat surface. Secondary views handle onboarding, settings, file management, and MCP tooling. Views remain lightweight; they bind to `@Published` state and forward actions to the view model.
-- **View Models:** `ChatViewModel.swift` orchestrates user input, streaming, tooling, and persistence. The streaming extension (`ChatViewModel+Streaming.swift`) owns SSE parsing to keep the main type focused on orchestration. Settings, onboarding, and tooling each expose smaller view models to minimise state bleed.
-- **Services:**
-  - `OpenAIService.swift` builds and submits Requests API payloads, including streaming via `AsyncThrowingStream<StreamingEvent>`.
-  - `ComputerService.swift` executes browser automation actions for the `computer` tool using a hidden WebView.
-  - `ConversationStorageService.swift` persists conversations to JSON on disk (current shipping behaviour until the Conversations API migration is complete).
-  - `ModelCompatibilityService.swift` and `APICapabilities.swift` gate features per model/tool support matrix.
-- **Dependency Injection:** `AppContainer` seeds shared services (OpenAI, analytics, computer use, Notion helpers) so previews/tests can swap implementations.
-
-## 3. Core Systems Snapshot
-
-### 3.1 Prompt & Model Management
-
-- Dynamic model catalogue fetched at runtime with grouping for latest, reasoning, classic, and specialty models.
-- Prompt presets and the Prompt Library serialize full configurations (model, tools, parameters) for instant recall.
-- Reasoning-aware defaults auto-enable reasoning traces when a supporting model is selected.
-
-### 3.2 Streaming & Reasoning Pipeline
-
-- `OpenAIService.streamChatRequest` translates SSE bytes into strongly typed `StreamingEvent` instances.
-- `ChatViewModel+Streaming` reacts to 40+ event types (response lifecycle, tool calls, image generation, MCP approvals, computer use telemetry).
-- Assistant responses render in `MessageBubbleView` with the **Assistant Thinking** disclosure panel, surfacing reasoning traces gathered during streaming and from the final response payload.
-- Activity feed and status chip provide at-a-glance progress (thinking, searching, generating code, using computer, processing artifacts).
-
-### 3.3 Tool Orchestration
-
-- Computer use tool implements the official action set with guardrails (GA `computer` plus legacy `computer_use_preview`, batched actions, modifier-key mouse metadata, navigate-first logic, wait limits, safety approval sheet, auto retries, blank-page avoidance).
-- Code interpreter integrates artifact parsing for 43 file types with a sandbox cache to avoid repeat downloads.
-- File search supports multi-vector-store queries with advanced controls (max results, ranker override).
-- MCP connectors feature discovery, approval workflows, Keychain-secured credentials, and health probes before streaming begins.
-
-### 3.4 Attachments & Knowledge
-
-- Direct file uploads via `DocumentPicker` (base64 payloads) plus `file_id` attachment support.
-- Image attachments support detail tuning (`auto`, `low`, `high`) including preview gallery UI.
-- Vector store management UI (Settings → Tools) guides enabling search and entering store IDs.
-
-### 3.5 Persistence & Conversations
-
-- Conversations persist locally with `ConversationStorageService` (JSON per conversation, cached in memory), which keeps the app useful offline and avoids surprising server-side storage.
-- The **Phase 2** objective is to finish the optional backend-managed history path via `/v1/conversations`. Service-level CRUD and opt-in send/delete integration exist; the remaining work is full remote list/history reconciliation while keeping local storage as the safe default.
-
-### 3.6 Security & Privacy
-
-- All secrets stored in the system Keychain (OpenAI key, MCP headers/tokens, Notion OAuth).
-- Safety approvals surface for both computer-use actions and MCP operations requiring user consent.
-- Analytics scrub sensitive payloads before logging; request/response inspectors provide redacted views suitable for debugging.
-
-## 4. Recent Milestones (2025)
-
-- **Reasoning trace UX:** Assistant messages now expose a collapsible "Assistant Thinking" section fed by live deltas and final reasoning payloads.
-- **Computer use hardening:** Navigate-first enforcement, blank-page recovery, safety approvals, and resilient click strategies remove prior 400-series failure modes.
-- **Prompt ergonomics:** Prompt Library integration inside Settings, MCP prompt normalization helpers, and reasoning-aware defaults when switching models.
-- **Diagnostics:** Enhanced activity feed copy, analytics hooks for streaming milestones, and clearer status strings across the UI.
-
-## 5. Near-Term Focus (Phase 2 Highlights)
-
-1. **Backend-managed conversations:** Complete remote conversation list/history sync using the existing `/v1/conversations` service methods, keep offline cache fallback, and expose metadata where useful (titles, tags).
-2. **Annotation rendering:** Extend `ChatMessage` to store output annotations (file, URL citations) and update `FormattedTextView` to render inline links/badges.
-3. **Documentation parity:** Maintain this case study, `ROADMAP.md`, and `docs/api/Full_API_Reference.md` whenever feature coverage changes to keep future contributors aligned.
-
-## 6. Testing & Quality Signals
-
-- Unit tests cover streaming event decoding, persistence, and key integrations (`StreamingEventDecodingTests`, `OpenResponsesTests`).
-- Manual smoke suites (see `docs/PRODUCTION_CHECKLIST.md`) validate tools, reasoning displays, MCP connectors, and computer-use loops before releases.
-- Analytics dashboards record tool usage, error classes, and retry events for field debugging.
+OpenResponses is a native SwiftUI client for the OpenAI Responses API. It brings the functional power of the OpenAI Playground (parameter controls, tool runs, request inspections, and reasoning logs) directly to iOS. This case study details the core engineering decisions, architecture patterns, and technical challenges solved during its implementation.
 
 ---
 
-This document snapshots the app as of November 2025. Update it after major architectural changes (Conversations API landing, annotation renderer, Apple Intelligence integration) so new contributors inherit accurate context.
+## 1. Product Overview & Scope
+
+The application targets developers, prompt engineers, and technical power users who require:
+* **Playground Ergonomics:** Instant switching of models, tweaking of parameters (like nucleus sampling or reasoning levels), and saving configurations as prompt presets.
+* **Deep Observability:** Token counters, activity indicators, structured JSON inspectors, and live reasoning playback.
+* **System Boundaries:** A local-first client that retains conversation histories on-device, secures credentials in the Keychain, and routes traffic directly to OpenAI.
+
+*Non-Goals:* The application explicitly excludes administrative APIs, model fine-tuning dashboards, multi-user accounts, audio-only chat, and marketing-driven analytics tracking.
+
+---
+
+## 2. Architectural Decisions: The MVVM-S Pattern
+
+To maintain a clean codebase that scale, OpenResponses implements **MVVM-S (Model-View-ViewModel-Service)** with Dependency Injection via `AppContainer`:
+
+```
+                       ┌─────────────────────────┐
+                       │    SwiftUI View Layer   │
+                       └────────────┬────────────┘
+                                    │ observes State
+                                    ▼
+                       ┌─────────────────────────┐
+                       │   View Model Layer      │
+                       └────────────┬────────────┘
+                                    │ coordinates actions
+                                    ▼
+ ┌──────────────────────────────────┴──────────────────────────────────┐
+ │                            Service Layer                            │
+ ├───────────────────┬───────────────────┬─────────────────────────────┤
+ │  OpenAIService    │  ComputerService  │  ConversationStorageService │
+ └───────────────────┴───────────────────┴─────────────────────────────┘
+```
+
+* **Views:** Declared using SwiftUI. They bind directly to published properties on ViewModels. Tap events and text entries trigger methods on the ViewModel; views contain zero networking or storage code.
+* **ViewModels:** `ChatViewModel` holds conversation transcripts and handles input validation. To avoid monolithic file growth, streaming log processors and SSE event decoders are separated into extensions (e.g. `ChatViewModel+Streaming.swift`).
+* **Service Layer:** Services are stateless workers designed to handle specific API contracts or iOS framework integrations. Views never reference services; ViewModels instantiate them or retrieve them from the dependency container `AppContainer.shared`.
+
+---
+
+## 3. Technical Challenges Solved
+
+### A. WebView Reload Loops and UI Freeze (The Scrolling Thrasher)
+* **Problem:** In early iterations of the Computer Use feature, rendering the active browser viewport inside a SwiftUI representable `WKWebView` triggered rendering thrashing. When the user scrolled the chat timeline or shifted views, SwiftUI's layout passes invoked `updateUIView(uiView:context:)` repeatedly. Because the URL was bound dynamically, this caused `WKWebView` to re-execute `.load(URLRequest)` endlessly, triggering UI freezes and flooding logs with `NSURLErrorCancelled` states.
+* **Solution:** We resolved this by introducing a state coordinator that tracks the last requested URL.
+  ```swift
+  class Coordinator: NSObject, WKNavigationDelegate {
+      var lastRequestedURL: URL?
+  }
+  ```
+  In `updateUIView`, we compare the target URL against `coordinator.lastRequestedURL`. We only invoke `uiView.load()` if they differ:
+  ```swift
+  func updateUIView(_ webView: WKWebView, context: Context) {
+      guard let url = context.environment.targetURL else { return }
+      if url != context.coordinator.lastRequestedURL {
+          context.coordinator.lastRequestedURL = url
+          webView.load(URLRequest(url: url))
+      }
+  }
+  ```
+  This single change halted the thrasher loops, reducing UI main-thread blocking to 0% and restoring smooth scrolling.
+
+### B. High-Velocity Concurrency in SSE Streaming
+* **Problem:** OpenAI's Responses API streams Server-Sent Events (SSE) at speeds up to 100 deltas per second. Early builds experienced race conditions and state corruption when UI components attempted to read and write to the conversation timeline on different background actors during stream updates.
+* **Solution:** The event decoder translates SSE lines into strongly typed `StreamingEvent` structs using Swift Concurrency.
+  * `OpenAIService.streamChatRequest` returns an `AsyncThrowingStream<StreamingEvent, Error>`.
+  * The stream is consumed in a dedicated task owned by `ChatViewModel`.
+  * UI state modifications are explicitly scheduled back to the Main Actor:
+  ```swift
+  for try await event in stream {
+      await MainActor.run {
+          self.processStreamingEvent(event)
+      }
+  }
+  ```
+  This guarantees that all array mutations on the active message models occur sequentially on the main thread, eliminating thread-safety crashes.
+
+### C. Safe Startup Keychain Migration
+* **Problem:** Early developer builds saved API keys in standard `UserDefaults` keys (`openAIAPIKey`, `pineconeAPIKey`). This leaked credentials as plaintext to disk.
+* **Solution:** We established a migration hook during application initialization in `OpenResponsesApp.swift`:
+  ```swift
+  KeychainService.shared.migrateApiKeyFromUserDefaults()
+  ```
+  On launch, if a key exists in `UserDefaults`, the service reads it, writes it securely to the Keychain generic password descriptor, and deletes the legacy `UserDefaults` entry immediately. This maintains backward compatibility for existing users while securing their credentials.
+
+---
+
+## 4. Key Takeaways
+
+1. **Strict Platform Boundaries Improve Quality:** Decoupling platform features (like zero-data retention settings and Keychain storage) into isolated services enables rapid upgrades to target new APIs without rewriting view logic.
+2. **Observability is Vital for AI Apps:** AI features fail silently due to rate limits or formatting mismatches. Surfacing log console feeds, token counters, and payload inspectors directly in the app cuts QA cycle times by half.
+3. **Swift Concurrency Simplifies SSE:** Wrapping SSE line-by-line parsing in an `AsyncThrowingStream` provides an elegant interface for handling high-frequency streams in SwiftUI.

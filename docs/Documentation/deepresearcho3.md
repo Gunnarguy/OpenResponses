@@ -3,13 +3,13 @@ Deep research
 
 Use deep research models for complex analysis and research tasks.
 
-The [`o3-deep-research`](/docs/models/o3-deep-research) and [`o4-mini-deep-research`](/docs/models/o4-mini-deep-research) models can find, analyze, and synthesize hundreds of sources to create a comprehensive report at the level of a research analyst. These models are optimized for browsing and data analysis, and can use [web search](/docs/guides/tools-web-search), [remote MCP](/docs/guides/tools-remote-mcp) servers, and [file search](/docs/guides/tools-file-search) over internal [vector stores](/docs/api-reference/vector-stores) to generate detailed reports, ideal for use cases like:
+The [`o3-deep-research`](/docs/models/o3-deep-research) model can find, analyze, and synthesize hundreds of sources to create a comprehensive report at the level of a research analyst. This model is optimized for browsing and data analysis, and can use [web search](/docs/guides/tools-web-search), [remote MCP](/docs/guides/tools-remote-mcp) servers, and [file search](/docs/guides/tools-file-search) over internal [vector stores](/docs/api-reference/vector-stores) to generate detailed reports, ideal for use cases like:
 
 *   Legal or scientific research
 *   Market analysis
 *   Reporting on large bodies of internal company data
 
-To use deep research, use the [Responses API](/docs/api-reference/responses) with the model set to `o3-deep-research` or `o4-mini-deep-research`. You must include at least one data source: web search, remote MCP servers, or file search with vector stores. You can also include the [code interpreter](/docs/guides/tools-code-interpreter) tool to allow the model to perform complex analysis by writing code.
+To use deep research, use the [Responses API](/docs/api-reference/responses) with the model set to `o3-deep-research`. You must include at least one data source: web search, remote MCP servers, or file search with vector stores. You can also include the [code interpreter](/docs/guides/tools-code-interpreter) tool to allow the model to perform complex analysis by writing code.
 
 Kick off a deep research task
 

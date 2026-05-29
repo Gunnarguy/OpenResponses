@@ -382,7 +382,7 @@ Calculating costs
 
 Image inputs are metered and charged in tokens, just as text inputs are. How images are converted to text token inputs varies based on the model. You can find a vision pricing calculator in the FAQ section of the [pricing page](https://openai.com/api/pricing/).
 
-### GPT-4.1-mini, GPT-4.1-nano, o4-mini
+### GPT-4.1-mini, GPT-4.1-nano
 
 Image inputs are metered and charged in tokens based on their dimensions. The token cost of an image is determined as follows:
 
@@ -413,7 +413,6 @@ D. Apply a multiplier based on the model to get the total tokens.
 |gpt-5-nano|2.46|
 |gpt-4.1-mini|1.62|
 |gpt-4.1-nano|2.46|
-|o4-mini|1.72|
 
 **Cost calculation examples**
 
@@ -433,7 +432,7 @@ D. Apply a multiplier based on the model to get the total tokens.
     *   The image now requires `1056 / 32 = 33` patches to cover the width and `1408 / 32 = 44` patches to cover the height
     *   The total number of tokens is the `33 * 44 = 1452`, below the cap of 1536
 
-### GPT 4o, GPT-4.1, GPT-4o-mini, CUA, and o-series (except o4-mini)
+### GPT 4o, GPT-4.1, GPT-4o-mini, CUA, and o-series
 
 The token cost of an image is determined by two factors: size and detail.
 

@@ -3,7 +3,7 @@ Reasoning best practices
 
 Learn when to use reasoning models and how they compare to GPT models.
 
-OpenAI offers two types of models: [reasoning models](/docs/models#o4-mini) (o3 and o4-mini, for example) and [GPT models](/docs/models#gpt-4.1) (like GPT-4.1). These model families behave differently.
+OpenAI offers two types of models: [reasoning models](/docs/models#o3) (o3, for example) and [GPT models](/docs/models#gpt-4.1) (like GPT-4.1). These model families behave differently.
 
 This guide covers:
 
@@ -139,7 +139,7 @@ These models perform best with straightforward prompts. Some prompt engineering 
 How to keep costs low and accuracy high
 ---------------------------------------
 
-With the introduction of `o3` and `o4-mini` models, persisted reasoning items in the Responses API are treated differently. Previously (for `o1`, `o3-mini`, `o1-mini` and `o1-preview`), reasoning items were always ignored in follow‑up API requests, even if they were included in the input items of the requests. With `o3` and `o4-mini`, some reasoning items adjacent to function calls are included in the model’s context to help improve model performance while using the least amount of reasoning tokens.
+With the introduction of `o3` models, persisted reasoning items in the Responses API are treated differently. Previously (for `o1`, `o3-mini`, `o1-mini` and `o1-preview`), reasoning items were always ignored in follow‑up API requests, even if they were included in the input items of the requests. With `o3`, some reasoning items adjacent to function calls are included in the model’s context to help improve model performance while using the least amount of reasoning tokens.
 
 For the best results with this change, we recommend using the [Responses API](/docs/api-reference/responses) with the `store` parameter set to `true`, and passing in all reasoning items from previous requests (either using `previous_response_id`, or by taking all the output items from an older request and passing them in as input items for a new one). OpenAI will automatically include any relevant reasoning items in the model's context and ignore any irrelevant ones. In more advanced use‑cases where you’d like to manage what goes into the model's context more precisely, we recommend that you at least include all reasoning items between the latest function call and the previous user message. Doing this will ensure that the model doesn’t have to restart its reasoning when you respond to a function call, resulting in better function‑calling performance and lower overall token usage.
 
