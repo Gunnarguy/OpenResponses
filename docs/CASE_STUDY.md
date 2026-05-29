@@ -109,13 +109,13 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 
 ---
 
-## 6. Outcome Metrics
+## 6. Engineering Metrics
 
-OpenResponses demonstrates high-fidelity Swift engineering:
+The application incorporates the following integrations and components:
 - **APIs Integrated:** 5 (OpenAI Responses, OpenAI Embeddings, Notion, Apple Calendar, Apple Contacts/Reminders).
 - **Core Architecture Layers:** 5 (Views, ViewModels, Services, Keychain Security Enclave, Sandboxed Local Storage).
 - **File Modalities Supported:** 43 distinct file extensions converted locally.
-- **Preflight & QA Scripts:** 2 (`secret_scan.py` and `preflight_check.sh` executing zero-secrets compliance and Info.plist checks).
+- **Preflight & QA Scripts:** 2 (`secret_scan.py` and `preflight_check.sh` verifying credential safety and Info.plist compliance).
 - **Zero-Data Leak Guard:** 100% of credentials stored in Secure Keychain; zero external analytics tracking libraries.
 
 ---
