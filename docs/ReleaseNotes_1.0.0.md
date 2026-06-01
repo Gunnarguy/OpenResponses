@@ -4,7 +4,7 @@
 
 ## Welcome to OpenResponses 1.0
 
-OpenResponses is a powerful iOS client for interacting with OpenAI's latest language models and tools. Built with SwiftUI and designed for iOS 17+, it provides a native, privacy-focused interface for advanced AI conversations.
+OpenResponses is a native iOS client for interacting with OpenAI's language models and tools through the Responses API. Built with SwiftUI and designed for iOS 17+, it provides a direct, developer-oriented interface for advanced AI conversations and tool runs.
 
 ## Key Features
 
@@ -39,7 +39,7 @@ OpenResponses is a powerful iOS client for interacting with OpenAI's latest lang
 
 ### 🔒 Privacy & Security
 
-- **Local Storage:** All conversations and data stored only on your device
+- **Local Storage:** Conversation history and app configuration are stored on your device
 - **Keychain Security:** API keys secured in iOS Keychain with device encryption
 - **No Analytics by Default:** Optional analytics can be enabled in settings
 - **Open Source:** Full source code available for transparency
@@ -67,9 +67,9 @@ OpenResponses is a powerful iOS client for interacting with OpenAI's latest lang
 
 OpenResponses respects your privacy:
 
-- No data collected or transmitted except to OpenAI's API
+- No data is routed through a separate vendor backend; requests go directly from the app to the configured API and tool providers
 - API keys stored securely in iOS Keychain
-- Conversations never leave your device
+- Conversations and files leave your device only when you explicitly send them to OpenAI or an enabled tool integration
 - Optional analytics disabled by default
 
 For full details, see our Privacy Policy.

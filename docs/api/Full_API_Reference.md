@@ -1,6 +1,6 @@
 # Op**[2025-09-18] 🎉 PHASE 1 COMPLETE:**
 
-OpenResponses has successfully completed Phase 1 of its development roadmap! All input modalities and advanced tool integrations are now production-ready:
+OpenResponses has successfully completed Phase 1 of its development roadmap. The current shipping-scope input modalities and advanced tool integrations are implemented in the current build:
 
 - ✅ **Direct File Uploads**: Complete implementation with 43+ supported file types
 - ✅ **Computer Use Tool**: Current GA/legacy action harness with all official actions, safety approvals, and comprehensive error handling
@@ -17,7 +17,7 @@ OpenResponses has successfully completed Phase 1 of its development roadmap! All
 This project is paused in a "super beta" state. Major recent work includes:
 
 - Ultra-strict computer-use mode (toggle disables all app-side helpers; see Advanced.md)
-- Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
+- Full current-build computer-use tool (all official actions, robust error handling, native iOS WebView)
 - Model/tool compatibility gating: GA computer use is enabled only on computer-capable GPT-5.x models in the app (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) with the `computer` tool. The legacy dedicated `computer-use-preview` model remains supported with the preview `computer_use_preview` tool. Other models remain disabled by compatibility gates.
 - All changes are documented for easy resumption—see ROADMAP.md and CASE_STUDY.md for technical details.
 
@@ -290,9 +290,9 @@ Assistant reasoning payloads captured from `reasoning` output items are now pers
 
 ### 2.3. Output Content and Annotations
 
-Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation successfully captures and displays screenshots in chat interface. Single-shot mode prevents infinite loops. Status chips work correctly. WebView frame initialization and rendering issues fully resolved. GA computer use is enabled for the app's computer-capable GPT-5.x models (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) using the `computer` tool, while `computer-use-preview` remains supported as the legacy dedicated preview path.
+Computer Use: 🎉 **COMPLETE FOR THE CURRENT BUILD**. Native iOS implementation successfully captures and displays screenshots in chat interface. Single-shot mode prevents infinite loops. Status chips work correctly. WebView frame initialization and rendering issues fully resolved. GA computer use is enabled for the app's computer-capable GPT-5.x models (`gpt-5.5`, `gpt-5.5-mini`, `gpt-5.4`, `gpt-5.4-mini`) using the `computer` tool, while `computer-use-preview` remains supported as the legacy dedicated preview path.
 
-🎉 **PRODUCTION MILESTONE**: All computer use functionality is working correctly - screenshots capture actual webpage content, display properly in the UI, and the system handles both simple screenshot requests and complex multi-step interactions seamlessly.
+🎉 **IMPLEMENTATION MILESTONE**: All computer use functionality is working correctly - screenshots capture actual webpage content, display properly in the UI, and the system handles both simple screenshot requests and complex multi-step interactions reliably.
 
 **A. Output Text**
 
@@ -362,7 +362,7 @@ Computer Use: 🎉 **COMPLETE & PRODUCTION-READY**. Native iOS implementation su
 | API Feature Category        | Implementation Level         | Details                                                                                                                            |
 | :-------------------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
 | **Text Input/Output**       | ✅ **Complete**              | Full text conversation support with streaming, rich formatting, copy functionality                                                 |
-| **Image Input**             | ✅ **Complete**              | Full image selection, base64 encoding, detail level control, seamless API integration                                              |
+| **Image Input**             | ✅ **Complete**              | Full image selection, base64 encoding, detail level control, direct API integration                                              |
 | **File Input**              | ✅ **Complete**              | Full support for both `file_id` references and direct file uploads with `file_data` - 43+ supported file types                     |
 | **Audio Input**             | ❌ **Intentionally Removed** | Audio capture and API integration intentionally removed from the app to focus on core features                                     |
 | **Basic Tools**             | ✅ **Complete**              | Web search, code interpreter, file search fully integrated with advanced configurations                                            |

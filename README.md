@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>SwiftUI developer client and playground for the OpenAI Responses API.</strong>
+  <strong>SwiftUI developer client for the OpenAI Responses API and the successor to OpenAssistant.</strong>
 </p>
 
 <p align="center">
@@ -19,12 +19,13 @@
 
 ## Overview
 
-OpenResponses is a native iOS and macOS (Catalyst) client designed for direct interaction with the OpenAI Responses API (`/v1/responses`). It functions as a mobile developer playground and testing workspace, exposing low-level model parameters, tools execution, and token-level streaming data.
+OpenResponses is a native iOS and macOS (Catalyst) client designed for direct interaction with the OpenAI Responses API (`/v1/responses`). It functions as a mobile developer playground and testing workspace, exposing low-level model parameters, tool execution, token-level streaming data, and raw request visibility without hiding the API behind a custom proxy layer.
 
 * **Target Audience:** AI engineers, prompt designers, and developers needing direct client-to-API control.
 * **Core Problem Solved:** Lack of visibility in standard AI interfaces. OpenResponses exposes raw token counters, network statuses, expandable reasoning traces for o1/o3-mini, and outbound/inbound JSON payloads.
 * **Technical Characteristics:** Direct client-to-endpoint connections, local document parsing (with Vision OCR), and sandboxed browser automation loops.
 * **API Paradigm:** Unlike apps built on the Assistants API (which rely on remote thread caching and run polling), OpenResponses uses the Responses API to coordinate low-latency, stateless completions and client-side tool execution.
+* **Product Lineage:** OpenResponses is the active evolution of Gunnar Hostetler's API-tooling work and supersedes the older OpenAssistant Assistants API client.
 
 ---
 

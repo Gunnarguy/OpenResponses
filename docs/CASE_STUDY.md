@@ -4,6 +4,8 @@ Last updated: 2026-05-29
 
 OpenResponses is a native iOS and macOS (Catalyst) developer playground for the OpenAI Responses API. This case study details the core engineering decisions, architecture patterns, and technical challenges solved during its implementation.
 
+It is also the active successor to Gunnar Hostetler's older OpenAssistant Assistants API client, shifting the product line away from thread-and-run polling and toward direct Responses API execution.
+
 ---
 
 ## 1. The Problem
@@ -14,7 +16,7 @@ Developers and prompt engineers working with advanced generative models face a m
 - Outbound API request payload details and raw JSON inputs/outputs.
 - The step-by-step lifecycle of background tool calls (such as code interpreters and browser automation).
 
-OpenResponses was built to bridge this gap: providing an observable, production-grade developer playground directly on iOS and iPadOS.
+OpenResponses was built to bridge this gap: providing an observable developer workspace directly on iOS and iPadOS.
 
 ---
 
