@@ -4639,9 +4639,13 @@ class ChatViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.handleError(error)
+                self.lastResponseId = nil
                 // CRITICAL FIX: Reset streaming status on computer_call_output network failure
                 self.streamingStatus = .idle
+                self.streamingMessageId = nil
                 self.isStreaming = false
+                let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
+                self.messages.append(sys)
                 self.isAwaitingComputerOutput = false
             }
         }
