@@ -4643,6 +4643,8 @@ class ChatViewModel: ObservableObject {
                 self.streamingStatus = .idle
                 self.isStreaming = false
                 self.isAwaitingComputerOutput = false
+                self.lastResponseId = nil
+                self.streamingMessageId = nil
             }
         }
     }
