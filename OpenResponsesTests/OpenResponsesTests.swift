@@ -59,6 +59,91 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertNil(message.webURLs)
     }
 
+    func testConversationDecodesLegacyJSONWithDefaults() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "title": "Legacy Test Title"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.id, UUID(uuidString: "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D"))
+        XCTAssertNil(conversation.remoteId)
+        XCTAssertEqual(conversation.title, "Legacy Test Title")
+        XCTAssertTrue(conversation.messages.isEmpty)
+        XCTAssertNil(conversation.lastResponseId)
+
+        let timeDifference = abs(conversation.lastModified.timeIntervalSince(Date()))
+        XCTAssertLessThan(timeDifference, 5.0)
+
+        XCTAssertNil(conversation.metadata)
+        XCTAssertNil(conversation.lastSyncedAt)
+        XCTAssertTrue(conversation.shouldStoreRemotely)
+        XCTAssertEqual(conversation.syncState, .localOnly)
+    }
+
+    func testConversationDecodesLegacyJSONWithRemoteIdSetsSyncState() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "title": "Legacy Test Title",
+            "remoteId": "conv_remote_123"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.syncState, .synced)
+    }
+
+    func testConversationDecodesFullyPopulatedJSON() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "remoteId": "conv_remote_123",
+            "title": "Test Title",
+            "messages": [
+                {
+                    "id": "12345678-1234-1234-1234-123456789012",
+                    "role": "user",
+                    "text": "Hello"
+                }
+            ],
+            "lastResponseId": "resp_456",
+            "lastModified": 703555200,
+            "metadata": {"key": "value"},
+            "lastSyncedAt": 703555200,
+            "shouldStoreRemotely": false,
+            "syncState": "synced"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.id, UUID(uuidString: "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D"))
+        XCTAssertEqual(conversation.remoteId, "conv_remote_123")
+        XCTAssertEqual(conversation.title, "Test Title")
+        XCTAssertEqual(conversation.messages.count, 1)
+        XCTAssertEqual(conversation.messages.first?.text, "Hello")
+        XCTAssertEqual(conversation.lastResponseId, "resp_456")
+        XCTAssertEqual(conversation.lastModified.timeIntervalSinceReferenceDate, 703555200)
+        XCTAssertEqual(conversation.metadata, ["key": "value"])
+        XCTAssertEqual(conversation.lastSyncedAt?.timeIntervalSinceReferenceDate, 703555200)
+        XCTAssertEqual(conversation.shouldStoreRemotely, false)
+        XCTAssertEqual(conversation.syncState, .synced)
+    }
+
     func testConversationTransferCodecRoundTripPreservesMessages() throws {
         let conversation = Conversation(
             id: UUID(),
