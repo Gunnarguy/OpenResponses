@@ -576,9 +576,7 @@ struct VectorStoreSmartUploadView: View {
     }
     
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -627,16 +625,12 @@ struct VectorStoreCard: View {
     }
     
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
     
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter.string(from: date)
+        return Formatters.shortDateFormatter.string(from: date)
     }
     
     private func statusColor(_ status: String) -> Color {

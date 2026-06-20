@@ -186,6 +186,13 @@ struct ConversationExportView: View {
     @State private var exportedURL: URL?
     @State private var errorMessage: String?
     
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    
     var body: some View {
         NavigationStack {
             List {
@@ -369,10 +376,7 @@ struct ConversationExportView: View {
     }
     
     private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }
 

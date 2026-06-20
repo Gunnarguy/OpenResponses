@@ -52,8 +52,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = OpenResponses;
 			sourceTree = "<group>";
 		};
