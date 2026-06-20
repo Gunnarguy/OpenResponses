@@ -318,9 +318,13 @@ enum AppLogger {
     ) {
         // Redact sensitive headers
         var safeHeaders = headers
-        if safeHeaders["Authorization"] != nil {
-            if let auth = safeHeaders["Authorization"], auth.starts(with: "Bearer ") {
-                safeHeaders["Authorization"] = "Bearer sk-***REDACTED***"
+        for (key, value) in headers {
+            if key.lowercased() == "authorization" {
+                if value.lowercased().starts(with: "bearer ") {
+                    safeHeaders[key] = "Bearer sk-***REDACTED***"
+                } else {
+                    safeHeaders[key] = "***REDACTED***"
+                }
             }
         }
         
