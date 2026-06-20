@@ -576,4 +576,120 @@ final class URLDetectorTests: XCTestCase {
         XCTAssertEqual(links[2], "sandbox:/three.webp")
         XCTAssertEqual(links[3], "data:image/png;base64,four")
     }
+
+    // MARK: - extractURLs Tests
+
+    func testExtractURLs_WithEmptyString_ReturnsEmptyArray() {
+        let urls = URLDetector.extractURLs(from: "")
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testExtractURLs_WithNoURLs_ReturnsEmptyArray() {
+        let text = "This is a simple text without any URLs."
+        let urls = URLDetector.extractURLs(from: text)
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testExtractURLs_WithValidHttpAndHttpsURLs_ExtractsCorrectly() {
+        let text = "Check out http://example.com and https://www.test.org for more info."
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "http://example.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://www.test.org")
+    }
+
+    func testExtractURLs_WithTrailingPunctuation_ExcludesPunctuation() {
+        let text = "Have you seen https://apple.com? I also like https://github.com/! And here is https://wikipedia.org."
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 3)
+        // NSDataDetector automatically handles trailing punctuation intelligently.
+        XCTAssertEqual(urls[0].absoluteString, "https://apple.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://github.com/")
+        XCTAssertEqual(urls[2].absoluteString, "https://wikipedia.org")
+    }
+
+    func testExtractURLs_FiltersOutNonHttpSchemes() {
+        // extractURLs is supposed to filter for "http" or "https" only
+        let text = "Send an email to test@example.com or use ftp://files.example.com to upload. But also visit https://valid.com."
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "https://valid.com")
+    }
+
+    func testExtractURLs_WithComplexPathsAndQueries_ExtractsCorrectly() {
+        let text = "Read more at https://example.com/path/to/page?param1=value&param2=123#section"
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com/path/to/page?param1=value&param2=123#section")
+    }
+
+    func testExtractURLs_WithMultipleConsecutiveURLs_ExtractsCorrectly() {
+        let text = "https://one.com https://two.com\nhttps://three.com"
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "https://one.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://two.com")
+        XCTAssertEqual(urls[2].absoluteString, "https://three.com")
+    }
+
+    // MARK: - isRenderableWebpage Tests
+
+    func testIsRenderableWebpage_ValidWebpages() {
+        let validURLs = [
+            URL(string: "https://www.example.com")!,
+            URL(string: "http://example.org/about")!,
+            URL(string: "https://news.ycombinator.com/item?id=123")!,
+            URL(string: "https://github.com/apple/swift")!,
+            URL(string: "http://my-blog.dev/post/1")!
+        ]
+
+        for url in validURLs {
+            XCTAssertTrue(URLDetector.isRenderableWebpage(url), "Expected \\(url) to be a renderable webpage")
+        }
+    }
+
+    func testIsRenderableWebpage_APIEndpoints() {
+        let apiURLs = [
+            URL(string: "https://api.example.com/v1/users")!,
+            URL(string: "https://example.com/api/v2/data")!,
+            URL(string: "https://api.github.com/repos/apple/swift")!,
+            URL(string: "http://backend.service/api/login")!
+        ]
+
+        for url in apiURLs {
+            XCTAssertFalse(URLDetector.isRenderableWebpage(url), "Expected \\(url) to NOT be a renderable webpage (API endpoint)")
+        }
+    }
+
+    func testIsRenderableWebpage_Files() {
+        let fileURLs = [
+            URL(string: "https://example.com/data.json")!,
+            URL(string: "https://example.com/feed.xml")!,
+            URL(string: "https://example.com/document.pdf")!,
+            URL(string: "https://example.com/image.jpg")!,
+            URL(string: "https://example.com/video.mp4")!,
+            URL(string: "https://example.com/archive.zip")!
+        ]
+
+        for url in fileURLs {
+            XCTAssertFalse(URLDetector.isRenderableWebpage(url), "Expected \\(url) to NOT be a renderable webpage (File extension)")
+        }
+    }
+
+    func testIsRenderableWebpage_UnknownDomains() {
+        let unknownURLs = [
+            URL(string: "https://internal-server.local")!,
+            URL(string: "http://192.168.1.1")!,
+            URL(string: "https://my-app.custom")!
+        ]
+
+        for url in unknownURLs {
+            XCTAssertFalse(URLDetector.isRenderableWebpage(url), "Expected \\(url) to NOT be a renderable webpage (Unknown domain)")
+        }
+    }
 }
