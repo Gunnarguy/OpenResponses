@@ -2,6 +2,47 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
+
+// MARK: - Shared Formatters for Performance Optimization
+enum Formatters {
+    static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter
+    }()
+
+    static let shortDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static let fileByteCountFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
+
+    static let memoryByteCountFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .memory
+        return formatter
+    }()
+
+    static let memoryByteCountFormatterWithUnits: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .memory
+        return formatter
+    }()
+}
+
+
+
+
+
+
 /// Redesigned view for managing files and vector stores with OpenAI
 /// Features:
 /// - Tabbed interface for better organization
@@ -410,7 +451,7 @@ HStack(spacing: 8) {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     // MARK: - Files Tab
@@ -1799,16 +1840,12 @@ struct ImprovedFileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
+        return Formatters.shortDateFormatter.string(from: date)
     }
 }
 
@@ -1925,9 +1962,7 @@ struct ImprovedVectorStoreRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2000,18 +2035,13 @@ struct VectorStoreRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     /// Formats a UNIX timestamp (seconds) to a short date string.
     private static func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Formatters.shortDateTimeFormatter.string(from: date)
     }
 }
 
@@ -2326,18 +2356,13 @@ struct VectorStoreDetailView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     /// Formats a UNIX timestamp (seconds) to a short date string.
     private static func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Formatters.shortDateTimeFormatter.string(from: date)
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2397,17 +2422,12 @@ struct FileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Formatters.shortDateTimeFormatter.string(from: date)
     }
 }
 
@@ -2495,9 +2515,7 @@ struct CreateVectorStoreView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -2617,16 +2635,12 @@ struct AssociateExistingFilesView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
+        return Formatters.shortDateFormatter.string(from: date)
     }
 }
 
@@ -2703,9 +2717,7 @@ struct VectorStoreSelectorView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2870,9 +2882,7 @@ struct VectorStoreFileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -3103,11 +3113,7 @@ struct UploadSummaryView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .memory
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.memoryByteCountFormatterWithUnits.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -3299,9 +3305,7 @@ struct UploadResultRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .memory
-        return formatter.string(fromByteCount: Int64(bytes))
+        return Formatters.memoryByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
 
     private func statusLabel(_ status: String) -> String {
