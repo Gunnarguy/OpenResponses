@@ -59,6 +59,45 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertNil(message.webURLs)
     }
 
+
+    func testConversationEncoding() throws {
+        let id = UUID()
+        let lastModified = Date(timeIntervalSince1970: 1000)
+        let lastSyncedAt = Date(timeIntervalSince1970: 2000)
+        let conversation = Conversation(
+            id: id,
+            remoteId: "remote_123",
+            title: "Test Chat",
+            messages: [ChatMessage(role: .user, text: "Hello")],
+            lastResponseId: "resp_123",
+            lastModified: lastModified,
+            metadata: ["key": "value"],
+            lastSyncedAt: lastSyncedAt,
+            shouldStoreRemotely: false,
+            syncState: .synced
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(conversation)
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        XCTAssertNotNil(json)
+        XCTAssertEqual(json?["id"] as? String, id.uuidString)
+        XCTAssertEqual(json?["remoteId"] as? String, "remote_123")
+        XCTAssertEqual(json?["title"] as? String, "Test Chat")
+        XCTAssertEqual(json?["lastResponseId"] as? String, "resp_123")
+        XCTAssertEqual(json?["shouldStoreRemotely"] as? Bool, false)
+        XCTAssertEqual(json?["syncState"] as? String, Conversation.SyncState.synced.rawValue)
+
+        let metadata = json?["metadata"] as? [String: String]
+        XCTAssertEqual(metadata?["key"], "value")
+
+        let messages = json?["messages"] as? [[String: Any]]
+        XCTAssertEqual(messages?.count, 1)
+    }
+
     func testConversationTransferCodecRoundTripPreservesMessages() throws {
         let conversation = Conversation(
             id: UUID(),
