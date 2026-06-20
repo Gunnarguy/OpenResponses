@@ -59,6 +59,129 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertNil(message.webURLs)
     }
 
+    func testConversationEncoding() throws {
+        let id = UUID()
+        let lastModified = Date(timeIntervalSince1970: 1000)
+        let lastSyncedAt = Date(timeIntervalSince1970: 2000)
+        let conversation = Conversation(
+            id: id,
+            remoteId: "remote_123",
+            title: "Test Chat",
+            messages: [ChatMessage(role: .user, text: "Hello")],
+            lastResponseId: "resp_123",
+            lastModified: lastModified,
+            metadata: ["key": "value"],
+            lastSyncedAt: lastSyncedAt,
+            shouldStoreRemotely: false,
+            syncState: .synced
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(conversation)
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        XCTAssertNotNil(json)
+        XCTAssertEqual(json?["id"] as? String, id.uuidString)
+        XCTAssertEqual(json?["remoteId"] as? String, "remote_123")
+        XCTAssertEqual(json?["title"] as? String, "Test Chat")
+        XCTAssertEqual(json?["lastResponseId"] as? String, "resp_123")
+        XCTAssertEqual(json?["shouldStoreRemotely"] as? Bool, false)
+        XCTAssertEqual(json?["syncState"] as? String, Conversation.SyncState.synced.rawValue)
+
+        let metadata = json?["metadata"] as? [String: String]
+        XCTAssertEqual(metadata?["key"], "value")
+
+        let messages = json?["messages"] as? [[String: Any]]
+        XCTAssertEqual(messages?.count, 1)
+    }
+
+    func testConversationDecodesLegacyJSONWithDefaults() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "title": "Legacy Test Title"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.id, UUID(uuidString: "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D"))
+        XCTAssertNil(conversation.remoteId)
+        XCTAssertEqual(conversation.title, "Legacy Test Title")
+        XCTAssertTrue(conversation.messages.isEmpty)
+        XCTAssertNil(conversation.lastResponseId)
+
+        let timeDifference = abs(conversation.lastModified.timeIntervalSince(Date()))
+        XCTAssertLessThan(timeDifference, 5.0)
+
+        XCTAssertNil(conversation.metadata)
+        XCTAssertNil(conversation.lastSyncedAt)
+        XCTAssertTrue(conversation.shouldStoreRemotely)
+        XCTAssertEqual(conversation.syncState, .localOnly)
+    }
+
+    func testConversationDecodesLegacyJSONWithRemoteIdSetsSyncState() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "title": "Legacy Test Title",
+            "remoteId": "conv_remote_123"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.syncState, .synced)
+    }
+
+    func testConversationDecodesFullyPopulatedJSON() throws {
+        let jsonString = """
+        {
+            "id": "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D",
+            "remoteId": "conv_remote_123",
+            "title": "Test Title",
+            "messages": [
+                {
+                    "id": "12345678-1234-1234-1234-123456789012",
+                    "role": "user",
+                    "text": "Hello"
+                }
+            ],
+            "lastResponseId": "resp_456",
+            "lastModified": 703555200,
+            "metadata": {"key": "value"},
+            "lastSyncedAt": 703555200,
+            "shouldStoreRemotely": false,
+            "syncState": "synced"
+        }
+        """
+
+        let data = Data(jsonString.utf8)
+        let decoder = JSONDecoder()
+
+        let conversation = try decoder.decode(Conversation.self, from: data)
+
+        XCTAssertEqual(conversation.id, UUID(uuidString: "A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D"))
+        XCTAssertEqual(conversation.remoteId, "conv_remote_123")
+        XCTAssertEqual(conversation.title, "Test Title")
+        XCTAssertEqual(conversation.messages.count, 1)
+        XCTAssertEqual(conversation.messages.first?.text, "Hello")
+        XCTAssertEqual(conversation.lastResponseId, "resp_456")
+        XCTAssertEqual(conversation.lastModified.timeIntervalSinceReferenceDate, 703555200)
+        XCTAssertEqual(conversation.metadata, ["key": "value"])
+        XCTAssertEqual(conversation.lastSyncedAt?.timeIntervalSinceReferenceDate, 703555200)
+        XCTAssertEqual(conversation.shouldStoreRemotely, false)
+        XCTAssertEqual(conversation.syncState, .synced)
+    }
+
     func testConversationTransferCodecRoundTripPreservesMessages() throws {
         let conversation = Conversation(
             id: UUID(),
@@ -397,5 +520,60 @@ final class OpenResponsesTests: XCTestCase {
 
         reloadedLibrary.deletePrompt(at: IndexSet(integer: 0))
         XCTAssertTrue(reloadedLibrary.prompts.isEmpty)
+    }
+}
+
+final class URLDetectorTests: XCTestCase {
+
+    func testExtractImageLinks_MarkdownSyntax() {
+        let text = "Here is an image: ![Alt text](https://example.com/image.png) and another ![Second](https://example.com/second.jpg)."
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links[0], "https://example.com/image.png")
+        XCTAssertEqual(links[1], "https://example.com/second.jpg")
+    }
+
+    func testExtractImageLinks_BareHttpLinks() {
+        let text = "Check out this image: https://example.com/test.png?size=large and also http://test.com/img.jpg"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links[0], "https://example.com/test.png?size=large")
+        XCTAssertEqual(links[1], "http://test.com/img.jpg")
+    }
+
+    func testExtractImageLinks_DataURLs() {
+        let text = "Inline image data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII= "
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+    }
+
+    func testExtractImageLinks_SandboxPaths() {
+        let text = "Local file at sandbox:/Documents/image.png"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "sandbox:/Documents/image.png")
+    }
+
+    func testExtractImageLinks_DuplicateRemoval() {
+        let text = "Image ![test](https://example.com/img.png) and the same bare link https://example.com/img.png"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "https://example.com/img.png")
+    }
+
+    func testExtractImageLinks_OrderPreservation() {
+        let text = """
+        1. https://example.com/one.png
+        2. ![Two](https://example.com/two.jpg)
+        3. sandbox:/three.webp
+        4. data:image/png;base64,four
+        """
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 4)
+        XCTAssertEqual(links[0], "https://example.com/one.png")
+        XCTAssertEqual(links[1], "https://example.com/two.jpg")
+        XCTAssertEqual(links[2], "sandbox:/three.webp")
+        XCTAssertEqual(links[3], "data:image/png;base64,four")
     }
 }
