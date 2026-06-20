@@ -319,9 +319,7 @@ enum AppLogger {
         // Redact sensitive headers
         var safeHeaders = headers
         if safeHeaders["Authorization"] != nil {
-            if let auth = safeHeaders["Authorization"], auth.starts(with: "Bearer ") {
-                safeHeaders["Authorization"] = "Bearer sk-***REDACTED***"
-            }
+            safeHeaders["Authorization"] = "***REDACTED***"
         }
         
         var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
