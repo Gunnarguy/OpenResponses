@@ -240,9 +240,13 @@ class AnalyticsService: ObservableObject {
         var redactedHeaders = headers
         
         // Redact API keys or tokens
-        if redactedHeaders["Authorization"] != nil {
-            if let auth = redactedHeaders["Authorization"], auth.starts(with: "Bearer ") {
-                redactedHeaders["Authorization"] = "Bearer sk-***REDACTED***"
+        for (key, value) in headers {
+            if key.lowercased() == "authorization" {
+                if value.lowercased().starts(with: "bearer ") {
+                    redactedHeaders[key] = "Bearer sk-***REDACTED***"
+                } else {
+                    redactedHeaders[key] = "***REDACTED***"
+                }
             }
         }
         
