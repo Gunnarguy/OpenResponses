@@ -1799,16 +1799,12 @@ struct ImprovedFileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
+        return SharedFormatters.shortDate.string(from: date)
     }
 }
 
@@ -1925,9 +1921,7 @@ struct ImprovedVectorStoreRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2000,18 +1994,13 @@ struct VectorStoreRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     /// Formats a UNIX timestamp (seconds) to a short date string.
     private static func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return SharedFormatters.shortDateTime.string(from: date)
     }
 }
 
@@ -2326,18 +2315,13 @@ struct VectorStoreDetailView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     /// Formats a UNIX timestamp (seconds) to a short date string.
     private static func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return SharedFormatters.shortDateTime.string(from: date)
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2397,17 +2381,12 @@ struct FileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return SharedFormatters.shortDateTime.string(from: date)
     }
 }
 
@@ -2495,9 +2474,7 @@ struct CreateVectorStoreView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -2617,16 +2594,12 @@ struct AssociateExistingFilesView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func formatDate(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
+        return SharedFormatters.shortDate.string(from: date)
     }
 }
 
@@ -2703,9 +2676,7 @@ struct VectorStoreSelectorView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -2870,9 +2841,7 @@ struct VectorStoreFileRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.fileByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -3103,11 +3072,7 @@ struct UploadSummaryView: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .memory
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.memoryByteCountWithUnits.string(fromByteCount: Int64(bytes))
     }
 }
 
@@ -3299,9 +3264,7 @@ struct UploadResultRow: View {
     }
 
     private func formatBytes(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .memory
-        return formatter.string(fromByteCount: Int64(bytes))
+        return SharedFormatters.memoryByteCount.string(fromByteCount: Int64(bytes))
     }
 
     private func statusLabel(_ status: String) -> String {
