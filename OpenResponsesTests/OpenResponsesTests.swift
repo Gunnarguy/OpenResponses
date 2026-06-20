@@ -399,3 +399,58 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertTrue(reloadedLibrary.prompts.isEmpty)
     }
 }
+
+final class URLDetectorTests: XCTestCase {
+
+    func testExtractImageLinks_MarkdownSyntax() {
+        let text = "Here is an image: ![Alt text](https://example.com/image.png) and another ![Second](https://example.com/second.jpg)."
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links[0], "https://example.com/image.png")
+        XCTAssertEqual(links[1], "https://example.com/second.jpg")
+    }
+
+    func testExtractImageLinks_BareHttpLinks() {
+        let text = "Check out this image: https://example.com/test.png?size=large and also http://test.com/img.jpg"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links[0], "https://example.com/test.png?size=large")
+        XCTAssertEqual(links[1], "http://test.com/img.jpg")
+    }
+
+    func testExtractImageLinks_DataURLs() {
+        let text = "Inline image data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII= "
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+    }
+
+    func testExtractImageLinks_SandboxPaths() {
+        let text = "Local file at sandbox:/Documents/image.png"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "sandbox:/Documents/image.png")
+    }
+
+    func testExtractImageLinks_DuplicateRemoval() {
+        let text = "Image ![test](https://example.com/img.png) and the same bare link https://example.com/img.png"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "https://example.com/img.png")
+    }
+
+    func testExtractImageLinks_OrderPreservation() {
+        let text = """
+        1. https://example.com/one.png
+        2. ![Two](https://example.com/two.jpg)
+        3. sandbox:/three.webp
+        4. data:image/png;base64,four
+        """
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 4)
+        XCTAssertEqual(links[0], "https://example.com/one.png")
+        XCTAssertEqual(links[1], "https://example.com/two.jpg")
+        XCTAssertEqual(links[2], "sandbox:/three.webp")
+        XCTAssertEqual(links[3], "data:image/png;base64,four")
+    }
+}
