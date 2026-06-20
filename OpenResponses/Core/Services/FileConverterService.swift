@@ -1245,8 +1245,8 @@ class FileConverterService {
     
     // MARK: - Helpers
     
-    private static func formatBytes(_ bytes: Int) -> String {
-        return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
+    private static func formatBytes(_ bytes: Int64) -> String {
+        return Formatters.fileByteCountFormatter.string(fromByteCount: bytes)
     }
 }
 
