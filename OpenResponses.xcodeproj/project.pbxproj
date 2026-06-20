@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5CC3605CD7D027996E49B9A7 /* URLDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA3ADAFDC71F13DC8C0B1DF9 /* URLDetectorTests.swift */; };
 		B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */; };
 		B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */; };
 		B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */; };
@@ -45,11 +46,14 @@
 		B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITests.swift; sourceTree = "<group>"; };
 		B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		B0D1A0A72F2F5C2C00A1B100 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DA3ADAFDC71F13DC8C0B1DF9 /* URLDetectorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = URLDetectorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = OpenResponses;
 			sourceTree = "<group>";
 		};
@@ -108,6 +112,7 @@
 				B0D1A0A32F2F5C2C00A1B100 /* PromptPersistenceTests.swift */,
 				B0D1A0A42F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift */,
 				B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */,
+				DA3ADAFDC71F13DC8C0B1DF9 /* URLDetectorTests.swift */,
 			);
 			path = OpenResponsesTests;
 			sourceTree = "<group>";
@@ -142,8 +147,6 @@
 				B06DB4552E0FB40B00C7BDB3 /* OpenResponses */,
 			);
 			name = OpenResponses;
-			packageProductDependencies = (
-			);
 			productName = OpenResponses;
 			productReference = B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */;
 			productType = "com.apple.product-type.application";
@@ -334,6 +337,7 @@
 				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
 				B0D1A0932F2F5C2C00A1B100 /* PromptPersistenceTests.swift in Sources */,
 				B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */,
+				5CC3605CD7D027996E49B9A7 /* URLDetectorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
