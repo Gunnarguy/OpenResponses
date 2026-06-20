@@ -2005,13 +2005,17 @@ struct VectorStoreRow: View {
         return formatter.string(fromByteCount: Int64(bytes))
     }
 
-    /// Formats a UNIX timestamp (seconds) to a short date string.
-    private static func formatDate(_ timestamp: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    /// Formats a UNIX timestamp (seconds) to a short date string.
+    private static func formatDate(_ timestamp: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        return dateFormatter.string(from: date)
     }
 }
 
@@ -2331,13 +2335,17 @@ struct VectorStoreDetailView: View {
         return formatter.string(fromByteCount: Int64(bytes))
     }
 
-    /// Formats a UNIX timestamp (seconds) to a short date string.
-    private static func formatDate(_ timestamp: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    /// Formats a UNIX timestamp (seconds) to a short date string.
+    private static func formatDate(_ timestamp: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        return dateFormatter.string(from: date)
     }
 
     private func statusColor(_ status: String) -> Color {
