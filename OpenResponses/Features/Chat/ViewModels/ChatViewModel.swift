@@ -1606,7 +1606,7 @@ class ChatViewModel: ObservableObject {
                         self.streamingMessageId = nil
                         self.isStreaming = false
                         Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                            try await Task.sleep(for: .seconds(2)) // Allows user to see the error
                             self.streamingStatus = .idle
                         }
                     }
@@ -1655,8 +1655,8 @@ class ChatViewModel: ObservableObject {
                 } else if self.streamingStatus != .idle {
                     self.streamingStatus = .done
                     self.logActivity("Done")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        self.streamingStatus = .idle
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                        self?.streamingStatus = .idle
                     }
                 }
             }
@@ -4164,7 +4164,7 @@ class ChatViewModel: ObservableObject {
                 self.streamingMessageId = nil
                 self.isStreaming = false
                 Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                    try await Task.sleep(for: .seconds(2)) // Allows user to see the error
                     self.streamingStatus = .idle
                 }
             }
