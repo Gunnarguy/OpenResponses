@@ -130,3 +130,4 @@ AuthKey_*.p8
 test-*.sh
 setup-*.sh
 deploy-*.sh
+.gemini/
