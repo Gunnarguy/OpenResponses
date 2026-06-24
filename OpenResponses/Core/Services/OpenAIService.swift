@@ -18,6 +18,16 @@ import SwiftUI // This should already be there for access to UI types
 
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService: OpenAIServiceProtocol {
+    private static let importantEventTypes: Set<String> = [
+        "response.created", "response.completed", "response.failed",
+        "response.image_generation_call.completed", "response.computer_call.completed",
+        "response.output_text.delta", // Added for debugging
+    ]
+
+    private static let milestoneEventTypes: Set<String> = [
+        "response.created", "response.completed", "response.failed"
+    ]
+
     private let apiURL = URL(string: "https://api.openai.com/v1/responses")!
 
     /// Normalizes non-API aliases (often used in docs/system cards) to API model IDs.
@@ -312,13 +322,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                 let decodedChunk = try JSONDecoder().decode(StreamingEvent.self, from: data)
 
                                 // Optimized logging: Only log structured events for important types
-                                let importantEventTypes = [
-                                    "response.created", "response.completed", "response.failed",
-                                    "response.image_generation_call.completed", "response.computer_call.completed",
-                                    "response.output_text.delta", // Added for debugging
-                                ]
-
-                                if importantEventTypes.contains(decodedChunk.type) {
+                                if Self.importantEventTypes.contains(decodedChunk.type) {
                                     AnalyticsService.shared.logStreamingEvent(
                                         eventType: decodedChunk.type,
                                         data: dataString,
@@ -327,7 +331,7 @@ class OpenAIService: OpenAIServiceProtocol {
                                 }
 
                                 // Track analytics only for milestone events to reduce overhead
-                                if ["response.created", "response.completed", "response.failed"].contains(decodedChunk.type) {
+                                if Self.milestoneEventTypes.contains(decodedChunk.type) {
                                     AnalyticsService.shared.trackEvent(
                                         name: AnalyticsEvent.streamingEventReceived,
                                         parameters: [
