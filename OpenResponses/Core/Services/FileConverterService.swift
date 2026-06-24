@@ -707,7 +707,7 @@ class FileConverterService {
         }
         
         // Extract text from all pages with progress tracking
-        var extractedText = ""
+        var extractedTextChunks: [String] = []
         var pagesWithText = 0
         var totalCharacters = 0
         
@@ -724,9 +724,9 @@ class FileConverterService {
             
             let trimmedText = pageText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedText.isEmpty {
-                extractedText += "--- PAGE \(pageIndex + 1) ---\n\n"
-                extractedText += trimmedText
-                extractedText += "\n\n"
+                extractedTextChunks.append("--- PAGE \(pageIndex + 1) ---\n\n")
+                extractedTextChunks.append(trimmedText)
+                extractedTextChunks.append("\n\n")
                 pagesWithText += 1
                 totalCharacters += trimmedText.count
             }
@@ -737,6 +737,8 @@ class FileConverterService {
             }
         }
         
+        let extractedText = extractedTextChunks.joined()
+
         AppLogger.log("   ✅ Extracted text from \(pagesWithText)/\(pageCount) pages (\(totalCharacters) characters)", category: .fileManager, level: .info)
         
         // Check if we got any text
