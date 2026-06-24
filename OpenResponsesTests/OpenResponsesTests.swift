@@ -749,25 +749,23 @@ final class URLDetectorTests: XCTestCase {
     }
 
 
-    func testExtractURLs_WithNewlinesAndTabs_ExtractsCorrectly() {
-        let text = """
-
-        http://test.com
-		https://example.com/tabbed
-        """
-        let urls = URLDetector.extractURLs(from: text)
-
-        XCTAssertEqual(urls.count, 2)
-        XCTAssertEqual(urls[0].absoluteString, "http://test.com")
-        XCTAssertEqual(urls[1].absoluteString, "https://example.com/tabbed")
-    }
-
     func testExtractURLs_ExcludesNonHttpSchemes() {
         let text = "Check out ftp://files.com or mailto:test@example.com or data:image/png;base64,123 but keep http://valid.com"
         let urls = URLDetector.extractURLs(from: text)
 
         XCTAssertEqual(urls.count, 1)
         XCTAssertEqual(urls[0].absoluteString, "http://valid.com")
+    }
+
+
+
+    func testExtractURLs_WithNewlinesAndTabs_ExtractsCorrectly() {
+        let text = "\t\nhttp://test.com\n\t\rhttps://example.com/tabbed"
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "http://test.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://example.com/tabbed")
     }
 
 }
