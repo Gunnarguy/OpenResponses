@@ -4851,17 +4851,35 @@ class ChatViewModel: ObservableObject {
         }
 
         // Then fetch remote http(s) image URLs
-        for link in links {
-            if let url = URL(string: link), ["http","https"].contains(url.scheme?.lowercased() ?? "") {
-                do {
-                    let (data, resp) = try await URLSession.shared.data(from: url)
-                    guard (resp as? HTTPURLResponse)?.statusCode == 200 else { continue }
-                    if let image = UIImage(data: data) {
-                        await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
+        await withTaskGroup(of: (Int, UIImage?).self) { group in
+            for (index, link) in links.enumerated() {
+                guard let url = URL(string: link), ["http","https"].contains(url.scheme?.lowercased() ?? "") else { continue }
+                group.addTask {
+                    do {
+                        let (data, resp) = try await URLSession.shared.data(from: url)
+                        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return (index, nil) }
+                        if let image = UIImage(data: data) {
+                            return (index, image)
+                        }
+                    } catch {
+                        AppLogger.log("Failed to fetch image URL: \(link) — \(error)", category: .openAI, level: .warning)
                     }
-                } catch {
-                    AppLogger.log("Failed to fetch image URL: \(link) — \(error)", category: .openAI, level: .warning)
+                    return (index, nil)
                 }
+            }
+
+            var fetchedImages: [(Int, UIImage)] = []
+            for await (index, image) in group {
+                if let image = image {
+                    fetchedImages.append((index, image))
+                }
+            }
+
+            // Sort by original index to maintain order
+            fetchedImages.sort { $0.0 < $1.0 }
+
+            for (_, image) in fetchedImages {
+                await MainActor.run { [weak self] in self?.appendImage(image, to: messageId) }
             }
         }
 
