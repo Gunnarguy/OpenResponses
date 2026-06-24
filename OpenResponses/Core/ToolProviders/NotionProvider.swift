@@ -379,35 +379,47 @@ public final class NotionProvider: ToolProvider, NotionReadable {
 
         // STRATEGY 4: Fetch full metadata for each database ID
         print("🔍 NotionProvider: Fetching metadata for \(databaseIds.count) databases...")
-        for dbId in databaseIds {
-            if databases.contains(where: { $0.notionId == dbId }) {
-                continue
-            }
+        let missingIds = databaseIds.filter { dbId in
+            !databases.contains(where: { $0.notionId == dbId })
+        }
 
-            do {
-                let req = try baseRequest("databases/\(dbId)")
-                let (data, _, _) = try await http.send(req)
-                let db = try JSONDecoder().decode(NotionDatabase.self, from: data)
-                let title = db.title.first?.plainText ?? "(untitled)"
+        await withTaskGroup(of: NotionDatabaseSummary?.self) { group in
+            for dbId in missingIds {
+                group.addTask {
+                    do {
+                        let req = try self.baseRequest("databases/\(dbId)")
+                        let (data, _, _) = try await self.http.send(req)
+                        let db = try JSONDecoder().decode(NotionDatabase.self, from: data)
+                        let title = db.title.first?.plainText ?? "(untitled)"
 
-                let summary = NotionDatabaseSummary(
-                    notionId: db.id,
-                    title: title,
-                    parentPageId: db.parent.pageId,
-                    source: "parent_id"
-                )
-                databases.insert(summary)
+                        let summary = NotionDatabaseSummary(
+                            notionId: db.id,
+                            title: title,
+                            parentPageId: db.parent.pageId,
+                            source: "parent_id"
+                        )
 
-                print("  ✅ Fetched database: \(title)")
+                        print("  ✅ Fetched database: \(title)")
 
-                if let dataSources = db.dataSources {
-                    print("     └─ Has \(dataSources.count) data source(s)")
-                    for ds in dataSources {
-                        print("        - \(ds.name ?? "Unnamed") [\(ds.id)]")
+                        if let dataSources = db.dataSources {
+                            print("     └─ Has \(dataSources.count) data source(s)")
+                            for ds in dataSources {
+                                print("        - \(ds.name ?? "Unnamed") [\(ds.id)]")
+                            }
+                        }
+
+                        return summary
+                    } catch {
+                        print("  ⚠️ Failed to fetch database \(dbId): \(error)")
+                        return nil
                     }
                 }
-            } catch {
-                print("  ⚠️ Failed to fetch database \(dbId): \(error)")
+            }
+
+            for await summary in group {
+                if let summary = summary {
+                    databases.insert(summary)
+                }
             }
         }
 
