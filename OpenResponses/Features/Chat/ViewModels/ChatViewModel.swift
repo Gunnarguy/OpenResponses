@@ -4160,6 +4160,7 @@ class ChatViewModel: ObservableObject {
                 self.isAwaitingComputerOutput = false
                 self.handleError(error)
                 // CRITICAL FIX: Complete streaming state reset on computer tool error
+                self.consecutiveWaitCount = 0
                 self.streamingStatus = .idle
                 self.streamingMessageId = nil
                 self.isStreaming = false
