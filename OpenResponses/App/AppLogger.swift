@@ -296,6 +296,27 @@ enum AppLogger {
         )
     }
     
+
+    /// Generic redactor for HTTP headers to prevent leaking sensitive tokens or cookies
+    private static func redactHeaders(_ headers: [AnyHashable: Any]) -> [AnyHashable: Any] {
+        var safeHeaders = headers
+        let sensitiveKeys = ["authorization", "cookie", "set-cookie", "x-notion-request-id", "token", "secret"]
+
+        for (key, value) in headers {
+            if let strKey = key as? String {
+                let lowerKey = strKey.lowercased()
+                if sensitiveKeys.contains(where: { lowerKey.contains($0) }) {
+                    if lowerKey == "authorization", let strValue = value as? String, strValue.lowercased().starts(with: "bearer ") {
+                        safeHeaders[key] = "Bearer sk-***REDACTED***"
+                    } else {
+                        safeHeaders[key] = "***REDACTED***"
+                    }
+                }
+            }
+        }
+        return safeHeaders
+    }
+
     // MARK: - OpenAI API Logging
     
     /// Log an OpenAI API request with detailed information.
@@ -316,17 +337,7 @@ enum AppLogger {
         function: String = #function,
         line: Int = #line
     ) {
-        // Redact sensitive headers
-        var safeHeaders = headers
-        for (key, value) in headers {
-            if key.lowercased() == "authorization" {
-                if value.lowercased().starts(with: "bearer ") {
-                    safeHeaders[key] = "Bearer sk-***REDACTED***"
-                } else {
-                    safeHeaders[key] = "***REDACTED***"
-                }
-            }
-        }
+        let safeHeaders = redactHeaders(headers)
         
         var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
         logMessage += "📤 HEADERS: \(safeHeaders)"
@@ -371,8 +382,9 @@ enum AppLogger {
         let emoji = success ? "📥" : "⚠️"
         let level: Level = success ? openAILogLevel : .warning
         
+        let safeHeaders = redactHeaders(headers)
         var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(url.absoluteString)\n"
-        logMessage += "\(emoji) HEADERS: \(headers)"
+        logMessage += "\(emoji) HEADERS: \(safeHeaders)"
         
         if !minimizeOpenAILogBodies {
             if let body = body, let pretty = prettySanitizedJSON(body) {
