@@ -4645,9 +4645,6 @@ class ChatViewModel: ObservableObject {
                 self.isAwaitingComputerOutput = false
                 self.lastResponseId = nil
                 self.streamingMessageId = nil
-
-                let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.")
-                self.messages.append(sys)
             }
         }
     }

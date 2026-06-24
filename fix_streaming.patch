@@ -1,0 +1,12 @@
+--- OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift
++++ OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift
+@@ -4646,6 +4646,9 @@
+                 self.isAwaitingComputerOutput = false
+                 self.lastResponseId = nil
+                 self.streamingMessageId = nil
++
++                let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.")
++                self.messages.append(sys)
+             }
+         }
+     }
