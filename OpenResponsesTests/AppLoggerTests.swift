@@ -79,4 +79,32 @@ final class AppLoggerTests: XCTestCase {
 
         wait(for: [expectation], timeout: 1.0)
     }
+
+    func testLogRequestBodyRedactsSensitiveKeys() {
+        let mockDict: [String: Any] = [
+            "publicField": "Hello world",
+            "password": "mySecretPassword123",
+            "api_key": "sk-1234567890",
+            "nested": [
+                "token": "bearer abcdefg",
+                "normal": "value"
+            ]
+        ]
+
+        let data = try! JSONSerialization.data(withJSONObject: mockDict, options: [])
+        let result = AppLogger.logOpenAIRequestBodyPreview(data)
+
+        XCTAssertNotNil(result)
+        let resultStr = result!
+
+        // Public info should remain
+        XCTAssertTrue(resultStr.contains("Hello world"))
+        XCTAssertTrue(resultStr.contains("value"))
+
+        // Sensitive info should be redacted
+        XCTAssertTrue(resultStr.contains("***REDACTED***"))
+        XCTAssertFalse(resultStr.contains("mySecretPassword123"))
+        XCTAssertFalse(resultStr.contains("sk-1234567890"))
+        XCTAssertFalse(resultStr.contains("abcdefg"))
+    }
 }

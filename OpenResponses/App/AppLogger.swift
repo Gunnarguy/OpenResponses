@@ -98,6 +98,12 @@ enum AppLogger {
     /// Max number of characters to include from any long string in logs
     private static let maxStringPreview = 400
     /// Keys that are likely to contain large base64 or data-URIs
+
+    /// Keys that contain sensitive information that should be completely redacted
+    private static let sensitiveKeys: Set<String> = [
+        "password", "token", "api_key", "secret", "authorization", "bearer", "key", "notionapikey", "openaikey"
+    ]
+
     private static let heavyPayloadKeys: Set<String> = [
         "image_url", "partial_image_b64", "screenshot_b64", "image_b64", "partial_image", "imageData", "image"
     ]
@@ -139,6 +145,14 @@ enum AppLogger {
         switch obj {
         case var dict as [String: Any]:
             for (k, v) in dict {
+                let lowerKey = k.lowercased()
+
+                // Completely redact sensitive values regardless of type
+                if sensitiveKeys.contains(where: { lowerKey.contains($0) }) {
+                    dict[k] = "***REDACTED***"
+                    continue
+                }
+
                 if let str = v as? String {
                     if heavyPayloadKeys.contains(k) || str.lowercased().hasPrefix("data:image/") || str.count > maxStringPreview {
                         dict[k] = sanitizeString(str)
