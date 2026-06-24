@@ -692,4 +692,82 @@ final class URLDetectorTests: XCTestCase {
             XCTAssertFalse(URLDetector.isRenderableWebpage(url), "Expected \\(url) to NOT be a renderable webpage (Unknown domain)")
         }
     }
+
+    // MARK: - extractRenderableURLs Tests
+
+    func testExtractRenderableURLs_FiltersCorrectly() {
+        let text = "Visit https://example.com or download https://example.com/file.pdf or hit the api https://api.example.com/data"
+        let urls = URLDetector.extractRenderableURLs(from: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com")
+    }
+
+    // MARK: - detectURLs Tests
+
+    func testDetectURLs_ExtractsAllLinkTypes() {
+        let text = "Check out http://example.com, ftp://files.com/doc, and mailto:test@example.com"
+        let urls = URLDetector.detectURLs(in: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "http://example.com")
+        XCTAssertEqual(urls[1].absoluteString, "ftp://files.com/doc")
+        XCTAssertEqual(urls[2].absoluteString, "mailto:test@example.com")
+    }
+
+    // MARK: - detectUniqueURLs Tests
+
+    func testDetectUniqueURLs_RemovesDuplicatesAndPreservesOrder() {
+        let text = "First https://one.com, then https://two.com, and again https://one.com. Finally https://three.com"
+        let urls = URLDetector.detectUniqueURLs(in: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "https://one.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://two.com")
+        XCTAssertEqual(urls[2].absoluteString, "https://three.com")
+    }
+
+
+    // MARK: - Additional extractURLs Tests
+
+    func testExtractURLs_WithMixedCaseSchemes_ExtractsCorrectly() {
+        let text = "Visit HtTpS://example.com or HTTP://test.org for info."
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString.lowercased(), "https://example.com")
+        XCTAssertEqual(urls[1].absoluteString.lowercased(), "http://test.org")
+    }
+
+    func testExtractURLs_WithIPAddress_ExtractsCorrectly() {
+        let text = "Local router is at http://192.168.1.1 or https://10.0.0.1:8080/admin"
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "http://192.168.1.1")
+        XCTAssertEqual(urls[1].absoluteString, "https://10.0.0.1:8080/admin")
+    }
+
+
+    func testExtractURLs_WithNewlinesAndTabs_ExtractsCorrectly() {
+        let text = """
+
+        http://test.com
+		https://example.com/tabbed
+        """
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "http://test.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://example.com/tabbed")
+    }
+
+    func testExtractURLs_ExcludesNonHttpSchemes() {
+        let text = "Check out ftp://files.com or mailto:test@example.com or data:image/png;base64,123 but keep http://valid.com"
+        let urls = URLDetector.extractURLs(from: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "http://valid.com")
+    }
+
 }
