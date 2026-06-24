@@ -335,6 +335,37 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertEqual(query, standard)
     }
 
+
+    func testAppleDateUtilitiesMakeReminderDateComponents() {
+        let timeZone = TimeZone(identifier: "America/New_York")!
+
+        var dateComponents = DateComponents()
+        dateComponents.year = 2026
+        dateComponents.month = 5
+        dateComponents.day = 10
+        dateComponents.hour = 14
+        dateComponents.minute = 30
+        dateComponents.second = 45
+        dateComponents.timeZone = timeZone
+        dateComponents.calendar = Calendar(identifier: .gregorian)
+
+        guard let date = dateComponents.calendar?.date(from: dateComponents) else {
+            XCTFail("Failed to create date")
+            return
+        }
+
+        let reminderComponents = AppleDateUtilities.makeReminderDateComponents(from: date, timeZone: timeZone)
+
+        XCTAssertEqual(reminderComponents.year, 2026)
+        XCTAssertEqual(reminderComponents.month, 5)
+        XCTAssertEqual(reminderComponents.day, 10)
+        XCTAssertEqual(reminderComponents.hour, 14)
+        XCTAssertEqual(reminderComponents.minute, 30)
+        XCTAssertEqual(reminderComponents.second, 45)
+        XCTAssertEqual(reminderComponents.timeZone, timeZone)
+        XCTAssertEqual(reminderComponents.calendar?.identifier, .gregorian)
+    }
+
     func testComputerToolEncodesUsingCurrentToolType() throws {
         let payload = [APICapabilities.Tool.computer]
 
