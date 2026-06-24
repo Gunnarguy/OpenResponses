@@ -15,6 +15,7 @@
 		B0D1A0952F2F5C2C00A1B100 /* OpenResponsesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */; };
 		B0D1A0962F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */; };
 		EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */; };
+		AB408CB119294210BFBD1D33 /* AppleDataModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F7EB776B3AB4244ADEE9FA4 /* AppleDataModelsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +48,7 @@
 		B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITests.swift; sourceTree = "<group>"; };
 		B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		B0D1A0A72F2F5C2C00A1B100 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3F7EB776B3AB4244ADEE9FA4 /* AppleDataModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleDataModelsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -105,6 +107,7 @@
 		B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */ = {
 			isa = PBXGroup;
 			children = (
+				3F7EB776B3AB4244ADEE9FA4 /* AppleDataModelsTests.swift */,
 				B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */,
 				B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */,
 				B0D1A0A32F2F5C2C00A1B100 /* PromptPersistenceTests.swift */,
@@ -332,7 +335,8 @@
 			files = (
 				B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */,
 				B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */,
-				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
+								AB408CB119294210BFBD1D33 /* AppleDataModelsTests.swift in Sources */,
+B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
 				B0D1A0932F2F5C2C00A1B100 /* PromptPersistenceTests.swift in Sources */,
 				B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */,
 				EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */,
