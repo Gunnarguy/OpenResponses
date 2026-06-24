@@ -692,4 +692,54 @@ final class URLDetectorTests: XCTestCase {
             XCTAssertFalse(URLDetector.isRenderableWebpage(url), "Expected \\(url) to NOT be a renderable webpage (Unknown domain)")
         }
     }
+
+    // MARK: - detectUniqueURLs Tests
+
+    func testDetectUniqueURLs_WithEmptyString_ReturnsEmptyArray() {
+        let urls = URLDetector.detectUniqueURLs(in: "")
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testDetectUniqueURLs_WithNoURLs_ReturnsEmptyArray() {
+        let text = "This is a simple text without any URLs."
+        let urls = URLDetector.detectUniqueURLs(in: text)
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testDetectUniqueURLs_WithSingleURL_ReturnsSingleURL() {
+        let text = "Check out https://example.com for more info."
+        let urls = URLDetector.detectUniqueURLs(in: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com")
+    }
+
+    func testDetectUniqueURLs_WithMultipleDifferentURLs_ReturnsAllURLsInOrder() {
+        let text = "First https://one.com then https://two.com and finally https://three.com"
+        let urls = URLDetector.detectUniqueURLs(in: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "https://one.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://two.com")
+        XCTAssertEqual(urls[2].absoluteString, "https://three.com")
+    }
+
+    func testDetectUniqueURLs_WithDuplicateURLs_ReturnsUniqueURLsInOrder() {
+        let text = "Visit https://example.com, and again visit https://example.com. Also check https://test.com, https://example.com, and https://test.com."
+        let urls = URLDetector.detectUniqueURLs(in: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://test.com")
+    }
+
+    func testDetectUniqueURLs_WithDuplicateURLsDifferingOnlyByCase_TreatsAsDifferent() {
+        // Note: URL objects treat different case in path as different, but domain case insensitive.
+        // detectURLs relies on NSDataDetector and exact string matching. Let's test standard extraction equality.
+        let text = "Visit https://example.com/A and https://example.com/a"
+        let urls = URLDetector.detectUniqueURLs(in: text)
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com/A")
+        XCTAssertEqual(urls[1].absoluteString, "https://example.com/a")
+    }
 }
