@@ -101,32 +101,40 @@ struct CodeInterpreterArtifact: Codable, Identifiable {
         self.createdAt = Date()
     }
     
+    private enum ArtifactExtensions {
+        static let image: Set<String> = ["jpg", "jpeg", "png", "gif"]
+        static let text: Set<String> = ["txt", "log", "py", "js", "html", "css", "json", "csv", "md", "c", "cpp", "java", "rb", "php", "sh", "ts"]
+        static let data: Set<String> = ["csv", "json", "xml", "pkl"]
+        static let document: Set<String> = ["pdf", "doc", "docx", "pptx", "xlsx"]
+        static let archive: Set<String> = ["zip", "tar"]
+    }
+
     /// Determines artifact type based on filename extension and MIME type
     var artifactType: ArtifactType {
         let ext = (filename as NSString).pathExtension.lowercased()
         
         // Image types
-        if ["jpg", "jpeg", "png", "gif"].contains(ext) {
+        if ArtifactExtensions.image.contains(ext) {
             return .image
         }
         
         // Text/code types  
-        if ["txt", "log", "py", "js", "html", "css", "json", "csv", "md", "c", "cpp", "java", "rb", "php", "sh", "ts"].contains(ext) {
+        if ArtifactExtensions.text.contains(ext) {
             return .text
         }
         
         // Data types
-        if ["csv", "json", "xml", "pkl"].contains(ext) {
+        if ArtifactExtensions.data.contains(ext) {
             return .data
         }
         
         // Document types
-        if ["pdf", "doc", "docx", "pptx", "xlsx"].contains(ext) {
+        if ArtifactExtensions.document.contains(ext) {
             return .document
         }
         
         // Archive types
-        if ["zip", "tar"].contains(ext) {
+        if ArtifactExtensions.archive.contains(ext) {
             return .archive
         }
         
