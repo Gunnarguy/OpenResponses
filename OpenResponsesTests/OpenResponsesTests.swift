@@ -335,6 +335,19 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertEqual(query, standard)
     }
 
+    func testAppleDateUtilitiesMakeGregorianCalendar() {
+        // Test with default timezone
+        let defaultCalendar = AppleDateUtilities.makeGregorianCalendar()
+        XCTAssertEqual(defaultCalendar.identifier, .gregorian)
+        XCTAssertEqual(defaultCalendar.timeZone, .current)
+
+        // Test with specific timezone
+        let tokyo = TimeZone(identifier: "Asia/Tokyo")!
+        let tokyoCalendar = AppleDateUtilities.makeGregorianCalendar(timeZone: tokyo)
+        XCTAssertEqual(tokyoCalendar.identifier, .gregorian)
+        XCTAssertEqual(tokyoCalendar.timeZone, tokyo)
+    }
+
     func testComputerToolEncodesUsingCurrentToolType() throws {
         let payload = [APICapabilities.Tool.computer]
 
