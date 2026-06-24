@@ -14,6 +14,7 @@
 		B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A42F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift */; };
 		B0D1A0952F2F5C2C00A1B100 /* OpenResponsesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */; };
 		B0D1A0962F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */; };
+		E8DD426AA2F8E429EF3E9409 /* AppleDateUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3034C5E88D09D5FE71DB779 /* AppleDateUtilitiesTests.swift */; };
 		EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@
 
 /* Begin PBXFileReference section */
 		8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLoggerTests.swift; sourceTree = "<group>"; };
+		A3034C5E88D09D5FE71DB779 /* AppleDateUtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppleDateUtilitiesTests.swift; path = OpenResponsesTests/AppleDateUtilitiesTests.swift; sourceTree = "<group>"; };
 		B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenResponses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0D1A0712F2F5C2C00A1B100 /* OpenResponsesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenResponsesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0D1A0812F2F5C2C00A1B100 /* OpenResponsesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenResponsesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -50,11 +52,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = OpenResponses;
-			sourceTree = "<group>";
-		};
+		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {isa = PBXFileSystemSynchronizedRootGroup; path = OpenResponses; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +87,7 @@
 				B06DB4542E0FB40B00C7BDB3 /* Products */,
 				B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */,
 				B0D1A0882F2F5C2C00A1B100 /* OpenResponsesUITests */,
+				A3034C5E88D09D5FE71DB779 /* AppleDateUtilitiesTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -336,6 +335,7 @@
 				B0D1A0932F2F5C2C00A1B100 /* PromptPersistenceTests.swift in Sources */,
 				B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */,
 				EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */,
+				E8DD426AA2F8E429EF3E9409 /* AppleDateUtilitiesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
