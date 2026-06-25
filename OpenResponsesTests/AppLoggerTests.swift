@@ -11,8 +11,12 @@ final class AppLoggerTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // Clear logs if necessary
-        DispatchQueue.main.sync {
-            ConsoleLogger.shared.clearLogs()
+        if Thread.isMainThread {
+            ConsoleLogger.shared.logs.removeAll()
+        } else {
+            DispatchQueue.main.sync {
+                ConsoleLogger.shared.logs.removeAll()
+            }
         }
     }
 
@@ -72,6 +76,33 @@ final class AppLoggerTests: XCTestCase {
             XCTAssertFalse(logs.isEmpty, "Expected log entry")
             if let lastLog = logs.last {
                 XCTAssertFalse(lastLog.message.contains("***REDACTED***"))
+                XCTAssertTrue(lastLog.message.contains("Content-Type"))
+            }
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testLogOpenAIResponseRedactsSensitiveHeaders() {
+        let expectation = XCTestExpectation(description: "Log added to ConsoleLogger")
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        let headers: [AnyHashable: Any] = [
+            "Set-Cookie": "session_id=abcdef123456",
+            "x-notion-request-id": "req-12345",
+            "Content-Type": "application/json"
+        ]
+
+        AppLogger.logOpenAIResponse(url: url, statusCode: 200, headers: headers, body: nil)
+
+        DispatchQueue.main.async {
+            let logs = ConsoleLogger.shared.logs
+            XCTAssertFalse(logs.isEmpty, "Expected log entry")
+            if let lastLog = logs.last {
+                XCTAssertTrue(lastLog.message.contains("***REDACTED***"))
+                XCTAssertFalse(lastLog.message.contains("abcdef123456"))
+                XCTAssertFalse(lastLog.message.contains("req-12345"))
                 XCTAssertTrue(lastLog.message.contains("Content-Type"))
             }
             expectation.fulfill()
