@@ -59,6 +59,29 @@ final class OpenResponsesTests: XCTestCase {
         XCTAssertNil(message.webURLs)
     }
 
+    @MainActor
+    func testChatMessageWithURLDetection() {
+        // Test with text containing renderable URLs
+        let messageWithURLs = ChatMessage.withURLDetection(role: .user, text: "Check out https://github.com and https://apple.com")
+        XCTAssertEqual(messageWithURLs.webURLs?.count, 2)
+        XCTAssertEqual(messageWithURLs.webURLs?[0].absoluteString, "https://github.com")
+        XCTAssertEqual(messageWithURLs.webURLs?[1].absoluteString, "https://apple.com")
+
+        // Test with text containing no renderable URLs
+        let messageWithoutURLs = ChatMessage.withURLDetection(role: .user, text: "Hello world")
+        XCTAssertNil(messageWithoutURLs.webURLs)
+
+        // Test with forceWebURLs overriding text
+        let forcedURL = URL(string: "https://override.com")!
+        let messageWithForced = ChatMessage.withURLDetection(role: .user, text: "Check https://github.com", forceWebURLs: [forcedURL])
+        XCTAssertEqual(messageWithForced.webURLs?.count, 1)
+        XCTAssertEqual(messageWithForced.webURLs?[0].absoluteString, "https://override.com")
+
+        // Test with nil text and nil forceWebURLs
+        let messageWithNil = ChatMessage.withURLDetection(role: .user, text: nil)
+        XCTAssertNil(messageWithNil.webURLs)
+    }
+
     func testConversationEncoding() throws {
         let id = UUID()
         let lastModified = Date(timeIntervalSince1970: 1000)
