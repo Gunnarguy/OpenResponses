@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */; };
 		B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */; };
 		B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */; };
 		B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */; };
@@ -36,6 +37,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPApprovalUtilsTests.swift; sourceTree = "<group>"; };
 		8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLoggerTests.swift; sourceTree = "<group>"; };
 		B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenResponses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0D1A0712F2F5C2C00A1B100 /* OpenResponsesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenResponsesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -107,6 +109,7 @@
 		B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */ = {
 			isa = PBXGroup;
 			children = (
+				D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */,
 				B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */,
 				B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */,
 				B0D1A0A32F2F5C2C00A1B100 /* PromptPersistenceTests.swift */,
@@ -337,6 +340,7 @@
 				B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */,
 				B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */,
 				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
+				714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */,
 				B0D1A0932F2F5C2C00A1B100 /* PromptPersistenceTests.swift in Sources */,
 				B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */,
 				EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */,
