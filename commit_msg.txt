@@ -1,0 +1,5 @@
+⚡ Optimize linked database fetching in NotionProvider
+
+💡 **What:** Refactored `listDatabasesUnderPage` to collect all `link_to_database` IDs during pagination and then concurrently fetch their payload using a `TaskGroup`.
+🎯 **Why:** Previously, the pagination loop was stalled by synchronous, sequential HTTP requests when resolving `link_to_database` blocks. This resulted in N+1 network request stalling the UI/API layer. Concurrent fetching completely resolves this stall.
+📊 **Measured Improvement:** As testing tools (`xcodebuild`/`swift`) were unavailable in this environment, empirical measurement wasn't possible. However, theoretically replacing N sequential network requests averaging ~100ms each with concurrent requests means the total resolve time approaches max(request_1...request_N) rather than sum(request_1...request_N).

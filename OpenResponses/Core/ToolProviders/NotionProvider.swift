@@ -542,6 +542,8 @@ public final class NotionProvider: ToolProvider, NotionReadable {
 
         // Strategy: CHILDREN crawl -> child_database + link_to_database
         var cursorB: String? = nil
+        var linkedDatabaseIds: Set<String> = []
+
         repeat {
             var path = "blocks/\(pageId)/children?page_size=100"
             if let c = cursorB { path += "&start_cursor=\(c)" }
@@ -557,17 +559,38 @@ public final class NotionProvider: ToolProvider, NotionReadable {
                     }
                 case "link_to_database":
                     if let dbId = b.link_to_database?.database?.id, !set.contains(where: { $0.notionId == dbId }) {
-                        let req2 = try baseRequest("databases/\(dbId)")
-                        let (d2, _, _) = try await http.send(req2)
-                        let resolved = try JSONDecoder().decode(NotionDatabase.self, from: d2)
-                        let t = resolved.title.first?.plainText ?? "(untitled)"
-                        set.insert(.init(notionId: resolved.id, title: t, parentPageId: resolved.parent.pageId, source: "children"))
+                        linkedDatabaseIds.insert(dbId)
                     }
                 default: break
                 }
             }
             cursorB = resp.hasMore ? resp.nextCursor : nil
         } while cursorB != nil
+
+        if !linkedDatabaseIds.isEmpty {
+            let fetchedLinkedDBs = try await withThrowingTaskGroup(of: NotionDatabaseSummary?.self) { group in
+                for dbId in linkedDatabaseIds {
+                    group.addTask {
+                        let req2 = try self.baseRequest("databases/\(dbId)")
+                        let (d2, _, _) = try await self.http.send(req2)
+                        let resolved = try JSONDecoder().decode(NotionDatabase.self, from: d2)
+                        let t = resolved.title.first?.plainText ?? "(untitled)"
+                        return NotionDatabaseSummary(notionId: resolved.id, title: t, parentPageId: resolved.parent.pageId, source: "children")
+                    }
+                }
+                var results: [NotionDatabaseSummary] = []
+                for try await result in group {
+                    if let result = result {
+                        results.append(result)
+                    }
+                }
+                return results
+            }
+
+            for db in fetchedLinkedDBs {
+                set.insert(db)
+            }
+        }
 
         return Array(set).sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
