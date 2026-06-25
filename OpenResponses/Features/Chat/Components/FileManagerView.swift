@@ -1170,150 +1170,169 @@ HStack(spacing: 8) {
             var uploadResults: [UploadResult] = []
             let startTime = Date()
 
-            for (index, url) in urls.enumerated() {
-                // Start accessing the security-scoped resource
-                let isAccessing = url.startAccessingSecurityScopedResource()
+            // Capture locals for concurrency
+            let targetVectorStore = targetVectorStoreForUpload
+            let localAPI = api
 
-                defer {
-                    // Always stop accessing when done
-                    if isAccessing {
-                        url.stopAccessingSecurityScopedResource()
+            await withTaskGroup(of: UploadResult.self) { group in
+                for (index, url) in urls.enumerated() {
+                    group.addTask {
+                        let isAccessing = url.startAccessingSecurityScopedResource()
+                        defer {
+                            if isAccessing {
+                                url.stopAccessingSecurityScopedResource()
+                            }
+                        }
+
+                        do {
+                            AppLogger.log("📤 Processing file for upload: \(url.lastPathComponent)", category: .fileManager, level: .info)
+
+                            await MainActor.run {
+                                currentUploadProgress[index].status = .converting
+                                currentUploadProgress[index].statusMessage = "Validating & converting..."
+                                currentUploadProgress[index].progress = 0.2
+                            }
+
+                            let isForVectorStore = targetVectorStore != nil
+                            AppLogger.log("   🔍 Validating and converting file (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
+                            let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
+
+                            let fileData = conversionResult.convertedData
+                            let filename = conversionResult.filename
+
+                            await MainActor.run {
+                                if conversionResult.wasConverted {
+                                    AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(filename)", category: .fileManager, level: .info)
+                                    AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
+                                    currentUploadProgress[index].statusMessage = "Converted via \(conversionResult.conversionMethod)"
+                                } else {
+                                    AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
+                                    currentUploadProgress[index].statusMessage = "Validated"
+                                }
+                                currentUploadProgress[index].progress = 0.4
+
+                                currentUploadProgress[index].status = .uploading
+                                currentUploadProgress[index].statusMessage = "Uploading to OpenAI..."
+                                currentUploadProgress[index].progress = 0.5
+                            }
+
+                            AppLogger.log("   ☁️ Uploading to OpenAI...", category: .fileManager, level: .info)
+                            let uploadedFile = try await localAPI.uploadFile(fileData: fileData, filename: filename)
+                            AppLogger.log("   ✅ Upload complete! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
+
+                            await MainActor.run {
+                                currentUploadProgress[index].statusMessage = "Uploaded!"
+                                currentUploadProgress[index].progress = 0.7
+                            }
+
+                            var vectorStoreStatus: String?
+                            var vectorStoreFile: VectorStoreFile?
+
+                            if let vectorStoreId = targetVectorStore?.id {
+                                await MainActor.run {
+                                    currentUploadProgress[index].status = .addingToVectorStore
+                                    currentUploadProgress[index].statusMessage = "Adding to vector store..."
+                                    currentUploadProgress[index].progress = 0.8
+                                }
+
+                                AppLogger.log("   🔗 Adding file to vector store...", category: .fileManager, level: .info)
+                                vectorStoreFile = try await localAPI.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
+                                AppLogger.log("   ✅ File added to vector store (Status: \(vectorStoreFile!.status))", category: .fileManager, level: .info)
+                                vectorStoreStatus = vectorStoreFile?.status
+
+                                if vectorStoreFile?.status == "in_progress" {
+                                    await MainActor.run {
+                                        currentUploadProgress[index].status = .processing
+                                        currentUploadProgress[index].statusMessage = "Processing chunks..."
+                                        currentUploadProgress[index].progress = 0.9
+                                    }
+
+                                    AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
+                                    // pollForFileCompletion requires @MainActor because it calls currentUploadProgress
+                                    await MainActor.run {
+                                        Task {
+                                            await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
+                                        }
+                                    }
+                                } else {
+                                    await MainActor.run {
+                                        currentUploadProgress[index].status = .completed
+                                        currentUploadProgress[index].statusMessage = "Complete!"
+                                        currentUploadProgress[index].progress = 1.0
+                                    }
+                                }
+                            } else {
+                                await MainActor.run {
+                                    currentUploadProgress[index].status = .completed
+                                    currentUploadProgress[index].statusMessage = "Complete!"
+                                    currentUploadProgress[index].progress = 1.0
+                                }
+                            }
+
+                            AppLogger.log("🎉 Successfully processed: \(conversionResult.originalFilename)", category: .fileManager, level: .info)
+                            return UploadResult(
+                                originalFilename: conversionResult.originalFilename,
+                                finalFilename: filename,
+                                fileId: uploadedFile.id,
+                                fileSize: fileData.count,
+                                wasConverted: conversionResult.wasConverted,
+                                conversionMethod: conversionResult.conversionMethod,
+                                vectorStoreStatus: vectorStoreStatus,
+                                success: true,
+                                errorMessage: nil,
+                                chunkCount: nil,
+                                usageBytes: vectorStoreFile?.usageBytes,
+                                chunkingStrategy: vectorStoreFile?.chunkingStrategy,
+                                lastErrorCode: vectorStoreFile?.lastError?.code,
+                                lastErrorMessage: vectorStoreFile?.lastError?.message
+                            )
+                        } catch {
+                            AppLogger.log("❌ Failed to process '\(url.lastPathComponent)': \(error.localizedDescription)", category: .fileManager, level: .error)
+
+                            let errorDescription: String
+                            if let serviceError = error as? OpenAIServiceError {
+                                errorDescription = serviceError.userFriendlyDescription
+                            } else {
+                                errorDescription = error.localizedDescription
+                            }
+
+                            await MainActor.run {
+                                currentUploadProgress[index].status = .failed
+                                currentUploadProgress[index].statusMessage = "Failed"
+                                currentUploadProgress[index].progress = 0.0
+                            }
+
+                            return UploadResult(
+                                originalFilename: url.lastPathComponent,
+                                finalFilename: url.lastPathComponent,
+                                fileId: "",
+                                fileSize: 0,
+                                wasConverted: false,
+                                conversionMethod: "",
+                                vectorStoreStatus: nil,
+                                success: false,
+                                errorMessage: errorDescription,
+                                chunkCount: nil,
+                                usageBytes: nil,
+                                chunkingStrategy: nil,
+                                lastErrorCode: nil,
+                                lastErrorMessage: nil
+                            )
+                        }
                     }
                 }
 
-                do {
-                    AppLogger.log("📤 Processing file for upload: \(url.lastPathComponent)", category: .fileManager, level: .info)
-
-                    // Update progress: Converting
-                    currentUploadProgress[index].status = .converting
-                    currentUploadProgress[index].statusMessage = "Validating & converting..."
-                    currentUploadProgress[index].progress = 0.2
-
-                    // IMPORTANT: Use FileConverterService for validation and conversion
-                    // If uploading to a vector store, use stricter validation
-                    let isForVectorStore = targetVectorStoreForUpload != nil
-                    AppLogger.log("   🔍 Validating and converting file (forVectorStore: \(isForVectorStore))...", category: .fileManager, level: .info)
-                    let conversionResult = try await FileConverterService.processFile(url: url, forVectorStore: isForVectorStore)
-
-                    let fileData = conversionResult.convertedData
-                    let filename = conversionResult.filename
-
-                    if conversionResult.wasConverted {
-                        AppLogger.log("   🔄 File converted: \(conversionResult.originalFilename) → \(filename)", category: .fileManager, level: .info)
-                        AppLogger.log("   📝 Method: \(conversionResult.conversionMethod)", category: .fileManager, level: .debug)
-                        currentUploadProgress[index].statusMessage = "Converted via \(conversionResult.conversionMethod)"
-                    } else {
-                        AppLogger.log("   ✅ File natively supported, no conversion needed", category: .fileManager, level: .info)
-                        currentUploadProgress[index].statusMessage = "Validated"
-                    }
-                    currentUploadProgress[index].progress = 0.4
-
-                    // Update progress: Uploading
-                    currentUploadProgress[index].status = .uploading
-                    currentUploadProgress[index].statusMessage = "Uploading to OpenAI..."
-                    currentUploadProgress[index].progress = 0.5
-
-                    // Upload the file (possibly converted)
-                    AppLogger.log("   ☁️ Uploading to OpenAI...", category: .fileManager, level: .info)
-                    let uploadedFile = try await api.uploadFile(fileData: fileData, filename: filename)
-                    AppLogger.log("   ✅ Upload complete! File ID: \(uploadedFile.id)", category: .fileManager, level: .info)
-
-                    currentUploadProgress[index].statusMessage = "Uploaded!"
-                    currentUploadProgress[index].progress = 0.7
-
-                    var vectorStoreStatus: String?
-                    var vectorStoreFile: VectorStoreFile?
-
-                    // If we have a target vector store, add the file to it
-                    if let vectorStoreId = targetVectorStoreForUpload?.id {
-                        // Update progress: Adding to vector store
-                        currentUploadProgress[index].status = .addingToVectorStore
-                        currentUploadProgress[index].statusMessage = "Adding to vector store..."
-                        currentUploadProgress[index].progress = 0.8
-
-                        AppLogger.log("   🔗 Adding file to vector store...", category: .fileManager, level: .info)
-                        vectorStoreFile = try await api.addFileToVectorStore(vectorStoreId: vectorStoreId, fileId: uploadedFile.id)
-                        AppLogger.log("   ✅ File added to vector store (Status: \(vectorStoreFile!.status))", category: .fileManager, level: .info)
-
-                        vectorStoreStatus = vectorStoreFile?.status
-
-                        // If the file is still processing, start polling for completion
-                        if vectorStoreFile?.status == "in_progress" {
-                            currentUploadProgress[index].status = .processing
-                            currentUploadProgress[index].statusMessage = "Processing chunks..."
-                            currentUploadProgress[index].progress = 0.9
-
-                            AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
-                            Task {
-                                await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
+                for await result in group {
+                    uploadResults.append(result)
+                    if !result.success {
+                        await MainActor.run {
+                            // Only set error message if it's the first failure
+                            if errorMessage == nil {
+                                errorMessage = "Failed to upload '\(result.originalFilename)': \(result.errorMessage ?? "Unknown error")"
                             }
-                        } else {
-                            currentUploadProgress[index].status = .completed
-                            currentUploadProgress[index].statusMessage = "Complete!"
-                            currentUploadProgress[index].progress = 1.0
                         }
-                    } else {
-                        currentUploadProgress[index].status = .completed
-                        currentUploadProgress[index].statusMessage = "Complete!"
-                        currentUploadProgress[index].progress = 1.0
+                        group.cancelAll() // Cancel other uploads if one fails to match original behavior
                     }
-
-                    // Record successful upload with comprehensive metadata
-                    uploadResults.append(UploadResult(
-                        originalFilename: conversionResult.originalFilename,
-                        finalFilename: filename,
-                        fileId: uploadedFile.id,
-                        fileSize: fileData.count,
-                        wasConverted: conversionResult.wasConverted,
-                        conversionMethod: conversionResult.conversionMethod,
-                        vectorStoreStatus: vectorStoreStatus,
-                        success: true,
-                        errorMessage: nil,
-                        chunkCount: nil, // Note: chunk count is not available per-file, only at vector store level
-                        usageBytes: vectorStoreFile?.usageBytes,
-                        chunkingStrategy: vectorStoreFile?.chunkingStrategy,
-                        lastErrorCode: vectorStoreFile?.lastError?.code,
-                        lastErrorMessage: vectorStoreFile?.lastError?.message
-                    ))
-
-                    AppLogger.log("🎉 Successfully processed: \(conversionResult.originalFilename)", category: .fileManager, level: .info)
-
-                } catch {
-                    AppLogger.log("❌ Failed to process '\(url.lastPathComponent)': \(error.localizedDescription)", category: .fileManager, level: .error)
-
-                    // Update progress: Failed
-                    currentUploadProgress[index].status = .failed
-                    currentUploadProgress[index].statusMessage = "Failed"
-                    currentUploadProgress[index].progress = 0.0
-
-                    // Extract user-friendly error message
-                    let errorDescription: String
-                    if let serviceError = error as? OpenAIServiceError {
-                        errorDescription = serviceError.userFriendlyDescription
-                    } else {
-                        errorDescription = error.localizedDescription
-                    }
-
-                    // Record failed upload
-                    uploadResults.append(UploadResult(
-                        originalFilename: url.lastPathComponent,
-                        finalFilename: url.lastPathComponent,
-                        fileId: "",
-                        fileSize: 0,
-                        wasConverted: false,
-                        conversionMethod: "",
-                        vectorStoreStatus: nil,
-                        success: false,
-                        errorMessage: errorDescription,
-                        chunkCount: nil,
-                        usageBytes: nil,
-                        chunkingStrategy: nil,
-                        lastErrorCode: nil,
-                        lastErrorMessage: nil
-                    ))
-
-                    errorMessage = "Failed to upload '\(url.lastPathComponent)': \(errorDescription)"
-                    break // Stop processing on first error
                 }
             }
 
