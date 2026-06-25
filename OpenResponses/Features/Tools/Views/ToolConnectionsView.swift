@@ -222,11 +222,13 @@ class ToolConnectionsViewModel: ObservableObject {
                 if !trimmed.isEmpty { token = trimmed; break }
             }
         }
+        #if targetEnvironment(simulator)
         if token == nil, let url = Bundle.main.url(forResource: "test", withExtension: "env"),
            let content = try? String(contentsOf: url, encoding: .utf8) {
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { token = trimmed }
         }
+        #endif
         guard let t = token else {
             setStatus("Dev token file not found.", isError: true)
             return
