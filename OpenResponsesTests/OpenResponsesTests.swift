@@ -587,6 +587,27 @@ final class URLDetectorTests: XCTestCase {
         XCTAssertEqual(links[1], "https://example.com/second.jpg")
     }
 
+    func testExtractImageLinks_MarkdownSyntax_WithTitle() {
+        let text = "Here is an image: ![Alt text](https://example.com/image.png \"Image Title\")"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links[0], "https://example.com/image.png")
+    }
+
+    func testExtractImageLinks_MarkdownSyntax_EmptyUrl() {
+        let text = "Here is an image with empty url: ![Alt text]()"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertTrue(links.isEmpty)
+    }
+
+    func testExtractImageLinks_BareHttpLinks_MixedCase() {
+        let text = "Check out this image: https://example.com/test.PNG and also http://test.com/img.JpEg"
+        let links = URLDetector.extractImageLinks(from: text)
+        XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(links[0], "https://example.com/test.PNG")
+        XCTAssertEqual(links[1], "http://test.com/img.JpEg")
+    }
+
     func testExtractImageLinks_BareHttpLinks() {
         let text = "Check out this image: https://example.com/test.png?size=large and also http://test.com/img.jpg"
         let links = URLDetector.extractImageLinks(from: text)
