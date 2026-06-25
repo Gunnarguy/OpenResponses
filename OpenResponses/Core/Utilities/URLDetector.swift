@@ -21,7 +21,8 @@ struct URLDetector {
             return URL(string: urlString)
         }.filter { url in
             // Only include HTTP/HTTPS URLs that are likely to be web pages
-            url.scheme == "http" || url.scheme == "https"
+            let scheme = url.scheme?.lowercased()
+            return scheme == "http" || scheme == "https"
         }
     }
     
