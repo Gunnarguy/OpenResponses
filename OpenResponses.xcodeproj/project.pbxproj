@@ -15,6 +15,7 @@
 		B0D1A0952F2F5C2C00A1B100 /* OpenResponsesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */; };
 		B0D1A0962F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */; };
 		EC9E33CDD20B10D0B8DADDAF /* AppLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */; };
+		28EF2797151B4B2595A98A0D /* AppleDateUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +48,7 @@
 		B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITests.swift; sourceTree = "<group>"; };
 		B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		B0D1A0A72F2F5C2C00A1B100 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleDateUtilitiesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -111,7 +113,8 @@
 				B0D1A0A42F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift */,
 				B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */,
 				8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */,
-			);
+							D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */,
+);
 			path = OpenResponsesTests;
 			sourceTree = "<group>";
 		};
@@ -330,6 +333,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				28EF2797151B4B2595A98A0D /* AppleDateUtilitiesTests.swift in Sources */,
 				B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */,
 				B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */,
 				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
