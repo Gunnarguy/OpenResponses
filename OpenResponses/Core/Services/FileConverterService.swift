@@ -707,7 +707,8 @@ class FileConverterService {
         }
         
         // Extract text from all pages with progress tracking
-        var extractedText = ""
+        var extractedTextChunks: [String] = []
+        extractedTextChunks.reserveCapacity(pageCount * 3)
         var pagesWithText = 0
         var totalCharacters = 0
         
@@ -724,9 +725,9 @@ class FileConverterService {
             
             let trimmedText = pageText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedText.isEmpty {
-                extractedText += "--- PAGE \(pageIndex + 1) ---\n\n"
-                extractedText += trimmedText
-                extractedText += "\n\n"
+                extractedTextChunks.append("--- PAGE \(pageIndex + 1) ---\n\n")
+                extractedTextChunks.append(trimmedText)
+                extractedTextChunks.append("\n\n")
                 pagesWithText += 1
                 totalCharacters += trimmedText.count
             }
@@ -740,6 +741,7 @@ class FileConverterService {
         AppLogger.log("   ✅ Extracted text from \(pagesWithText)/\(pageCount) pages (\(totalCharacters) characters)", category: .fileManager, level: .info)
         
         // Check if we got any text
+        let extractedText = extractedTextChunks.joined()
         if extractedText.isEmpty {
             AppLogger.log("   ⚠️ No text could be extracted from PDF - may be image-based or encrypted", category: .fileManager, level: .warning)
             
@@ -816,8 +818,10 @@ class FileConverterService {
     private static func attemptPDFOCR(pdfDocument: PDFDocument, originalFilename: String, pageCount: Int) async throws -> ConversionResult {
         AppLogger.log("   🔍 No text found - attempting OCR on PDF pages...", category: .fileManager, level: .info)
         
-        var ocrText = ""
         let pagesToOCR = min(50, pageCount) // Increased from 10 to 50 pages for better coverage
+        var ocrTextChunks: [String] = []
+        ocrTextChunks.reserveCapacity(pagesToOCR * 3)
+
         
         // Track OCR quality metrics
         var totalConfidence = 0.0
@@ -878,9 +882,9 @@ class FileConverterService {
                         let avgPageConfidence = observations.isEmpty ? 0.0 : pageConfidence / Double(observations.count)
                         let confidenceEmoji = avgPageConfidence > 0.8 ? "✅" : avgPageConfidence > 0.5 ? "⚠️" : "❌"
                         
-                        ocrText += "--- PAGE \(pageIndex + 1) (OCR \(confidenceEmoji) \(Int(avgPageConfidence * 100))%) ---\n\n"
-                        ocrText += pageText
-                        ocrText += "\n\n"
+                        ocrTextChunks.append("--- PAGE \(pageIndex + 1) (OCR \(confidenceEmoji) \(Int(avgPageConfidence * 100))%) ---\n\n")
+                        ocrTextChunks.append(pageText)
+                        ocrTextChunks.append("\n\n")
                         
                         totalConfidence += avgPageConfidence
                         if avgPageConfidence < 0.6 {
@@ -896,6 +900,7 @@ class FileConverterService {
             AppLogger.log("   📄 OCR processed page \(pageIndex + 1)/\(pagesToOCR)...", category: .fileManager, level: .debug)
         }
         
+        let ocrText = ocrTextChunks.joined()
         if ocrText.isEmpty {
             throw FileConversionError.conversionFailed("No text could be extracted from PDF, even with OCR. This may be an empty or encrypted PDF.")
         }
