@@ -698,13 +698,17 @@ public enum AttributeFilter: Codable, Hashable {
 
         switch type {
         case "and", "or":
-            let op = CompoundOperator(rawValue: type)!
+            guard let op = CompoundOperator(rawValue: type) else {
+                throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid compound operator: \(type)")
+            }
             let filters = try container.decode([AttributeFilter].self, forKey: .filters)
             self = .compound(operator: op, filters: filters)
         default:
             // Comparison operators
             let property = try container.decode(String.self, forKey: .property)
-            let op = ComparisonOperator(rawValue: type)!
+            guard let op = ComparisonOperator(rawValue: type) else {
+                throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid comparison operator: \(type)")
+            }
             let value = try container.decode(AttributeValue.self, forKey: .value)
             self = .comparison(property: property, operator: op, value: value)
         }
