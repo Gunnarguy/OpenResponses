@@ -631,6 +631,57 @@ final class URLDetectorTests: XCTestCase {
         XCTAssertEqual(links[3], "data:image/png;base64,four")
     }
 
+
+    // MARK: - detectURLs Tests
+
+    func testDetectURLs_WithEmptyString_ReturnsEmptyArray() {
+        let urls = URLDetector.detectURLs(in: "")
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testDetectURLs_WithNoURLs_ReturnsEmptyArray() {
+        let text = "This is a simple text without any URLs."
+        let urls = URLDetector.detectURLs(in: text)
+        XCTAssertTrue(urls.isEmpty)
+    }
+
+    func testDetectURLs_WithValidHttpAndHttpsURLs_ExtractsCorrectly() {
+        let text = "Check out http://example.com and https://www.test.org for more info."
+        let urls = URLDetector.detectURLs(in: text)
+
+        XCTAssertEqual(urls.count, 2)
+        XCTAssertEqual(urls[0].absoluteString, "http://example.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://www.test.org")
+    }
+
+    func testDetectURLs_WithTrailingPunctuation_ExcludesPunctuation() {
+        let text = "Have you seen https://apple.com? I also like https://github.com/! And here is https://wikipedia.org."
+        let urls = URLDetector.detectURLs(in: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "https://apple.com")
+        XCTAssertEqual(urls[1].absoluteString, "https://github.com/")
+        XCTAssertEqual(urls[2].absoluteString, "https://wikipedia.org")
+    }
+
+    func testDetectURLs_IncludesNonHttpSchemes() {
+        let text = "Send an email to test@example.com or use ftp://files.example.com to upload. But also visit https://valid.com."
+        let urls = URLDetector.detectURLs(in: text)
+
+        XCTAssertEqual(urls.count, 3)
+        XCTAssertEqual(urls[0].absoluteString, "mailto:test@example.com")
+        XCTAssertEqual(urls[1].absoluteString, "ftp://files.example.com")
+        XCTAssertEqual(urls[2].absoluteString, "https://valid.com")
+    }
+
+    func testDetectURLs_WithComplexPathsAndQueries_ExtractsCorrectly() {
+        let text = "Read more at https://example.com/path/to/page?param1=value&param2=123#section"
+        let urls = URLDetector.detectURLs(in: text)
+
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].absoluteString, "https://example.com/path/to/page?param1=value&param2=123#section")
+    }
+
     // MARK: - extractURLs Tests
 
     func testExtractURLs_WithEmptyString_ReturnsEmptyArray() {
