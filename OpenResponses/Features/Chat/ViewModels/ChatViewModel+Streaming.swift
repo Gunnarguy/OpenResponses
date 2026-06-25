@@ -476,20 +476,44 @@ extension ChatViewModel {
                 guard let self else { return }
                 do {
                     let full = try await self.api.getResponse(responseId: finalId)
+
+                    var imageContents: [ContentItem] = []
                     for outputItem in full.output {
-                        for content in outputItem.content ?? [] where content.type == "image_file" || content.type == "image_url" {
-                            do {
-                                let data = try await self.api.fetchImageData(for: content)
-                                if let image = UIImage(data: data) {
-                                    await MainActor.run {
-                                        if let idx = self.messages.firstIndex(where: { $0.id == messageId }) {
-                                            if self.messages[idx].images == nil { self.messages[idx].images = [] }
-                                            self.messages[idx].images?.append(image)
-                                        }
-                                    }
+                        let contents = outputItem.content ?? []
+                        imageContents.append(contentsOf: contents.filter { $0.type == "image_file" || $0.type == "image_url" })
+                    }
+
+                    guard !imageContents.isEmpty else { return }
+
+                    let fetchedImages = await withTaskGroup(of: (Int, UIImage?).self) { group in
+                        for (index, content) in imageContents.enumerated() {
+                            group.addTask {
+                                do {
+                                    let data = try await self.api.fetchImageData(for: content)
+                                    return (index, UIImage(data: data))
+                                } catch {
+                                    AppLogger.log("Fallback image fetch failed: \(error)", category: .openAI, level: .warning)
+                                    return (index, nil)
                                 }
-                            } catch {
-                                AppLogger.log("Fallback image fetch failed: \(error)", category: .openAI, level: .warning)
+                            }
+                        }
+
+                        var results: [(Int, UIImage?)] = []
+                        for await result in group {
+                            results.append(result)
+                        }
+                        return results
+                    }
+
+                    let validImages = fetchedImages
+                        .sorted(by: { $0.0 < $1.0 })
+                        .compactMap { $0.1 }
+
+                    if !validImages.isEmpty {
+                        await MainActor.run {
+                            if let idx = self.messages.firstIndex(where: { $0.id == messageId }) {
+                                if self.messages[idx].images == nil { self.messages[idx].images = [] }
+                                self.messages[idx].images?.append(contentsOf: validImages)
                             }
                         }
                     }
