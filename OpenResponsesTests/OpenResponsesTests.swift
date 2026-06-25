@@ -817,3 +817,64 @@ final class URLDetectorTests: XCTestCase {
     }
 
 }
+
+final class AppleDateUtilitiesTests: XCTestCase {
+
+    func testParseISO8601_WithNilOrEmptyString_ReturnsNil() {
+        XCTAssertNil(AppleDateUtilities.parseISO8601(nil))
+        XCTAssertNil(AppleDateUtilities.parseISO8601(""))
+        XCTAssertNil(AppleDateUtilities.parseISO8601("   "))
+        XCTAssertNil(AppleDateUtilities.parseISO8601("\n\t "))
+    }
+
+    func testParseISO8601_WithValidString_NoFractionalSeconds() {
+        let validString = "2023-10-25T14:30:00Z"
+        let parsedDate = AppleDateUtilities.parseISO8601(validString)
+        XCTAssertNotNil(parsedDate)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: parsedDate!)
+
+        XCTAssertEqual(components.year, 2023)
+        XCTAssertEqual(components.month, 10)
+        XCTAssertEqual(components.day, 25)
+        XCTAssertEqual(components.hour, 14)
+        XCTAssertEqual(components.minute, 30)
+        XCTAssertEqual(components.second, 0)
+    }
+
+    func testParseISO8601_WithValidString_WithFractionalSeconds() {
+        let validString = "2023-10-25T14:30:00.123Z"
+        let parsedDate = AppleDateUtilities.parseISO8601(validString)
+        XCTAssertNotNil(parsedDate)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond], from: parsedDate!)
+
+        XCTAssertEqual(components.year, 2023)
+        XCTAssertEqual(components.month, 10)
+        XCTAssertEqual(components.day, 25)
+        XCTAssertEqual(components.hour, 14)
+        XCTAssertEqual(components.minute, 30)
+        XCTAssertEqual(components.second, 0)
+
+        // 123 milliseconds is 123_000_000 nanoseconds
+        // Date computations might have slight precision issues, so we check an approximate range or rounded value if necessary.
+        // But for ISO8601DateFormatter it should be quite exact.
+        if let nanosecond = components.nanosecond {
+            // Allow a small delta for floating point precision issues in Date
+            let diff = abs(nanosecond - 123_000_000)
+            XCTAssertLessThan(diff, 1_000_000, "Nanoseconds should be approximately 123,000,000")
+        } else {
+            XCTFail("Nanoseconds should not be nil")
+        }
+    }
+
+    func testParseISO8601_WithInvalidString_ReturnsNil() {
+        XCTAssertNil(AppleDateUtilities.parseISO8601("invalid-date"))
+        XCTAssertNil(AppleDateUtilities.parseISO8601("2023/10/25 14:30:00"))
+        XCTAssertNil(AppleDateUtilities.parseISO8601("2023-10-25")) // Missing time part
+    }
+}
