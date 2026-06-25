@@ -77,11 +77,7 @@ console.log(response.output_text);
 // Add the response to the history
 history = [
     ...history,
-    ...response.output.map((el) => {
-        // TODO: Remove this step
-        delete el.id;
-        return el;
-    }),
+    ...response.output,
 ];
 
 history.push({
