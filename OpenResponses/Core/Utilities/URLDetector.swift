@@ -75,7 +75,7 @@ struct URLDetector {
     /// - Sandbox paths (sandbox:/...) — returned as raw strings for caller to decide handling
     /// Returns unique links in order of appearance.
     static func extractImageLinks(from text: String) -> [String] {
-        var results: [String] = []
+        var results: [(String, Int)] = []
         var seen = Set<String>()
 
         // 1) Markdown image syntax ![...](url)
@@ -88,7 +88,10 @@ struct URLDetector {
                 if m.numberOfRanges >= 2 {
                     let r = m.range(at: 1)
                     if r.location != NSNotFound, let urlStr = ns.substring(with: r).split(separator: " ").first.map(String.init) {
-                        if !seen.contains(urlStr) { results.append(urlStr); seen.insert(urlStr) }
+                        if !seen.contains(urlStr) {
+                            results.append((urlStr, m.range.location))
+                            seen.insert(urlStr)
+                        }
                     }
                 }
             }
@@ -103,7 +106,10 @@ struct URLDetector {
                 let r = m.range(at: 0)
                 if r.location != NSNotFound {
                     let urlStr = ns.substring(with: r)
-                    if !seen.contains(urlStr) { results.append(urlStr); seen.insert(urlStr) }
+                    if !seen.contains(urlStr) {
+                        results.append((urlStr, r.location))
+                        seen.insert(urlStr)
+                    }
                 }
             }
         }
@@ -115,12 +121,12 @@ struct URLDetector {
             let tokens = text.components(separatedBy: "data:image")
             for i in 1..<tokens.count { // skip leading chunk before first token
                 let tail = "data:image" + tokens[i]
-                if let endIdx = tail.firstIndex(where: { $0 == " " || $0 == "\n" || $0 == "\r" }) {
-                    let candidate = String(tail[..<endIdx])
-                    if !seen.contains(candidate) { results.append(candidate); seen.insert(candidate) }
-                } else {
-                    let candidate = tail
-                    if !seen.contains(candidate) { results.append(candidate); seen.insert(candidate) }
+                let endIdx = tail.firstIndex(where: { $0 == " " || $0 == "\n" || $0 == "\r" }) ?? tail.endIndex
+                let candidate = String(tail[..<endIdx])
+                if !seen.contains(candidate) {
+                    let offset = text.range(of: candidate)?.lowerBound.utf16Offset(in: text) ?? 0
+                    results.append((candidate, offset))
+                    seen.insert(candidate)
                 }
             }
         }
@@ -134,12 +140,16 @@ struct URLDetector {
                 let r = m.range(at: 0)
                 if r.location != NSNotFound {
                     let path = ns.substring(with: r)
-                    if !seen.contains(path) { results.append(path); seen.insert(path) }
+                    if !seen.contains(path) {
+                        results.append((path, r.location))
+                        seen.insert(path)
+                    }
                 }
             }
         }
 
-        return results
+        // Sort by their original location (order of appearance)
+        return results.sorted(by: { $0.1 < $1.1 }).map { $0.0 }
     }
     
     /// Detects all URLs in the given text.

@@ -11,8 +11,12 @@ final class AppLoggerTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // Clear logs if necessary
-        DispatchQueue.main.sync {
-            ConsoleLogger.shared.clearLogs()
+        if Thread.isMainThread {
+            ConsoleLogger.shared.logs.removeAll()
+        } else {
+            DispatchQueue.main.sync {
+                ConsoleLogger.shared.logs.removeAll()
+            }
         }
     }
 
