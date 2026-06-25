@@ -22,4 +22,10 @@ final class FunctionOutputSummarizerTests: XCTestCase {
         let summary = FunctionOutputSummarizer.failureSummary(functionName: "searchNotion", rawOutput: raw)
         XCTAssertEqual(summary, "⚠️ searchNotion failed: Error: Network unreachable")
     }
+
+    func testFailureSummaryWithMalformedJSON() {
+        let raw = "Error: { this is not valid json }"
+        let summary = FunctionOutputSummarizer.failureSummary(functionName: "testFunction", rawOutput: raw)
+        XCTAssertEqual(summary, "⚠️ testFunction failed: Error: { this is not valid json }")
+    }
 }
