@@ -1,0 +1,35 @@
+Commands Run during PR Audit:
+
+1. List available simulators
+Command: DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcrun simctl list devices available
+Result: Showed no iOS devices created for iOS 27/18 runtimes.
+
+2. Create iOS 27 simulator device
+Command: DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcrun simctl create "iPhone 17 Pro" "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro" "com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+Result: Created device with ID F96022B4-D6FB-4EB5-8452-CC2480B7435D
+
+3. Boot simulator
+Command: DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcrun simctl boot F96022B4-D6FB-4EB5-8452-CC2480B7435D
+Result: Success.
+
+4. Run unit and UI tests (First attempt)
+Command: DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'id=F96022B4-D6FB-4EB5-8452-CC2480B7435D' -derivedDataPath Build/DerivedData
+Result: Failed during CodeSign phase because of extended attributes.
+
+5. Clear extended attributes
+Command: /usr/bin/xattr -cr OpenResponses OpenResponsesTests
+Result: Success.
+
+6. Clean and run tests (Second attempt)
+Command: DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcodebuild clean test -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'id=F96022B4-D6FB-4EB5-8452-CC2480B7435D' -derivedDataPath Build/DerivedData
+Result: Failed (Exit Code 65).
+- AppLoggerTests deadlocked on `DispatchQueue.main.sync` in `setUp()` and re-ran.
+- URLDetectorTests failed on `testExtractImageLinks_OrderPreservation` and `testExtractURLs_WithTrailingPunctuation_ExcludesPunctuation` due to existing baseline bugs.
+
+7. Run secret scanner
+Command: python3 scripts/secret_scan.py
+Result: PASSED.
+
+8. Run preflight checks
+Command: bash scripts/preflight_check.sh
+Result: PASSED.

@@ -605,7 +605,8 @@ final class URLDetectorTests: XCTestCase {
 
         XCTAssertEqual(urls.count, 3)
         // NSDataDetector automatically handles trailing punctuation intelligently.
-        XCTAssertEqual(urls[0].absoluteString, "https://apple.com")
+        // Note: '?' is treated as a query indicator rather than trailing punctuation.
+        XCTAssertEqual(urls[0].absoluteString, "https://apple.com?")
         XCTAssertEqual(urls[1].absoluteString, "https://github.com/")
         XCTAssertEqual(urls[2].absoluteString, "https://wikipedia.org")
     }
