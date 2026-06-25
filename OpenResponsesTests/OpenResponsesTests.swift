@@ -981,3 +981,83 @@ final class AppleDateUtilitiesTests: XCTestCase {
         XCTAssertNil(AppleDateUtilities.parseISO8601("2023-10-25")) // Missing time part
     }
 }
+
+final class OpenAIModelTests: XCTestCase {
+
+    func testDisplayName_GPT5Series() {
+        let models = [
+            "gpt-5.5": "gpt-5.5",
+            "gpt-5.5-pro": "gpt-5.5-pro",
+            "gpt-5.5-mini": "gpt-5.5-mini",
+            "gpt-5.5-nano": "gpt-5.5-nano",
+            "gpt-5.4": "gpt-5.4",
+            "gpt-5.4-pro": "gpt-5.4-pro",
+            "gpt-5.4-mini": "gpt-5.4-mini",
+            "gpt-5.4-nano": "gpt-5.4-nano",
+            "gpt-5.2": "gpt-5.2",
+            "gpt-5.2-pro": "gpt-5.2-pro",
+            "gpt-5.1": "gpt-5.1",
+            "gpt-5-mini": "gpt-5-mini",
+            "gpt-5-nano": "gpt-5-nano",
+            "gpt-5": "gpt-5",
+            "gpt-5-thinking": "gpt-5-thinking"
+        ]
+
+        for (id, expectedName) in models {
+            let model = OpenAIModel(id: id, object: "model", created: 123, ownedBy: "openai")
+            XCTAssertEqual(model.displayName, expectedName)
+            XCTAssertTrue(model.isReasoningModel) // All gpt-5 models are reasoning models
+        }
+    }
+
+    func testDisplayName_GPT4Series() {
+        let models = [
+            "gpt-4.1": "gpt-4.1",
+            "gpt-4.1-mini": "gpt-4.1-mini",
+            "gpt-4.1-nano": "gpt-4.1-nano",
+            "gpt-4.1-2025-04-14": "gpt-4.1 (2025-04-14)",
+            "gpt-4o": "gpt-4o",
+            "gpt-4o-mini": "gpt-4o-mini",
+            "gpt-4o-2024-08-06": "gpt-4o (2024-08-06)",
+            "gpt-4o-mini-2024-07-18": "gpt-4o-mini (2024-07-18)",
+            "computer-use-preview": "computer-use-preview"
+        ]
+
+        for (id, expectedName) in models {
+            let model = OpenAIModel(id: id, object: "model", created: 123, ownedBy: "openai")
+            XCTAssertEqual(model.displayName, expectedName)
+            XCTAssertFalse(model.isReasoningModel) // GPT-4 models are not reasoning models
+        }
+    }
+
+    func testDisplayName_OSeries() {
+        let models = [
+            "o1": "o1",
+            "o1-preview": "o1-preview",
+            "o1-mini": "o1-mini",
+            "o3": "o3",
+            "o3-mini": "o3-mini",
+            "o3-pro": "o3-pro" // Matches the prefix logic
+        ]
+
+        for (id, expectedName) in models {
+            let model = OpenAIModel(id: id, object: "model", created: 123, ownedBy: "openai")
+            XCTAssertEqual(model.displayName, expectedName)
+            XCTAssertTrue(model.isReasoningModel) // O-series are reasoning models
+        }
+    }
+
+    func testDisplayName_Fallback() {
+        let models = [
+            "unknown-model",
+            "gpt-3.5-turbo",
+            "dall-e-3"
+        ]
+
+        for id in models {
+            let model = OpenAIModel(id: id, object: "model", created: 123, ownedBy: "openai")
+            XCTAssertEqual(model.displayName, id) // Fallback returns the id as-is
+            XCTAssertFalse(model.isReasoningModel)
+        }
+    }
+}
