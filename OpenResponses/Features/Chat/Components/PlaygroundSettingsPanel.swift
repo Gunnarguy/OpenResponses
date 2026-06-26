@@ -88,15 +88,27 @@ struct PlaygroundSettingsPanel: View {
 
                 // MARK: - Tools Section
                 Section("Tools") {
-                    Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
-                        .toggleStyle(SwitchToggleStyle(tint: .purple))
+                    Toggle(isOn: $viewModel.activePrompt.enableFileSearch) {
+                        Text("File Search")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .purple))
 
-                    Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
-                        .toggleStyle(SwitchToggleStyle(tint: .orange))
+                    Toggle(isOn: $viewModel.activePrompt.enableCodeInterpreter) {
+                        Text("Code Interpreter")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .orange))
 
-                    Toggle("Computer Use", isOn: $viewModel.activePrompt.enableComputerUse)
-                        .toggleStyle(SwitchToggleStyle(tint: .indigo))
-                        .disabled(!isComputerUseSupported)
+                    Toggle(isOn: $viewModel.activePrompt.enableComputerUse) {
+                        Text("Computer Use")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: .indigo))
+                    .disabled(!isComputerUseSupported)
 
                     if !isComputerUseSupported {
                         Text("Choose a computer-capable model like gpt-5.5 or gpt-5.5-mini.")

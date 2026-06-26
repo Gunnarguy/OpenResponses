@@ -219,6 +219,7 @@ struct ToolStatusCard: View {
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 Spacer()
 
@@ -533,6 +534,8 @@ struct MessageToolIndicator: View {
                         Text(toolDisplayName(for: tool))
                             .font(.caption2)
                             .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

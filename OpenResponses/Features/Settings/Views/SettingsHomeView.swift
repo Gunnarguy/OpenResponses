@@ -463,7 +463,11 @@ private struct ToolsTab: View {
             // MARK: Web Search
 
             Section {
-                Toggle("Web Search", isOn: $viewModel.activePrompt.enableWebSearch)
+                Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {
+                    Text("Web Search")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                     .tint(.blue)
 
                 if viewModel.activePrompt.enableWebSearch {
@@ -479,7 +483,11 @@ private struct ToolsTab: View {
             // MARK: File Search with Smart Vector Store Selection
 
             Section {
-                Toggle("File Search", isOn: $viewModel.activePrompt.enableFileSearch)
+                Toggle(isOn: $viewModel.activePrompt.enableFileSearch) {
+                    Text("File Search")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                     .tint(.purple)
 
                 if viewModel.activePrompt.enableFileSearch {
@@ -512,7 +520,11 @@ private struct ToolsTab: View {
             // MARK: Code Interpreter with Smart File Selection
 
             Section {
-                Toggle("Code Interpreter", isOn: $viewModel.activePrompt.enableCodeInterpreter)
+                Toggle(isOn: $viewModel.activePrompt.enableCodeInterpreter) {
+                    Text("Code Interpreter")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                     .tint(.orange)
 
                 if viewModel.activePrompt.enableCodeInterpreter {
@@ -529,7 +541,11 @@ private struct ToolsTab: View {
             // MARK: Image Generation
 
             Section {
-                Toggle("Image Generation", isOn: $viewModel.activePrompt.enableImageGeneration)
+                Toggle(isOn: $viewModel.activePrompt.enableImageGeneration) {
+                    Text("Image Generation")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                     .tint(.pink)
                     .disabled(!isImageGenerationSupported)
 
@@ -578,7 +594,11 @@ private struct ToolsTab: View {
                     }
 
                     if hasNotionIntegrationToken {
-                        Toggle("Enable Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                        Toggle(isOn: $viewModel.activePrompt.enableNotionIntegration) {
+                            Text("Enable Notion Tools")
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
                             .tint(.blue)
                     }
 
@@ -610,7 +630,11 @@ private struct ToolsTab: View {
 .padding(.vertical, 4)
 
                 #if canImport(EventKit)
-                    Toggle("Apple Calendar/Reminders/Contacts", isOn: $viewModel.activePrompt.enableAppleIntegrations)
+                    Toggle(isOn: $viewModel.activePrompt.enableAppleIntegrations) {
+                        Text("Apple Calendar/Reminders/Contacts")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
 
                     if viewModel.activePrompt.enableAppleIntegrations {
                         AppleIntegrationsCard()
@@ -1265,7 +1289,11 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
             }
         )
 
-        Toggle("Computer Use", isOn: computerUseBinding)
+        Toggle(isOn: computerUseBinding) {
+            Text("Computer Use")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
             .tint(.indigo)
             .disabled(!isComputerUseSupported)
             .alert("Enable Computer Use?", isPresented: $showComputerUseDisclosure) {
@@ -1283,7 +1311,11 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         } else if viewModel.activePrompt.enableComputerUse {
-            Toggle("Strict Mode", isOn: $viewModel.activePrompt.ultraStrictComputerUse)
+            Toggle(isOn: $viewModel.activePrompt.ultraStrictComputerUse) {
+                Text("Strict Mode")
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
                 .tint(.red)
             Text("Disables helper behaviors for pure model control.")
                 .font(.caption2)
@@ -1619,9 +1651,17 @@ private struct AdvancedTab: View {
                 }
 .pickerStyle(.segmented)
 
-Toggle("Parallel Tool Calls", isOn: $viewModel.activePrompt.parallelToolCalls)
+Toggle(isOn: $viewModel.activePrompt.parallelToolCalls) {
+    Text("Parallel Tool Calls")
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+}
 
-Toggle("Background Mode", isOn: backgroundModeBinding)
+Toggle(isOn: backgroundModeBinding) {
+    Text("Background Mode")
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+}
 
                 limitToolCallsRow
             } header: {
@@ -1652,13 +1692,33 @@ Toggle("Background Mode", isOn: backgroundModeBinding)
 
             Section {
                 DisclosureGroup("Response Includes", isExpanded: $showResponseIncludes) {
-                    Toggle("File Search Results", isOn: $viewModel.activePrompt.includeFileSearchResults)
-                    Toggle("Web Search Results", isOn: $viewModel.activePrompt.includeWebSearchResults)
-                    Toggle("Web Search Sources", isOn: $viewModel.activePrompt.includeWebSearchSources)
-                    Toggle("Code Interpreter Output", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                    Toggle(isOn: $viewModel.activePrompt.includeFileSearchResults) {
+                        Text("File Search Results")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    Toggle(isOn: $viewModel.activePrompt.includeWebSearchResults) {
+                        Text("Web Search Results")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    Toggle(isOn: $viewModel.activePrompt.includeWebSearchSources) {
+                        Text("Web Search Sources")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    Toggle(isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs) {
+                        Text("Code Interpreter Output")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
 
                     if modelCaps?.supportsReasoningEffort == true {
-                        Toggle("Reasoning Content", isOn: $viewModel.activePrompt.includeReasoningContent)
+                        Toggle(isOn: $viewModel.activePrompt.includeReasoningContent) {
+                            Text("Reasoning Content")
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
                     }
 
                     logprobsToggle

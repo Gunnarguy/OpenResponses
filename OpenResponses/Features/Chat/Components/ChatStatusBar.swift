@@ -9,55 +9,67 @@ struct ChatStatusBar: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Model badge
-            modelBadge
-            
-            // Active tools
-            if viewModel.activePrompt.enableFileSearch {
-                fileSearchBadge
+            // Scrollable section for model and active tools
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    modelBadge
+                    
+                    if viewModel.activePrompt.enableWebSearch {
+                        webSearchBadge
+                    }
+                    
+                    if viewModel.activePrompt.enableFileSearch {
+                        fileSearchBadge
+                    }
+                    
+                    if viewModel.activePrompt.enableCodeInterpreter {
+                        codeInterpreterBadge
+                    }
+                    
+                    if viewModel.activePrompt.enableComputerUse {
+                        computerUseBadge
+                    }
+                }
             }
             
-            if viewModel.activePrompt.enableCodeInterpreter {
-                codeInterpreterBadge
-            }
+            Spacer(minLength: 8)
             
-            if viewModel.activePrompt.enableComputerUse {
-                computerUseBadge
+            // Right-aligned actions (always visible and uncompressed)
+            HStack(spacing: 12) {
+                if !viewModel.pendingFileData.isEmpty {
+                    attachmentsBadge
+                }
+                
+                if !viewModel.pendingImageAttachments.isEmpty {
+                    imagesBadge
+                }
+                
+                // Token usage (if available from last response)
+                if let usage = viewModel.lastTokenUsage {
+                    tokenBadge(usage: usage)
+                }
+                
+                // Request inspector button (curly braces icon like Playground)
+                Button {
+                    showingRequestInspector = true
+                } label: {
+                    Image(systemName: "curlybraces")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .fixedSize()
+                
+                // Settings button (gear icon)
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .fixedSize()
             }
-            
-            Spacer()
-            
-            // Pending attachments count
-            if !viewModel.pendingFileData.isEmpty {
-                attachmentsBadge
-            }
-            
-            if !viewModel.pendingImageAttachments.isEmpty {
-                imagesBadge
-            }
-            
-            // Token usage (if available from last response)
-            if let usage = viewModel.lastTokenUsage {
-                tokenBadge(usage: usage)
-            }
-            
-            // Request inspector button (curly braces icon like Playground)
-            Button {
-                showingRequestInspector = true
-            } label: {
-                Image(systemName: "curlybraces")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Settings button (gear icon)
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -78,6 +90,8 @@ struct ChatStatusBar: View {
     private var modelBadge: some View {
         Text(viewModel.activePrompt.openAIModel)
             .fontWeight(.medium)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(modelColor.opacity(0.15))
@@ -100,11 +114,28 @@ struct ChatStatusBar: View {
     
     // MARK: - Tool Badges
     
+    private var webSearchBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "globe")
+                .font(.caption2)
+            Text("Web Search")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .foregroundColor(.blue)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(4)
+    }
+    
     private var fileSearchBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.caption2)
-            Text("file_search")
+            Text("File Search")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(.purple)
         .padding(.horizontal, 6)
@@ -117,7 +148,9 @@ struct ChatStatusBar: View {
         HStack(spacing: 4) {
             Image(systemName: "chevron.left.forwardslash.chevron.right")
                 .font(.caption2)
-            Text("code_interpreter")
+            Text("Code Interpreter")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(.orange)
         .padding(.horizontal, 6)
@@ -130,7 +163,9 @@ struct ChatStatusBar: View {
         HStack(spacing: 4) {
             Image(systemName: "desktopcomputer")
                 .font(.caption2)
-            Text("computer")
+            Text("Computer Use")
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(.indigo)
         .padding(.horizontal, 6)
@@ -147,6 +182,8 @@ struct ChatStatusBar: View {
                 .font(.caption2)
             Text("\(viewModel.pendingFileData.count)")
                 .fontWeight(.medium)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(.orange)
         .padding(.horizontal, 6)
@@ -161,6 +198,8 @@ struct ChatStatusBar: View {
                 .font(.caption2)
             Text("\(viewModel.pendingImageAttachments.count)")
                 .fontWeight(.medium)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(.blue)
         .padding(.horizontal, 6)
@@ -177,6 +216,8 @@ struct ChatStatusBar: View {
                 .font(.caption2)
             if let total = usage.total {
                 Text("\(total)")
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .foregroundColor(.secondary)
@@ -191,6 +232,7 @@ struct ChatStatusBar: View {
             .environmentObject({
                 let vm = ChatViewModel(api: OpenAIService())
                 vm.activePrompt.openAIModel = "gpt-4o"
+                vm.activePrompt.enableWebSearch = true
                 vm.activePrompt.enableFileSearch = true
                 vm.activePrompt.enableCodeInterpreter = true
                 vm.pendingFileData = [Data(), Data()]
