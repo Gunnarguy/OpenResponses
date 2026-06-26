@@ -192,7 +192,7 @@ enum AppLogger {
 
     /// Public helper to get a sanitized preview of a JSON body for logging.
     /// Keeps internal sanitization centralized while letting other components request a preview.
-    static func logOpenAIRequestBodyPreview(_ data: Data) -> String? {
+    nonisolated static func logOpenAIRequestBodyPreview(_ data: Data) -> String? {
         return prettySanitizedJSON(data)
     }
     
@@ -204,7 +204,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func log(
+    nonisolated static func log(
         _ message: String,
         category: Category,
         level: Level = .info,
@@ -285,7 +285,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func logError(
+    nonisolated static func logError(
         _ error: Error,
         message: String? = nil,
         category: Category,
@@ -342,7 +342,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func logOpenAIRequest(
+    nonisolated static func logOpenAIRequest(
         url: URL,
         method: String,
         headers: [String: String],
@@ -383,7 +383,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func logOpenAIResponse(
+    nonisolated static func logOpenAIResponse(
         url: URL,
         statusCode: Int,
         headers: [AnyHashable: Any],
@@ -426,7 +426,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func logStreamingEvent(
+    nonisolated static func logStreamingEvent(
         eventType: String,
         data: String,
         parsedEvent: Any?,
@@ -467,7 +467,7 @@ enum AppLogger {
     ///   - file: The file where the log was called.
     ///   - function: The function where the log was called.
     ///   - line: The line where the log was called.
-    static func logStructuredStreamingEvent(
+    nonisolated static func logStructuredStreamingEvent(
         event: StreamingEvent,
         rawData: String,
         file: String = #file,

@@ -53,7 +53,7 @@ enum TokenStore {
     /// Must match KeychainService.keychainServiceName for tokens to be shared between the two APIs.
     private static let serviceName = "OpenResponses"
 
-    static func save(_ data: Data, account: String) -> Bool {
+    nonisolated static func save(_ data: Data, account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -64,7 +64,7 @@ enum TokenStore {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
-    static func read(account: String) -> Data? {
+    nonisolated static func read(account: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -77,15 +77,15 @@ enum TokenStore {
         return result as? Data
     }
 
-    static func saveString(_ s: String, account: String) -> Bool {
+    nonisolated static func saveString(_ s: String, account: String) -> Bool {
         save(Data(s.utf8), account: account)
     }
 
-    static func readString(account: String) -> String? {
+    nonisolated static func readString(account: String) -> String? {
         read(account: account).flatMap { String(data: $0, encoding: .utf8) }
     }
 
-    static func delete(account: String) -> Bool {
+    nonisolated static func delete(account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -97,7 +97,7 @@ enum TokenStore {
 
 // MARK: - HTTP Client with Backoff
 
-final class HttpClient {
+final class HttpClient: Sendable {
     struct Metrics {
         var attempts = 0
         var durationMs: Int = 0

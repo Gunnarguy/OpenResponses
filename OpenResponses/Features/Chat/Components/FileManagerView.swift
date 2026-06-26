@@ -1249,10 +1249,8 @@ HStack(spacing: 8) {
 
                                     AppLogger.log("   🔄 File is processing, will poll for completion...", category: .fileManager, level: .info)
                                     // pollForFileCompletion requires @MainActor because it calls currentUploadProgress
-                                    await MainActor.run {
-                                        Task {
-                                            await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
-                                        }
+                                    Task { @MainActor in
+                                        await pollForFileCompletion(vectorStoreId: vectorStoreId, fileId: uploadedFile.id, progressIndex: index)
                                     }
                                 } else {
                                     await MainActor.run {

@@ -1605,15 +1605,17 @@ class ChatViewModel: ObservableObject {
                         // CRITICAL: Complete streaming state reset on error
                         self.streamingMessageId = nil
                         self.isStreaming = false
-                        Task { @MainActor in
-                            try await Task.sleep(for: .seconds(2)) // Allows user to see the error
-                            self.streamingStatus = .idle
+                        _ = Task { @MainActor in
+                            do {
+                                try await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                                self.streamingStatus = .idle
+                            } catch {}
                         }
                     }
                 }
             }
             // Ensure we clear the streaming ID when the task is done, after do-catch
-            await MainActor.run {
+            await MainActor.run { [self] in
                 // If a retry is in progress for this message, skip cleanup/logging here to avoid
                 // stomping the retry's state (flicker) and duplicate analytics.
                 let retryActive = self.retryContextByMessageId[assistantMsgId]?.retryScheduled == true
@@ -4164,9 +4166,11 @@ class ChatViewModel: ObservableObject {
                 self.streamingStatus = .idle
                 self.streamingMessageId = nil
                 self.isStreaming = false
-                Task { @MainActor in
-                    try await Task.sleep(for: .seconds(2)) // Allows user to see the error
-                    self.streamingStatus = .idle
+                _ = Task { @MainActor in
+                    do {
+                        try await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                        self.streamingStatus = .idle
+                    } catch {}
                 }
             }
         }

@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Public Models
 
-public struct NotionDatabaseSummary: Hashable, Codable, Identifiable {
+public struct NotionDatabaseSummary: Hashable, Codable, Identifiable, Sendable {
     public var id: String { // Notion can return non-UUIDs for child_database blocks
         return notionId
     }
@@ -14,7 +14,7 @@ public struct NotionDatabaseSummary: Hashable, Codable, Identifiable {
     let source: String
 }
 
-public struct NotionPageSummary: Hashable, Codable, Identifiable {
+public struct NotionPageSummary: Hashable, Codable, Identifiable, Sendable {
     public var id: String { notionId }
     let notionId: String
     let title: String
@@ -22,8 +22,8 @@ public struct NotionPageSummary: Hashable, Codable, Identifiable {
 
 // MARK: - Internal Models
 
-private struct NotionSearchReq: Codable {
-    struct Filter: Codable { let property: String; let value: String }
+struct NotionSearchReq: Codable, Sendable {
+    struct Filter: Codable, Sendable { let property: String; let value: String }
     let query: String?
     let filter: Filter?
     let startCursor: String?
@@ -36,7 +36,7 @@ private struct NotionSearchReq: Codable {
     }
 }
 
-private struct NotionSearchResp: Codable {
+struct NotionSearchResp: Codable, Sendable {
     let results: [NotionObject]
     let nextCursor: String?
     let hasMore: Bool
@@ -48,7 +48,7 @@ private struct NotionSearchResp: Codable {
     }
 }
 
-private enum NotionObject: Codable {
+enum NotionObject: Codable, Sendable {
     case database(NotionDatabase)
     case page(NotionPageWithParent)
     case block(NotionBlock)
@@ -75,8 +75,8 @@ private enum NotionObject: Codable {
     }
 }
 
-private struct NotionPageWithParent: Codable {
-    struct Parent: Codable {
+struct NotionPageWithParent: Codable, Sendable {
+    struct Parent: Codable, Sendable {
         let type: String?
         let databaseId: String?
         let dataSourceId: String?
@@ -93,13 +93,13 @@ private struct NotionPageWithParent: Codable {
     let parent: Parent?
 }
 
-private struct NotionDataSource: Codable {
+struct NotionDataSource: Codable, Sendable {
     let id: String
     let name: String?
 }
 
-private struct NotionDataSourceSearchResult: Codable {
-    struct Parent: Codable {
+struct NotionDataSourceSearchResult: Codable, Sendable {
+    struct Parent: Codable, Sendable {
         let type: String?
         let databaseId: String?
         let pageId: String?
@@ -127,8 +127,8 @@ private struct NotionDataSourceSearchResult: Codable {
     }
 }
 
-private struct NotionDatabase: Codable {
-    struct Parent: Codable {
+struct NotionDatabase: Codable, Sendable {
+    struct Parent: Codable, Sendable {
         let type: String?
         let pageId: String?
         let workspace: Bool?
@@ -139,7 +139,7 @@ private struct NotionDatabase: Codable {
         }
     }
 
-    struct Title: Codable {
+    struct Title: Codable, Sendable {
         let plainText: String?
 
         enum CodingKeys: String, CodingKey {
@@ -159,20 +159,20 @@ private struct NotionDatabase: Codable {
     }
 }
 
-private struct NotionPage: Codable { let object: String; let id: String }
+struct NotionPage: Codable, Sendable { let object: String; let id: String }
 
-private struct NotionBlock: Codable {
+struct NotionBlock: Codable, Sendable {
     let object: String; let id: String; let type: String
     let child_database: ChildDB?
     let link_to_database: LinkDB?
-    struct ChildDB: Codable { let title: String }
-    struct LinkDB: Codable {
-        struct DB: Codable { let id: String? }
+    struct ChildDB: Codable, Sendable { let title: String }
+    struct LinkDB: Codable, Sendable {
+        struct DB: Codable, Sendable { let id: String? }
         let database: DB?
     }
 }
 
-private struct NotionChildrenResp: Codable {
+struct NotionChildrenResp: Codable, Sendable {
     let results: [NotionBlock]
     let nextCursor: String?
     let hasMore: Bool
@@ -184,7 +184,7 @@ private struct NotionChildrenResp: Codable {
     }
 }
 
-private struct NotionRichText: Codable {
+struct NotionRichText: Codable, Sendable {
     let plainText: String?
 
     enum CodingKeys: String, CodingKey {
@@ -192,17 +192,17 @@ private struct NotionRichText: Codable {
     }
 }
 
-private struct NotionPropertyValue: Codable {
+struct NotionPropertyValue: Codable, Sendable {
     let type: String?
     let title: [NotionRichText]?
 }
 
-private struct NotionPageWithProps: Codable {
+struct NotionPageWithProps: Codable, Sendable {
     let id: String
     let properties: [String: NotionPropertyValue]
 }
 
-private struct NotionQueryResp: Codable {
+struct NotionQueryResp: Codable, Sendable {
     let results: [NotionPageWithProps]
     let hasMore: Bool
     let nextCursor: String?
@@ -214,8 +214,8 @@ private struct NotionQueryResp: Codable {
     }
 }
 
-private struct NotionPageParentResp: Codable {
-    struct Parent: Codable {
+struct NotionPageParentResp: Codable, Sendable {
+    struct Parent: Codable, Sendable {
         let type: String
         let databaseId: String?
         let pageId: String?
@@ -253,11 +253,11 @@ public final class NotionProvider: ToolProvider, NotionReadable {
     public let kind: ToolKind = .notion
     public let capabilities: ProviderCapability = [.listDatabases]
 
-    private let http = HttpClient()
-    private let base = URL(string: "https://api.notion.com/v1")!
-    private let version = "2025-09-03"
+    nonisolated private let http = HttpClient()
+    nonisolated private let base = URL(string: "https://api.notion.com/v1")!
+    nonisolated private let version = "2025-09-03"
     /// Unified keychain key for Notion integration token - matches NotionConnectionView, SettingsHomeView, etc.
-    let tokenAccount = "notionApiKey"
+    nonisolated let tokenAccount = "notionApiKey"
     private var dsCache: [String: (id: String, name: String?)] = [:]
 
     public init() {}
@@ -521,7 +521,7 @@ public final class NotionProvider: ToolProvider, NotionReadable {
         return activeFilter
     }
 
-    private func baseRequest(_ path: String, method: String = "GET", jsonBody: Data? = nil) throws -> URLRequest {
+    nonisolated private func baseRequest(_ path: String, method: String = "GET", jsonBody: Data? = nil) throws -> URLRequest {
         let url = base.appendingPathComponent(path)
         var req = URLRequest(url: url)
         req.httpMethod = method

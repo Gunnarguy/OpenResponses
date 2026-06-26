@@ -141,15 +141,15 @@ struct LogEntryView: View {
 
 /// A singleton logger that captures log entries for display in the debug console.
 class ConsoleLogger: ObservableObject {
-    static let shared = ConsoleLogger()
+    nonisolated static let shared = ConsoleLogger()
     
     @Published var logs: [LogEntry] = []
     private let maxLogCount = 500 // Keep last 500 logs
     
-    private init() {}
+    nonisolated private init() {}
     
-    func addLog(_ entry: LogEntry) {
-        DispatchQueue.main.async {
+    nonisolated func addLog(_ entry: LogEntry) {
+        Task { @MainActor in
             self.logs.append(entry)
             // Keep only the most recent logs
             if self.logs.count > self.maxLogCount {
@@ -158,15 +158,15 @@ class ConsoleLogger: ObservableObject {
         }
     }
     
-    func clearLogs() {
-        DispatchQueue.main.async {
+    nonisolated func clearLogs() {
+        Task { @MainActor in
             self.logs.removeAll()
         }
     }
 }
 
 /// Represents a single log entry for the debug console.
-struct LogEntry: Identifiable {
+struct LogEntry: Identifiable, Sendable {
     let id = UUID()
     let timestamp = Date()
     let level: OSLogType
