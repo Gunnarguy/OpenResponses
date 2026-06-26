@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 // Import StreamingEvent model
-import SwiftUI // This should already be there for access to UI types
+// import SwiftUI // Removed to prevent implicit MainActor isolation
 
 /// A logging utility for the OpenResponses app.
 enum AppLogger {
@@ -48,31 +48,31 @@ enum AppLogger {
     }
     
     /// Shared logger instance
-    private static let logger = OSLog(subsystem: "com.gunndamental.OpenResponses", category: "App")
+    nonisolated(unsafe) private static let logger = OSLog(subsystem: "com.gunndamental.OpenResponses", category: "App")
     
     /// Whether to print to console in DEBUG mode
     #if DEBUG
-    static var consoleLoggingEnabled = true
+    nonisolated(unsafe) static var consoleLoggingEnabled = true
     #else
-    static var consoleLoggingEnabled = false
+    nonisolated(unsafe) static var consoleLoggingEnabled = false
     #endif
     
     /// Whether to print duplicate logs for the same message
-    static var allowDuplicateLogs = true  // Temporarily disabled to avoid crashes
+    nonisolated(unsafe) static var allowDuplicateLogs = true  // Temporarily disabled to avoid crashes
     
     /// Store recent log messages to detect duplicates
-    private static var recentLogMessages = [String: Date]()
-    private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
+    nonisolated(unsafe) private static var recentLogMessages = [String: Date]()
+    nonisolated(unsafe) private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
     
     /// Time window in seconds to consider logs as duplicates
-    private static let duplicateWindowSeconds: TimeInterval = 1.0
+    nonisolated(unsafe) private static let duplicateWindowSeconds: TimeInterval = 1.0
     
     /// Log level for OpenAI API requests and responses
     /// This allows quick adjustment of verbosity for API logs
     #if DEBUG
-    static var openAILogLevel: Level = .debug
-    private static var minimizeOpenAILogBodiesStorage = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies")
-    static var minimizeOpenAILogBodies: Bool {
+    nonisolated(unsafe) static var openAILogLevel: Level = .debug
+    nonisolated(unsafe) private static var minimizeOpenAILogBodiesStorage = UserDefaults.standard.bool(forKey: "minimizeOpenAILogBodies")
+    nonisolated(unsafe) static var minimizeOpenAILogBodies: Bool {
         get { minimizeOpenAILogBodiesStorage }
         set {
             minimizeOpenAILogBodiesStorage = newValue
@@ -81,12 +81,12 @@ enum AppLogger {
         }
     }
     #else
-    static var openAILogLevel: Level = .info
-    static var minimizeOpenAILogBodies: Bool { true }
+    nonisolated(unsafe) static var openAILogLevel: Level = .info
+    nonisolated(unsafe) static var minimizeOpenAILogBodies: Bool { true }
     #endif
     
     /// Controls debug-level logging for MCP category (redacted + deduped).
-    static var verboseMCPLogging: Bool = UserDefaults.standard.bool(forKey: "verboseMCPLogging") {
+    nonisolated(unsafe) static var verboseMCPLogging: Bool = UserDefaults.standard.bool(forKey: "verboseMCPLogging") {
         didSet {
             UserDefaults.standard.set(verboseMCPLogging, forKey: "verboseMCPLogging")
             log("Verbose MCP Logging set to: \(verboseMCPLogging)", category: .mcp, level: .info)
@@ -96,20 +96,20 @@ enum AppLogger {
     // MARK: - Log Sanitization Helpers
 
     /// Max number of characters to include from any long string in logs
-    private static let maxStringPreview = 400
+    nonisolated(unsafe) private static let maxStringPreview = 400
     /// Keys that are likely to contain large base64 or data-URIs
 
     /// Keys that contain sensitive information that should be completely redacted
-    private static let sensitiveKeys: Set<String> = [
+    nonisolated(unsafe) private static let sensitiveKeys: Set<String> = [
         "password", "token", "api_key", "secret", "authorization", "bearer", "key", "notionapikey", "openaikey"
     ]
 
-    private static let heavyPayloadKeys: Set<String> = [
+    nonisolated(unsafe) private static let heavyPayloadKeys: Set<String> = [
         "image_url", "partial_image_b64", "screenshot_b64", "image_b64", "partial_image", "imageData", "image"
     ]
 
     /// Returns a truncated version of the input string, preserving head/tail around an omission marker.
-    private static func truncateMiddle(_ s: String, max: Int = maxStringPreview) -> String {
+    nonisolated private static func truncateMiddle(_ s: String, max: Int = maxStringPreview) -> String {
         guard s.count > max, max > 20 else { return s }
         let headCount = max / 2 - 5
         let tailCount = max / 2 - 5
@@ -119,7 +119,7 @@ enum AppLogger {
     }
 
     /// Heuristically redacts data-URI images and base64 blobs inside strings.
-    private static func sanitizeString(_ s: String, shouldTruncate: Bool = true) -> String {
+    nonisolated private static func sanitizeString(_ s: String, shouldTruncate: Bool = true) -> String {
         // Redact data:image/*;base64,....
         if s.lowercased().hasPrefix("data:image/") {
             // Keep the header but remove the payload
@@ -141,7 +141,7 @@ enum AppLogger {
     }
 
     /// Recursively sanitize a JSON object by redacting heavy fields.
-    private static func sanitizeJSONObject(_ obj: Any) -> Any {
+    nonisolated private static func sanitizeJSONObject(_ obj: Any) -> Any {
         switch obj {
         case var dict as [String: Any]:
             for (k, v) in dict {
@@ -172,7 +172,7 @@ enum AppLogger {
     }
     
     /// Pretty print JSON Data with sanitization and truncation safeguards.
-    private static func prettySanitizedJSON(_ data: Data) -> String? {
+    nonisolated private static func prettySanitizedJSON(_ data: Data) -> String? {
         if let obj = try? JSONSerialization.jsonObject(with: data, options: []) {
             let sanitized = sanitizeJSONObject(obj)
             if let pretty = try? JSONSerialization.data(withJSONObject: sanitized, options: .prettyPrinted) {
@@ -312,7 +312,7 @@ enum AppLogger {
     
 
     /// Generic redactor for HTTP headers to prevent leaking sensitive tokens or cookies
-    private static func redactHeaders(_ headers: [AnyHashable: Any]) -> [AnyHashable: Any] {
+    nonisolated private static func redactHeaders(_ headers: [AnyHashable: Any]) -> [AnyHashable: Any] {
         var safeHeaders = headers
         let sensitiveKeys = ["authorization", "cookie", "set-cookie", "x-notion-request-id", "token", "secret"]
 

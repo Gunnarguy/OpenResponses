@@ -25,7 +25,7 @@ public struct ProviderCapability: OptionSet {
     public static let createContact       = ProviderCapability(rawValue: 1 << 10) // Apple Contacts
 }
 
-public protocol ToolProvider {
+public protocol ToolProvider: Sendable {
     var kind: ToolKind { get }
     var capabilities: ProviderCapability { get }
     func connect(presentingAnchor: ASPresentationAnchor?) async throws
@@ -49,9 +49,9 @@ public protocol ContactsReadable {
 // MARK: - Token Store (Keychain)
 
 /// Lightweight keychain wrapper matching KeychainService's service name for cross-compatibility.
-enum TokenStore {
+enum TokenStore: Sendable {
     /// Must match KeychainService.keychainServiceName for tokens to be shared between the two APIs.
-    private static let serviceName = "OpenResponses"
+    nonisolated(unsafe) private static let serviceName = "OpenResponses"
 
     nonisolated static func save(_ data: Data, account: String) -> Bool {
         let query: [String: Any] = [

@@ -249,7 +249,7 @@ struct NotionPageParentResp: Codable, Sendable {
 /// ✅ Uses `/v1/data_sources/{id}/query` for all query operations (with legacy fallback)
 /// ✅ Fetches database metadata via GET /databases/{id} to discover data_sources array
 /// ✅ Caches data_source resolution to minimize API calls
-public final class NotionProvider: ToolProvider, NotionReadable {
+public actor NotionProvider: ToolProvider, NotionReadable {
     public let kind: ToolKind = .notion
     public let capabilities: ProviderCapability = [.listDatabases]
 
