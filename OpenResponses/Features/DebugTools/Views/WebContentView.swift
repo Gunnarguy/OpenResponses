@@ -85,9 +85,11 @@ struct WebContentView: View {
     private func startLoadingTimer() {
         loadingTimer?.invalidate()
         loadingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { _ in
-            if isLoading {
-                isLoading = false
-                self.error = "Loading timeout - try again or open in Safari"
+            DispatchQueue.main.async {
+                if isLoading {
+                    isLoading = false
+                    self.error = "Loading timeout - try again or open in Safari"
+                }
             }
         }
     }
@@ -214,7 +216,7 @@ struct WebView: UIViewRepresentable {
         }
 
         // Handle link navigation within the web view
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else {
                 decisionHandler(.cancel)
                 return

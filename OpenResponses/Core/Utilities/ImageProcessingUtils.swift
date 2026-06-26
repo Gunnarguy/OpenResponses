@@ -26,7 +26,7 @@ class ImageProcessingUtils {
     }
     
     /// Processes base64 image data efficiently with memory management
-    static func processBase64Image(_ base64String: String, completion: @escaping (UIImage?) -> Void) {
+    static func processBase64Image(_ base64String: String, completion: @Sendable @escaping (UIImage?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             autoreleasepool {
                 guard let imageData = Data(base64Encoded: base64String) else {
@@ -39,10 +39,9 @@ class ImageProcessingUtils {
                     return
                 }
                 
-                // Optimize the image for display
-                let optimizedImage = optimizeImageForDisplay(originalImage)
-                
+                // Optimize the image for display on main thread as optimizeImageForDisplay runs on main actor due to UIKit APIs
                 DispatchQueue.main.async {
+                    let optimizedImage = optimizeImageForDisplay(originalImage)
                     completion(optimizedImage)
                 }
             }

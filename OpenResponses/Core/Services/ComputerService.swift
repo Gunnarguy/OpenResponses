@@ -3,6 +3,10 @@ import WebKit
 import Combine
 import UIKit
 
+struct JavaScriptResult: @unchecked Sendable {
+    let value: Any?
+}
+
 /// A service that provides native, on-device browser automation capabilities.
 ///
 /// This class manages an off-screen `WKWebView` instance to perform actions requested by the AI model,
@@ -24,7 +28,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
     // Continuations to bridge delegate-based asynchronous operations with async/await.
     private var navigationContinuation: CheckedContinuation<Void, Error>?
-    private var javascriptContinuation: CheckedContinuation<Any?, Error>?
+    private var javascriptContinuation: CheckedContinuation<JavaScriptResult, Error>?
     // Suppresses model-originated clicks for a brief window after we programmatically submit a search.
     // This helps avoid the model immediately clicking promo/suggestion tiles before results finish loading.
     private var suppressClicksUntil: Date?
@@ -613,7 +617,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             return result;
         })();
         """
-        let clickResult = try await evaluateJavaScript(script)
+        let clickResult = (try await evaluateJavaScript(script)).value
         AppLogger.log("🖱️ Click result: \(clickResult ?? "No result")", category: .general, level: .info)
 
         // Give JavaScript frameworks time to process the click
@@ -667,7 +671,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             return {x: cx, y: cy, text: best.innerText};
         })();
         """
-        let result = try await evaluateJavaScript(script)
+        let result = (try await evaluateJavaScript(script)).value
         if let dict = result as? [String: Any], let x = dict["x"] as? CGFloat, let y = dict["y"] as? CGFloat {
             self.suppressClicksUntil = Date().addingTimeInterval(0.5)
             return CGPoint(x: x, y: y)
@@ -1352,7 +1356,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             })();
             """
         }
-        let searchResult = (try await evaluateJavaScript(js) as? String) ?? ""
+        let searchResult = ((try await evaluateJavaScript(js)).value as? String) ?? ""
         let didSubmit = searchResult.lowercased().contains("submitted")
         AppLogger.log("🔎 [Search Override] \(searchResult)", category: .general, level: didSubmit ? .info : .debug)
         guard didSubmit else { return false }
@@ -1636,7 +1640,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         })();
         """
 
-        let rawState = try await evaluateJavaScript(script)
+        let rawState = (try await evaluateJavaScript(script)).value
 
         guard let stateObject = rawState as? [String: Any],
               JSONSerialization.isValidJSONObject(stateObject) else {
@@ -1747,7 +1751,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         })();
         """
 
-        guard let result = try await evaluateJavaScript(script) as? [String: Any] else {
+        guard let result = (try await evaluateJavaScript(script)).value as? [String: Any] else {
             return false
         }
 
@@ -1819,7 +1823,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         })();
         """
 
-        if let result = try await evaluateJavaScript(script) as? [String: Any],
+        if let result = (try await evaluateJavaScript(script)).value as? [String: Any],
            let message = result["message"] as? String {
             return message
         }
@@ -1961,7 +1965,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         })();
         """
 
-        if let result = try await evaluateJavaScript(script) as? [String: Any],
+        if let result = (try await evaluateJavaScript(script)).value as? [String: Any],
            let message = result["message"] as? String {
             return message
         }
@@ -1970,14 +1974,14 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     /// Evaluates a JavaScript string in the web view.
-    private func evaluateJavaScript(_ script: String) async throws -> Any? {
+    private func evaluateJavaScript(_ script: String) async throws -> JavaScriptResult {
         try await withCheckedThrowingContinuation { continuation in
             self.javascriptContinuation = continuation
             self.webView?.evaluateJavaScript(script) { result, error in
                 if let error = error {
                     self.javascriptContinuation?.resume(throwing: ComputerUseError.javascriptError(error.localizedDescription))
                 } else {
-                    self.javascriptContinuation?.resume(returning: result)
+                    self.javascriptContinuation?.resume(returning: JavaScriptResult(value: result))
                 }
                 self.javascriptContinuation = nil
             }

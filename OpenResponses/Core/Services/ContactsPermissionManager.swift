@@ -6,11 +6,11 @@
 //
 
 import Foundation
-import Contacts
+@preconcurrency import Contacts
 
 /// Manages access and permissions for Apple Contacts.
 /// Thread-safe singleton that handles CNContactStore authorization.
-public final class ContactsPermissionManager: Sendable {
+nonisolated public final class ContactsPermissionManager: Sendable {
     
     public static let shared = ContactsPermissionManager()
     

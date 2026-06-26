@@ -5,9 +5,9 @@ import os.log
 // import SwiftUI // Removed to prevent implicit MainActor isolation
 
 /// A logging utility for the OpenResponses app.
-enum AppLogger {
+enum AppLogger: Sendable {
     /// Log categories for different parts of the app.
-    enum Category: String {
+    enum Category: String, Sendable {
         case network = "Network"
         case ui = "UI"
         case fileManager = "FileManager"
@@ -19,14 +19,21 @@ enum AppLogger {
     }
     
     /// Log levels for different severity of messages.
-    enum Level {
+    enum Level: Sendable, Equatable {
         case debug
         case info
         case warning
         case error
         case critical
         
-        var osLogType: OSLogType {
+        nonisolated static func == (lhs: Level, rhs: Level) -> Bool {
+            switch (lhs, rhs) {
+            case (.debug, .debug), (.info, .info), (.warning, .warning), (.error, .error), (.critical, .critical): return true
+            default: return false
+            }
+        }
+        
+        nonisolated var osLogType: OSLogType {
             switch self {
             case .debug: return .debug
             case .info: return .info
@@ -36,7 +43,7 @@ enum AppLogger {
             }
         }
         
-        var emoji: String {
+        nonisolated var emoji: String {
             switch self {
             case .debug: return "🔍"
             case .info: return "ℹ️"
@@ -48,7 +55,7 @@ enum AppLogger {
     }
     
     /// Shared logger instance
-    nonisolated(unsafe) private static let logger = OSLog(subsystem: "com.gunndamental.OpenResponses", category: "App")
+    nonisolated private static let logger = OSLog(subsystem: "com.gunndamental.OpenResponses", category: "App")
     
     /// Whether to print to console in DEBUG mode
     #if DEBUG
@@ -62,10 +69,10 @@ enum AppLogger {
     
     /// Store recent log messages to detect duplicates
     nonisolated(unsafe) private static var recentLogMessages = [String: Date]()
-    nonisolated(unsafe) private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
+    nonisolated private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
     
     /// Time window in seconds to consider logs as duplicates
-    nonisolated(unsafe) private static let duplicateWindowSeconds: TimeInterval = 1.0
+    nonisolated private static let duplicateWindowSeconds: TimeInterval = 1.0
     
     /// Log level for OpenAI API requests and responses
     /// This allows quick adjustment of verbosity for API logs
@@ -96,15 +103,15 @@ enum AppLogger {
     // MARK: - Log Sanitization Helpers
 
     /// Max number of characters to include from any long string in logs
-    nonisolated(unsafe) private static let maxStringPreview = 400
+    nonisolated private static let maxStringPreview = 400
     /// Keys that are likely to contain large base64 or data-URIs
 
     /// Keys that contain sensitive information that should be completely redacted
-    nonisolated(unsafe) private static let sensitiveKeys: Set<String> = [
+    nonisolated private static let sensitiveKeys: Set<String> = [
         "password", "token", "api_key", "secret", "authorization", "bearer", "key", "notionapikey", "openaikey"
     ]
 
-    nonisolated(unsafe) private static let heavyPayloadKeys: Set<String> = [
+    nonisolated private static let heavyPayloadKeys: Set<String> = [
         "image_url", "partial_image_b64", "screenshot_b64", "image_b64", "partial_image", "imageData", "image"
     ]
 

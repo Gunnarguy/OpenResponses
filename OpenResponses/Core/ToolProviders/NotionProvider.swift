@@ -1,235 +1,4 @@
-import AuthenticationServices
-import Foundation
-
-// MARK: - Public Models
-
-public struct NotionDatabaseSummary: Hashable, Codable, Identifiable, Sendable {
-    public var id: String { // Notion can return non-UUIDs for child_database blocks
-        return notionId
-    }
-
-    let notionId: String
-    let title: String
-    let parentPageId: String?
-    let source: String
-}
-
-public struct NotionPageSummary: Hashable, Codable, Identifiable, Sendable {
-    public var id: String { notionId }
-    let notionId: String
-    let title: String
-}
-
-// MARK: - Internal Models
-
-struct NotionSearchReq: Codable, Sendable {
-    struct Filter: Codable, Sendable { let property: String; let value: String }
-    let query: String?
-    let filter: Filter?
-    let startCursor: String?
-    let pageSize: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case query, filter
-        case startCursor = "start_cursor"
-        case pageSize = "page_size"
-    }
-}
-
-struct NotionSearchResp: Codable, Sendable {
-    let results: [NotionObject]
-    let nextCursor: String?
-    let hasMore: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case results
-        case nextCursor = "next_cursor"
-        case hasMore = "has_more"
-    }
-}
-
-enum NotionObject: Codable, Sendable {
-    case database(NotionDatabase)
-    case page(NotionPageWithParent)
-    case block(NotionBlock)
-    case dataSource(NotionDataSourceSearchResult)
-    case unknown
-
-    enum CodingKeys: String, CodingKey { case object }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = (try? container.decode(String.self, forKey: .object)) ?? ""
-        let singleValueContainer = try decoder.singleValueContainer()
-        switch type {
-        case "database": self = try .database(singleValueContainer.decode(NotionDatabase.self))
-        case "page": self = try .page(singleValueContainer.decode(NotionPageWithParent.self))
-        case "block": self = try .block(singleValueContainer.decode(NotionBlock.self))
-        case "data_source": self = try .dataSource(singleValueContainer.decode(NotionDataSourceSearchResult.self))
-        default: self = .unknown
-        }
-    }
-
-    func encode(to _: Encoder) throws {
-        // Not needed for this implementation
-    }
-}
-
-struct NotionPageWithParent: Codable, Sendable {
-    struct Parent: Codable, Sendable {
-        let type: String?
-        let databaseId: String?
-        let dataSourceId: String?
-
-        enum CodingKeys: String, CodingKey {
-            case type
-            case databaseId = "database_id"
-            case dataSourceId = "data_source_id"
-        }
-    }
-
-    let object: String
-    let id: String
-    let parent: Parent?
-}
-
-struct NotionDataSource: Codable, Sendable {
-    let id: String
-    let name: String?
-}
-
-struct NotionDataSourceSearchResult: Codable, Sendable {
-    struct Parent: Codable, Sendable {
-        let type: String?
-        let databaseId: String?
-        let pageId: String?
-
-        enum CodingKeys: String, CodingKey {
-            case type
-            case databaseId = "database_id"
-            case pageId = "page_id"
-        }
-    }
-
-    let object: String
-    let id: String
-    let name: String?
-    let parent: Parent?
-    let databaseParent: Parent?
-
-    enum CodingKeys: String, CodingKey {
-        case object, id, name, parent
-        case databaseParent = "database_parent"
-    }
-
-    var databaseId: String? {
-        parent?.databaseId ?? databaseParent?.databaseId
-    }
-}
-
-struct NotionDatabase: Codable, Sendable {
-    struct Parent: Codable, Sendable {
-        let type: String?
-        let pageId: String?
-        let workspace: Bool?
-
-        enum CodingKeys: String, CodingKey {
-            case type, workspace
-            case pageId = "page_id"
-        }
-    }
-
-    struct Title: Codable, Sendable {
-        let plainText: String?
-
-        enum CodingKeys: String, CodingKey {
-            case plainText = "plain_text"
-        }
-    }
-
-    let object: String
-    let id: String
-    let parent: Parent
-    let title: [Title]
-    let dataSources: [NotionDataSource]?
-
-    enum CodingKeys: String, CodingKey {
-        case object, id, parent, title
-        case dataSources = "data_sources"
-    }
-}
-
-struct NotionPage: Codable, Sendable { let object: String; let id: String }
-
-struct NotionBlock: Codable, Sendable {
-    let object: String; let id: String; let type: String
-    let child_database: ChildDB?
-    let link_to_database: LinkDB?
-    struct ChildDB: Codable, Sendable { let title: String }
-    struct LinkDB: Codable, Sendable {
-        struct DB: Codable, Sendable { let id: String? }
-        let database: DB?
-    }
-}
-
-struct NotionChildrenResp: Codable, Sendable {
-    let results: [NotionBlock]
-    let nextCursor: String?
-    let hasMore: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case results
-        case nextCursor = "next_cursor"
-        case hasMore = "has_more"
-    }
-}
-
-struct NotionRichText: Codable, Sendable {
-    let plainText: String?
-
-    enum CodingKeys: String, CodingKey {
-        case plainText = "plain_text"
-    }
-}
-
-struct NotionPropertyValue: Codable, Sendable {
-    let type: String?
-    let title: [NotionRichText]?
-}
-
-struct NotionPageWithProps: Codable, Sendable {
-    let id: String
-    let properties: [String: NotionPropertyValue]
-}
-
-struct NotionQueryResp: Codable, Sendable {
-    let results: [NotionPageWithProps]
-    let hasMore: Bool
-    let nextCursor: String?
-
-    enum CodingKeys: String, CodingKey {
-        case results
-        case hasMore = "has_more"
-        case nextCursor = "next_cursor"
-    }
-}
-
-struct NotionPageParentResp: Codable, Sendable {
-    struct Parent: Codable, Sendable {
-        let type: String
-        let databaseId: String?
-        let pageId: String?
-
-        enum CodingKeys: String, CodingKey {
-            case type
-            case databaseId = "database_id"
-            case pageId = "page_id"
-        }
-    }
-
-    let id: String
-    let parent: Parent
-}
+@preconcurrency import Foundation
 
 // MARK: - Notion Provider
 
@@ -250,8 +19,8 @@ struct NotionPageParentResp: Codable, Sendable {
 /// ✅ Fetches database metadata via GET /databases/{id} to discover data_sources array
 /// ✅ Caches data_source resolution to minimize API calls
 public actor NotionProvider: ToolProvider, NotionReadable {
-    public let kind: ToolKind = .notion
-    public let capabilities: ProviderCapability = [.listDatabases]
+    nonisolated public let kind: ToolKind = .notion
+    nonisolated public let capabilities: ProviderCapability = [.listDatabases]
 
     nonisolated private let http = HttpClient()
     nonisolated private let base = URL(string: "https://api.notion.com/v1")!
@@ -261,12 +30,6 @@ public actor NotionProvider: ToolProvider, NotionReadable {
     private var dsCache: [String: (id: String, name: String?)] = [:]
 
     public init() {}
-
-    public func connect(presentingAnchor _: ASPresentationAnchor?) async throws {
-        guard TokenStore.readString(account: tokenAccount) != nil else {
-            throw NSError(domain: "NotionProvider", code: 401, userInfo: [NSLocalizedDescriptionKey: "No Notion token found in Keychain. Please add one in Settings."])
-        }
-    }
 
     /// Search for databases across the entire workspace (top-level call from chat)
     /// Returns all databases accessible with the current integration token.
@@ -389,7 +152,7 @@ public actor NotionProvider: ToolProvider, NotionReadable {
                     do {
                         let req = try self.baseRequest("databases/\(dbId)")
                         let (data, _, _) = try await self.http.send(req)
-                        let db = try JSONDecoder().decode(NotionDatabase.self, from: data)
+                        let db = try await MainActor.run { try JSONDecoder().decode(NotionDatabase.self, from: data) }
                         let title = db.title.first?.plainText ?? "(untitled)"
 
                         let summary = NotionDatabaseSummary(
@@ -573,7 +336,7 @@ public actor NotionProvider: ToolProvider, NotionReadable {
                     group.addTask {
                         let req2 = try self.baseRequest("databases/\(dbId)")
                         let (d2, _, _) = try await self.http.send(req2)
-                        let resolved = try JSONDecoder().decode(NotionDatabase.self, from: d2)
+                        let resolved = try await MainActor.run { try JSONDecoder().decode(NotionDatabase.self, from: d2) }
                         let t = resolved.title.first?.plainText ?? "(untitled)"
                         return NotionDatabaseSummary(notionId: resolved.id, title: t, parentPageId: resolved.parent.pageId, source: "children")
                     }

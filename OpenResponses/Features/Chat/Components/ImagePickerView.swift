@@ -45,16 +45,15 @@ struct ImagePickerView: UIViewControllerRepresentable {
             
             guard !results.isEmpty else { return }
             
-            // Convert PHPickerResults to UIImages
+            let container = ImagePickerContainer()
             let group = DispatchGroup()
-            var images: [UIImage] = []
             
             for result in results {
                 if result.itemProvider.canLoadObject(ofClass: UIImage.self) {
                     group.enter()
                     result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
                         if let image = object as? UIImage {
-                            images.append(image)
+                            container.append(image)
                         } else if let error = error {
                             print("Error loading image: \(error)")
                         }
@@ -64,7 +63,7 @@ struct ImagePickerView: UIViewControllerRepresentable {
             }
             
             group.notify(queue: .main) {
-                self.parent.onImagesSelected(images)
+                self.parent.onImagesSelected(container.images)
             }
         }
     }
@@ -138,5 +137,16 @@ struct ImagePickerView_Previews: PreviewProvider {
                 onRemove: { _ in }
             )
         }
+    }
+}
+
+/// Thread-safe container to collect images concurrently from PHPicker
+nonisolated final class ImagePickerContainer: @unchecked Sendable {
+    private let lock = NSLock()
+    var images: [UIImage] = []
+    func append(_ image: UIImage) {
+        lock.lock()
+        images.append(image)
+        lock.unlock()
     }
 }

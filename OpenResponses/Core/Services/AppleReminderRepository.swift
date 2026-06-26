@@ -1,10 +1,10 @@
 import Foundation
 
 #if canImport(EventKit)
-import EventKit
+@preconcurrency import EventKit
 
 /// Provides read/write access to Apple Reminders with async conveniences.
-public final class AppleReminderRepository {
+public final class AppleReminderRepository: Sendable {
     private let permissionManager: EventKitPermissionManager
     private let isoFormatter: ISO8601DateFormatter
 
@@ -30,45 +30,40 @@ public final class AppleReminderRepository {
         let store = permissionManager.store
         let calendars = selectCalendars(from: store, matching: listIDs)
 
-        let reminders: [EKReminder]
+        let summaries: [AppleReminderSummary]
         switch completed {
         case .some(false):
-            reminders = try await fetchReminderObjects(
+            summaries = try await fetchReminderObjects(
                 matching: store.predicateForIncompleteReminders(
                     withDueDateStarting: start,
                     ending: end,
                     calendars: calendars
-                )
+                ),
+                start: start,
+                end: end,
+                completed: completed
             )
         case .some(true):
-            reminders = try await fetchReminderObjects(
+            summaries = try await fetchReminderObjects(
                 matching: store.predicateForCompletedReminders(
                     withCompletionDateStarting: start,
                     ending: end,
                     calendars: calendars
-                )
+                ),
+                start: start,
+                end: end,
+                completed: completed
             )
         case nil:
-            reminders = try await fetchReminderObjects(
-                matching: store.predicateForReminders(in: calendars)
+            summaries = try await fetchReminderObjects(
+                matching: store.predicateForReminders(in: calendars),
+                start: start,
+                end: end,
+                completed: completed
             )
         }
 
-        let filtered = reminders
-            .filter { reminder in
-                matches(reminder: reminder, start: start, end: end, completed: completed)
-            }
-            .sorted { lhs, rhs in
-                let lhsDate = sortDate(for: lhs, completed: completed) ?? .distantFuture
-                let rhsDate = sortDate(for: rhs, completed: completed) ?? .distantFuture
-                if lhsDate == rhsDate {
-                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-                }
-                return lhsDate < rhsDate
-            }
-            .prefix(limit)
-
-        return filtered.map { summary(for: $0) }
+        return Array(summaries.prefix(limit))
     }
 
     /// Convenience wrapper for ISO8601 date strings and completion filter.
@@ -145,10 +140,32 @@ public final class AppleReminderRepository {
         return parsed
     }
 
-    private func fetchReminderObjects(matching predicate: NSPredicate) async throws -> [EKReminder] {
+    private func fetchReminderObjects(
+        matching predicate: NSPredicate,
+        start: Date?,
+        end: Date?,
+        completed: Bool?
+    ) async throws -> [AppleReminderSummary] {
         try await withCheckedThrowingContinuation { continuation in
-            permissionManager.store.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+            permissionManager.store.fetchReminders(matching: predicate) { [weak self] reminders in
+                guard let self else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                let filtered = (reminders ?? [])
+                    .filter { reminder in
+                        self.matches(reminder: reminder, start: start, end: end, completed: completed)
+                    }
+                    .sorted { lhs, rhs in
+                        let lhsDate = self.sortDate(for: lhs, completed: completed) ?? .distantFuture
+                        let rhsDate = self.sortDate(for: rhs, completed: completed) ?? .distantFuture
+                        if lhsDate == rhsDate {
+                            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                        }
+                        return lhsDate < rhsDate
+                    }
+                let summaries = filtered.map { self.summary(for: $0) }
+                continuation.resume(returning: summaries)
             }
         }
     }

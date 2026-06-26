@@ -4,26 +4,7 @@ import AuthenticationServices
 
 // MARK: - Shared Types
 
-public enum ToolKind: String, CaseIterable, Identifiable {
-    case notion, gmail, gcal, gcontacts, apple
-    public var id: String { rawValue }
-}
 
-public struct ProviderCapability: OptionSet {
-    public let rawValue: Int
-    public init(rawValue: Int) { self.rawValue = rawValue }
-    public static let listDatabases       = ProviderCapability(rawValue: 1 << 0)  // Notion
-    public static let listEmails          = ProviderCapability(rawValue: 1 << 1)  // Gmail
-    public static let listEvents          = ProviderCapability(rawValue: 1 << 2)  // GCal
-    public static let listContacts        = ProviderCapability(rawValue: 1 << 3)  // GContacts
-    public static let listCalendarEvents  = ProviderCapability(rawValue: 1 << 4)  // Apple Calendar
-    public static let createCalendarEvent = ProviderCapability(rawValue: 1 << 5)  // Apple Calendar
-    public static let listReminders       = ProviderCapability(rawValue: 1 << 6)  // Apple Reminders
-    public static let createReminder      = ProviderCapability(rawValue: 1 << 7)  // Apple Reminders
-    public static let searchContacts      = ProviderCapability(rawValue: 1 << 8)  // Apple Contacts
-    public static let getContact          = ProviderCapability(rawValue: 1 << 9)  // Apple Contacts
-    public static let createContact       = ProviderCapability(rawValue: 1 << 10) // Apple Contacts
-}
 
 public protocol ToolProvider: Sendable {
     var kind: ToolKind { get }
@@ -51,9 +32,9 @@ public protocol ContactsReadable {
 /// Lightweight keychain wrapper matching KeychainService's service name for cross-compatibility.
 enum TokenStore: Sendable {
     /// Must match KeychainService.keychainServiceName for tokens to be shared between the two APIs.
-    nonisolated(unsafe) private static let serviceName = "OpenResponses"
-
+    
     nonisolated static func save(_ data: Data, account: String) -> Bool {
+        let serviceName = "OpenResponses"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -65,6 +46,7 @@ enum TokenStore: Sendable {
     }
 
     nonisolated static func read(account: String) -> Data? {
+        let serviceName = "OpenResponses"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -86,6 +68,7 @@ enum TokenStore: Sendable {
     }
 
     nonisolated static func delete(account: String) -> Bool {
+        let serviceName = "OpenResponses"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -103,6 +86,8 @@ final class HttpClient: Sendable {
         var durationMs: Int = 0
         var status: Int = 0
     }
+
+    nonisolated init() {}
 
     func send(_ req: URLRequest, retries: Int = 2) async throws -> (Data, URLResponse, Metrics) {
         var lastErr: Error?

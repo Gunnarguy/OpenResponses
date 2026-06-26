@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// A service for securely storing and retrieving data from the iOS Keychain.
-class KeychainService {
+nonisolated class KeychainService: @unchecked Sendable {
 
     static let shared = KeychainService()
     private init() {}

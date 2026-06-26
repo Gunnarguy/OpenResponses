@@ -5,7 +5,7 @@
 //  Created by AI Assistant on 11/5/25.
 //
 
-import Contacts
+@preconcurrency import Contacts
 import Foundation
 
 /// Repository for Apple Contacts operations
@@ -24,10 +24,9 @@ public final class ContactsRepository: Sendable {
     /// Search contacts by name, email, or phone
     public func searchContacts(query: String, limit: Int = 50) async throws -> [AppleContactSummary] {
         try await permissionManager.ensureAccess()
-        let store = permissionManager.getStore()
-
         // Run search on background thread
-        return try await Task.detached {
+        return try await Task.detached { [permissionManager, query, limit] in
+            let store = permissionManager.getStore()
             let keysToFetch: [CNKeyDescriptor] = [
                 CNContactIdentifierKey as CNKeyDescriptor,
                 CNContactGivenNameKey as CNKeyDescriptor,
@@ -63,10 +62,9 @@ public final class ContactsRepository: Sendable {
     /// Get all contacts (useful for "list all" queries)
     public func getAllContacts(limit: Int = 100) async throws -> [AppleContactSummary] {
         try await permissionManager.ensureAccess()
-        let store = permissionManager.getStore()
-
         // Run enumeration on background thread
-        return try await Task.detached {
+        return try await Task.detached { [permissionManager, limit] in
+            let store = permissionManager.getStore()
             let keysToFetch: [CNKeyDescriptor] = [
                 CNContactIdentifierKey as CNKeyDescriptor,
                 CNContactGivenNameKey as CNKeyDescriptor,
@@ -102,10 +100,9 @@ public final class ContactsRepository: Sendable {
     /// Get detailed contact by identifier
     public func getContact(identifier: String) async throws -> AppleContactDetail {
         try await permissionManager.ensureAccess()
-        let store = permissionManager.getStore()
-
         // Run fetch on background thread
-        return try await Task.detached { [isoFormatter] in
+        return try await Task.detached { [permissionManager, identifier] in
+            let store = permissionManager.getStore()
             let keysToFetch: [CNKeyDescriptor] = [
                 CNContactIdentifierKey as CNKeyDescriptor,
                 CNContactGivenNameKey as CNKeyDescriptor,
@@ -159,7 +156,9 @@ public final class ContactsRepository: Sendable {
             if let birthday = contact.birthday,
                let date = Calendar.current.date(from: birthday)
             {
-                birthdayISO = isoFormatter.string(from: date)
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                birthdayISO = formatter.string(from: date)
             } else {
                 birthdayISO = nil
             }
@@ -197,10 +196,9 @@ public final class ContactsRepository: Sendable {
         note: String?
     ) async throws -> AppleContactDetail {
         try await permissionManager.ensureAccess()
-        let store = permissionManager.getStore()
-
         // Create contact on background thread
-        let identifier = try await Task.detached {
+        let identifier = try await Task.detached { [permissionManager, givenName, familyName, organizationName, note, phoneNumber, phoneLabel, emailAddress, emailLabel] in
+            let store = permissionManager.getStore()
             let contact = CNMutableContact()
 
             if let givenName {
