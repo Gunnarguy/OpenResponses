@@ -69,7 +69,7 @@ enum AppLogger: Sendable {
     
     /// Store recent log messages to detect duplicates
     nonisolated(unsafe) private static var recentLogMessages = [String: Date]()
-    nonisolated private static let recentLogMessagesQueue = DispatchQueue(label: "com.gunndamental.OpenResponses.recentLogs")
+    nonisolated private static let recentLogMessagesLock = NSLock()
     
     /// Time window in seconds to consider logs as duplicates
     nonisolated private static let duplicateWindowSeconds: TimeInterval = 1.0
@@ -231,17 +231,17 @@ enum AppLogger: Sendable {
         if category == .mcp {
             let now = Date()
             var shouldSkipMCP = false
-            recentLogMessagesQueue.sync {
-                // Clean up old entries within a 60s window
-                recentLogMessages = recentLogMessages.filter { _, timestamp in
-                    now.timeIntervalSince(timestamp) < 60.0
-                }
-                if recentLogMessages[logMessage] != nil {
-                    shouldSkipMCP = true
-                } else {
-                    recentLogMessages[logMessage] = now
-                }
+            recentLogMessagesLock.lock()
+            // Clean up old entries within a 60s window
+            recentLogMessages = recentLogMessages.filter { _, timestamp in
+                now.timeIntervalSince(timestamp) < 60.0
             }
+            if recentLogMessages[logMessage] != nil {
+                shouldSkipMCP = true
+            } else {
+                recentLogMessages[logMessage] = now
+            }
+            recentLogMessagesLock.unlock()
             if shouldSkipMCP {
                 return
             }
@@ -252,20 +252,20 @@ enum AppLogger: Sendable {
             let now = Date()
             var shouldSkip = false
             
-            recentLogMessagesQueue.sync {
-                // Clean up old entries
-                recentLogMessages = recentLogMessages.filter { _, timestamp in
-                    now.timeIntervalSince(timestamp) < duplicateWindowSeconds
-                }
-                
-                // Check if this is a duplicate message within the time window
-                if recentLogMessages[logMessage] != nil {
-                    shouldSkip = true
-                } else {
-                    // Store this message
-                    recentLogMessages[logMessage] = now
-                }
+            recentLogMessagesLock.lock()
+            // Clean up old entries
+            recentLogMessages = recentLogMessages.filter { _, timestamp in
+                now.timeIntervalSince(timestamp) < duplicateWindowSeconds
             }
+            
+            // Check if this is a duplicate message within the time window
+            if recentLogMessages[logMessage] != nil {
+                shouldSkip = true
+            } else {
+                // Store this message
+                recentLogMessages[logMessage] = now
+            }
+            recentLogMessagesLock.unlock()
             
             if shouldSkip {
                 return

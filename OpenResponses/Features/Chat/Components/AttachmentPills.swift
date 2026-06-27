@@ -6,7 +6,7 @@ struct AttachmentPills: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     
     var body: some View {
-        if !viewModel.pendingFileData.isEmpty || !viewModel.pendingImageAttachments.isEmpty {
+        if !viewModel.pendingFileData.isEmpty || !viewModel.pendingImageAttachments.isEmpty || !viewModel.pendingAudioAttachments.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     // File pills
@@ -25,6 +25,15 @@ struct AttachmentPills: View {
                             image: viewModel.pendingImageAttachments[index],
                             onRemove: {
                                 removeImage(at: index)
+                            }
+                        )
+                    }
+                    
+                    // Audio pills
+                    ForEach(viewModel.pendingAudioAttachments.indices, id: \.self) { index in
+                        AudioPill(
+                            onRemove: {
+                                removeAudio(at: index)
                             }
                         )
                     }
@@ -49,6 +58,44 @@ struct AttachmentPills: View {
         _ = withAnimation(.easeInOut(duration: 0.2)) {
             viewModel.pendingImageAttachments.remove(at: index)
         }
+    }
+    
+    private func removeAudio(at index: Int) {
+        _ = withAnimation(.easeInOut(duration: 0.2)) {
+            viewModel.pendingAudioAttachments.remove(at: index)
+        }
+    }
+}
+
+// MARK: - Audio Pill
+
+struct AudioPill: View {
+    let onRemove: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform")
+                .font(.caption)
+                .foregroundColor(.blue)
+            
+            Text("Voice Note")
+                .font(.caption)
+                .lineLimit(1)
+            
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 

@@ -8,6 +8,7 @@ PROJECT_FILE="$ROOT_DIR/OpenResponses.xcodeproj/project.pbxproj"
 REQUIRED_KEYS=(
   "INFOPLIST_KEY_NSPhotoLibraryUsageDescription"
   "INFOPLIST_KEY_NSLocalNetworkUsageDescription"
+  "INFOPLIST_KEY_NSMicrophoneUsageDescription"
   "INFOPLIST_KEY_NSDocumentsFolderUsageDescription"
   "INFOPLIST_KEY_NSFilesystemUsageDescription"
   "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription"

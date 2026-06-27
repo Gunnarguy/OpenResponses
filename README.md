@@ -24,7 +24,7 @@ OpenResponses is a native iOS and macOS (Catalyst) client designed for direct in
 * **Target Audience:** AI engineers, prompt designers, and developers needing direct client-to-API control.
 * **Core Problem Solved:** Lack of visibility in standard AI interfaces. OpenResponses exposes raw token counters, network statuses, expandable reasoning traces for o1/o3-mini, and outbound/inbound JSON payloads.
 * **Technical Characteristics:** Direct client-to-endpoint connections, local document parsing (with Vision OCR), and sandboxed browser automation loops.
-* **API Paradigm:** Unlike apps built on the Assistants API (which rely on remote thread caching and run polling), OpenResponses uses the Responses API to coordinate low-latency, stateless completions and client-side tool execution.
+* **API Paradigm:** OpenResponses bridges multiple OpenAI endpoints natively. It provides full coverage for the statless Responses API, the stateful Assistants API, the bidirectional Realtime WebSockets API, and the asynchronous Batch API.
 * **Product Lineage:** OpenResponses is the active evolution of Gunnar Hostetler's API-tooling work and supersedes the older OpenAssistant Assistants API client.
 
 ---
@@ -49,6 +49,9 @@ OpenResponses is a native iOS and macOS (Catalyst) client designed for direct in
 
 * **Direct API Connections:** Outbound HTTPS traffic routes directly from the iOS client to OpenAI and Notion endpoints without intermediate proxy servers.
 * **Asynchronous SSE Streaming:** Uses Swift Concurrency (`AsyncThrowingStream`) to parse Server-Sent Events line-by-line, dispatching UI updates to the `@MainActor` to avoid layout race conditions.
+* **Realtime Voice WebSockets:** Includes a premium Voice Mode leveraging `wss://` for bi-directional 24kHz PCM16 audio streaming with active Voice Activity Detection (VAD) and user barge-in capabilities.
+* **Stateful Assistants:** Seamlessly toggle between stateless Responses and stateful Assistants thread runs for long-form context.
+* **Developer Operations:** Full in-app integration for generating JSONL datasets, submitting asynchronous Batch API runs, and scheduling Fine-Tuning jobs directly from local chat history.
 * **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the Keychain Enclave. Plaintext keys are never written to `UserDefaults` or standard logs.
 * **Sandboxed Browser Automation:** Runs WKWebView browser execution ("Computer Use") using state coordinators to prevent layout reload loops, gated by step-by-step UI approvals.
 * **Local Ingestion & OCR:** Extracts text from PDFs using `PDFKit` and recognizes text in image attachments using the native `Vision` OCR framework locally on-device.
@@ -234,7 +237,14 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 - [ ] **Short Conversation Compaction:** Integrate `POST /v1/responses/compact` executions to compress long chats to fit context caps.
 - [ ] **Structured JSON Outputs:** Add `response_format` JSON schema selection to prompt settings for strict data extractions.
 
-### Phase 3: Local Sandboxing & Advanced Integrations (Planned)
+### Phase 3: Comprehensive API Integration (Completed)
+- [x] **Assistants API:** Stateful thread runs, assistant creation, and CRUD management.
+- [x] **Realtime API:** Voice Mode with websocket connections, PCM16 audio, VAD, and barge-in functionality.
+- [x] **Batch API:** File uploads, JSONL generation, and high-throughput background job monitoring.
+- [x] **Fine-Tuning API:** Creation of fine-tuning datasets from chat history and custom model training execution.
+- [x] **Moderation API:** Real-time input interception using `/v1/moderations` to ensure policy compliance before completions.
+
+### Phase 4: Local Sandboxing & Advanced Integrations (Planned)
 - [ ] **On-Device Python Execution:** Run local Python containers using Pyodide/WebAssembly to avoid remote sandboxes.
 - [ ] **Model Context Protocol (MCP) Expansion:** Pair remote MCP servers with Keychain-stored custom auth headers.
 - [ ] **On-Device Embedding Cache:** Cache vector embeddings locally to save token costs on recurring documents.

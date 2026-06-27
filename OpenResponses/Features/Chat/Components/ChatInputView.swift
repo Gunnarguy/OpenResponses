@@ -8,9 +8,14 @@ struct ChatInputView: View {
     var onSelectFiles: () -> Void // Callback for file picker
     var onTakePhoto: () -> Void // Callback for camera
     var onVectorStoreUpload: (() -> Void)? = nil // Callback for vector store file upload
+    var onAudioRecorded: ((Data) -> Void)? = nil // Callback for voice recording
+    var onStartVoiceMode: (() -> Void)? = nil // Callback for voice mode
     var vectorStoreCount: Int = 0 // Number of selected vector stores (0, 1, or 2)
     var fileSearchEnabled: Bool = false // Whether file search is enabled
     var currentModel: String = Prompt.defaultPrompt().openAIModel
+    
+    @StateObject private var voiceRecorder = VoiceRecorderService()
+    @State private var showingAudioError = false
 
     @ScaledMetric private var buttonPadding: CGFloat = 8
     @ScaledMetric private var containerPadding: CGFloat = 10
@@ -65,7 +70,51 @@ struct ChatInputView: View {
                 )
             }
 
-            // Audio recording removed
+            // Audio recording button
+            if let onAudioRecorded = onAudioRecorded {
+                Button(action: {
+                    if voiceRecorder.isRecording {
+                        voiceRecorder.stopRecording()
+                    } else {
+                        voiceRecorder.requestPermission { granted in
+                            if granted {
+                                voiceRecorder.startRecording { data in
+                                    if let data = data {
+                                        onAudioRecorded(data)
+                                    }
+                                }
+                            } else {
+                                showingAudioError = true
+                            }
+                        }
+                    }
+                }) {
+                    Image(systemName: voiceRecorder.isRecording ? "stop.circle.fill" : "mic")
+                        .foregroundColor(voiceRecorder.isRecording ? .red : .secondary)
+                        .padding(buttonPadding)
+                }
+                .alert("Microphone Access Required", isPresented: $showingAudioError) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text("Please enable microphone access in Settings to use voice input.")
+                }
+            }
+
+            // Voice mode button
+            if let onStartVoiceMode = onStartVoiceMode {
+                Button(action: {
+                    onStartVoiceMode()
+                }) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 20))
+                        .foregroundColor(.accentColor)
+                        .padding(buttonPadding)
+                }
+                .accessibilityConfiguration(
+                    label: "Start Voice Mode",
+                    hint: "Start real-time voice conversation"
+                )
+            }
 
             TextField("Message", text: $text, axis: .vertical)
                 .lineLimit(1...6)

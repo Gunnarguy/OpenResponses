@@ -80,7 +80,7 @@ struct ChatStatusBar: View {
                 .environmentObject(viewModel)
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsHomeView()
+            PlaygroundSettingsPanel()
                 .environmentObject(viewModel)
         }
     }
@@ -115,63 +115,43 @@ struct ChatStatusBar: View {
     // MARK: - Tool Badges
     
     private var webSearchBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "globe")
-                .font(.caption2)
-            Text("Web Search")
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .foregroundColor(.blue)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(4)
+        Image(systemName: "globe")
+            .font(.caption2)
+            .foregroundColor(.blue)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(4)
     }
     
     private var fileSearchBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.caption2)
-            Text("File Search")
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .foregroundColor(.purple)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.purple.opacity(0.1))
-        .cornerRadius(4)
+        Image(systemName: "doc.text.magnifyingglass")
+            .font(.caption2)
+            .foregroundColor(.purple)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.purple.opacity(0.1))
+            .cornerRadius(4)
     }
     
     private var codeInterpreterBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.caption2)
-            Text("Code Interpreter")
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .foregroundColor(.orange)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(4)
+        Image(systemName: "chevron.left.forwardslash.chevron.right")
+            .font(.caption2)
+            .foregroundColor(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(4)
     }
     
     private var computerUseBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "desktopcomputer")
-                .font(.caption2)
-            Text("Computer Use")
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .foregroundColor(.indigo)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.indigo.opacity(0.1))
-        .cornerRadius(4)
+        Image(systemName: "desktopcomputer")
+            .font(.caption2)
+            .foregroundColor(.indigo)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(Color.indigo.opacity(0.1))
+            .cornerRadius(4)
     }
     
     // MARK: - Attachment Badges

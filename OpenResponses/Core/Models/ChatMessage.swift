@@ -29,6 +29,7 @@ struct ChatMessage: Identifiable, Codable {
     let role: Role
     var text: String?
     var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
+    var audioData: [Data]?  // Any audio data associated with the message
     var webURLs: [URL]?     // URLs to render as embedded web content
     var webContentURL: [URL]? // Detected URLs in the message content
     var toolsUsed: [String]? // Track which tools were actually used in this message
@@ -42,7 +43,7 @@ struct ChatMessage: Identifiable, Codable {
     var reasoning: [ReasoningTrace]?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests, reasoning
+        case id, role, text, images, audioData, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests, reasoning
     }
 
     init(
@@ -50,6 +51,7 @@ struct ChatMessage: Identifiable, Codable {
         role: Role,
         text: String?,
         images: [UIImage]? = nil,
+        audioData: [Data]? = nil,
         webURLs: [URL]? = nil,
         webContentURL: [URL]? = nil,
         toolsUsed: [String]? = nil,
@@ -62,6 +64,7 @@ struct ChatMessage: Identifiable, Codable {
         self.role = role
         self.text = text
         self.images = images
+        self.audioData = audioData
         self.webURLs = webURLs
         self.webContentURL = webContentURL
         self.toolsUsed = toolsUsed
@@ -84,6 +87,8 @@ struct ChatMessage: Identifiable, Codable {
         } else {
             images = nil
         }
+        
+        audioData = try container.decodeIfPresent([Data].self, forKey: .audioData)
 
         if let urlStrings = try container.decodeIfPresent([String].self, forKey: .webURLs) {
             webURLs = urlStrings.compactMap { URL(string: $0) }
@@ -114,6 +119,8 @@ struct ChatMessage: Identifiable, Codable {
             let imageData = images.compactMap { $0.pngData() }
             try container.encode(imageData, forKey: .images)
         }
+        
+        try container.encodeIfPresent(audioData, forKey: .audioData)
 
         if let webURLs = webURLs {
             let urlStrings = webURLs.map { $0.absoluteString }

@@ -162,7 +162,13 @@ struct Prompt: Codable, Identifiable, Equatable {
     var metadata: String?
     var searchContextSize: String?
 
-    // Input Modalities (audio removed)
+    // Audio Modalities
+    var enableAudioInput: Bool
+    var enableAudioOutput: Bool
+    var audioVoice: String
+    var audioFormat: String
+
+    var enableInputModeration: Bool = false
 
     /// A flag to indicate if this prompt is a saved preset.
     /// This is a runtime-only property and is not persisted.
@@ -186,10 +192,12 @@ struct Prompt: Codable, Identifiable, Equatable {
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
         case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier, storeResponses, streamIncludeUsage, streamIncludeObfuscation, promptCacheKey, safetyIdentifier, verbosity
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
+        case enableAudioInput, enableAudioOutput, audioVoice, audioFormat
     case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeWebSearchSources, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
     case ultraStrictComputerUse
         case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
         case toolChoice, metadata, searchContextSize
+        case enableInputModeration
         case id // Make sure 'id' is included
         // 'isPreset' is intentionally omitted from Codable to prevent it from being persisted.
     }
@@ -209,6 +217,8 @@ struct Prompt: Codable, Identifiable, Equatable {
             webSearchInstructions: "",
             webSearchMaxPages: 0,
             webSearchCrawlDepth: 0,
+            webSearchAllowedDomains: nil,
+            webSearchBlockedDomains: nil,
             enableCodeInterpreter: true,
             codeInterpreterContainerType: "auto",
             codeInterpreterPreloadFileIds: "",
@@ -267,7 +277,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             jsonSchemaDescription: "",
             jsonSchemaStrict: false,
             jsonSchemaContent: "",
-            includeCodeInterpreterOutputs: false,
+            includeCodeInterpreterOutputs: true,
             includeComputerCallOutput: false,
             includeFileSearchResults: false,
             includeWebSearchResults: false,
@@ -284,7 +294,13 @@ struct Prompt: Codable, Identifiable, Equatable {
             toolChoice: "auto",
             metadata: nil,
             searchContextSize: nil,
-            isPreset: false // Default is not a preset
+            enableAudioInput: false,
+            enableAudioOutput: false,
+            audioVoice: "alloy",
+            audioFormat: "wav",
+            enableInputModeration: false,
+            isPreset: false, // Default is not a preset
+            id: UUID()
         )
     }
 }

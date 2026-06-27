@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var showVectorStoreUpload: Bool = false // To show vector store upload flow
     @State private var showFileManager: Bool = false // To show file manager
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
+    @State private var showingVoiceMode: Bool = false // To present Voice Mode
     @FocusState private var inputFocused: Bool  // Focus state for the input field
 
     var body: some View {
@@ -80,6 +81,9 @@ struct ChatView: View {
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showingVoiceMode) {
+            VoiceModeView(isPresented: $showingVoiceMode)
         }
         .sheet(item: $viewModel.pendingAIDataSharingConsent) { _ in
             AIDataSharingConsentSheet()
@@ -250,6 +254,10 @@ struct ChatView: View {
                 onSelectPhotos: { showImagePicker = true },
                 onSelectFiles: { showFilePicker = true },
                 onTakePhoto: { showCameraPicker = true },
+                onAudioRecorded: { audioData in
+                    viewModel.pendingAudioAttachments.append(audioData)
+                },
+                onStartVoiceMode: { showingVoiceMode = true },
                 currentModel: viewModel.currentModel()
             )
             .disabled(viewModel.isAwaitingComputerOutput)

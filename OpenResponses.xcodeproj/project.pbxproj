@@ -514,6 +514,7 @@
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Used so you can attach documents for the assistant.";
 				INFOPLIST_KEY_NSFilesystemUsageDescription = "Used to attach files stored locally to your chats.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to reach your trusted computer-use bridge on the network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Required to record voice input and hold Realtime AI conversations.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Used to pick photos or screenshots for assistant help.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Used to read and manage reminders when you ask the assistant.";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "Used to read and manage reminders when you ask the assistant.";
@@ -563,6 +564,7 @@
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Used so you can attach documents for the assistant.";
 				INFOPLIST_KEY_NSFilesystemUsageDescription = "Used to attach files stored locally to your chats.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to reach your trusted computer-use bridge on the network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Required to record voice input and hold Realtime AI conversations.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Used to pick photos or screenshots for assistant help.";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Used to read and manage reminders when you ask the assistant.";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "Used to read and manage reminders when you ask the assistant.";

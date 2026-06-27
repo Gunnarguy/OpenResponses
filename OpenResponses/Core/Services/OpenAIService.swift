@@ -57,7 +57,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - previousResponseId: The ID of the previous response for continuity (if any).
     ///   - conversationId: An optional conversation ID for backend-managed conversations.
     /// - Returns: The decoded OpenAIResponse.
-    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?) async throws -> OpenAIResponse {
+    func sendChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]? = nil, previousResponseId: String?, conversationId: String?) async throws -> OpenAIResponse {
         // Ensure API key is set
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -72,6 +72,7 @@ class OpenAIService: OpenAIServiceProtocol {
             fileNames: fileNames,
             fileIds: fileIds,
             imageAttachments: imageAttachments,
+            audioAttachments: audioAttachments,
             previousResponseId: previousResponseId,
             conversationId: conversationId,
             stream: false
@@ -190,7 +191,7 @@ class OpenAIService: OpenAIServiceProtocol {
     ///   - previousResponseId: The ID of the previous response for continuity.
     ///   - conversationId: An optional conversation ID for backend-managed conversations.
     /// - Returns: An asynchronous stream of `StreamingEvent` chunks.
-    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
+    func streamChatRequest(userMessage: String, prompt: Prompt, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]? = nil, previousResponseId: String?, conversationId: String?) -> AsyncThrowingStream<StreamingEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -208,6 +209,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         fileNames: fileNames,
                         fileIds: fileIds,
                         imageAttachments: imageAttachments,
+                        audioAttachments: audioAttachments,
                         previousResponseId: previousResponseId,
                         conversationId: conversationId,
                         stream: true
@@ -713,7 +715,7 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) -> [String: Any] {
         var requestObject = baseRequestMetadata(for: prompt, stream: stream)
 
         // If customInput is provided (e.g., for MCP approval response), use it directly
@@ -727,7 +729,8 @@ class OpenAIService: OpenAIServiceProtocol {
                 fileData: fileData,
                 fileNames: fileNames,
                 fileIds: fileIds,
-                imageAttachments: imageAttachments
+                imageAttachments: imageAttachments,
+                audioAttachments: audioAttachments
             )
         }
 
@@ -796,6 +799,7 @@ class OpenAIService: OpenAIServiceProtocol {
             fileNames: [String]? = nil,
             fileIds: [String]? = nil,
             imageAttachments: [InputImage]? = nil,
+            audioAttachments: [InputAudio]? = nil,
             previousResponseId: String? = nil,
             conversationId: String? = nil,
             stream: Bool = false,
@@ -809,6 +813,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 fileNames: fileNames,
                 fileIds: fileIds,
                 imageAttachments: imageAttachments,
+                audioAttachments: audioAttachments,
                 previousResponseId: previousResponseId,
                 conversationId: conversationId,
                 stream: stream,
@@ -906,6 +911,19 @@ class OpenAIService: OpenAIServiceProtocol {
             "model": apiModelId,
             "store": prompt.storeResponses,
         ]
+        
+        var modalities: [String] = ["text"]
+        if prompt.enableAudioOutput {
+            modalities.append("audio")
+            metadata["audio"] = [
+                "voice": prompt.audioVoice,
+                "format": prompt.audioFormat
+            ]
+        }
+        
+        if modalities.count > 1 {
+            metadata["modalities"] = modalities
+        }
 
         let instructions = buildInstructions(prompt: prompt)
         if !instructions.isEmpty {
@@ -1137,7 +1155,7 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Constructs the `input` array for the request, including developer instructions and user content.
-    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?) -> [[String: Any]] {
+    private func buildInputMessages(for prompt: Prompt, userMessage: String, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?) -> [[String: Any]] {
         var inputMessages: [[String: Any]] = []
 
         // Add developer instructions if provided
@@ -1152,9 +1170,10 @@ class OpenAIService: OpenAIServiceProtocol {
         // Check if we have any attachments or images to create a content array
         let hasFileAttachments = attachments?.isEmpty == false
         let hasImageAttachments = imageAttachments?.isEmpty == false
+        let hasAudioAttachments = audioAttachments?.isEmpty == false
         let hasDirectFileData = fileData?.isEmpty == false
         let hasUploadedFileIds = fileIds?.isEmpty == false
-        if hasFileAttachments || hasImageAttachments || hasDirectFileData || hasUploadedFileIds {
+        if hasFileAttachments || hasImageAttachments || hasAudioAttachments || hasDirectFileData || hasUploadedFileIds {
             var contentArray: [[String: Any]] = [["type": "input_text", "text": userMessage]]
 
             // Add file attachments (file_id references)
@@ -1223,6 +1242,23 @@ class OpenAIService: OpenAIServiceProtocol {
 
                 if !imageContentArray.isEmpty {
                     contentArray.append(contentsOf: imageContentArray)
+                }
+            }
+            
+            // Add audio attachments
+            if let audioAttachments = audioAttachments, !audioAttachments.isEmpty {
+                let audioContentArray = audioAttachments.map { inputAudio -> [String: Any] in
+                    return [
+                        "type": "input_audio",
+                        "input_audio": [
+                            "data": inputAudio.inputAudio.data,
+                            "format": inputAudio.inputAudio.format
+                        ]
+                    ]
+                }
+                
+                if !audioContentArray.isEmpty {
+                    contentArray.append(contentsOf: audioContentArray)
                 }
             }
 
@@ -2787,6 +2823,7 @@ class OpenAIService: OpenAIServiceProtocol {
             fileNames: nil,
             fileIds: nil,
             imageAttachments: nil,
+            audioAttachments: nil,
             previousResponseId: previousResponseId,
             conversationId: nil,
             stream: false,
@@ -2888,6 +2925,7 @@ class OpenAIService: OpenAIServiceProtocol {
                         fileNames: nil,
                         fileIds: nil,
                         imageAttachments: nil,
+                        audioAttachments: nil,
                         previousResponseId: previousResponseId,
                         conversationId: nil,
                         stream: true,
@@ -4830,5 +4868,37 @@ class OpenAIService: OpenAIServiceProtocol {
             print("Input items response decoding error: \(error)")
             throw OpenAIServiceError.invalidResponseData
         }
+    }
+
+    func checkModeration(input: String) async throws -> ModerationResult {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+        
+        let url = URL(string: "https://api.openai.com/v1/moderations")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = ["input": input]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        
+        if httpResponse.statusCode != 200 {
+            let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMsg)
+        }
+        
+        let modResponse = try JSONDecoder().decode(ModerationResponse.self, from: data)
+        guard let result = modResponse.results.first else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+        return result
     }
 }

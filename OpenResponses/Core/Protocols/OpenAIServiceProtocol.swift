@@ -20,6 +20,7 @@ protocol OpenAIServiceProtocol {
         fileNames: [String]?,
         fileIds: [String]?,
         imageAttachments: [InputImage]?,
+        audioAttachments: [InputAudio]?,
         previousResponseId: String?,
         conversationId: String?
     ) async throws -> OpenAIResponse
@@ -33,6 +34,7 @@ protocol OpenAIServiceProtocol {
         fileNames: [String]?,
         fileIds: [String]?,
         imageAttachments: [InputImage]?,
+        audioAttachments: [InputAudio]?,
         previousResponseId: String?,
         conversationId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error>
@@ -213,6 +215,9 @@ protocol OpenAIServiceProtocol {
         func getConversation(conversationId: String) async throws -> ConversationDetail
         func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?) async throws -> ConversationDetail
         func deleteConversation(conversationId: String) async throws
+        
+        /// Runs content moderation check against OpenAI content policies.
+        func checkModeration(input: String) async throws -> ModerationResult
 }
 
 extension OpenAIServiceProtocol {

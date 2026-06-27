@@ -1741,6 +1741,19 @@ Toggle(isOn: backgroundModeBinding) {
                 Text("JSON key-value pairs attached to requests.")
             }
 
+            // MARK: Developer Operations
+            Section {
+                NavigationLink(destination: BatchJobsView()) {
+                    Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
+                }
+                
+                NavigationLink(destination: FineTuningView()) {
+                    Label("Fine-Tuning Jobs", systemImage: "cpu")
+                }
+            } header: {
+                Label("Developer Operations", systemImage: "terminal")
+            }
+
             // MARK: About
 
             Section {

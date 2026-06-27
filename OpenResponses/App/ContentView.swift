@@ -34,8 +34,10 @@ struct ContentView: View {
                     }
 
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: { showingSettings = true }) {
-                            Image(systemName: "gear")
+                        HStack(spacing: 16) {
+                            Button(action: { showingSettings = true }) {
+                                Image(systemName: "gear")
+                            }
                         }
                     }
                 }
@@ -44,9 +46,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .onboardingCompleted)) { _ in
             checkAPIKey()
         }
-.onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in
-    checkAPIKey()
-}
+        .onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in
+            checkAPIKey()
+        }
         .fullScreenCover(isPresented: $showingOnboarding) {
             OnboardingView(isPresented: $showingOnboarding)
         }

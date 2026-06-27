@@ -74,6 +74,27 @@ struct InputImage: Codable {
     }
 }
 
+/// Represents input audio for sending to the model
+struct InputAudio: Codable {
+    let type: String = "input_audio"
+    let inputAudio: AudioData
+    
+    struct AudioData: Codable {
+        let data: String
+        let format: String
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case inputAudio = "input_audio"
+    }
+    
+    init(data: Data, format: String = "wav") {
+        let base64String = data.base64EncodedString()
+        self.inputAudio = AudioData(data: base64String, format: format)
+    }
+}
+
 // MARK: - Code Interpreter Artifact Models
 
 /// Represents a code interpreter artifact (file output from code execution)
@@ -235,3 +256,23 @@ enum ArtifactContent: Codable {
         }
     }
 }
+
+/// Represents the response from the OpenAI Moderation API.
+struct ModerationResponse: Codable {
+    let id: String
+    let model: String
+    let results: [ModerationResult]
+}
+
+/// Represents a single moderation result entry.
+struct ModerationResult: Codable {
+    let flagged: Bool
+    let categories: [String: Bool]
+    let categoryScores: [String: Double]
+    
+    enum CodingKeys: String, CodingKey {
+        case flagged, categories
+        case categoryScores = "category_scores"
+    }
+}
+
