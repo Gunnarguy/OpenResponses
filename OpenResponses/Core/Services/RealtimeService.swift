@@ -17,6 +17,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
     weak var delegate: RealtimeServiceDelegate?
     
     private var webSocketTask: URLSessionWebSocketTask?
+    private var session: URLSession?
     private var recordingEngine: AVAudioEngine?
     private var playbackEngine: AVAudioEngine?
     private var playerNode = AVAudioPlayerNode()
@@ -103,6 +104,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         delegateQueue.maxConcurrentOperationCount = 1
         delegateQueue.qualityOfService = .userInitiated
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
+        self.session = session
         webSocketTask = session.webSocketTask(with: request)
         webSocketTask?.resume()
     }
@@ -121,6 +123,8 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         stopMicrophoneCapture()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
+        session?.invalidateAndCancel()
+        session = nil
         updateState("Disconnected")
         self.delegate?.realtimeServiceDidDisconnect()
         

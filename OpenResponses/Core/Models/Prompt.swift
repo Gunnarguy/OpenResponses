@@ -124,6 +124,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     var streamIncludeUsage: Bool = false
     var streamIncludeObfuscation: Bool = false
     var promptCacheKey: String = ""
+    var promptCacheRetention: String?
     var safetyIdentifier: String = ""
     var verbosity: String = "medium"
 
@@ -190,7 +191,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
-        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier, storeResponses, streamIncludeUsage, streamIncludeObfuscation, promptCacheKey, safetyIdentifier, verbosity
+        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier, storeResponses, streamIncludeUsage, streamIncludeObfuscation, promptCacheKey, promptCacheRetention, safetyIdentifier, verbosity
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
         case enableAudioInput, enableAudioOutput, audioVoice, audioFormat
     case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeWebSearchSources, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
@@ -270,6 +271,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             streamIncludeUsage: false,
             streamIncludeObfuscation: false,
             promptCacheKey: "",
+            promptCacheRetention: nil,
             safetyIdentifier: "",
             verbosity: "medium",
             textFormatType: "text",

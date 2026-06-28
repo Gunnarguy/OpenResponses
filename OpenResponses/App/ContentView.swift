@@ -49,6 +49,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in
             checkAPIKey()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowFullSettings"))) { _ in
+            showingSettings = true
+        }
         .fullScreenCover(isPresented: $showingOnboarding) {
             OnboardingView(isPresented: $showingOnboarding)
         }

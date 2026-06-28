@@ -26,7 +26,7 @@ GPT-5.4, Apple Calendar/Contacts/Reminders, camera and file attachments, Code In
 
 ## Full Description (≤4000 characters)
 
-OpenResponses is a native iPhone client for the OpenAI Responses API built for people who want full control, clear observability, and modern tool support. Bring your own API key, stream responses in real time, inspect every request, and use the latest OpenAI models in a fast SwiftUI interface.
+OpenResponses is a native iPhone Playground for the OpenAI Responses API built for people who want full control, clear observability, and modern tool support. Bring your own API key, stream responses in real time, inspect every request, and use the latest OpenAI models in a fast SwiftUI interface.
 
 ### Model Lineup
 
@@ -34,13 +34,19 @@ OpenResponses is a native iPhone client for the OpenAI Responses API built for p
 - o3 reasoning models with configurable effort
 - GPT-4.1 family, GPT-4o, and gpt-image-1
 
-### What Makes It Different
+### Core Playground Features
 
 - Real-time streaming with activity feed, token usage, and Assistant Thinking traces
 - Request Inspector for payloads, tool calls, and raw Responses API details
 - Explore Demo so new users can try the interface before adding an API key
 - Prompt Library, advanced model controls, exports, and local conversation history
 - Message quick actions plus direct camera, photo, file, and document attachments
+
+### Developer Labs & Legacy Migration
+
+- Batch API integration for high-throughput JSONL generation and background job monitoring
+- Fine-Tuning API to easily export chat history into custom model training datasets
+- Assistants API legacy migration environment for stateful thread and run management
 
 ### Tools Included
 

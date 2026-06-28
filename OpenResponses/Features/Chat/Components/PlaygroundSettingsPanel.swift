@@ -49,39 +49,6 @@ struct PlaygroundSettingsPanel: View {
     var body: some View {
         NavigationStack {
             List {
-                // MARK: - API Mode Section
-                Section("API Mode") {
-                    Picker("Mode", selection: $viewModel.useAssistantsAPI) {
-                        Text("Responses").tag(false)
-                        Text("Assistants").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if viewModel.useAssistantsAPI {
-                        if viewModel.assistants.isEmpty {
-                            Text("No assistants found. Create one below.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Picker("Assistant", selection: Binding(
-                                get: { viewModel.selectedAssistantId ?? "" },
-                                set: { viewModel.selectedAssistantId = $0.isEmpty ? nil : $0 }
-                            )) {
-                                ForEach(viewModel.assistants, id: \.id) { assistant in
-                                    Text(assistant.name ?? assistant.id).tag(assistant.id)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
-                        
-                        Button {
-                            showingCreateAssistant = true
-                        } label: {
-                            Label("Create Assistant", systemImage: "plus.circle")
-                        }
-                    }
-                }
-
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
@@ -116,6 +83,15 @@ struct PlaygroundSettingsPanel: View {
                         } else if !supportsComputer && viewModel.activePrompt.enableComputerUse {
                             viewModel.activePrompt.enableComputerUse = false
                             viewModel.activePrompt.ultraStrictComputerUse = false
+                        }
+                    }
+                    
+                    if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
+                        Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
+                            Text("Default").tag("medium") // Simplify mapping here or just use standard values
+                            Text("Low").tag("low")
+                            Text("Medium").tag("medium")
+                            Text("High").tag("high")
                         }
                     }
                 }
@@ -223,33 +199,6 @@ struct PlaygroundSettingsPanel: View {
                     }
                 }
 
-                // MARK: - Output Format Section
-                Section("Output Format") {
-                    Picker("Format", selection: $viewModel.activePrompt.textFormatType) {
-                        Text("Text").tag("text")
-                        Text("JSON Object").tag("json_object")
-                        Text("JSON Schema").tag("json_schema")
-                    }
-                    .pickerStyle(.menu)
-
-                    if viewModel.activePrompt.textFormatType == "json_schema" {
-                        TextField("Schema Name", text: $viewModel.activePrompt.jsonSchemaName)
-                            .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
-                        
-                        TextField("Description (Optional)", text: $viewModel.activePrompt.jsonSchemaDescription)
-                        
-                        Toggle("Strict Matching", isOn: $viewModel.activePrompt.jsonSchemaStrict)
-                        
-                        NavigationLink(destination: TextEditor(text: $viewModel.activePrompt.jsonSchemaContent)
-                            .font(.system(.caption, design: .monospaced))
-                            .padding()
-                            .navigationTitle("JSON Schema")) {
-                            Text("Edit JSON Schema")
-                        }
-                    }
-                }
-
                 // MARK: - Files & Vector Stores Section
                 Section("Files & Vector Stores") {
                     // Attached files
@@ -291,6 +240,16 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Advanced Section
                 Section("Advanced") {
                     Button {
+                        dismiss()
+                        NotificationCenter.default.post(name: NSNotification.Name("ShowFullSettings"), object: nil)
+                    } label: {
+                        Label("Full Settings", systemImage: "gearshape.2")
+                    }
+                    Text("Manage API keys, MCP servers, integrations, and all advanced options")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        
+                    Button {
                         showingExportView = true
                     } label: {
                         Label("Export & Import", systemImage: "arrow.up.arrow.down.circle")
@@ -299,14 +258,6 @@ struct PlaygroundSettingsPanel: View {
                     Text("Export conversation as JSON or import previous conversations")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                        
-                    NavigationLink(destination: BatchJobsView()) {
-                        Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
-                    }
-                    
-                    NavigationLink(destination: FineTuningView()) {
-                        Label("Fine-Tuning Jobs", systemImage: "cpu")
-                    }
                 }
 
                 // MARK: - Reset Section

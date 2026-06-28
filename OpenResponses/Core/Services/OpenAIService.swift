@@ -789,6 +789,36 @@ class OpenAIService: OpenAIServiceProtocol {
         return requestObject
     }
 
+    /// Builds a preview of the request object that will be sent to the API.
+    func buildPreviewRequestObject(
+        for prompt: Prompt,
+        userMessage: String?,
+        attachments: [[String: Any]]?,
+        fileData: [Data]?,
+        fileNames: [String]?,
+        fileIds: [String]?,
+        imageAttachments: [InputImage]?,
+        audioAttachments: [InputAudio]?,
+        previousResponseId: String?,
+        conversationId: String?,
+        stream: Bool
+    ) -> [String: Any] {
+        return buildRequestObject(
+            for: prompt,
+            userMessage: userMessage,
+            attachments: attachments,
+            fileData: fileData,
+            fileNames: fileNames,
+            fileIds: fileIds,
+            imageAttachments: imageAttachments,
+            audioAttachments: audioAttachments,
+            previousResponseId: previousResponseId,
+            conversationId: conversationId,
+            stream: stream,
+            customInput: nil
+        )
+    }
+
     #if DEBUG
         /// Lightweight test hook so unit tests can validate request assembly without exposing internals in production builds.
         func testing_buildRequestObject(

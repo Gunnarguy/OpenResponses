@@ -82,9 +82,7 @@ struct ChatView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingVoiceMode) {
-            VoiceModeView(isPresented: $showingVoiceMode)
-        }
+
         .sheet(item: $viewModel.pendingAIDataSharingConsent) { _ in
             AIDataSharingConsentSheet()
                 .environmentObject(viewModel)
@@ -219,8 +217,15 @@ struct ChatView: View {
             AttachmentPills()
                 .environmentObject(viewModel)
 
-            inputRow
+            if showingVoiceMode {
+                InlineVoiceView(isPresented: $showingVoiceMode)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                inputRow
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showingVoiceMode)
         .background(.ultraThinMaterial)
     }
 

@@ -1,6 +1,6 @@
 # Case Study: OpenResponses iOS AI Playground
 
-Last updated: 2026-05-29
+Last updated: 2026-06-27
 
 OpenResponses is a native iOS and macOS (Catalyst) developer playground for the OpenAI Responses API. This case study details the core engineering decisions, architecture patterns, and technical challenges solved during its implementation.
 
@@ -100,6 +100,14 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
   - `PDFKit` to extract text layouts from multi-page PDFs.
   - Apple's `Vision` framework (OCR text recognition) to extract text content from images.
   - Data mapping to convert 43 specific file extensions into normalized plaintext segments or compressed PNG payloads, packing them into the API request structure.
+
+### E. Scalable Settings via ResponseSettingsRegistry
+- **Challenge:** As OpenAI frequently adds parameters to the Responses API, manually hand-coding new settings rows and validation checks led to massive UI churn, incomplete payload coverage, and configuration drift.
+- **Solution:** We centralized all parameter definitions into a declarative `ResponseSettingsRegistry`. A `ResponseSettingDescriptor` dictates the API key mapping, UI grouping, default values, and valid bounds. The UI dynamically iterates over this registry to build the settings form, ensuring 100% parameter coverage without touching view code when new parameters arrive.
+
+### F. Chat-Native Computer Use and Tool Execution Timelines
+- **Challenge:** Initial Computer Use execution forced users into a heavy, modal-driven UI that broke the conversational flow of a chat app.
+- **Solution:** We introduced the `ToolExecutionTimeline` model mapped to each assistant message. As the Responses API streams tool call events, `ChatViewModel` dynamically upserts granular state (queued, running, awaiting approval) into the timeline. `MessageBubbleView` then renders expandable inline `ToolExecutionCard` components directly inside the chat transcript. This embeds browser automation loops natively into the conversation without requiring dedicated modal workflows.
 
 ---
 

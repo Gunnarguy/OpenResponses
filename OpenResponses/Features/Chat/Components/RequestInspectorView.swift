@@ -77,6 +77,27 @@ struct RequestInspectorView: View {
                             .textSelection(.enabled)
                     }
 
+                    // Validation Warnings
+                    if !validationWarnings.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Validation Warnings")
+                                    .font(.headline)
+                            }
+                            ForEach(validationWarnings, id: \.self) { warning in
+                                Text("• \(warning)")
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                            }
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+
                     // Request details
                     requestDetails
                 }
@@ -145,132 +166,114 @@ struct RequestInspectorView: View {
 
         return jsonString
     }
+    
+    private var validationWarnings: [String] {
+        var warnings: [String] = []
+        let prompt = viewModel.activePrompt
+        
+        if viewModel.activeConversation?.remoteId != nil && viewModel.lastResponseId != nil {
+            warnings.append("Both conversation ID and previous_response_id are set. The API may reject this.")
+        }
+        
+        if prompt.backgroundMode && !prompt.storeResponses {
+            warnings.append("Background mode requires 'store: true'.")
+        }
+        
+        let caps = ModelCompatibilityService.shared.getCapabilities(for: prompt.openAIModel)
+        let supportsReasoning = caps?.supportsReasoningEffort == true
+        
+        if prompt.reasoningEffort != "none" && !supportsReasoning {
+            warnings.append("Reasoning effort '\(prompt.reasoningEffort)' is not supported by model '\(prompt.openAIModel)'.")
+        }
+        
+        if prompt.reasoningEffort != "none" && supportsReasoning {
+            if prompt.temperature != 1.0 {
+                warnings.append("Temperature cannot be modified when reasoning effort is active.")
+            }
+            if prompt.topP != 1.0 {
+                warnings.append("Top P cannot be modified when reasoning effort is active.")
+            }
+            if prompt.includeOutputLogprobs {
+                warnings.append("Logprobs are not supported when reasoning effort is active.")
+            }
+        }
+        
+        if prompt.enableFileSearch {
+            if let ids = prompt.selectedVectorStoreIds, !ids.isEmpty {
+                // Good
+            } else {
+                warnings.append("File search is enabled but no vector stores are attached.")
+            }
+        }
+        
+        if prompt.enableComputerUse {
+            let supportsComputer = ModelCompatibilityService.shared.isToolSupported(.computer, for: prompt.openAIModel, isStreaming: effectiveStreamingEnabled)
+            if !supportsComputer {
+                warnings.append("Computer use is enabled on an unsupported model or in an incompatible streaming configuration.")
+            }
+        }
+        
+        return warnings
+    }
 
     private func buildPreviewRequest() -> [String: Any] {
-        var request: [String: Any] = [
-            "model": viewModel.activePrompt.openAIModel
-        ]
-
-        // Input array
-        var inputArray: [[String: Any]] = []
-
-        // Add developer instructions if present
-        if !viewModel.activePrompt.developerInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            inputArray.append([
-                "role": "developer",
-                "content": viewModel.activePrompt.developerInstructions
-            ])
-        }
-
-        // Add user message
-        var userContent: [[String: Any]] = [
-            ["type": "input_text", "text": userMessage]
-        ]
-
-        // Add file attachments
-        for fileName in viewModel.pendingFileNames {
-            userContent.append([
-                "type": "input_file",
-                "file_data": "<base64_encoded_data>",
-                "filename": fileName
-            ])
-        }
-
-        // Add image attachments (as base64 for preview)
-        for (index, _) in viewModel.pendingImageAttachments.enumerated() {
-            userContent.append([
-                "type": "input_image",
-                "image_data": "<base64_encoded_image_\(index + 1)>",
-                "detail": "auto"
-            ])
-        }
-
-        inputArray.append([
-            "role": "user",
-            "content": userContent
-        ])
-
-        request["input"] = inputArray
-
-        // Instructions
-        if !viewModel.activePrompt.systemInstructions.isEmpty {
-            request["instructions"] = viewModel.activePrompt.systemInstructions
-        }
-
-        // Tools
-        var tools: [[String: Any]] = []
-
-        if viewModel.activePrompt.enableFileSearch {
-            var fileSearchTool: [String: Any] = ["type": "file_search"]
-            if let storeIds = viewModel.activePrompt.selectedVectorStoreIds {
-                fileSearchTool["vector_store_ids"] = storeIds.split(separator: ",").map { String($0) }
-            }
-            tools.append(fileSearchTool)
-        }
-
-        if viewModel.activePrompt.enableCodeInterpreter {
-            tools.append(["type": "code_interpreter"])
-        }
-
-        if viewModel.activePrompt.enableComputerUse {
-            if viewModel.activePrompt.openAIModel == "computer-use-preview" {
-                #if os(iOS)
-                    let previewEnvironment = "browser"
-                    let previewWidth = 440
-                    let previewHeight = 956
-                #elseif os(macOS)
-                    let previewEnvironment = "mac"
-                    let previewWidth = 1920
-                    let previewHeight = 1080
-                #else
-                    let previewEnvironment = "browser"
-                    let previewWidth = 1920
-                    let previewHeight = 1080
-                #endif
-
-                tools.append([
-                    "type": "computer_use_preview",
-                    "environment": previewEnvironment,
-                    "display_width": previewWidth,
-                    "display_height": previewHeight
-                ])
-            } else {
-                tools.append([
-                    "type": "computer"
+        var requestObject = viewModel.api.buildPreviewRequestObject(
+            for: viewModel.activePrompt,
+            userMessage: userMessage,
+            attachments: nil,
+            fileData: nil,
+            fileNames: nil,
+            fileIds: nil,
+            imageAttachments: nil,
+            audioAttachments: nil,
+            previousResponseId: viewModel.lastResponseId,
+            conversationId: viewModel.activeConversation?.remoteId,
+            stream: effectiveStreamingEnabled
+        )
+        
+        // Find the 'input' array and append our placeholder attachments if any
+        if var inputArray = requestObject["input"] as? [[String: Any]],
+           let userIndex = inputArray.firstIndex(where: { $0["role"] as? String == "user" }),
+           var userMessageDict = inputArray[userIndex]["content"] as? [[String: Any]] {
+           
+            for fileName in viewModel.pendingFileNames {
+                userMessageDict.append([
+                    "type": "input_file",
+                    "file_data": "<base64_encoded_data>",
+                    "filename": fileName
                 ])
             }
+            
+            for (index, _) in viewModel.pendingImageAttachments.enumerated() {
+                userMessageDict.append([
+                    "type": "input_image",
+                    "image_data": "<base64_encoded_image_\(index + 1)>",
+                    "detail": "auto"
+                ])
+            }
+            
+            inputArray[userIndex]["content"] = userMessageDict
+            requestObject["input"] = inputArray
         }
-
-        if !tools.isEmpty {
-            request["tools"] = tools
+        
+        // Secret redaction for preview
+        if var toolsArray = requestObject["tools"] as? [[String: Any]] {
+            for (toolIndex, var tool) in toolsArray.enumerated() {
+                if let toolType = tool["type"] as? String, toolType.hasPrefix("mcp_") {
+                    // Redact headers
+                    if var headers = tool["headers"] as? [String: Any] {
+                        if headers["Authorization"] != nil {
+                            headers["Authorization"] = "[REDACTED_SECRET]"
+                        }
+                        tool["headers"] = headers
+                        toolsArray[toolIndex] = tool
+                    }
+                }
+            }
+            requestObject["tools"] = toolsArray
         }
-
-        // Parameters
-        if supportsTemperature, viewModel.activePrompt.temperature != 1.0 {
-            request["temperature"] = viewModel.activePrompt.temperature
-        }
-
-        if viewModel.activePrompt.maxOutputTokens > 0 {
-            request["max_output_tokens"] = viewModel.activePrompt.maxOutputTokens
-        }
-
-        if supportsTopP, viewModel.activePrompt.topP != 1.0 {
-            request["top_p"] = viewModel.activePrompt.topP
-        }
-
-        request["stream"] = effectiveStreamingEnabled
-
-        if let remoteConversationId = viewModel.activeConversation?.remoteId {
-            request["conversation"] = remoteConversationId
-        } else if let lastResponseId = viewModel.lastResponseId {
-            request["previous_response_id"] = lastResponseId
-        }
-
-        if usesBackgroundPolling {
-            request["background"] = true
-        }
-
-        return request
+        
+        return requestObject
     }
 
     // MARK: - Copy Action

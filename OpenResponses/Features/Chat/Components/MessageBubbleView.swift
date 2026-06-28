@@ -68,14 +68,17 @@ struct MessageBubbleView: View {
                         .padding(.top, 4)
                 }
 
-                // Show placeholder text for assistant messages with tools but no text
-                if message.role == .assistant,
-                   (message.text?.isEmpty ?? true),
-                   !(message.toolsUsed?.isEmpty ?? true) {
-                    Text("Using tools...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .italic()
+                // Tool execution timeline and fallback placeholder
+                if message.role == .assistant {
+                    if let toolTimeline = message.toolTimeline, !toolTimeline.isEmpty {
+                        ToolTimelineView(timeline: toolTimeline)
+                            .padding(.vertical, 4)
+                    } else if (message.text?.isEmpty ?? true) && !(message.toolsUsed?.isEmpty ?? true) {
+                        Text("Using tools...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .italic()
+                    }
                 }
 
                 // Image content (if any images in the message)

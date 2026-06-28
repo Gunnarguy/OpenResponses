@@ -1743,6 +1743,10 @@ Toggle(isOn: backgroundModeBinding) {
 
             // MARK: Developer Operations
             Section {
+                NavigationLink(destination: LegacyMigrationLabView()) {
+                    Label("Legacy Migration Lab", systemImage: "archivebox")
+                }
+                
                 NavigationLink(destination: BatchJobsView()) {
                     Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
                 }

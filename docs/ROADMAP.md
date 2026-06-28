@@ -2,10 +2,10 @@
 
 ---
 
-**[2025-11-07] Status Snapshot:**
-Phase 1 is locked: every shipping Responses API tool (computer, code interpreter, file search, image generation, and custom function workflows) is implemented in the current build with SwiftUI polish. Recent work introduced the Assistant Thinking panel, revamped prompt ergonomics, and safety upgrades for computer use. Conversations still persist locally by default; the app now has partial `/v1/conversations` service/send integration for opt-in remote storage, while full cross-device reconciliation remains Phase 2 work.
+**[2026-06-27] Status Snapshot: v2.6 Release Freeze**
+OpenResponses is now finalized as a native iOS Playground for the OpenAI Responses API. Phase 1 and Phase 2 tasks are locked: every shipping Responses API tool (computer, code interpreter, file search, image generation, custom function workflows) is implemented. The Settings architecture has been rebuilt around `ResponseSettingsRegistry`, the Realtime Voice API GA endpoints are standardized (Direct BYOK WebSocket mode), and Chat-Native Computer Use Tool Execution Cards are fully integrated.
 
-**To resume:** Review this roadmap, `docs/CASE_STUDY.md`, and `docs/api/Full_API_Reference.md` before picking up implementation work. Those documents track architectural context, coverage, and outstanding gaps.
+**To resume:** Review this roadmap, `docs/CASE_STUDY.md`, and `README.md` before picking up implementation work. Those documents track architectural context, coverage, and the v2.6 freeze criteria.
 
 ## 1. Objective
 
@@ -41,10 +41,10 @@ This section summarizes whether the app covers the core Playground experience, n
 | **Rich Content Output**     | 🟡 **Partial**               | Text rendering is complete with copy functionality; media previews implemented; annotations parsing needs enhancement.                                                                                  |
 | **Conversation Management** | 🟡 **Partial / Phase 2**     | Local storage complete; `/v1/conversations` service methods and opt-in send/delete integration exist, but full remote list/history sync and cross-device reconciliation are still pending.             |
 | **Advanced Parameters**     | ✅ **Complete**              | All API parameters exposed including `tool_choice`, `include`, background mode, reasoning controls, and model-specific configurations.                                                                  |
-| **Assistants API**          | ✅ **Complete**              | Stateful Assistant threads, runs, and CRUD management integrated with mode switching.                                                                                                   |
-| **Realtime API (Voice)**    | ✅ **Complete**              | Low-latency WebSocket bidirectional audio streaming (PCM16) with VAD and barge-in.                                                                                                      |
-| **Batch API**               | ✅ **Complete**              | Async high-throughput JSONL generation, uploads, and background job monitoring.                                                                                                         |
-| **Fine-Tuning API**         | ✅ **Complete**              | Export chat history to datasets and schedule custom model training runs.                                                                                                                |
+| **Assistants API**          | ✅ **Complete (Legacy)**     | Stateful Assistant threads, runs, and CRUD management integrated (Legacy Migration Lab).                                                                                                   |
+| **Realtime API (Voice)**    | ✅ **Complete**              | Low-latency WebSocket bidirectional audio streaming (PCM16) (Direct BYOK WebSocket mode).                                                                                                      |
+| **Batch API**               | ✅ **Complete (Lab)**        | Async high-throughput JSONL generation, uploads, and background job monitoring (Developer Lab).                                                                                                         |
+| **Fine-Tuning API**         | ✅ **Complete (Lab)**        | Export chat history to datasets and schedule custom model training runs (Developer Lab).                                                                                                                |
 | **Moderation API**          | ✅ **Complete**              | Optional real-time interception of inputs for policy violation checking before completions.                                                                                             |
 
 ---

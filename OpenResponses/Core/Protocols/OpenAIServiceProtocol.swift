@@ -218,6 +218,21 @@ protocol OpenAIServiceProtocol {
         
         /// Runs content moderation check against OpenAI content policies.
         func checkModeration(input: String) async throws -> ModerationResult
+        
+        /// Builds a preview of the request object that will be sent to the API.
+        func buildPreviewRequestObject(
+            for prompt: Prompt,
+            userMessage: String?,
+            attachments: [[String: Any]]?,
+            fileData: [Data]?,
+            fileNames: [String]?,
+            fileIds: [String]?,
+            imageAttachments: [InputImage]?,
+            audioAttachments: [InputAudio]?,
+            previousResponseId: String?,
+            conversationId: String?,
+            stream: Bool
+        ) -> [String: Any]
 }
 
 extension OpenAIServiceProtocol {

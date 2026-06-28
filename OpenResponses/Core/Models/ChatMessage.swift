@@ -18,6 +18,59 @@ struct ReasoningTrace: Codable, Equatable, Identifiable {
     }
 }
 
+/// Represents an event in the execution timeline of a tool (e.g. computer use, web search, function).
+struct ToolExecutionTimeline: Codable, Equatable, Identifiable {
+    enum Status: String, Codable, Equatable {
+        case queued
+        case running
+        case awaitingApproval
+        case completed
+        case failed
+        case cancelled
+    }
+    
+    let id: String
+    let responseId: String?
+    let messageId: String?
+    let toolType: String
+    let toolName: String
+    var status: Status
+    var compactSummary: String?
+    var rawArguments: String?
+    var rawOutputPreview: String?
+    var screenshotThumbnail: Data?
+    let startedAt: Date
+    var completedAt: Date?
+    
+    init(
+        id: String = UUID().uuidString,
+        responseId: String? = nil,
+        messageId: String? = nil,
+        toolType: String,
+        toolName: String,
+        status: Status = .queued,
+        compactSummary: String? = nil,
+        rawArguments: String? = nil,
+        rawOutputPreview: String? = nil,
+        screenshotThumbnail: Data? = nil,
+        startedAt: Date = Date(),
+        completedAt: Date? = nil
+    ) {
+        self.id = id
+        self.responseId = responseId
+        self.messageId = messageId
+        self.toolType = toolType
+        self.toolName = toolName
+        self.status = status
+        self.compactSummary = compactSummary
+        self.rawArguments = rawArguments
+        self.rawOutputPreview = rawOutputPreview
+        self.screenshotThumbnail = screenshotThumbnail
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+    }
+}
+
 /// Represents a single message in the chat (user, assistant, or system/error).
 struct ChatMessage: Identifiable, Codable {
     enum Role: String, Codable {
@@ -41,9 +94,11 @@ struct ChatMessage: Identifiable, Codable {
     var mcpApprovalRequests: [MCPApprovalRequest]?
     /// Reasoning trace emitted by reasoning models (e.g., GPT-5)
     var reasoning: [ReasoningTrace]?
+    /// Timeline of tools executed during this message
+    var toolTimeline: [ToolExecutionTimeline]?
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, images, audioData, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests, reasoning
+        case id, role, text, images, audioData, webURLs, webContentURL, toolsUsed, tokenUsage, artifacts, mcpApprovalRequests, reasoning, toolTimeline
     }
 
     init(
@@ -58,7 +113,8 @@ struct ChatMessage: Identifiable, Codable {
         tokenUsage: TokenUsage? = nil,
         artifacts: [CodeInterpreterArtifact]? = nil,
         mcpApprovalRequests: [MCPApprovalRequest]? = nil,
-        reasoning: [ReasoningTrace]? = nil
+        reasoning: [ReasoningTrace]? = nil,
+        toolTimeline: [ToolExecutionTimeline]? = nil
     ) {
         self.id = id
         self.role = role
@@ -72,6 +128,7 @@ struct ChatMessage: Identifiable, Codable {
         self.artifacts = artifacts
         self.mcpApprovalRequests = mcpApprovalRequests
         self.reasoning = reasoning
+        self.toolTimeline = toolTimeline
     }
 
     // MARK: - Codable Conformance
@@ -107,6 +164,7 @@ struct ChatMessage: Identifiable, Codable {
         artifacts = try container.decodeIfPresent([CodeInterpreterArtifact].self, forKey: .artifacts)
         mcpApprovalRequests = try container.decodeIfPresent([MCPApprovalRequest].self, forKey: .mcpApprovalRequests)
         reasoning = try container.decodeIfPresent([ReasoningTrace].self, forKey: .reasoning)
+        toolTimeline = try container.decodeIfPresent([ToolExecutionTimeline].self, forKey: .toolTimeline)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -137,6 +195,7 @@ struct ChatMessage: Identifiable, Codable {
         try container.encodeIfPresent(artifacts, forKey: .artifacts)
         try container.encodeIfPresent(mcpApprovalRequests, forKey: .mcpApprovalRequests)
         try container.encodeIfPresent(reasoning, forKey: .reasoning)
+        try container.encodeIfPresent(toolTimeline, forKey: .toolTimeline)
     }
 }
 

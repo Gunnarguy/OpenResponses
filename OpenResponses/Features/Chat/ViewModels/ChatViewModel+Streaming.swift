@@ -540,20 +540,40 @@ extension ChatViewModel {
 
     /// Handles all computer-use streaming events to keep the UI in sync.
     func handleComputerCallEvent(_ chunk: StreamingEvent, messageId: UUID) {
+        let itemId = chunk.item?.id ?? chunk.itemId ?? "computer-\(UUID().uuidString)"
+        
         switch chunk.type {
         case "response.computer_call.in_progress":
             trackToolUsage(for: messageId, tool: "computer")
             updateStreamingStatus(for: "computer.in_progress")
+            upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "computer", toolName: "computer", status: .running)
         case "response.computer_call.screenshot_taken":
             updateStreamingStatus(for: "computer.screenshot")
             handleComputerScreenshot(chunk, for: messageId)
+            
+            var screenshotData: Data? = nil
+            if let b64 = chunk.screenshotB64, let data = Data(base64Encoded: b64) {
+                screenshotData = data
+            } else if let b64 = chunk.item?.action?["base64_image"]?.value as? String, let data = Data(base64Encoded: b64) {
+                screenshotData = data
+            }
+            
+            upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "computer", toolName: "computer", status: .running, screenshot: screenshotData)
         case "response.computer_call.action_performed":
             updateStreamingStatus(for: "computer.action")
+            var argsPreview = chunk.computerAction
+            if argsPreview == nil {
+                if let actionObj = chunk.item?.action, let json = try? JSONEncoder().encode(actionObj) {
+                    argsPreview = String(data: json, encoding: .utf8)
+                }
+            }
+            upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "computer", toolName: "computer", status: .running, arguments: argsPreview)
         case "response.computer_call.completed":
             if let item = chunk.item {
                 handleCompletedStreamingItem(item, for: messageId)
             }
             updateStreamingStatus(for: "computer.completed")
+            upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "computer", toolName: "computer", status: .completed)
         default:
             break
         }
@@ -564,6 +584,11 @@ extension ChatViewModel {
         if let item = chunk.item {
             cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             trackToolUsage(item, for: messageId)
+            
+            if ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
+                let name = item.name ?? item.serverLabel ?? item.type
+                upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .queued)
+            }
         }
     }
 
@@ -572,6 +597,11 @@ extension ChatViewModel {
         if let item = chunk.item {
             cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             handleCompletedStreamingItem(item, for: messageId)
+            
+            if ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
+                let name = item.name ?? item.serverLabel ?? item.type
+                upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .completed, arguments: item.arguments)
+            }
         }
     }
 
@@ -687,6 +717,8 @@ extension ChatViewModel {
     logActivity("MCP: Calling \(toolName) on \(serverLabel)")
         streamingStatus = .runningTool(toolName)
         trackToolUsage(for: messageId, tool: "mcp")
+        let itemId = chunk.item?.id ?? chunk.itemId ?? UUID().uuidString
+        upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "mcp_call", toolName: "\(serverLabel): \(toolName)", status: .running)
     }
 
     /// Handles the completion of an MCP tool call, processing its output or error.
@@ -737,6 +769,9 @@ extension ChatViewModel {
             AppLogger.log("Tool '\(toolName)' on '\(serverLabel)' completed successfully.", category: .mcp, level: .info)
             AppLogger.log("  Output: \(output)", category: .mcp, level: .debug)
             logActivity("MCP: \(toolName) completed")
+            
+            let itemId = chunk.item?.id ?? chunk.itemId ?? UUID().uuidString
+            upsertToolTimeline(for: messageId, responseId: lastResponseId, itemId: itemId, toolType: "mcp_call", toolName: "\(serverLabel): \(toolName)", status: .completed, outputPreview: output)
 
             // Render the output into the chat message.
             if let index = messages.firstIndex(where: { $0.id == messageId }) {

@@ -6158,6 +6158,53 @@ extension ChatViewModel {
         }
         trackToolUsage(for: messageId, tool: tool)
     }
+
+    /// Upserts a tool execution timeline event on the message.
+    func upsertToolTimeline(
+        for messageId: UUID,
+        responseId: String? = nil,
+        itemId: String,
+        toolType: String,
+        toolName: String,
+        status: ToolExecutionTimeline.Status,
+        arguments: String? = nil,
+        outputPreview: String? = nil,
+        screenshot: Data? = nil
+    ) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var message = messages[idx]
+        var timeline = message.toolTimeline ?? []
+        
+        if let existingIdx = timeline.firstIndex(where: { $0.id == itemId }) {
+            timeline[existingIdx].status = status
+            if let args = arguments { timeline[existingIdx].rawArguments = (timeline[existingIdx].rawArguments ?? "") + args }
+            if let out = outputPreview { timeline[existingIdx].rawOutputPreview = (timeline[existingIdx].rawOutputPreview ?? "") + out }
+            if let screen = screenshot { timeline[existingIdx].screenshotThumbnail = screen }
+            if status == .completed || status == .failed || status == .cancelled {
+                timeline[existingIdx].completedAt = Date()
+            }
+        } else {
+            let newTimeline = ToolExecutionTimeline(
+                id: itemId,
+                responseId: responseId,
+                messageId: messageId.uuidString,
+                toolType: toolType,
+                toolName: toolName,
+                status: status,
+                compactSummary: nil,
+                rawArguments: arguments,
+                rawOutputPreview: outputPreview,
+                screenshotThumbnail: screenshot,
+                startedAt: Date(),
+                completedAt: (status == .completed || status == .failed || status == .cancelled) ? Date() : nil
+            )
+            timeline.append(newTimeline)
+        }
+        
+        message.toolTimeline = timeline
+        messages[idx] = message
+    }
+
     /// Handles non-streaming responses from the OpenAI API.
     /// Consolidates text, images, token usage, and triggers follow-up tool workflows.
     private func handleNonStreamingResponse(_ response: OpenAIResponse, for messageId: UUID) {
