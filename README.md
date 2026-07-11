@@ -162,7 +162,7 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 
 ## v2.6 Release Freeze
 
-The v2.6 release finalizes OpenResponses as a native iOS Playground for the OpenAI Responses API. We have frozen the feature scope to ensure high quality and clarity around the app's purpose.
+The v2.6 release finalizes OpenResponses as a native iOS Playground for the OpenAI Responses API. The feature scope is frozen to ensure high quality and clarity around the app's purpose.
 
 **What is Done:**
 * Model selection, prompt controls, tool configuration, streaming, Computer Use, MCP, request inspection, files/images, and developer lab utilities.
@@ -255,6 +255,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | [App Store Notes](APP_STORE.md) | App Store metadata, review notes, and release checklist |
 | [Case Study](docs/CASE_STUDY.md) | Engineering retrospective and implementation notes |
 | [Contributing](CONTRIBUTING.md) | Local development setup and contribution guidelines |
+| [Release Notes (v2.6.0)](docs/ReleaseNotes_2.6.0.md) | Summary of changes, fixes, and updates in version 2.6.0 |
 
 ---
 
