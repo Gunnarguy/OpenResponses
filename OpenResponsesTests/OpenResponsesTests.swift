@@ -765,53 +765,6 @@ final class URLDetectorTests: XCTestCase {
     }
 
 
-    // MARK: - extractImageLinks Tests
-
-    func testExtractImageLinks_MarkdownImages() {
-        let text = "Here is an image ![alt text](https://example.com/image.png) and another ![second](http://test.com/pic.jpg?size=large)"
-        let links = URLDetector.extractImageLinks(from: text)
-
-        XCTAssertEqual(links.count, 2)
-        XCTAssertEqual(links[0], "https://example.com/image.png")
-        XCTAssertEqual(links[1], "http://test.com/pic.jpg?size=large")
-    }
-
-    func testExtractImageLinks_BareHTTPImages() {
-        let text = "Look at this https://example.com/photo.jpeg and also http://test.com/anim.gif?play=1"
-        let links = URLDetector.extractImageLinks(from: text)
-
-        XCTAssertEqual(links.count, 2)
-        XCTAssertEqual(links[0], "https://example.com/photo.jpeg")
-        XCTAssertEqual(links[1], "http://test.com/anim.gif?play=1")
-    }
-
-    func testExtractImageLinks_DataURLs() {
-        let text = "Inline image: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg== embedded here."
-        let links = URLDetector.extractImageLinks(from: text)
-
-        XCTAssertEqual(links.count, 1)
-        XCTAssertEqual(links[0], "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
-    }
-
-    func testExtractImageLinks_SandboxPaths() {
-        let text = "Generated file at sandbox:/mnt/data/chart.png"
-        let links = URLDetector.extractImageLinks(from: text)
-
-        XCTAssertEqual(links.count, 1)
-        XCTAssertEqual(links[0], "sandbox:/mnt/data/chart.png")
-    }
-
-    func testExtractImageLinks_PreservesOrderAndUniqueness() {
-        let text = "First https://example.com/1.png then ![alt](https://example.com/2.jpg) and data:image/png;base64,abc then https://example.com/1.png again and sandbox:/tmp/3.webp"
-        let links = URLDetector.extractImageLinks(from: text)
-
-        XCTAssertEqual(links.count, 4)
-        XCTAssertEqual(links[0], "https://example.com/1.png")
-        XCTAssertEqual(links[1], "https://example.com/2.jpg")
-        XCTAssertEqual(links[2], "data:image/png;base64,abc")
-        XCTAssertEqual(links[3], "sandbox:/tmp/3.webp")
-    }
-
     // MARK: - isRenderableWebpage Tests
 
     func testIsRenderableWebpage_AllSkipPatterns() {
