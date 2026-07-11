@@ -19,6 +19,13 @@ class FileConverterService {
 
     private static let sharedISO8601Formatter = ISO8601DateFormatter()
 
+    private static let sharedMetadataDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
     // MARK: - File Size Limits
     
     static let maxFileSizeBytes: Int64 = 512 * 1024 * 1024 // 512 MB (OpenAI limit)
@@ -1113,16 +1120,12 @@ class FileConverterService {
         let creationDate = attributes[.creationDate] as? Date ?? Date()
         let modificationDate = attributes[.modificationDate] as? Date ?? Date()
         
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        dateFormatter.timeStyle = .medium
-        
         let metadata = """
         # Original File: \(originalFilename)
         # File Type: Binary file
         # Size: \(formatBytes(fileSize))
-        # Created: \(dateFormatter.string(from: creationDate))
-        # Modified: \(dateFormatter.string(from: modificationDate))
+        # Created: \(sharedMetadataDateFormatter.string(from: creationDate))
+        # Modified: \(sharedMetadataDateFormatter.string(from: modificationDate))
         # Conversion Method: Metadata extraction
         # Date: \(sharedISO8601Formatter.string(from: Date()))
         
