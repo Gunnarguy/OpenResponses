@@ -1137,8 +1137,8 @@ class FileConverterService {
         - Original filename: \(originalFilename)
         - File extension: \(url.pathExtension)
         - Size: \(formatBytes(fileSize))
-        - Created: \(dateFormatter.string(from: creationDate))
-        - Last modified: \(dateFormatter.string(from: modificationDate))
+        - Created: \(sharedMetadataDateFormatter.string(from: creationDate))
+        - Last modified: \(sharedMetadataDateFormatter.string(from: modificationDate))
         
         To process this file, you may need to:
         1. Use specialized software to export to a supported format
