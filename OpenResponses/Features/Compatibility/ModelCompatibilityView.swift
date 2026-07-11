@@ -596,11 +596,6 @@ struct MessageToolIndicator: View {
         }
     }
 
-    /// Detect which tools were used based on message content patterns
-    /// Deprecated: This method was causing false positives. Now returns empty unless specific needs arise.
-    private func detectToolsUsed(in text: String) -> [String] {
-        return []
-    }
 
     private func toolIcon(for tool: String) -> String {
         switch tool {
