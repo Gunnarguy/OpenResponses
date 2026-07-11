@@ -8,17 +8,11 @@
 @preconcurrency import Contacts
 import Foundation
 
-/// Repository for Apple Contacts operations
 public final class ContactsRepository: Sendable {
     private let permissionManager: ContactsPermissionManager
-    private let isoFormatter: ISO8601DateFormatter
 
     public init(permissionManager: ContactsPermissionManager = .shared) {
         self.permissionManager = permissionManager
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        isoFormatter = formatter
     }
 
     /// Search contacts by name, email, or phone
@@ -156,9 +150,7 @@ public final class ContactsRepository: Sendable {
             if let birthday = contact.birthday,
                let date = Calendar.current.date(from: birthday)
             {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                birthdayISO = formatter.string(from: date)
+                birthdayISO = AppleDateUtilities.formatISO8601(date)
             } else {
                 birthdayISO = nil
             }

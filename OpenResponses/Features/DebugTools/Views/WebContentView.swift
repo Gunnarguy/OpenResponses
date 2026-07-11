@@ -112,6 +112,7 @@ struct WebView: UIViewRepresentable {
         // Create the web view with enhanced configuration
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
 
@@ -156,7 +157,7 @@ struct WebView: UIViewRepresentable {
         Coordinator(self)
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let parent: WebView
         var lastRequestedURL: URL?
 
@@ -221,6 +222,18 @@ struct WebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
+            let policy = evaluatePolicy(for: url, navigationType: navigationAction.navigationType)
+            decisionHandler(policy)
+        }
+
+        // Testable core navigation policy decision logic
+        func evaluatePolicy(for url: URL, navigationType: WKNavigationType) -> WKNavigationActionPolicy {
+            // Enforce strict HTTP/HTTPS URL scheme policy on all navigations and redirections
+            let scheme = url.scheme?.lowercased() ?? ""
+            guard scheme == "http" || scheme == "https" || (scheme == "about" && url.absoluteString == "about:blank") else {
+                parent.error = "Navigation blocked: URL scheme '\(scheme)' is not allowed."
+                return .cancel
+            }
 
             // Block common ad and tracking domains
             let blockedDomains = [
@@ -232,25 +245,39 @@ struct WebView: UIViewRepresentable {
 
             if let host = url.host?.lowercased() {
                 if blockedDomains.contains(where: { host.contains($0) }) {
-                    decisionHandler(.cancel)
-                    return
+                    return .cancel
                 }
             }
 
             // Only block user-initiated clicks to completely external domains
             // Allow all redirects, iframes, and same-domain navigation
-            if navigationAction.navigationType == .linkActivated,
+            if navigationType == .linkActivated,
                let originalHost = parent.url.host?.lowercased(),
                let currentHost = url.host?.lowercased(),
                currentHost != originalHost && !currentHost.hasSuffix(".\(originalHost)") && !originalHost.hasSuffix(".\(currentHost)") {
                 // This is a user click to a completely external domain - open in Safari
                 UIApplication.shared.open(url)
-                decisionHandler(.cancel)
-                return
+                return .cancel
             }
 
             // Allow all other navigation (same domain, redirects, iframes, forms, etc.)
-            decisionHandler(.allow)
+            return .allow
+        }
+
+        // Handle target="_blank" new window navigations securely
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            guard let url = navigationAction.request.url else {
+                return nil
+            }
+
+            let scheme = url.scheme?.lowercased() ?? ""
+            guard scheme == "http" || scheme == "https" else {
+                parent.error = "Navigation blocked: URL scheme '\(scheme)' is not allowed."
+                return nil
+            }
+
+            webView.load(navigationAction.request)
+            return nil
         }
     }
 }

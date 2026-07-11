@@ -17,7 +17,7 @@ class FileConverterService {
     
     // MARK: - Shared Formatters
 
-    private static let sharedISO8601Formatter = ISO8601DateFormatter()
+
 
     // MARK: - File Size Limits
     
@@ -286,7 +286,7 @@ class FileConverterService {
         # Original File: \(originalFilename)
         # Converted from: Image file
         # Conversion Method: OCR (Optical Character Recognition - Enhanced)
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         # OCR Quality: \(confidencePercentage)% average confidence
         # Text Segments: \(observations.count)\(qualityWarning)
         
@@ -390,7 +390,7 @@ class FileConverterService {
         # Original File: \(originalFilename)
         # Converted from: CSV file
         # Conversion Method: Intelligent CSV-to-Text with ML enhancement
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         # Original Size: \(formatBytes(Int64(originalSize)))
         # Total Rows: \(lineCount)
         # Conversion Strategy: \(strategy)
@@ -618,8 +618,7 @@ class FileConverterService {
         }
         
         // Check for dates
-        let dateFormatter = sharedISO8601Formatter
-        let dateCount = sample.filter { dateFormatter.date(from: $0) != nil }.count
+        let dateCount = sample.filter { AppleDateUtilities.parseISO8601($0) != nil }.count
         if Double(dateCount) > Double(sample.count) * 0.7 {
             return "Date/Time"
         }
@@ -770,7 +769,7 @@ class FileConverterService {
         # Original File: \(originalFilename)
         # Converted from: PDF document
         # Conversion Method: Text extraction using Apple PDFKit
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         # Pages: \(pageCount)
         # Pages with text: \(pagesWithText)
         # Total characters extracted: \(totalCharacters)
@@ -917,7 +916,7 @@ class FileConverterService {
         # Original File: \(originalFilename)
         # Converted from: PDF document (image-based)
         # Conversion Method: Enhanced OCR using Apple Vision framework
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         # Pages: \(pageCount)
         # Pages OCR'd: \(pagesToOCR)
         # OCR Quality: \(confidencePercentage)% average confidence (\(qualityRating))
@@ -999,7 +998,7 @@ class FileConverterService {
         # Duration: \(String(format: "%.2f", duration)) seconds
         # Conversion Note: Audio transcription requires separate processing
         # Recommendation: Use OpenAI's Whisper API for transcription
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         
         --- AUDIO FILE INFORMATION ---
         
@@ -1045,7 +1044,7 @@ class FileConverterService {
         # Duration: \(String(format: "%.2f", duration)) seconds
         # Video Tracks: \(videoTracks.count)
         # Audio Tracks: \(audioTracks.count)
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         
         --- VIDEO FILE INFORMATION ---
         
@@ -1084,7 +1083,7 @@ class FileConverterService {
         let metadata = """
         # Original File: \(originalFilename)
         # Conversion Method: \(method)
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         
         --- CONTENT ---
         
@@ -1124,7 +1123,7 @@ class FileConverterService {
         # Created: \(dateFormatter.string(from: creationDate))
         # Modified: \(dateFormatter.string(from: modificationDate))
         # Conversion Method: Metadata extraction
-        # Date: \(sharedISO8601Formatter.string(from: Date()))
+        # Date: \(Date().formatted(.iso8601))
         
         --- BINARY FILE INFORMATION ---
         

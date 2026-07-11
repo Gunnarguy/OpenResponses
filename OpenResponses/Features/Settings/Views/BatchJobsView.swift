@@ -282,10 +282,7 @@ struct BatchJobsView: View {
     
     private func formatTimestamp(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return date.formatted(date: .numeric, time: .shortened)
     }
 }
 

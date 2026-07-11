@@ -6,11 +6,9 @@ import Foundation
 /// Provides read/write access to Apple Reminders with async conveniences.
 public final class AppleReminderRepository: Sendable {
     private let permissionManager: EventKitPermissionManager
-    private let isoFormatter: ISO8601DateFormatter
 
     public init(permissionManager: EventKitPermissionManager = .shared) {
         self.permissionManager = permissionManager
-        self.isoFormatter = AppleDateUtilities.makeOutputFormatter()
     }
 
     /// Fetches reminders using the EventKit predicates documented for incomplete and completed reminders.
@@ -123,10 +121,10 @@ public final class AppleReminderRepository: Sendable {
             calendarIdentifier: reminder.calendar.calendarIdentifier,
             calendarTitle: reminder.calendar.title,
             title: reminder.title,
-            dueDateISO8601: reminder.dueDateComponents?.date.map { isoFormatter.string(from: $0) },
+            dueDateISO8601: reminder.dueDateComponents?.date.map { AppleDateUtilities.formatISO8601($0) },
             hasDueTime: AppleDateUtilities.hasClockTime(reminder.dueDateComponents),
             completed: reminder.isCompleted,
-            completionDateISO8601: reminder.completionDate.map { isoFormatter.string(from: $0) },
+            completionDateISO8601: reminder.completionDate.map { AppleDateUtilities.formatISO8601($0) },
             priority: reminder.priority,
             notes: reminder.notes
         )
@@ -210,10 +208,10 @@ public final class AppleReminderRepository: Sendable {
             calendarIdentifier: reminder.calendar?.calendarIdentifier ?? "",
             calendarTitle: reminder.calendar?.title ?? "Reminders",
             title: reminder.title,
-            dueDateISO8601: reminder.dueDateComponents?.date.map { isoFormatter.string(from: $0) },
+            dueDateISO8601: reminder.dueDateComponents?.date.map { AppleDateUtilities.formatISO8601($0) },
             hasDueTime: AppleDateUtilities.hasClockTime(reminder.dueDateComponents),
             completed: reminder.isCompleted,
-            completionDateISO8601: reminder.completionDate.map { isoFormatter.string(from: $0) },
+            completionDateISO8601: reminder.completionDate.map { AppleDateUtilities.formatISO8601($0) },
             priority: reminder.priority,
             notes: reminder.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
         )

@@ -1599,16 +1599,12 @@ private struct MCPTab: View {
 
     private func clearMCPConfiguration() {
         var prompt = viewModel.activePrompt
-        let oldLabel = prompt.mcpServerLabel
         let oldConnector = prompt.mcpConnectorId
 
         if let oldConnector {
             KeychainService.shared.delete(forKey: "mcp_connector_\(oldConnector)")
         }
-        if !oldLabel.isEmpty {
-            KeychainService.shared.delete(forKey: "mcp_manual_\(oldLabel)")
-            KeychainService.shared.delete(forKey: "mcp_auth_\(oldLabel)")
-        }
+        prompt.secureMCPHeaders = [:]
 
         prompt.enableMCPTool = false
         prompt.mcpIsConnector = false

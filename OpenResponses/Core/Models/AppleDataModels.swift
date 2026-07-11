@@ -44,10 +44,8 @@ enum AppleDateUtilities {
         pattern: #"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$"#
     )
 
-    static func makeOutputFormatter() -> ISO8601DateFormatter {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
+    static func formatISO8601(_ date: Date) -> String {
+        return date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
     }
 
     static func makeGregorianCalendar(timeZone: TimeZone = .current) -> Calendar {
@@ -61,14 +59,17 @@ enum AppleDateUtilities {
             return nil
         }
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let parsed = formatter.date(from: rawValue) {
-            return parsed
+        let fractionalStrategy = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        if let date = try? Date(rawValue, strategy: fractionalStrategy) {
+            return date
         }
 
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: rawValue)
+        let standardStrategy = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
+        if let date = try? Date(rawValue, strategy: standardStrategy) {
+            return date
+        }
+
+        return nil
     }
 
     static func parseQueryDate(_ rawValue: String?, timeZone: TimeZone = .current) -> Date? {

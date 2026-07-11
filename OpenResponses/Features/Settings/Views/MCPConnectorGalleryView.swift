@@ -907,21 +907,6 @@ private struct RemoteServerSetupSheet: View {
                                 isTesting = true
                                 diagStatus = nil
 
-                                // Persist auth for probe
-                                let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
-                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(token)
-                                if isNotionOfficialURL {
-                                    // Official Notion MCP: save raw token for top-level auth (no Authorization header)
-                                    KeychainService.shared.save(value: normalizedAuth, forKey: "mcp_manual_\(label)")
-                                } else {
-                                    // Self-hosted: store as Authorization header JSON
-                                    let headers = [headerKey: normalizedAuth]
-                                    if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
-                                       let str = String(data: data, encoding: .utf8) {
-                                        KeychainService.shared.save(value: str, forKey: "mcp_manual_\(label)")
-                                    }
-                                }
-
                                 // Build derived prompt for probe (without mutating current prompt)
                                 var probePrompt = viewModel.activePrompt
                                 probePrompt.enableMCPTool = true
@@ -930,6 +915,16 @@ private struct RemoteServerSetupSheet: View {
                                 probePrompt.mcpServerURL = url
                                 probePrompt.mcpAllowedTools = allowedToolList.joined(separator: ", ")
                                 probePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
+
+                                // Persist auth for probe securely using probePrompt.id
+                                let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
+                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(token)
+                                if isNotionOfficialURL {
+                                    let rawTopLevel = NotionAuthService.shared.stripBearer(normalizedAuth)
+                                    probePrompt.secureMCPHeaders = ["Authorization": rawTopLevel]
+                                } else {
+                                    probePrompt.secureMCPHeaders = [headerKey: normalizedAuth]
+                                }
 
                                 do {
                                     let (lbl, count) = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: probePrompt)
@@ -983,15 +978,12 @@ private struct RemoteServerSetupSheet: View {
             url = p.mcpServerURL
             allowedToolsText = p.mcpAllowedTools
             requireApproval = p.mcpRequireApproval != "never"
-            if let existing = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), token.isEmpty {
-                // If the stored value is a JSON header dict, extract Authorization; otherwise treat as raw token.
-                if let data = existing.data(using: .utf8),
-                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                    let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
-                    let headerVal = obj[headerKey] ?? obj["Authorization"] ?? ""
+            let headers = p.secureMCPHeaders
+            if token.isEmpty {
+                let headerKey = viewModel.activePrompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : viewModel.activePrompt.mcpAuthHeaderKey
+                let headerVal = headers[headerKey] ?? headers["Authorization"] ?? ""
+                if !headerVal.isEmpty {
                     token = NotionAuthService.shared.stripBearer(headerVal)
-                } else {
-                    token = existing
                 }
             }
         }
@@ -1015,29 +1007,14 @@ private struct RemoteServerSetupSheet: View {
         viewModel.activePrompt.mcpAllowedTools = allowed
         viewModel.activePrompt.mcpRequireApproval = requireApproval ? "always" : "never"
 
-        var headers = viewModel.activePrompt.secureMCPHeaders
-
         if isNotionOfficial {
             // Official Notion MCP: use TOP-LEVEL raw token only, no Authorization header
-            headers.removeValue(forKey: headerKey)
-            headers.removeValue(forKey: "Authorization")
-            viewModel.activePrompt.secureMCPHeaders = headers
-
-            // Persist raw token for top-level auth (strip any Bearer)
             let rawTopLevel = NotionAuthService.shared.stripBearer(normalizedAuth)
-            KeychainService.shared.save(value: rawTopLevel, forKey: "mcp_manual_\(cleanLabel)")
-            AppLogger.log("🔐 Saved top-level token for official Notion MCP (no Authorization header).", category: .mcp, level: .info)
+            viewModel.activePrompt.secureMCPHeaders = ["Authorization": rawTopLevel]
+            AppLogger.log("🔐 Saved top-level token for official Notion MCP.", category: .mcp, level: .info)
         } else {
-            // Self-hosted: store Authorization header JSON and keep in headers
-            let headersDict = [headerKey: normalizedAuth]
-            if let data = try? JSONSerialization.data(withJSONObject: headersDict, options: [.sortedKeys]),
-               let str = String(data: data, encoding: .utf8) {
-                KeychainService.shared.save(value: str, forKey: "mcp_manual_\(cleanLabel)")
-            } else {
-                KeychainService.shared.save(value: "{\"\(headerKey)\":\"\(normalizedAuth)\"}", forKey: "mcp_manual_\(cleanLabel)")
-            }
-            headers[headerKey] = normalizedAuth
-            viewModel.activePrompt.secureMCPHeaders = headers
+            // Self-hosted: store Authorization header JSON
+            viewModel.activePrompt.secureMCPHeaders = [headerKey: normalizedAuth]
             AppLogger.log("🔐 Saved Authorization header for self-hosted MCP.", category: .mcp, level: .info)
         }
 
