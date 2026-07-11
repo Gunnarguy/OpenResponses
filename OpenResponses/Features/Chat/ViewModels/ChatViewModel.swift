@@ -812,11 +812,12 @@ class ChatViewModel: ObservableObject {
                 } catch {
                     await MainActor.run {
                         self.handleError(error)
-                        self.lastResponseId = nil
+                        // CRITICAL FIX: Reset streaming status on computer_call_output network failure
                         self.streamingStatus = .idle
-                        self.streamingMessageId = nil
                         self.isStreaming = false
                         self.isAwaitingComputerOutput = false
+                        self.lastResponseId = nil
+                        self.streamingMessageId = nil
                         let sys = ChatMessage(role: .system, text: "Couldn’t continue the approved computer-use step. I’ll start fresh on the next message.")
                         self.messages.append(sys)
                     }
@@ -1870,29 +1871,44 @@ class ChatViewModel: ObservableObject {
 
             AppLogger.log("[CUA] (resume) Sending computer_call_output with callId='\(callId)'", category: .openAI, level: .info)
 
-            let response = try await api.sendComputerCallOutput(
-                callId: callId,
-                output: output,
-                model: activePrompt.openAIModel,
-                previousResponseId: previousId,
-                acknowledgedSafetyChecks: acknowledgedSafetyChecks,
-                currentUrl: result.currentURL
-            )
-            if abortAfterOutput {
+            do {
+                let response = try await api.sendComputerCallOutput(
+                    callId: callId,
+                    output: output,
+                    model: activePrompt.openAIModel,
+                    previousResponseId: previousId,
+                    acknowledgedSafetyChecks: acknowledgedSafetyChecks,
+                    currentUrl: result.currentURL
+                )
+                if abortAfterOutput {
+                    await MainActor.run {
+                        self.consecutiveWaitCount = 0
+                        self.isAwaitingComputerOutput = false
+                        self.isStreaming = false
+                        self.streamingStatus = .idle
+                        self.lastResponseId = nil
+                        let sys = ChatMessage(
+                            role: .system,
+                            text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
+                        )
+                        self.messages.append(sys)
+                    }
+                } else {
+                    await self.processNonStreamingResponse(response, for: messageId)
+                }
+            } catch {
                 await MainActor.run {
-                    self.consecutiveWaitCount = 0
-                    self.isAwaitingComputerOutput = false
-                    self.isStreaming = false
+                    self.handleError(error)
+                    // CRITICAL FIX: Reset streaming status on computer_call_output network failure
                     self.streamingStatus = .idle
+                    self.isStreaming = false
+                    self.isAwaitingComputerOutput = false
                     self.lastResponseId = nil
-                    let sys = ChatMessage(
-                        role: .system,
-                        text: "⚠️ Computer use interrupted: Too many consecutive wait actions. I sent the last screenshot and stopped."
-                    )
+                    self.streamingMessageId = nil
+
+                    let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.")
                     self.messages.append(sys)
                 }
-            } else {
-                await self.processNonStreamingResponse(response, for: messageId)
             }
         } else {
             AppLogger.log("[CUA] (resume) No screenshot; clearing previousId", category: .openAI, level: .warning)
@@ -4176,16 +4192,16 @@ class ChatViewModel: ObservableObject {
                     // "No tool output found for computer call ...".
                     await MainActor.run {
                         self.handleError(error)
-                        self.lastResponseId = nil
-                        // CRITICAL FIX: Complete streaming state reset on computer_call_output network failure
+                        // CRITICAL FIX: Reset streaming status on computer_call_output network failure
                         self.streamingStatus = .idle
-                        self.streamingMessageId = nil
                         self.isStreaming = false
                         self.isAwaitingComputerOutput = false
+                        self.lastResponseId = nil
+                        self.streamingMessageId = nil
+
                         // Provide a lightweight, user-visible hint in the chat
                         let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
                         self.messages.append(sys)
-                        self.isAwaitingComputerOutput = false
                     }
                 }
             } else {
