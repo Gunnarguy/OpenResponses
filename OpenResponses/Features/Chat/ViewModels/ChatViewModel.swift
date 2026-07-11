@@ -4203,12 +4203,6 @@ class ChatViewModel: ObservableObject {
                 self.streamingStatus = .idle
                 self.streamingMessageId = nil
                 self.isStreaming = false
-                _ = Task { @MainActor in
-                    do {
-                        try await Task.sleep(for: .seconds(2)) // Allows user to see the error
-                        self.streamingStatus = .idle
-                    } catch {}
-                }
             }
         }
     }
