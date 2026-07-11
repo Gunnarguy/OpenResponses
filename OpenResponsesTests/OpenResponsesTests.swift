@@ -996,3 +996,26 @@ final class OpenAIModelTests: XCTestCase {
         }
     }
 }
+
+
+final class UIImageExtensionsTests: XCTestCase {
+    func testMemoryFootprint() {
+        // Create a dummy image
+        let size = CGSize(width: 100, height: 100)
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        let context = UIGraphicsGetCurrentContext()
+        context?.setFillColor(UIColor.red.cgColor)
+        context?.fill(CGRect(origin: .zero, size: size))
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        XCTAssertNotNil(image)
+
+        if let cgImage = image?.cgImage {
+            let expectedFootprint = cgImage.bytesPerRow * cgImage.height
+            XCTAssertEqual(image?.memoryFootprint, expectedFootprint)
+        } else {
+            XCTFail("Failed to get CGImage from the dummy image")
+        }
+    }
+}
