@@ -4518,6 +4518,12 @@ class OpenAIService: OpenAIServiceProtocol {
             throw OpenAIServiceError.invalidResponseData
         }
 
+        if httpResponse.statusCode == 405 {
+            // OpenAI does not support listing conversations via GET /v1/conversations.
+            // Return an empty list response instead of failing.
+            return ConversationListResponse(data: [], firstId: nil, lastId: nil, hasMore: false)
+        }
+
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)

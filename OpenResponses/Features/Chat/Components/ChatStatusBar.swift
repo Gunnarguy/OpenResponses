@@ -88,8 +88,50 @@ struct ChatStatusBar: View {
     // MARK: - Model Badge
     
     private var modelBadge: some View {
-        Text(viewModel.activePrompt.openAIModel)
-            .fontWeight(.medium)
+        Menu {
+            Picker("Model", selection: Binding(
+                get: { viewModel.activePrompt.openAIModel },
+                set: { newModel in
+                    let oldModel = viewModel.activePrompt.openAIModel
+                    var updatedPrompt = viewModel.activePrompt
+                    updatedPrompt.openAIModel = newModel
+                    _ = viewModel.replaceActivePrompt(with: updatedPrompt, previousModelId: oldModel)
+                    viewModel.saveActivePrompt()
+                }
+            )) {
+                Group {
+                    Text("gpt-5.6-terra").tag("gpt-5.6-terra")
+                    Text("gpt-5.6-sol").tag("gpt-5.6-sol")
+                    Text("gpt-5.6-luna").tag("gpt-5.6-luna")
+                    Text("gpt-5.6").tag("gpt-5.6")
+                }
+                Group {
+                    Text("gpt-5.5").tag("gpt-5.5")
+                    Text("gpt-5.5-pro").tag("gpt-5.5-pro")
+                    Text("gpt-5.5-mini").tag("gpt-5.5-mini")
+                }
+                Group {
+                    Text("gpt-5.4").tag("gpt-5.4")
+                    Text("gpt-5.4-pro").tag("gpt-5.4-pro")
+                    Text("gpt-5.4-mini").tag("gpt-5.4-mini")
+                }
+                Group {
+                    Text("gpt-5").tag("gpt-5")
+                    Text("gpt-5-mini").tag("gpt-5-mini")
+                    Text("o3").tag("o3")
+                    Text("o3-mini").tag("o3-mini")
+                    Text("gpt-4o").tag("gpt-4o")
+                    Text("gpt-4o-mini").tag("gpt-4o-mini")
+                    Text("computer-use-preview").tag("computer-use-preview")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(viewModel.activePrompt.openAIModel)
+                    .fontWeight(.medium)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8)
@@ -97,11 +139,16 @@ struct ChatStatusBar: View {
             .background(modelColor.opacity(0.15))
             .foregroundColor(modelColor)
             .cornerRadius(6)
+        }
     }
     
     private var modelColor: Color {
         let model = viewModel.activePrompt.openAIModel
-        if model.contains("o1") || model.contains("o3") {
+        if model.contains("gpt-5.6") {
+            return .teal
+        } else if model.contains("gpt-5") {
+            return .indigo
+        } else if model.contains("o1") || model.contains("o3") {
             return .purple
         } else if model.contains("4o") {
             return .blue
