@@ -142,56 +142,23 @@ final class MyNewTests: XCTestCase {
 }
 ```
 
-## App Store Metadata Automation (Fastlane)
+## App Store Delivery & CI/CD (Xcode Cloud)
 
-Use Fastlane Deliver to push App Store metadata without manual copy/paste.
+Continuous Integration, testing, and deployment to TestFlight and the App Store are managed natively using **Xcode Cloud**. Fastlane is not used in the build pipeline.
 
-```bash
-# One-time install (macOS)
-brew install fastlane
+### Workflow Configuration
+Xcode Cloud workflows are configured directly in Xcode or App Store Connect:
 
-# One-command upload (syncs metadata, then uploads)
-./scripts/upload_app_store_metadata.sh
-```
+1. **Trigger:** Automated runs are triggered on every push to the `main` branch or pull requests.
+2. **Actions:**
+   - Run automated unit and UI tests.
+   - Archive the application using the `Release` configuration.
+3. **Deployment:** Automatically distribute archived builds to TestFlight internal testing groups once App Store Connect processing is complete.
 
-Notes:
-- Set `DELIVER_SCREENSHOTS=1` to upload screenshots from `fastlane/screenshots/en-US`.
-- Set `FASTLANE_USER` if you want to avoid prompts; Fastlane will handle 2FA as needed.
-- For API key auth, fill in `fastlane/.env.example` and export those variables before running.
-
-## Continuous Deployment (Future)
-
-### TestFlight Deployment (Planned)
-
-Future enhancement will add automatic TestFlight uploads:
-
-```yaml
-- name: Upload to TestFlight
-  uses: apple-actions/upload-testflight-build@v1
-  with:
-    app-path: OpenResponses.ipa
-    issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
-    api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
-    api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-```
-
-**Required Secrets:**
-- `APPSTORE_ISSUER_ID` - App Store Connect API Issuer ID
-- `APPSTORE_API_KEY_ID` - App Store Connect API Key ID
-- `APPSTORE_API_PRIVATE_KEY` - App Store Connect API Private Key
-
-### Fastlane Integration (Alternative)
-
-Can use Fastlane for more advanced workflows:
-
-```ruby
-# fastlane/Fastfile
-lane :beta do
-  build_app(scheme: "OpenResponses")
-  upload_to_testflight
-  slack(message: "New TestFlight build available!")
-end
-```
+### Key Benefits of Xcode Cloud
+- Native integration with App Store Connect without requiring external third-party credential manager setups or custom CI build agents.
+- Automatic certificate signing, provisioning profile generation, and Entitlements verification.
+- Integrated distribution streams straight to App Store Connect TestFlight pipelines.
 
 ## Troubleshooting
 

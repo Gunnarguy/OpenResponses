@@ -6,23 +6,23 @@ This document tracks the remaining work needed to ship OpenResponses to the App 
 
 ## Target
 
-- **Release window:** Q4 2025 (ASAP once checklist is green)
-- **Proposed versioning:** Marketing version `1.0.0`, build number `1`
+- **Release window:** Q3 2026 (ASAP once checklist is green)
+- **Proposed versioning:** Marketing version `2.6`, build number `1`
 
 ## Readiness Checklist
 
 | ID | Area | Status | Summary | Notes / Owners |
 | -- | ---- | ------ | ------- | --------------- |
-| 1 | Versioning | � In progress | Marketing version set to `1.0.0`; build number `1` confirmed | Next: Release scheme/TestFlight seed review |
+| 1 | Versioning | ✅ Complete | Marketing version set to `2.6`; build number `1` confirmed | Next: Release scheme/TestFlight seed review |
 | 2 | Privacy strings | ✅ Complete | Info.plist keys for Calendars, Contacts, Files, Local Network, Location (optional), Photos, Reminders verified in build settings | Confirmed in `project.pbxproj` (GENERATE_INFOPLIST_FILE build settings) |
-| 3 | Sensitive logging | ✅ Complete | Disabled detailed network logging outside DEBUG; forced sanitized OpenAI logs in release | `AnalyticsService` & `AppLogger` updated 2025-11-08 |
+| 3 | Sensitive logging | ✅ Complete | Disabled detailed network logging outside DEBUG; forced sanitized OpenAI logs in release | `AnalyticsService` & `AppLogger` updated |
 | 4 | Secrets audit | ✅ Complete | Repository scanned; no hardcoded keys found; `.gitignore` updated; environment setup documented | See `docs/EnvironmentSetup.md` |
 | 5 | Icons & launch | 🟡 In progress | AppIcon 1024×1024 PNG verified; launch screen generated via SwiftUI; needs device preview pass | Review on physical device before TestFlight |
-| 6 | Store metadata | � In progress | Privacy policy, release notes, and comprehensive metadata prepared | See `docs/AppStoreMetadata.md` for complete submission content |
+| 6 | Store metadata | 🟡 In progress | Privacy policy, release notes, and comprehensive metadata prepared | See `docs/AppStoreMetadata.md` for complete submission content |
 | 7 | Capabilities | 🟡 In progress | Code signing: Automatic; Team: Z3E334EXZD; Bundle ID: `Gunndamental.OpenResponses`; no custom entitlements | Verify provisioning before TestFlight upload |
 | 8 | Accessibility & l10n | 🟡 In progress | Comprehensive accessibility audit checklist created; VoiceOver labels found in key UI; Dynamic Type confirmed | Perform manual testing with devices |
 | 9 | Third-party notices | ✅ Complete | AboutView created with MIT License; added to Advanced tab | No external dependencies found |
-| 10 | Tests & CI | ✅ Complete | Unit tests for OpenAIService and PromptPersistence; GitHub Actions workflows for CI/CD | See `.github/workflows/` and `docs/CI_CD_Pipeline.md` |
+| 10 | Tests & CI | ✅ Complete | Unit tests for OpenAIService and PromptPersistence; Xcode Cloud workflows for CI/CD and deployment | See `docs/CI_CD_Pipeline.md` |
 | 11 | Security/data handling | 🟡 Planned | Document data flows, analytics opt-in, update privacy policy | Align with Apple guidelines section 5 |
 | 12 | Documentation | 🟡 In progress | Keep `PRODUCTION_CHECKLIST.md`, roadmap, API reference synchronized; prep release notes | Create release notes draft + doc sync |
 
