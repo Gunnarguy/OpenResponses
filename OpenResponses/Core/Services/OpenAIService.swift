@@ -2187,6 +2187,11 @@ class OpenAIService: OpenAIServiceProtocol {
 
         var reasoningObject: [String: Any] = ["effort": prompt.reasoningEffort]
 
+        // Map max_reasoning_effort if supported and available
+        if compatibilityService.isParameterSupported("max_reasoning_effort", for: prompt.openAIModel), let maxEffort = prompt.maxReasoningEffort, !maxEffort.isEmpty {
+            reasoningObject["max_effort"] = maxEffort
+        }
+
         // Add reasoning summary for specific reasoning models
         if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5"), !prompt.reasoningSummary.isEmpty {
             reasoningObject["summary"] = prompt.reasoningSummary

@@ -198,6 +198,87 @@ class ModelCompatibilityService {
             supportsReasoningEffort: true,
             supportsTemperature: false
         ),
+        // GPT-5.6 Family (Sol, Terra, Luna)
+        "gpt-5.6-sol": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
+            parameters: [
+                "reasoning_effort", "max_reasoning_effort",
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
+        "gpt-5.6-terra": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
+            parameters: [
+                "reasoning_effort", "max_reasoning_effort",
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
+        "gpt-5.6-luna": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
+            parameters: [
+                "reasoning_effort", "max_reasoning_effort",
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
+        "gpt-5.6": ModelCapabilities(
+            streaming: true,
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
+            parameters: [
+                "reasoning_effort", "max_reasoning_effort",
+                "temperature", "top_p", "top_logprobs",
+                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
+                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
+            ],
+            toolOverrides: ToolOverrides(
+                webSearch: .enabled,
+                codeInterpreter: .enabled,
+                imageGeneration: .enabled,
+                fileSearch: .enabled,
+                computer: .enabled
+            ),
+            category: .latest,
+            supportsReasoningEffort: true,
+            supportsTemperature: true
+        ),
         // GPT-5.5 family.
         // Sampling parameters are only valid when reasoning effort is explicitly set to `none`.
         "gpt-5.5": ModelCapabilities(

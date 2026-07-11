@@ -14,6 +14,10 @@ struct DynamicModelSelector: View {
     // Fallback chat models in case the API call fails
     private let fallbackModels = [
         // Latest chat models (2026)
+        "gpt-5.6",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.5-pro",
         "gpt-5.5-mini",
@@ -297,8 +301,8 @@ struct DynamicModelSelector: View {
                             return true
                         }
 
-                        // Allow GPT-5.5 / GPT-5.4 / GPT-5.2 snapshots (but avoid ChatGPT-only aliases).
-                        if id.hasPrefix("gpt-5.5-") || id.hasPrefix("gpt-5.4-") || id.hasPrefix("gpt-5.2-") || id.hasPrefix("gpt-5.1-"), !id.contains("chat-latest") {
+                        // Allow GPT-5.6 / GPT-5.5 / GPT-5.4 / GPT-5.2 snapshots (but avoid ChatGPT-only aliases).
+                        if id.hasPrefix("gpt-5.6-") || id.hasPrefix("gpt-5.5-") || id.hasPrefix("gpt-5.4-") || id.hasPrefix("gpt-5.2-") || id.hasPrefix("gpt-5.1-"), !id.contains("chat-latest") {
                             return true
                         }
 
@@ -327,8 +331,12 @@ struct DynamicModelSelector: View {
                         let firstId = first.id.lowercased()
                         let secondId = second.id.lowercased()
 
-                        // Priority order: gpt-5.5-pro > gpt-5.5 > gpt-5.5-mini > gpt-5.5-nano > gpt-5.4-pro > gpt-5.4 > o3 > o3-mini > gpt-4o > CUA > gpt-4o-mini
+                        // Priority order: gpt-5.6-sol > gpt-5.6 > gpt-5.6-terra > gpt-5.6-luna > gpt-5.5-pro > gpt-5.5 > gpt-5.5-mini > gpt-5.5-nano > gpt-5.4-pro > gpt-5.4 > o3 > o3-mini > gpt-4o > CUA > gpt-4o-mini
                         let modelPriority: [String: Int] = [
+                            "gpt-5.6-sol": 1500,
+                            "gpt-5.6": 1450,
+                            "gpt-5.6-terra": 1400,
+                            "gpt-5.6-luna": 1350,
                             "gpt-5.5-pro": 1300,
                             "gpt-5.5": 1290,
                             "gpt-5.5-mini": 1280,

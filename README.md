@@ -261,7 +261,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 ## Roadmap
 
 ### Phase 1: Core Playground & Tool Integrations (Completed)
-- [x] **Model Selector Playground:** Dynamic sorting and capability gating for chat models from GPT-4o up to GPT-5.5.
+- [x] **Model Selector Playground:** Dynamic sorting and capability gating for chat models from GPT-4o up to GPT-5.6 (Sol, Terra, Luna).
 - [x] **Streaming Observability:** Real-time Server-Sent Events (SSE) parsing with live token counters and request inspector panels.
 - [x] **Collapsible Thinking UX:** Surfaces collapsible reasoning traces for o1/o3 models inline under dedicated cards.
 - [x] **Local History:** On-device JSON conversation database with prompt preset libraries.

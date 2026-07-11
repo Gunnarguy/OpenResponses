@@ -180,6 +180,10 @@ struct ModelConfigurationView: View {
             modelParametersReasoningSummary
         }
 
+        if ModelCompatibilityService.shared.isParameterSupported("max_reasoning_effort", for: activePrompt.openAIModel) {
+            maxReasoningEffortControl
+        }
+
         if ModelCompatibilityService.shared.isParameterSupported("top_p", for: activePrompt.openAIModel, reasoningEffort: activePrompt.reasoningEffort) { 
             topPControl
         }
@@ -224,9 +228,35 @@ struct ModelConfigurationView: View {
         }
     }
 
+    private var maxReasoningEffortControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Max Reasoning Effort")
+                Spacer()
+                Text(activePrompt.maxReasoningEffort ?? "None")
+                    .foregroundColor(.secondary)
+            }
+            .font(.subheadline)
+
+            let options = ["None"] + reasoningEffortOptions(for: activePrompt.openAIModel)
+            Picker("Max Reasoning Effort", selection: Binding(
+                get: { activePrompt.maxReasoningEffort ?? "None" },
+                set: { newValue in
+                    activePrompt.maxReasoningEffort = newValue == "None" ? nil : newValue
+                    onSave()
+                }
+            )) {
+                ForEach(options, id: \.self) { option in
+                    Text(option == "None" ? "None" : optionDisplayName(option)).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
     private func reasoningEffortOptions(for modelId: String) -> [String] {
         let id = modelId.lowercased()
-        if id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
+        if id.hasPrefix("gpt-5.6") || id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
             return ["none", "minimal", "low", "medium", "high", "xhigh"]
         }
         if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {

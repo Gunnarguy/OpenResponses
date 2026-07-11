@@ -16,6 +16,14 @@ struct OpenAIModel: Codable, Identifiable {
     var displayName: String {
         switch id {
         // Latest GPT models (2026)
+        case "gpt-5.6":
+            return "gpt-5.6"
+        case "gpt-5.6-sol":
+            return "gpt-5.6-sol"
+        case "gpt-5.6-terra":
+            return "gpt-5.6-terra"
+        case "gpt-5.6-luna":
+            return "gpt-5.6-luna"
         case "gpt-5.5":
             return "gpt-5.5"
         case "gpt-5.5-pro":

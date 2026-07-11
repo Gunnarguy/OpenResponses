@@ -14,7 +14,7 @@ struct CreateAssistantSheet: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     
-    private let availableModels = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4-turbo"]
+    private let availableModels = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6", "gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4-turbo"]
     
     var body: some View {
         NavigationStack {

@@ -9,6 +9,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     // Model and Generation
     var openAIModel: String
     var reasoningEffort: String
+    var maxReasoningEffort: String?
     var reasoningSummary: String // Added
     var temperature: Double
 
@@ -205,7 +206,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     // MARK: - Codable
     enum CodingKeys: String, CodingKey {
         // Explicitly list all properties to be encoded/decoded
-        case name, openAIModel, reasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
+        case name, openAIModel, reasoningEffort, maxReasoningEffort, reasoningSummary, temperature, systemInstructions, developerInstructions
         case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth, webSearchAllowedDomains, webSearchBlockedDomains
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, imageGenerationModel, imageGenerationSize, imageGenerationQuality, imageGenerationOutputFormat, imageGenerationBackground, enableFileSearch, selectedVectorStoreIds
     case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold, fileSearchFiltersJSON
