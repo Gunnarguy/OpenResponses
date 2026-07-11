@@ -338,6 +338,26 @@ enum AppLogger: Sendable {
         return safeHeaders
     }
 
+
+    /// Generic redactor for URLs to prevent leaking sensitive tokens in query parameters
+    nonisolated private static func redactURL(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true), let queryItems = components.queryItems else {
+            return url.absoluteString
+        }
+
+        let sensitiveKeys = ["token", "secret", "key", "auth", "password", "signature"]
+
+        components.queryItems = queryItems.map { item in
+            let lowerName = item.name.lowercased()
+            if sensitiveKeys.contains(where: { lowerName.contains($0) }) {
+                return URLQueryItem(name: item.name, value: "***REDACTED***")
+            }
+            return item
+        }
+
+        return components.url?.absoluteString ?? url.absoluteString
+    }
+
     // MARK: - OpenAI API Logging
     
     /// Log an OpenAI API request with detailed information.
@@ -360,7 +380,7 @@ enum AppLogger: Sendable {
     ) {
         let safeHeaders = redactHeaders(headers)
         
-        var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
+        var logMessage = "📤 API REQUEST: \(method) \(redactURL(url))\n"
         logMessage += "📤 HEADERS: \(safeHeaders)"
         
         if !minimizeOpenAILogBodies {
@@ -404,7 +424,7 @@ enum AppLogger: Sendable {
         let level: Level = success ? openAILogLevel : .warning
         
         let safeHeaders = redactHeaders(headers)
-        var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(url.absoluteString)\n"
+        var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(redactURL(url))\n"
         logMessage += "\(emoji) HEADERS: \(safeHeaders)"
         
         if !minimizeOpenAILogBodies {

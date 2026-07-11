@@ -138,4 +138,49 @@ final class AppLoggerTests: XCTestCase {
 
         wait(for: [expectation], timeout: 1.0)
     }
+
+    func testLogOpenAIRequestRedactsURLQueryParameters() {
+        let expectation = XCTestExpectation(description: "Log added to ConsoleLogger")
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions?token=supersecret123&other=test")!
+        let headers = ["Content-Type": "application/json"]
+
+        AppLogger.logOpenAIRequest(url: url, method: "POST", headers: headers, body: nil)
+
+        DispatchQueue.main.async {
+            let logs = ConsoleLogger.shared.logs
+            XCTAssertFalse(logs.isEmpty, "Expected log entry")
+            if let lastLog = logs.last {
+                XCTAssertTrue(lastLog.message.contains("***REDACTED***"))
+                XCTAssertFalse(lastLog.message.contains("supersecret123"))
+                XCTAssertTrue(lastLog.message.contains("other=test"))
+            }
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testLogOpenAIResponseRedactsURLQueryParameters() {
+        let expectation = XCTestExpectation(description: "Log added to ConsoleLogger")
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions?api_key=sk-secretkey456&param=value")!
+        let headers: [AnyHashable: Any] = ["Content-Type": "application/json"]
+
+        AppLogger.logOpenAIResponse(url: url, statusCode: 200, headers: headers, body: nil)
+
+        DispatchQueue.main.async {
+            let logs = ConsoleLogger.shared.logs
+            XCTAssertFalse(logs.isEmpty, "Expected log entry")
+            if let lastLog = logs.last {
+                XCTAssertTrue(lastLog.message.contains("***REDACTED***"))
+                XCTAssertFalse(lastLog.message.contains("sk-secretkey456"))
+                XCTAssertTrue(lastLog.message.contains("param=value"))
+            }
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
 }
