@@ -10,7 +10,6 @@ struct Prompt: Codable, Identifiable, Equatable {
     var openAIModel: String
     var reasoningEffort: String
     var reasoningSummary: String // Added
-    var verbosity: String?
     var promptCacheOptions: PromptCacheOptions?
     var temperature: Double
 
@@ -206,7 +205,7 @@ struct Prompt: Codable, Identifiable, Equatable {
 
     // MARK: - Codable
     enum CodingKeys: String, CodingKey {
-        case name, openAIModel, reasoningEffort, reasoningSummary, verbosity, promptCacheOptions, temperature, systemInstructions, developerInstructions
+        case name, openAIModel, reasoningEffort, reasoningSummary, promptCacheOptions, temperature, systemInstructions, developerInstructions
         case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth, webSearchAllowedDomains, webSearchBlockedDomains
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, imageGenerationModel, imageGenerationSize, imageGenerationQuality, imageGenerationOutputFormat, imageGenerationBackground, enableFileSearch, selectedVectorStoreIds
     case fileSearchMaxResults, fileSearchRanker, fileSearchScoreThreshold, fileSearchFiltersJSON

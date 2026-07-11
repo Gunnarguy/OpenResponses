@@ -225,29 +225,29 @@ struct ModelConfigurationView: View {
             .onChange(of: activePrompt.reasoningEffort) { _, _ in
                 onSave()
             }
+        }
+    }
+
     private var verbosityControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Verbosity")
                 Spacer()
-                Text(activePrompt.verbosity ?? "Medium")
+                Text(activePrompt.verbosity.capitalized)
                     .foregroundColor(.secondary)
             }
             .font(.subheadline)
 
             let options = ["low", "medium", "high"]
-            Picker("Verbosity", selection: Binding(
-                get: { activePrompt.verbosity ?? "medium" },
-                set: { newValue in
-                    activePrompt.verbosity = newValue == "medium" ? nil : newValue
-                    onSave()
-                }
-            )) {
+            Picker("Verbosity", selection: $activePrompt.verbosity) {
                 ForEach(options, id: \.self) { option in
                     Text(option.capitalized).tag(option)
                 }
             }
             .pickerStyle(.segmented)
+            .onChange(of: activePrompt.verbosity) { _, _ in
+                onSave()
+            }
         }
     }
 
