@@ -1,0 +1,21 @@
+--- ./OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift
++++ ./OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift
+@@ -4155,19 +4155,19 @@
+             }
+         } catch {
+             AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
+             await MainActor.run {
+                 self.lastResponseId = nil
+                 self.isAwaitingComputerOutput = false
+                 self.handleError(error)
+                 // CRITICAL FIX: Complete streaming state reset on computer tool error
+-                self.streamingStatus = .idle
+                 self.streamingMessageId = nil
+                 self.isStreaming = false
+                 Task { @MainActor in
+                     try await Task.sleep(for: .seconds(2)) // Allows user to see the error
+                     self.streamingStatus = .idle
+                 }
+             }
+         }
+     }
