@@ -2168,10 +2168,7 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
-        // Verbosity
-        if compatibilityService.isParameterSupported("verbosity", for: prompt.openAIModel), !prompt.verbosity.isEmpty {
-            parameters["verbosity"] = prompt.verbosity
-        }
+        // Verbosity is handled under text.verbosity in buildTextConfiguration (per Responses API spec)
 
         // Prompt Cache Options
         if compatibilityService.isParameterSupported("prompt_cache_options", for: prompt.openAIModel), let cacheOptions = prompt.promptCacheOptions {
