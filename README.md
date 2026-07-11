@@ -277,7 +277,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 - [x] **Short Conversation Compaction:** Integrate `POST /v1/responses/compact` executions to compress long chats to fit context caps.
 - [x] **Structured JSON Outputs:** Add `response_format` JSON schema selection to prompt settings for strict data extractions.
 
-### Phase 3: Developer Labs & Legacy Features
+### Phase 3: Developer Labs & Legacy Features (Completed)
 - [x] **Assistants API:** Stateful thread runs, assistant creation, and CRUD management (Legacy Migration).
 - [x] **Realtime API:** Voice Mode with websocket connections, PCM16 audio (Direct BYOK WebSocket mode).
 - [x] **Batch API:** File uploads, JSONL generation, and high-throughput background job monitoring (Developer Lab).
