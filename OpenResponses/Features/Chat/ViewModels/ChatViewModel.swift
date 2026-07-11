@@ -4178,9 +4178,12 @@ class ChatViewModel: ObservableObject {
                         self.handleError(error)
                         self.lastResponseId = nil
                         // CRITICAL FIX: Complete streaming state reset on computer_call_output network failure
+                        self.consecutiveWaitCount = 0
                         self.streamingStatus = .idle
                         self.streamingMessageId = nil
                         self.isStreaming = false
+                        self.streamingTask?.cancel()
+                        self.streamingTask = nil
                         self.isAwaitingComputerOutput = false
                         // Provide a lightweight, user-visible hint in the chat
                         let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
@@ -4203,6 +4206,8 @@ class ChatViewModel: ObservableObject {
                 self.streamingStatus = .idle
                 self.streamingMessageId = nil
                 self.isStreaming = false
+                self.streamingTask?.cancel()
+                self.streamingTask = nil
                 _ = Task { @MainActor in
                     do {
                         try await Task.sleep(for: .seconds(2)) // Allows user to see the error
