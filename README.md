@@ -269,6 +269,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 - [x] **Code Interpreter:** Sandboxed Python executions rendering text logs and visual charts inline in chat view.
 - [x] **Web Search:** Multi-source citation annotations parsing with page-crawl depths.
 - [x] **Computer Use Harness:** Sandboxed local WKWebView automation loop (`computer` and legacy `computer_use_preview` tools) with step-by-step UI safety approval dialogs and scroll/click throttles.
+- [x] **Model Context Protocol (MCP) Integration:** Pair remote MCP servers securely using Keychain-stored custom authentication headers.
 
 ### Phase 2: Remote Conversations & Rich Annotations (In Progress)
 - [/] **Backend-Managed Conversations:** Integrate the `/v1/conversations` API methods to list, fetch, update, and delete remote threads.
@@ -285,7 +286,6 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 ### Phase 4: Local Sandboxing & Advanced Integrations (Planned)
 - [ ] **On-Device Python Execution:** Run local Python containers using Pyodide/WebAssembly to avoid remote sandboxes.
-- [ ] **Model Context Protocol (MCP) Expansion:** Pair remote MCP servers with Keychain-stored custom auth headers.
 - [ ] **On-Device Embedding Cache:** Cache vector embeddings locally to save token costs on recurring documents.
 
 ---
