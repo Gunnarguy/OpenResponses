@@ -4139,6 +4139,12 @@ class ChatViewModel: ObservableObject {
                         self.handleError(error)
                         self.lastResponseId = nil
                         // CRITICAL FIX: Complete streaming state reset on computer_call_output network failure
+                        if let streamingId = self.streamingMessageId {
+                            if let work = self.deltaFlushWorkItems[streamingId] { work.cancel() }
+                            self.deltaFlushWorkItems[streamingId] = nil
+                            self.flushDeltaBufferIfNeeded(for: streamingId)
+                            self.stopImageGenerationHeartbeat(for: streamingId)
+                        }
                         self.streamingStatus = .idle
                         self.streamingMessageId = nil
                         self.isStreaming = false
@@ -4160,6 +4166,12 @@ class ChatViewModel: ObservableObject {
                 self.isAwaitingComputerOutput = false
                 self.handleError(error)
                 // CRITICAL FIX: Complete streaming state reset on computer tool error
+                if let streamingId = self.streamingMessageId {
+                    if let work = self.deltaFlushWorkItems[streamingId] { work.cancel() }
+                    self.deltaFlushWorkItems[streamingId] = nil
+                    self.flushDeltaBufferIfNeeded(for: streamingId)
+                    self.stopImageGenerationHeartbeat(for: streamingId)
+                }
                 self.streamingStatus = .idle
                 self.streamingMessageId = nil
                 self.isStreaming = false
@@ -4640,6 +4652,12 @@ class ChatViewModel: ObservableObject {
             await MainActor.run {
                 self.handleError(error)
                 // CRITICAL FIX: Reset streaming status on computer_call_output network failure
+                if let streamingId = self.streamingMessageId {
+                    if let work = self.deltaFlushWorkItems[streamingId] { work.cancel() }
+                    self.deltaFlushWorkItems[streamingId] = nil
+                    self.flushDeltaBufferIfNeeded(for: streamingId)
+                    self.stopImageGenerationHeartbeat(for: streamingId)
+                }
                 self.streamingStatus = .idle
                 self.isStreaming = false
                 self.isAwaitingComputerOutput = false
