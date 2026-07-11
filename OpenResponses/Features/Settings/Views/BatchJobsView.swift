@@ -9,6 +9,13 @@ struct BatchJobsView: View {
     
     @AppStorage("batch_endpoint") private var endpoint: String = "/v1/chat/completions"
     
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     var body: some View {
         List {
             Section("Submit New Batch Job") {
@@ -282,10 +289,7 @@ struct BatchJobsView: View {
     
     private func formatTimestamp(_ timestamp: Int) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }
 
