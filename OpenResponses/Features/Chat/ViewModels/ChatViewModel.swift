@@ -3471,6 +3471,9 @@ class ChatViewModel: ObservableObject {
             activePrompt = promptToSave
         }
 
+        // SECURITY FIX: Clear sensitive plaintext auth headers before persisting to UserDefaults
+        promptToSave.mcpHeaders = ""
+
         if let encoded = try? JSONEncoder().encode(promptToSave) {
             UserDefaults.standard.set(encoded, forKey: "activePrompt")
             print("Active prompt saved.")

@@ -996,3 +996,40 @@ final class OpenAIModelTests: XCTestCase {
         }
     }
 }
+
+
+@MainActor
+final class ChatViewModelSecurityTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: "activePrompt")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "activePrompt")
+        super.tearDown()
+    }
+
+    func testActivePromptDoesNotSavePlaintextMCPHeaders() {
+        // Arrange
+        let viewModel = ChatViewModel()
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.mcpHeaders = "super_secret_auth_token_12345"
+
+        viewModel.activePrompt = prompt
+
+        // Act
+        viewModel.saveActivePrompt()
+
+        // Assert
+        guard let data = UserDefaults.standard.data(forKey: "activePrompt"),
+              let decoded = try? JSONDecoder().decode(Prompt.self, from: data) else {
+            XCTFail("Failed to read activePrompt from UserDefaults")
+            return
+        }
+
+        XCTAssertEqual(decoded.mcpHeaders, "", "mcpHeaders should be cleared before saving to UserDefaults to prevent plaintext auth leakage")
+    }
+}
