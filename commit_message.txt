@@ -1,0 +1,5 @@
+🔒 Fix OAuth CSRF vulnerability missing state validation
+
+🎯 **What:** The `ASWebAuthenticationSession` callback only checked for the presence of the `code` parameter. It did not validate the OAuth `state` parameter returned by the authorization server.
+⚠️ **Risk:** Missing state validation leaves the application vulnerable to Cross-Site Request Forgery (CSRF). An attacker could forge an authorization response, potentially tricking the user's application into authenticating as the attacker or associating the attacker's resources with the victim's account.
+🛡️ **Solution:** Updated the callback handler in `GoogleProviders.swift` to extract the `state` parameter from the callback URL and strictly validate it against the locally generated `state` variable before continuing the authentication flow.

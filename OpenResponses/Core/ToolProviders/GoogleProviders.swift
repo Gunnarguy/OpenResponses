@@ -116,6 +116,8 @@ final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding
                 }
                 guard let url = url,
                       let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                      let returnedState = comps.queryItems?.first(where: { $0.name == "state" })?.value,
+                      returnedState == state,
                       let code = comps.queryItems?.first(where: { $0.name == "code" })?.value else {
                     continuation.resume(throwing: URLError(.badServerResponse))
                     return
