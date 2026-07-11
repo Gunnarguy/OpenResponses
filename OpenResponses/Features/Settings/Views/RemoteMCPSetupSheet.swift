@@ -256,16 +256,13 @@ struct RemoteMCPSetupSheet: View {
         prompt.mcpAuthHeaderKey = headerKey
 
         if tkn.isEmpty {
-            prompt.mcpHeaders = ""
-            _ = KeychainService.shared.delete(forKey: "mcp_manual_\(lbl)")
-            _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
+            prompt.secureMCPHeaders = [:]
         } else {
             var headers = prompt.secureMCPHeaders
             headers.removeValue(forKey: "Authorization")
             headers.removeValue(forKey: headerKey)
             headers[headerKey] = normalizedAuth
             prompt.secureMCPHeaders = headers
-            _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
         }
 
         viewModel.replaceActivePrompt(with: prompt)

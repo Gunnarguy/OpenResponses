@@ -36,11 +36,9 @@ final class MCPConfigurationService {
             return
         }
 
-        // Prefer remote server if a URL is present or we have Keychain headers for a label.
-        let hasManualLabel = !prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Prefer remote server if a URL is present or we have Keychain headers for the prompt.
         let hasManualURL = !prompt.mcpServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let manualKey = hasManualLabel ? "mcp_manual_\(prompt.mcpServerLabel)" : nil
-        let hasKeychainHeaders = manualKey.flatMap { KeychainService.shared.load(forKey: $0) }?.isEmpty == false
+        let hasKeychainHeaders = !prompt.secureMCPHeaders.isEmpty
 
         if hasManualURL || hasKeychainHeaders {
             prompt.enableMCPTool = true

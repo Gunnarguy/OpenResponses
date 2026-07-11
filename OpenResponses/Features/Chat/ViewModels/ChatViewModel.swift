@@ -28,6 +28,9 @@ class ChatViewModel: ObservableObject {
     /// True while we are processing a computer-use tool call and must send computer_call_output
     /// before any new message can be sent. Prevents API 400s due to pending tool output.
     @Published var isAwaitingComputerOutput: Bool = false
+    /// Uniquely identifies the current active streaming or computer-use session.
+    /// Reset or incremented on stream initialization, user cancel, or terminal error/completion.
+    @Published var currentStreamGeneration: UUID = UUID()
     // Computer-use preview removed
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
     @Published var pendingSafetyApproval: SafetyApprovalRequest?
@@ -811,14 +814,11 @@ class ChatViewModel: ObservableObject {
                     }
                 } catch {
                     await MainActor.run {
-                        self.handleError(error)
-                        self.lastResponseId = nil
-                        self.streamingStatus = .idle
-                        self.streamingMessageId = nil
-                        self.isStreaming = false
-                        self.isAwaitingComputerOutput = false
-                        let sys = ChatMessage(role: .system, text: "Couldn’t continue the approved computer-use step. I’ll start fresh on the next message.")
-                        self.messages.append(sys)
+                        self.cleanupComputerUseState(
+                            error: error,
+                            messageId: request.messageId,
+                            messageText: "Couldn’t continue the approved computer-use step. I’ll start fresh on the next message."
+                        )
                     }
                 }
             } else {
@@ -828,12 +828,11 @@ class ChatViewModel: ObservableObject {
         } catch {
             AppLogger.log("[CUA] Error while executing approved computer_call: \(error)", category: .openAI, level: .error)
             await MainActor.run {
-                self.lastResponseId = nil
-                self.isAwaitingComputerOutput = false
-                self.handleError(error)
-                self.streamingStatus = .idle
-                self.streamingMessageId = nil
-                self.isStreaming = false
+                self.cleanupComputerUseState(
+                    error: error,
+                    messageId: request.messageId,
+                    messageText: "Couldn’t execute the approved computer-use step. I’ll start fresh on the next message."
+                )
             }
         }
     }
@@ -1213,6 +1212,8 @@ class ChatViewModel: ObservableObject {
 
             let assistantMsgId = UUID()
             messages.append(ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil))
+            self.currentStreamGeneration = UUID()
+            let generation = self.currentStreamGeneration
             streamingMessageId = assistantMsgId
             resetStreamingReasoning(for: assistantMsgId)
             isStreaming = true
@@ -1226,15 +1227,20 @@ class ChatViewModel: ObservableObject {
                 guard let self = self else { return }
                 for c in chunks {
                     if Task.isCancelled { return }
-                    await MainActor.run { self.appendDemoChunk(c, to: assistantMsgId) }
+                    await MainActor.run {
+                        guard self.currentStreamGeneration == generation else { return }
+                        self.appendDemoChunk(c, to: assistantMsgId)
+                    }
                     try? await Task.sleep(nanoseconds: 160_000_000) // ~160ms between chunks
                 }
                 await MainActor.run {
+                    guard self.currentStreamGeneration == generation else { return }
                     self.streamingMessageId = nil
                     self.isStreaming = false
                     if self.streamingStatus != .idle {
                         self.streamingStatus = .done
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                            guard self?.currentStreamGeneration == generation else { return }
                             self?.streamingStatus = .idle
                         }
                     }
@@ -1394,8 +1400,10 @@ class ChatViewModel: ObservableObject {
         let assistantMsgId = UUID()
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
+        self.currentStreamGeneration = UUID()
+        let generation = self.currentStreamGeneration
         streamingMessageId = assistantMsgId // Track the new message for streaming
-    resetStreamingReasoning(for: assistantMsgId)
+        resetStreamingReasoning(for: assistantMsgId)
 
         // Disable input while processing
         isStreaming = true
@@ -1451,17 +1459,17 @@ class ChatViewModel: ObservableObject {
         // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
     streamingTask = Task {
-            await MainActor.run { self.streamingStatus = .connecting }
+            await MainActor.run { guard self.currentStreamGeneration == generation else { return }; self.streamingStatus = .connecting }
             do {
                 if self.activePrompt.enableInputModeration {
-                    await MainActor.run { self.logActivity("Running moderation safety check...") }
+                    await MainActor.run { guard self.currentStreamGeneration == generation else { return }; self.logActivity("Running moderation safety check...") }
                     let moderationResult = try await self.api.checkModeration(input: finalUserText)
                     if moderationResult.flagged {
                         await MainActor.run {
+                            guard self.currentStreamGeneration == generation else { return }
                             self.logActivity("Content flagged by policy!")
                             self.errorMessage = "⚠️ Warning: Your message was flagged by OpenAI's content policy and was not sent."
-                            self.isStreaming = false
-                            self.streamingStatus = .idle
+                            self.resetStreamingState()
                         }
                         return
                     }
@@ -1500,6 +1508,7 @@ class ChatViewModel: ObservableObject {
                                     } catch {
                                         AppLogger.log("⚠️ Failed to convert \(filename) to PDF: \(error)", category: .openAI, level: .warning)
                                         await MainActor.run {
+                                            guard self.currentStreamGeneration == generation else { return }
                                             self.errorMessage = "Failed to convert \(filename) to PDF. Try uploading to File Manager for vector search instead."
                                         }
                                         continue
@@ -1507,6 +1516,7 @@ class ChatViewModel: ObservableObject {
                                 } else {
                                     AppLogger.log("⚠️ Could not decode text file \(filename)", category: .openAI, level: .warning)
                                     await MainActor.run {
+                                        guard self.currentStreamGeneration == generation else { return }
                                         self.errorMessage = "Could not read text file \(filename)"
                                     }
                                     continue
@@ -1515,6 +1525,7 @@ class ChatViewModel: ObservableObject {
                                 // Unsupported file type for direct attachment
                                 AppLogger.log("⚠️ Unsupported file type for direct attachment: \(filename) (.\(fileExtension))", category: .openAI, level: .warning)
                                 await MainActor.run {
+                                    guard self.currentStreamGeneration == generation else { return }
                                     self.errorMessage = "Only PDF and text files are supported for direct attachment. Please use the File Manager to upload \(filename) to a vector store for file search."
                                 }
                                 continue
@@ -1533,6 +1544,7 @@ class ChatViewModel: ObservableObject {
                             if conversionMethod != "none" {
                                 AppLogger.log("✅ Uploaded converted file \(filenameToUpload) -> \(uploadedFile.id) (\(conversionMethod))", category: .openAI, level: .info)
                                 await MainActor.run {
+                                    guard self.currentStreamGeneration == generation else { return }
                                     self.logActivity("📄 Converted \(filename) to PDF for API compatibility")
                                 }
                             } else {
@@ -1541,6 +1553,7 @@ class ChatViewModel: ObservableObject {
                         } catch {
                             AppLogger.log("❌ Failed to upload \(filenameToUpload): \(error)", category: .openAI, level: .error)
                             await MainActor.run {
+                                guard self.currentStreamGeneration == generation else { return }
                                 self.errorMessage = "Failed to upload file \(filenameToUpload): \(error.localizedDescription)"
                             }
                         }
@@ -1599,12 +1612,14 @@ class ChatViewModel: ObservableObject {
                         // Check for cancellation before handling the next chunk
                         if Task.isCancelled {
                             await MainActor.run {
+                                guard self.currentStreamGeneration == generation else { return }
                                 self.handleError(CancellationError())
                                 self.logActivity("Cancelled")
                             }
                             break
                         }
                         await MainActor.run {
+                            guard self.currentStreamGeneration == generation else { return }
                             self.handleStreamChunk(chunk, for: assistantMsgId)
                         }
                     }
@@ -1625,28 +1640,15 @@ class ChatViewModel: ObservableObject {
 
                     await self.processNonStreamingResponse(response, for: assistantMsgId)
                     await MainActor.run {
+                        guard self.currentStreamGeneration == generation else { return }
                         self.logActivity("Response received")
                     }
                 }
             } catch {
-                // Handle errors on main thread, unless it's a cancellation
                 if !(error is CancellationError) {
                     await MainActor.run {
-                        self.handleError(error)
-                        self.logActivity("Error: \(error.localizedDescription)")
-                        // Clear pending files on error so they don't get stuck
-                        self.clearPendingFileAttachments()
-                        // Remove the placeholder message on error
-                        self.messages.removeAll { $0.id == assistantMsgId }
-                        // CRITICAL: Complete streaming state reset on error
-                        self.streamingMessageId = nil
-                        self.isStreaming = false
-                        _ = Task { @MainActor in
-                            do {
-                                try await Task.sleep(for: .seconds(2)) // Allows user to see the error
-                                self.streamingStatus = .idle
-                            } catch {}
-                        }
+                        guard self.currentStreamGeneration == generation else { return }
+                        self.resetStreamingState(error: error, messageId: assistantMsgId)
                     }
                 }
             }
@@ -3011,8 +3013,8 @@ class ChatViewModel: ObservableObject {
         return result.output ?? result.currentURL ?? "{}"
     }
 
-    /// Handles a function call from the API by executing the function and sending the result back.
     private func handleFunctionCall(_ call: OutputItem, for messageId: UUID) async {
+        let generation = await MainActor.run { self.currentStreamGeneration }
         guard let functionName = call.name else {
             AppLogger.log("❌ [Function Call] No function name in call item", category: .ui, level: .error)
             handleError(OpenAIServiceError.invalidResponseData)
@@ -3190,6 +3192,7 @@ class ChatViewModel: ObservableObject {
                         if Task.isCancelled {
                             cancelledMidStream = true
                             await MainActor.run {
+                                guard self.currentStreamGeneration == generation else { return }
                                 self.handleError(CancellationError())
                                 self.logActivity("Cancelled")
                             }
@@ -4171,21 +4174,12 @@ class ChatViewModel: ObservableObject {
                     }
                 } catch {
                     AppLogger.log("[CUA] Failed to send computer_call_output: \(error)", category: .openAI, level: .error)
-                    // Important: Clear previous response ID so subsequent user messages
-                    // don't reference a pending computer_call and trigger 400 errors like
-                    // "No tool output found for computer call ...".
                     await MainActor.run {
-                        self.handleError(error)
-                        self.lastResponseId = nil
-                        // CRITICAL FIX: Complete streaming state reset on computer_call_output network failure
-                        self.streamingStatus = .idle
-                        self.streamingMessageId = nil
-                        self.isStreaming = false
-                        self.isAwaitingComputerOutput = false
-                        // Provide a lightweight, user-visible hint in the chat
-                        let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.", images: nil)
-                        self.messages.append(sys)
-                        self.isAwaitingComputerOutput = false
+                        self.cleanupComputerUseState(
+                            error: error,
+                            messageId: messageId,
+                            messageText: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message."
+                        )
                     }
                 }
             } else {
@@ -4195,20 +4189,11 @@ class ChatViewModel: ObservableObject {
         } catch {
             AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
             await MainActor.run {
-                self.lastResponseId = nil
-                self.isAwaitingComputerOutput = false
-                self.handleError(error)
-                // CRITICAL FIX: Complete streaming state reset on computer tool error
-                self.consecutiveWaitCount = 0
-                self.streamingStatus = .idle
-                self.streamingMessageId = nil
-                self.isStreaming = false
-                _ = Task { @MainActor in
-                    do {
-                        try await Task.sleep(for: .seconds(2)) // Allows user to see the error
-                        self.streamingStatus = .idle
-                    } catch {}
-                }
+                self.cleanupComputerUseState(
+                    error: error,
+                    messageId: messageId,
+                    messageText: "Couldn’t execute the computer-use step. I’ll start fresh on the next message."
+                )
             }
         }
     }
@@ -4680,16 +4665,11 @@ class ChatViewModel: ObservableObject {
             await self.processNonStreamingResponse(response, for: messageId)
         } catch {
             await MainActor.run {
-                self.handleError(error)
-                // CRITICAL FIX: Reset streaming status on computer_call_output network failure
-                self.streamingStatus = .idle
-                self.isStreaming = false
-                self.isAwaitingComputerOutput = false
-                self.lastResponseId = nil
-                self.streamingMessageId = nil
-
-                let sys = ChatMessage(role: .system, text: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message.")
-                self.messages.append(sys)
+                self.cleanupComputerUseState(
+                    error: error,
+                    messageId: messageId,
+                    messageText: "Couldn’t continue the previous computer-use step. I’ll start fresh on the next message."
+                )
             }
         }
     }
@@ -5093,6 +5073,71 @@ class ChatViewModel: ObservableObject {
         updateActiveConversation(conversation)
     }
 
+
+    /// Resets all streaming, computer-use, and batching state variables immediately upon completion, cancellation, or error.
+    @MainActor
+    private func resetStreamingState(error: Error? = nil, messageId: UUID? = nil) {
+        // Increment generation to invalidate any stale callbacks
+        self.currentStreamGeneration = UUID()
+
+        self.isStreaming = false
+        self.isAwaitingComputerOutput = false
+        self.consecutiveWaitCount = 0
+        self.lastResponseId = nil
+        self.streamingMessageId = nil
+        self.streamingStatus = .idle
+
+        // Cancel streaming task
+        self.streamingTask?.cancel()
+        self.streamingTask = nil
+
+        // Clear pending files on error/reset
+        self.clearPendingFileAttachments()
+
+        // Clear delta buffers & work items
+        if let messageId {
+            if let work = deltaFlushWorkItems[messageId] { work.cancel() }
+            deltaFlushWorkItems[messageId] = nil
+            flushDeltaBufferIfNeeded(for: messageId)
+            stopImageGenerationHeartbeat(for: messageId)
+            finalizeStreamingReasoning(for: messageId)
+        } else {
+            deltaFlushWorkItems.values.forEach { $0.cancel() }
+            deltaFlushWorkItems.removeAll()
+            deltaBuffers.removeAll()
+            imageHeartbeatTasks.values.forEach { $0.cancel() }
+            imageHeartbeatTasks.removeAll()
+        }
+
+        // Clear batching state
+        pendingFunctionCallIds.removeAll()
+        pendingParallelCalls.removeAll()
+        parallelCallBatchTimer.values.forEach { $0.cancel() }
+        parallelCallBatchTimer.removeAll()
+
+        // Handle error presentation if provided
+        if let error, !(error is CancellationError) {
+            self.handleError(error)
+            self.logActivity("Error: \(error.localizedDescription)")
+            
+            // Present error as system message if we have a message context
+            if let messageId {
+                self.messages.removeAll { $0.id == messageId }
+            }
+            let sys = ChatMessage(role: .system, text: "Error: \(error.localizedDescription)")
+            self.messages.append(sys)
+        }
+    }
+
+    /// Resets computer-use wait states, cancels active timers, increments stream generation, and displays error system message.
+    @MainActor
+    private func cleanupComputerUseState(error: Error, messageId: UUID, messageText: String) {
+        self.resetStreamingState(messageId: messageId)
+        self.handleError(error)
+        let sys = ChatMessage(role: .system, text: messageText)
+        self.messages.append(sys)
+    }
+
     /// Deletes a specific message from the active conversation.
     func deleteMessage(_ message: ChatMessage) {
         guard var conversation = activeConversation,
@@ -5107,24 +5152,13 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Cancels the ongoing streaming request.
+    /// Cancels the ongoing streaming request.
     func cancelStreaming() {
         let backgroundResponseId = activeBackgroundResponseId
         let cancellingMessageId = streamingMessageId
-        streamingTask?.cancel()
-        streamingTask = nil
-        // Cleanup any buffered deltas and pending flush tasks for the current message
-        if let streamingId = streamingMessageId {
-            if let work = deltaFlushWorkItems[streamingId] { work.cancel() }
-            deltaFlushWorkItems[streamingId] = nil
-            flushDeltaBufferIfNeeded(for: streamingId)
-            // Stop any image generation heartbeats
-            stopImageGenerationHeartbeat(for: streamingId)
-            finalizeStreamingReasoning(for: streamingId)
-        }
 
-        // Update UI immediately
-        isStreaming = false
-        streamingStatus = .idle
+        // Call unified state cleanup helper
+        resetStreamingState(messageId: cancellingMessageId)
 
         if let backgroundResponseId,
            let cancellingMessageId {

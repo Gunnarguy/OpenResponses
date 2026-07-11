@@ -65,28 +65,52 @@ struct Prompt: Codable, Identifiable, Equatable {
     /// Gets the MCP headers, preferring secure keychain storage over the mcpHeaders string
     var secureMCPHeaders: [String: String] {
         get {
-            // First try to load from keychain using server label as key
-            if !mcpServerLabel.isEmpty,
-               let authData = KeychainService.shared.load(forKey: "mcp_manual_\(mcpServerLabel)"),
+            let key = "mcp_manual_\(id.uuidString)"
+            if let authData = KeychainService.shared.load(forKey: key),
                let authDict = try? JSONSerialization.jsonObject(with: Data(authData.utf8)) as? [String: String] {
                 return authDict
+            }
+
+            // Self-healing migration from label-based storage
+            if !mcpServerLabel.isEmpty {
+                let legacyKey = "mcp_manual_\(mcpServerLabel)"
+                if let authData = KeychainService.shared.load(forKey: legacyKey),
+                   let authDict = try? JSONSerialization.jsonObject(with: Data(authData.utf8)) as? [String: String] {
+                    // Copy to ID-keyed storage
+                    KeychainService.shared.save(value: authData, forKey: key)
+                    // Delete old keys
+                    KeychainService.shared.delete(forKey: legacyKey)
+                    KeychainService.shared.delete(forKey: "mcp_auth_\(mcpServerLabel)")
+                    return authDict
+                }
             }
 
             // Fall back to parsing mcpHeaders string (legacy)
             if let data = mcpHeaders.data(using: .utf8),
                let parsedHeaders = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                // Migrate legacy plaintext headers to secure ID-keyed storage
+                if let authData = try? JSONSerialization.data(withJSONObject: parsedHeaders),
+                   let authString = String(data: authData, encoding: .utf8) {
+                    KeychainService.shared.save(value: authString, forKey: key)
+                }
                 return parsedHeaders
             }
 
             return [:]
         }
         set {
-            // Save to keychain if we have a server label
-            if !mcpServerLabel.isEmpty {
+            let key = "mcp_manual_\(id.uuidString)"
+            if newValue.isEmpty {
+                KeychainService.shared.delete(forKey: key)
+                if !mcpServerLabel.isEmpty {
+                    KeychainService.shared.delete(forKey: "mcp_manual_\(mcpServerLabel)")
+                    KeychainService.shared.delete(forKey: "mcp_auth_\(mcpServerLabel)")
+                }
+                mcpHeaders = ""
+            } else {
                 if let authData = try? JSONSerialization.data(withJSONObject: newValue),
                    let authString = String(data: authData, encoding: .utf8) {
-                    KeychainService.shared.save(value: authString, forKey: "mcp_manual_\(mcpServerLabel)")
-                    // Clear the old string format for security
+                    KeychainService.shared.save(value: authString, forKey: key)
                     mcpHeaders = ""
                 }
             }

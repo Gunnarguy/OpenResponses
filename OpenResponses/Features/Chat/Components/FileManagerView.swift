@@ -4,7 +4,7 @@ import Combine
 
 
 // MARK: - Shared Formatters for Performance Optimization
-enum Formatters {
+@MainActor enum Formatters {
     static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .short

@@ -51,6 +51,29 @@ struct OAuthTokens: Codable {
     }
 }
 
+enum OAuthError: LocalizedError {
+    case invalidCallbackScheme
+    case serverError(code: String, description: String)
+    case missingOrDuplicateState
+    case stateMismatch
+    case missingOrDuplicateCode
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidCallbackScheme:
+            return "The OAuth redirect callback scheme is invalid or unexpected."
+        case .serverError(let code, let description):
+            return "OAuth authorization server returned an error: \(code) - \(description)"
+        case .missingOrDuplicateState:
+            return "The OAuth state parameter is missing, empty, or duplicate."
+        case .stateMismatch:
+            return "The OAuth state parameter mismatch. Possible CSRF attempt."
+        case .missingOrDuplicateCode:
+            return "The OAuth authorization code is missing, empty, or duplicate."
+        }
+    }
+}
+
 final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var presentationAnchor: ASPresentationAnchor?
 
@@ -114,12 +137,52 @@ final class OAuthPKCE: NSObject, ASWebAuthenticationPresentationContextProviding
                     continuation.resume(throwing: error)
                     return
                 }
+
                 guard let url = url,
-                      let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                      let code = comps.queryItems?.first(where: { $0.name == "code" })?.value else {
+                      let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
                     continuation.resume(throwing: URLError(.badServerResponse))
                     return
                 }
+
+                // Verify callback scheme matches configuration
+                let expectedScheme = config.redirectScheme.components(separatedBy: ":").first?.lowercased()
+                if url.scheme?.lowercased() != expectedScheme {
+                    continuation.resume(throwing: OAuthError.invalidCallbackScheme)
+                    return
+                }
+
+                let queryItems = comps.queryItems ?? []
+
+                // Check for OAuth error response
+                if let errorCode = queryItems.first(where: { $0.name == "error" })?.value {
+                    let description = queryItems.first(where: { $0.name == "error_description" })?.value ?? "Unknown error"
+                    continuation.resume(throwing: OAuthError.serverError(code: errorCode, description: description))
+                    return
+                }
+
+                // Check for state presence, uniqueness, and correctness
+                let stateItems = queryItems.filter { $0.name == "state" }
+                guard stateItems.count == 1,
+                      let returnedState = stateItems.first?.value,
+                      !returnedState.isEmpty else {
+                    continuation.resume(throwing: OAuthError.missingOrDuplicateState)
+                    return
+                }
+
+                guard returnedState == state else {
+                    continuation.resume(throwing: OAuthError.stateMismatch)
+                    return
+                }
+
+                // Check for code presence and uniqueness
+                let codeItems = queryItems.filter { $0.name == "code" }
+                guard codeItems.count == 1,
+                      let code = codeItems.first?.value,
+                      !code.isEmpty else {
+                    continuation.resume(throwing: OAuthError.missingOrDuplicateCode)
+                    return
+                }
+
                 continuation.resume(returning: code)
             }
             session.prefersEphemeralWebBrowserSession = true

@@ -359,10 +359,12 @@ enum AppLogger: Sendable {
         line: Int = #line
     ) {
         let safeHeaders = redactHeaders(headers)
-        
-        var logMessage = "📤 API REQUEST: \(method) \(url.absoluteString)\n"
+        let redactedURLString = redactSensitiveURLParameters(in: url)
+
+        var logMessage = "📤 API REQUEST: \(method) \(redactedURLString)\n"
         logMessage += "📤 HEADERS: \(safeHeaders)"
-        
+
+        #if DEBUG
         if !minimizeOpenAILogBodies {
             if let body = body, let pretty = prettySanitizedJSON(body) {
                 logMessage += "\n📤 BODY: \(pretty)"
@@ -370,7 +372,10 @@ enum AppLogger: Sendable {
         } else {
             logMessage += "\n📤 BODY: (omitted)"
         }
-        
+        #else
+        logMessage += "\n📤 BODY: (omitted in non-DEBUG)"
+        #endif
+
         log(
             logMessage,
             category: .openAI,
@@ -402,11 +407,13 @@ enum AppLogger: Sendable {
         let success = statusCode >= 200 && statusCode < 300
         let emoji = success ? "📥" : "⚠️"
         let level: Level = success ? openAILogLevel : .warning
-        
+
         let safeHeaders = redactHeaders(headers)
-        var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(url.absoluteString)\n"
+        let redactedURLString = redactSensitiveURLParameters(in: url)
+        var logMessage = "\(emoji) API RESPONSE: \(statusCode) \(redactedURLString)\n"
         logMessage += "\(emoji) HEADERS: \(safeHeaders)"
-        
+
+        #if DEBUG
         if !minimizeOpenAILogBodies {
             if let body = body, let pretty = prettySanitizedJSON(body) {
                 logMessage += "\n\(emoji) BODY: \(pretty)"
@@ -414,7 +421,10 @@ enum AppLogger: Sendable {
         } else {
             logMessage += "\n\(emoji) BODY: (omitted)"
         }
-        
+        #else
+        logMessage += "\n\(emoji) BODY: (omitted in non-DEBUG)"
+        #endif
+
         log(
             logMessage,
             category: .openAI,
@@ -423,6 +433,30 @@ enum AppLogger: Sendable {
             function: function,
             line: line
         )
+    }
+
+    /// Redacts sensitive query parameters from logged URLs using exact normalized matching.
+    nonisolated static func redactSensitiveURLParameters(in url: URL) -> String {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        guard let queryItems = comps.queryItems, !queryItems.isEmpty else {
+            return url.absoluteString
+        }
+
+        let sensitiveKeys: Set<String> = [
+            "code", "token", "secret", "state", "password", "key", "api_key", "auth", "authorization"
+        ]
+
+        comps.queryItems = queryItems.map { item in
+            let normalizedKey = item.name.lowercased()
+            if sensitiveKeys.contains(normalizedKey) {
+                return URLQueryItem(name: item.name, value: "[REDACTED_SECRET]")
+            }
+            return item
+        }
+
+        return comps.url?.absoluteString ?? url.absoluteString
     }
     
     /// Log a streaming event from the OpenAI API.

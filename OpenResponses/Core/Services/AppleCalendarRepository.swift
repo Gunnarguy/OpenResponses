@@ -6,11 +6,9 @@ import EventKit
 /// Provides read operations for Apple Calendar data with lightweight summaries.
 public final class AppleCalendarRepository {
     private let permissionManager: EventKitPermissionManager
-    private let isoFormatter: ISO8601DateFormatter
 
     public init(permissionManager: EventKitPermissionManager = .shared) {
         self.permissionManager = permissionManager
-        self.isoFormatter = AppleDateUtilities.makeOutputFormatter()
     }
 
     /// Fetches events within the provided date range.
@@ -48,8 +46,8 @@ public final class AppleCalendarRepository {
                 calendarIdentifier: event.calendar.calendarIdentifier,
                 calendarTitle: event.calendar.title,
                 title: event.title ?? "(No Title)",
-                startDateISO8601: isoFormatter.string(from: event.startDate),
-                endDateISO8601: isoFormatter.string(from: event.endDate ?? event.startDate),
+                startDateISO8601: AppleDateUtilities.formatISO8601(event.startDate),
+                endDateISO8601: AppleDateUtilities.formatISO8601(event.endDate ?? event.startDate),
                 isAllDay: event.isAllDay,
                 location: event.location?.trimmingCharacters(in: .whitespacesAndNewlines),
                 notes: includeNotes ? event.notes?.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
@@ -147,8 +145,8 @@ public final class AppleCalendarRepository {
             calendarIdentifier: calendar.calendarIdentifier,
             calendarTitle: calendar.title,
             title: event.title ?? "(No Title)",
-            startDateISO8601: isoFormatter.string(from: event.startDate),
-            endDateISO8601: isoFormatter.string(from: event.endDate ?? event.startDate),
+            startDateISO8601: AppleDateUtilities.formatISO8601(event.startDate),
+            endDateISO8601: AppleDateUtilities.formatISO8601(event.endDate ?? event.startDate),
             isAllDay: event.isAllDay,
             location: event.location?.trimmingCharacters(in: .whitespacesAndNewlines),
             notes: event.notes?.trimmingCharacters(in: .whitespacesAndNewlines),
