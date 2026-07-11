@@ -110,8 +110,10 @@ class ComputerService: NSObject, WKNavigationDelegate {
         }
 
         // Try to find key window in all connected scenes
-        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let keyWindow = windowScenes.compactMap { $0.windows.first(where: { $0.isKeyWindow }) }.first
+        let keyWindow = UIApplication.shared.connectedScenes.lazy
+            .compactMap { $0 as? UIWindowScene }
+            .compactMap { $0.windows.first(where: { $0.isKeyWindow }) }
+            .first
 
         if let window = keyWindow {
             // IMPORTANT: Keep the webView within window bounds so WebKit renders paint frames.
