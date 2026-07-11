@@ -996,3 +996,65 @@ final class OpenAIModelTests: XCTestCase {
         }
     }
 }
+
+
+final class ImageProcessingUtilsTests: XCTestCase {
+
+    private func createTestImage(size: CGSize) -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        let context = UIGraphicsGetCurrentContext()
+        context?.setFillColor(UIColor.red.cgColor)
+        context?.fill(CGRect(origin: .zero, size: size))
+        let image = UIGraphicsGetImageFromCurrentImageContext()!
+        UIGraphicsEndImageContext()
+        return image
+    }
+
+    func testOptimizeImage_SmallImage_ReturnsOriginalSize() {
+        let originalImage = createTestImage(size: CGSize(width: 500, height: 400))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 1024)
+
+        XCTAssertEqual(optimizedImage.size.width, 500)
+        XCTAssertEqual(optimizedImage.size.height, 400)
+    }
+
+    func testOptimizeImage_ExactMaxDimension_ReturnsOriginalSize() {
+        let originalImage = createTestImage(size: CGSize(width: 1024, height: 768))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 1024)
+
+        XCTAssertEqual(optimizedImage.size.width, 1024)
+        XCTAssertEqual(optimizedImage.size.height, 768)
+    }
+
+    func testOptimizeImage_LargeSquare_ReducesToMaxDimension() {
+        let originalImage = createTestImage(size: CGSize(width: 2000, height: 2000))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 1024)
+
+        XCTAssertEqual(optimizedImage.size.width, 1024)
+        XCTAssertEqual(optimizedImage.size.height, 1024)
+    }
+
+    func testOptimizeImage_LargeLandscape_ReducesProportionally() {
+        let originalImage = createTestImage(size: CGSize(width: 2048, height: 1024))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 1024)
+
+        XCTAssertEqual(optimizedImage.size.width, 1024)
+        XCTAssertEqual(optimizedImage.size.height, 512)
+    }
+
+    func testOptimizeImage_LargePortrait_ReducesProportionally() {
+        let originalImage = createTestImage(size: CGSize(width: 1024, height: 2048))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 1024)
+
+        XCTAssertEqual(optimizedImage.size.width, 512)
+        XCTAssertEqual(optimizedImage.size.height, 1024)
+    }
+
+    func testOptimizeImage_CustomMaxDimension_ReducesToCustomDimension() {
+        let originalImage = createTestImage(size: CGSize(width: 2000, height: 2000))
+        let optimizedImage = ImageProcessingUtils.optimizeImageForDisplay(originalImage, maxDimension: 500)
+
+        XCTAssertEqual(optimizedImage.size.width, 500)
+        XCTAssertEqual(optimizedImage.size.height, 500)
+    }
+}
