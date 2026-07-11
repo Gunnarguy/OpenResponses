@@ -996,3 +996,20 @@ final class OpenAIModelTests: XCTestCase {
         }
     }
 }
+
+
+final class ImageProcessingUtilsTests: XCTestCase {
+
+    func testCreatePlaceholderImageDefaultSize() {
+        let image = ImageProcessingUtils.createPlaceholderImage()
+        XCTAssertEqual(image.size.width, 300)
+        XCTAssertEqual(image.size.height, 200)
+    }
+
+    func testCreatePlaceholderImageCustomSize() {
+        let customSize = CGSize(width: 150, height: 150)
+        let image = ImageProcessingUtils.createPlaceholderImage(size: customSize)
+        XCTAssertEqual(image.size.width, 150)
+        XCTAssertEqual(image.size.height, 150)
+    }
+}
