@@ -20,12 +20,14 @@ The GPT-5.6 family abandons the "o" and "turbo" naming conventions for a tiered 
 
 ## New API Parameters & Controls
 
-### Persisted Reasoning & Max Reasoning Effort
+### Persisted Reasoning
 GPT-5.6 introduces expanded controls over internal thought processes. 
-- `reasoning_effort`: Controls the minimum/target effort (`minimal`, `low`, `medium`, `high`, `xhigh`).
-- `max_reasoning_effort`: Hard cap on the depth of the model's internal thought process to prevent runaway token costs on long-horizon reasoning tasks.
+- `reasoning_effort`: Controls the target effort. The models now support `none`, `low`, `medium`, `high`, `xhigh`, and a new `max` option. `max` allows for the deepest possible internal thought process for long-horizon reasoning tasks.
 
-OpenResponses dynamically maps both parameters when these models are selected.
+### Verbosity Control
+- `verbosity`: A new parameter that directly controls the output length independent of `max_completion_tokens`. Options are `low` (concise), `medium` (default), and `high` (comprehensive).
+
+OpenResponses dynamically maps these parameters when these models are selected.
 
 ### Explicit Prompt Caching Controls
 Instead of opaque caching algorithms, GPT-5.6 supports explicit prompt caching with specific breakpoints. Caches have a guaranteed 30-minute minimum life, making repetitive tasks far more cost-effective.

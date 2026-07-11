@@ -2168,6 +2168,20 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
+        // Verbosity
+        if compatibilityService.isParameterSupported("verbosity", for: prompt.openAIModel), let verbosity = prompt.verbosity, !verbosity.isEmpty {
+            parameters["verbosity"] = verbosity
+        }
+
+        // Prompt Cache Options
+        if compatibilityService.isParameterSupported("prompt_cache_options", for: prompt.openAIModel), let cacheOptions = prompt.promptCacheOptions {
+            var cacheDict: [String: Any] = ["mode": cacheOptions.mode]
+            if let ttl = cacheOptions.ttl {
+                cacheDict["ttl"] = ttl
+            }
+            parameters["prompt_cache_options"] = cacheDict
+        }
+
         return parameters
     }
 
@@ -2186,11 +2200,6 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         var reasoningObject: [String: Any] = ["effort": prompt.reasoningEffort]
-
-        // Map max_reasoning_effort if supported and available
-        if compatibilityService.isParameterSupported("max_reasoning_effort", for: prompt.openAIModel), let maxEffort = prompt.maxReasoningEffort, !maxEffort.isEmpty {
-            reasoningObject["max_effort"] = maxEffort
-        }
 
         // Add reasoning summary for specific reasoning models
         if prompt.openAIModel.starts(with: "o") || prompt.openAIModel.starts(with: "gpt-5"), !prompt.reasoningSummary.isEmpty {

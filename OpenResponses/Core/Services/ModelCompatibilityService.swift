@@ -203,7 +203,7 @@ class ModelCompatibilityService {
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
-                "reasoning_effort", "max_reasoning_effort",
+                "reasoning_effort", "verbosity", "prompt_cache_options",
                 "temperature", "top_p", "top_logprobs",
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
@@ -223,7 +223,7 @@ class ModelCompatibilityService {
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
-                "reasoning_effort", "max_reasoning_effort",
+                "reasoning_effort", "verbosity", "prompt_cache_options",
                 "temperature", "top_p", "top_logprobs",
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
@@ -243,7 +243,7 @@ class ModelCompatibilityService {
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
-                "reasoning_effort", "max_reasoning_effort",
+                "reasoning_effort", "verbosity", "prompt_cache_options",
                 "temperature", "top_p", "top_logprobs",
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
@@ -263,7 +263,7 @@ class ModelCompatibilityService {
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
-                "reasoning_effort", "max_reasoning_effort",
+                "reasoning_effort", "verbosity", "prompt_cache_options",
                 "temperature", "top_p", "top_logprobs",
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
