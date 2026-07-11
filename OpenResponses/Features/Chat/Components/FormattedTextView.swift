@@ -100,11 +100,19 @@ struct FormattedTextView: View {
     /// Renders inline markdown (bold, italic, code) within a line
     @ViewBuilder
     private func renderInlineMarkdown(_ text: String) -> some View {
-        if let attributedString = try? AttributedString(markdown: text) {
+        // Pre-process OpenAI citation markers like 【12†source】 into Markdown links
+        let citationPattern = "【(\\d+)†(.*?)】"
+        let processedText = text.replacingOccurrences(
+            of: citationPattern,
+            with: "[[Citation $1]]($2)",
+            options: .regularExpression
+        )
+
+        if let attributedString = try? AttributedString(markdown: processedText) {
             Text(attributedString)
                 .textSelection(.enabled)
         } else {
-            Text(text)
+            Text(processedText)
                 .textSelection(.enabled)
         }
     }

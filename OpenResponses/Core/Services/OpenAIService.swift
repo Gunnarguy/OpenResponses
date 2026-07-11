@@ -2301,6 +2301,8 @@ class OpenAIService: OpenAIServiceProtocol {
                 "strict": prompt.jsonSchemaStrict,
                 "schema": schema,
             ]
+        } else if prompt.textFormatType == "json_object" {
+            textConfiguration["format"] = ["type": "json_object"]
         }
 
         return textConfiguration.isEmpty ? nil : textConfiguration
@@ -4637,6 +4639,47 @@ class OpenAIService: OpenAIServiceProtocol {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
         }
+    }
+
+    /// Compacts a conversation context by summarizing the past messages.
+    func compactConversation(previousResponseId: String) async throws -> String {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
+            throw OpenAIServiceError.missingAPIKey
+        }
+
+        let body: [String: Any] = ["previous_response_id": previousResponseId]
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+
+        let url = URL(string: "https://api.openai.com/v1/responses/compact")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OpenAIServiceError.invalidResponseData
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMessage)
+        }
+
+        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let encryptedContent = json["encrypted_content"] as? String {
+                return encryptedContent
+            }
+            if let id = json["id"] as? String {
+                return id
+            }
+        }
+        
+        // Fallback to raw string if format is simple
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func mergedConversationMetadata(title: String?, metadata: [String: String]?) -> [String: String]? {

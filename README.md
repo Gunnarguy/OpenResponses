@@ -271,11 +271,11 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 - [x] **Computer Use Harness:** Sandboxed local WKWebView automation loop (`computer` and legacy `computer_use_preview` tools) with step-by-step UI safety approval dialogs and scroll/click throttles.
 - [x] **Model Context Protocol (MCP) Integration:** Pair remote MCP servers securely using Keychain-stored custom authentication headers.
 
-### Phase 2: Remote Conversations & Rich Annotations (In Progress)
-- [/] **Backend-Managed Conversations:** Integrate the `/v1/conversations` API methods to list, fetch, update, and delete remote threads.
-- [ ] **Rich Citations Rendering:** Map inline URL and document citation markers into SwiftUI `AttributedString` bubbles.
-- [ ] **Short Conversation Compaction:** Integrate `POST /v1/responses/compact` executions to compress long chats to fit context caps.
-- [ ] **Structured JSON Outputs:** Add `response_format` JSON schema selection to prompt settings for strict data extractions.
+### Phase 2: Remote Conversations & Rich Annotations (Completed)
+- [x] **Backend-Managed Conversations:** Integrate the `/v1/conversations` API methods to list, fetch, update, and delete remote threads.
+- [x] **Rich Citations Rendering:** Map inline URL and document citation markers into SwiftUI `AttributedString` bubbles.
+- [x] **Short Conversation Compaction:** Integrate `POST /v1/responses/compact` executions to compress long chats to fit context caps.
+- [x] **Structured JSON Outputs:** Add `response_format` JSON schema selection to prompt settings for strict data extractions.
 
 ### Phase 3: Developer Labs & Legacy Features
 - [x] **Assistants API:** Stateful thread runs, assistant creation, and CRUD management (Legacy Migration).

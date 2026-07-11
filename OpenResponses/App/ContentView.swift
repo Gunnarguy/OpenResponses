@@ -35,6 +35,12 @@ struct ContentView: View {
 
                     ToolbarItem(placement: .navigationBarTrailing) {
                         HStack(spacing: 16) {
+                            if viewModel.lastResponseId != nil {
+                                Button(action: { viewModel.compactCurrentConversation() }) {
+                                    Image(systemName: "archivebox")
+                                }
+                                .accessibilityLabel("Compact Context")
+                            }
                             Button(action: { showingSettings = true }) {
                                 Image(systemName: "gear")
                             }

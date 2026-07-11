@@ -16,7 +16,7 @@ struct ConversationListResponse: Decodable {
 }
 
 /// Minimal representation of a conversation returned by the Conversations API.
-struct ConversationSummary: Decodable {
+struct ConversationSummary: Decodable, Identifiable {
     let id: String
     let object: String?
     let title: String?

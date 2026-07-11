@@ -7,6 +7,8 @@ import Combine
 class ChatViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var conversations: [Conversation] = []
+    @Published var remoteConversations: [ConversationSummary] = []
+    @Published var isFetchingRemoteConversations: Bool = false
     @Published var activeConversation: Conversation?
     @Published var streamingStatus: StreamingStatus = .idle
     @Published var isStreaming: Bool = false
@@ -3711,6 +3713,101 @@ class ChatViewModel: ObservableObject {
         conversation.shouldStoreRemotely = shouldStoreRemotely
         conversation.syncState = .localOnly
         replaceConversationState(conversation)
+    }
+
+    func fetchRemoteConversations() {
+        isFetchingRemoteConversations = true
+        Task {
+            do {
+                let response = try await api.listConversations(limit: 50, order: "desc")
+                await MainActor.run {
+                    self.remoteConversations = response.data
+                    self.isFetchingRemoteConversations = false
+                }
+            } catch {
+                AppLogger.log("❌ Failed to fetch remote conversations: \(error)", category: .network, level: .error)
+                await MainActor.run {
+                    self.isFetchingRemoteConversations = false
+                }
+            }
+        }
+    }
+
+    func fetchAndSwitchToRemoteConversation(_ summary: ConversationSummary) {
+        Task {
+            do {
+                let detail = try await api.getConversation(conversationId: summary.id)
+                var parsedMessages: [ChatMessage] = []
+                if let apiMsgs = detail.messages {
+                    for apiMsg in apiMsgs {
+                        let role: ChatMessage.Role
+                        if apiMsg.role == "user" { role = .user }
+                        else if apiMsg.role == "assistant" { role = .assistant }
+                        else { role = .system }
+                        
+                        var combinedText = ""
+                        if let contentParts = apiMsg.content {
+                            for part in contentParts {
+                                if part.type == "text", let t = part.text {
+                                    combinedText += t
+                                }
+                            }
+                        }
+                        
+                        let chatMsg = ChatMessage(role: role, text: combinedText.isEmpty ? nil : combinedText)
+                        parsedMessages.append(chatMsg)
+                    }
+                }
+                
+                let conversation = Conversation(
+                    id: UUID(),
+                    remoteId: detail.id,
+                    title: detail.title ?? summary.title ?? "Remote Conversation",
+                    messages: parsedMessages,
+                    lastResponseId: nil,
+                    lastModified: Date(timeIntervalSince1970: TimeInterval(detail.updatedAt ?? Int(Date().timeIntervalSince1970))),
+                    metadata: detail.metadata,
+                    lastSyncedAt: Date(),
+                    shouldStoreRemotely: true,
+                    syncState: .synced
+                )
+                
+                await MainActor.run {
+                    if let index = self.conversations.firstIndex(where: { $0.remoteId == detail.id }) {
+                        self.conversations[index] = conversation
+                        self.selectConversation(self.conversations[index])
+                    } else {
+                        self.conversations.insert(conversation, at: 0)
+                        self.selectConversation(conversation)
+                    }
+                }
+            } catch {
+                AppLogger.log("❌ Failed to fetch remote conversation detail: \(error)", category: .network, level: .error)
+            }
+        }
+    }
+
+    func compactCurrentConversation() {
+        guard let responseId = lastResponseId, !responseId.isEmpty else { return }
+
+        Task {
+            do {
+                let compactedItem = try await api.compactConversation(previousResponseId: responseId)
+                await MainActor.run {
+                    var newMessages = self.messages
+                    newMessages.append(ChatMessage(id: UUID(), role: .system, text: "Context compacted to save tokens."))
+                    self.messages = newMessages
+                    
+                    if var updated = self.activeConversation {
+                        updated.messages = newMessages
+                        updated.lastResponseId = compactedItem
+                        self.replaceConversationState(updated)
+                    }
+                }
+            } catch {
+                AppLogger.log("❌ Failed to compact conversation: \(error)", category: .network, level: .error)
+            }
+        }
     }
 
     func deleteConversation(_ conversation: Conversation) {
