@@ -264,7 +264,6 @@ struct ToolStatusCard: View {
             return "doc.text.magnifyingglass"
         case "computer_use_preview", "computer":
             return "display"
-    // calculator removed
         default:
             return "wrench.and.screwdriver"
         }
@@ -282,7 +281,6 @@ struct ToolStatusCard: View {
             return "File Search"
         case "computer_use_preview", "computer":
             return "Computer Use"
-    // calculator removed
         default:
             return tool.name.capitalized
         }
