@@ -123,8 +123,9 @@ struct WebView: UIViewRepresentable {
         webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
 
         // Load the initial URL with cache policy to get fresh content
-        let request = createRequest(for: url)
-        webView.load(request)
+        if let request = createRequest(for: url) {
+            webView.load(request)
+        }
 
         // Keep track of the requested URL in coordinator
         context.coordinator.lastRequestedURL = url
@@ -139,12 +140,16 @@ struct WebView: UIViewRepresentable {
         // while the page is still loading or has redirected.
         if context.coordinator.lastRequestedURL != url {
             context.coordinator.lastRequestedURL = url
-            let request = createRequest(for: url)
-            webView.load(request)
+            if let request = createRequest(for: url) {
+                webView.load(request)
+            }
         }
     }
 
-    private func createRequest(for url: URL) -> URLRequest {
+    private func createRequest(for url: URL) -> URLRequest? {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return nil
+        }
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = 15.0 // 15 second timeout
