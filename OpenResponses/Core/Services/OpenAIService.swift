@@ -3815,7 +3815,7 @@ class OpenAIService: OpenAIServiceProtocol {
 
         if httpResponse.statusCode != 200 {
             if let responseString = String(data: data, encoding: .utf8) {
-                print("Error listing files: \(responseString)")
+                AppLogger.log("Error listing files: \(responseString)", category: .network, level: .error)
             }
             let errorMessage: String
             if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
@@ -3830,7 +3830,7 @@ class OpenAIService: OpenAIServiceProtocol {
             let response = try JSONDecoder().decode(FileListResponse.self, from: data)
             return response.data
         } catch {
-            print("Decoding error for file list: \(error)")
+            AppLogger.logError(error, message: "Decoding error for file list", category: .network)
             throw OpenAIServiceError.invalidResponseData
         }
     }

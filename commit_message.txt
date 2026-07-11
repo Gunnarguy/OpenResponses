@@ -1,0 +1,6 @@
+🧹 Replace print with AppLogger in OpenAIService
+
+🎯 What: Replaced two `print` statements in the `listFiles()` function of `OpenResponses/Core/Services/OpenAIService.swift` with appropriate `AppLogger` method calls.
+💡 Why: This improves maintainability and consistency by routing diagnostic output to the standard logging mechanism instead of standard output, conforming to the rest of the file.
+✅ Verification: Ran the preflight checks `bash scripts/preflight_check.sh` which succeeded, and ensured there are no regression or side effects introduced.
+✨ Result: Code consistency improved without altering functionality.
