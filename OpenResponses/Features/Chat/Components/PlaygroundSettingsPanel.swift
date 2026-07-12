@@ -52,43 +52,55 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(["gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "computer-use-preview"], id: \.self) { model in
+                        ForEach(["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6", "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "computer-use-preview"], id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
                     .pickerStyle(.menu)
                     .onChange(of: viewModel.activePrompt.openAIModel) { oldModel, newModel in
-                        let compatibilityService = ModelCompatibilityService.shared
-                        let supportsComputer = compatibilityService.isToolSupported(
-                            .computer,
-                            for: newModel,
-                            isStreaming: viewModel.activePrompt.enableStreaming
-                        )
-                        let supportsReasoning = compatibilityService
-                            .getCapabilities(for: newModel)?
-                            .supportsReasoningEffort == true
-                        let previousSupportsReasoning = compatibilityService
-                            .getCapabilities(for: oldModel)?
-                            .supportsReasoningEffort == true
-
-                        if supportsReasoning,
-                           !previousSupportsReasoning,
-                           let defaultReasoningEffort = compatibilityService.defaultReasoningEffort(for: newModel)
-                        {
-                            viewModel.activePrompt.reasoningEffort = defaultReasoningEffort
-                        }
-
-                        if newModel == "computer-use-preview" {
-                            viewModel.activePrompt.enableComputerUse = true
-                        } else if !supportsComputer && viewModel.activePrompt.enableComputerUse {
-                            viewModel.activePrompt.enableComputerUse = false
-                            viewModel.activePrompt.ultraStrictComputerUse = false
-                        }
+                        var updatedPrompt = viewModel.activePrompt
+                        updatedPrompt.openAIModel = newModel
+                        _ = viewModel.replaceActivePrompt(with: updatedPrompt, previousModelId: oldModel)
+                        viewModel.saveActivePrompt()
                     }
                     
                     if ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)?.supportsReasoningEffort == true {
-                        Picker("Reasoning Effort", selection: $viewModel.activePrompt.reasoningEffort) {
-                            Text("Default").tag("medium") // Simplify mapping here or just use standard values
+                        Picker("Reasoning Effort", selection: Binding(
+                            get: { viewModel.activePrompt.reasoningEffort },
+                            set: { newValue in
+                                viewModel.activePrompt.reasoningEffort = newValue
+                                viewModel.saveActivePrompt()
+                            }
+                        )) {
+                            Text("Low").tag("low")
+                            Text("Medium").tag("medium")
+                            Text("High").tag("high")
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Reasoning Summary")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("Optional reasoning approach guide", text: Binding(
+                                get: { viewModel.activePrompt.reasoningSummary },
+                                set: { newValue in
+                                    viewModel.activePrompt.reasoningSummary = newValue
+                                    viewModel.saveActivePrompt()
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    if ModelCompatibilityService.shared.isParameterSupported("verbosity", for: viewModel.activePrompt.openAIModel) {
+                        Picker("Verbosity", selection: Binding(
+                            get: { viewModel.activePrompt.verbosity },
+                            set: { newValue in
+                                viewModel.activePrompt.verbosity = newValue
+                                viewModel.saveActivePrompt()
+                            }
+                        )) {
                             Text("Low").tag("low")
                             Text("Medium").tag("medium")
                             Text("High").tag("high")
