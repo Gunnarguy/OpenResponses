@@ -251,6 +251,8 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
                     self.delegate?.realtimeServiceDidReceiveTranscript(textDelta)
                 }
             }
+        case "response.done":
+            updateState("Listening...")
         case "error":
             if let errorObj = json["error"] as? [String: Any],
                let message = errorObj["message"] as? String {
