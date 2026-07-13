@@ -252,7 +252,14 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
                 }
             }
         case "response.done":
-            updateState("Listening...")
+            // Add a small cooldown (800ms) to allow queued audio playback to completely finish
+            // and prevent the microphone from picking up the speaker's tail echo.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self = self, self.isConnected else { return }
+                if self.currentState == "Speaking..." {
+                    self.updateState("Listening...")
+                }
+            }
         case "error":
             if let errorObj = json["error"] as? [String: Any],
                let message = errorObj["message"] as? String {
