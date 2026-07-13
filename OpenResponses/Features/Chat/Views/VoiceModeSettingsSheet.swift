@@ -7,6 +7,7 @@ struct VoiceModeSettingsSheet: View {
     @AppStorage("realtime_instructions") private var instructions: String = "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
     @AppStorage("realtime_modalities") private var modalities: String = "audio,text"
     @AppStorage("realtime_model") private var realtimeModel: String = "gpt-realtime-2.1"
+    @AppStorage("realtime_barge_in") private var bargeIn: Bool = false
     
     let voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
     
@@ -39,6 +40,13 @@ struct VoiceModeSettingsSheet: View {
                         Text("Audio & Text").tag("audio,text")
                         Text("Text Only").tag("text")
                     }
+                }
+                
+                Section(header: Text("Turn Taking")) {
+                    Toggle("Voice Barge-In", isOn: $bargeIn)
+                    Text("Allow interrupting the assistant by speaking. Recommended only when using headphones to prevent echo feedback loops.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
             .navigationTitle("Voice Mode Settings")

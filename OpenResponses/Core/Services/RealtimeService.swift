@@ -22,6 +22,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
     private var playbackEngine: AVAudioEngine?
     private var playerNode = AVAudioPlayerNode()
     private var playFormat: AVAudioFormat?
+    private var audioAccumulator = Data()
     
     // Configuration
     private var currentVoice: String = "alloy"
@@ -81,6 +82,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         }
         
         updateState("Connecting...")
+        audioAccumulator.removeAll()
         self.currentVoice = voice
         self.currentInstructions = instructions ?? "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
         self.currentModalities = modalities == "text" ? ["text"] : ["audio", "text"]
@@ -122,6 +124,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         isConnected = false
         
         stopMicrophoneCapture()
+        audioAccumulator.removeAll()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         session?.invalidateAndCancel()
@@ -302,6 +305,12 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, time in
             guard let self = self else { return }
             
+            // Prevent echo/feedback loops by ignoring mic when the assistant is speaking unless barge-in is enabled
+            let bargeIn = UserDefaults.standard.bool(forKey: "realtime_barge_in")
+            if self.currentState == "Speaking..." && !bargeIn {
+                return
+            }
+            
             let inputCallback: AVAudioConverterInputBlock = { inNumPackages, outStatus in
                 outStatus.pointee = .haveData
                 return buffer
@@ -332,12 +341,18 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
                     self.delegate?.realtimeServiceDidReceiveAudioLevel(normalizedLevel)
                 }
                 
-                let base64Audio = data.base64EncodedString()
-                let event: [String: Any] = [
-                    "type": "input_audio_buffer.append",
-                    "audio": base64Audio
-                ]
-                self.send(event)
+                // Accumulate to 100ms chunks to optimize performance and WebSocket flow
+                self.audioAccumulator.append(data)
+                if self.audioAccumulator.count >= 4800 { // 2400 samples * 2 bytes = 4800 bytes (100ms at 24kHz)
+                    let base64Audio = self.audioAccumulator.base64EncodedString()
+                    self.audioAccumulator.removeAll()
+                    
+                    let event: [String: Any] = [
+                        "type": "input_audio_buffer.append",
+                        "audio": base64Audio
+                    ]
+                    self.send(event)
+                }
             }
         }
         
