@@ -6,12 +6,21 @@ struct VoiceModeSettingsSheet: View {
     @AppStorage("realtime_voice") private var voice: String = "alloy"
     @AppStorage("realtime_instructions") private var instructions: String = "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
     @AppStorage("realtime_modalities") private var modalities: String = "audio,text"
+    @AppStorage("realtime_model") private var realtimeModel: String = "gpt-realtime-2.1"
     
     let voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
     
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("Model Selection")) {
+                    Picker("Model", selection: $realtimeModel) {
+                        Text("gpt-realtime-2.1").tag("gpt-realtime-2.1")
+                        Text("gpt-realtime-2.1-mini").tag("gpt-realtime-2.1-mini")
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
                 Section(header: Text("Voice configuration")) {
                     Picker("Voice", selection: $voice) {
                         ForEach(voices, id: \.self) { v in

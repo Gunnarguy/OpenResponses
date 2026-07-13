@@ -723,12 +723,13 @@ class ModelCompatibilityService {
         }
 
         let normalizedEffort = reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isGPT56Family = key == "gpt-5.6" || key == "gpt-5.6-sol" || key == "gpt-5.6-terra" || key == "gpt-5.6-luna"
         let isGPT55Family = key == "gpt-5.5" || key == "gpt-5.5-pro" || key == "gpt-5.5-mini" || key == "gpt-5.5-nano"
         let isGPT54Family = key == "gpt-5.4" || key == "gpt-5.4-pro" || key == "gpt-5.4-mini" || key == "gpt-5.4-nano"
         let isGPT52Family = key == "gpt-5.2" || key == "gpt-5.2-pro"
         let isGPT51Family = key == "gpt-5.1"
 
-        if isGPT55Family || isGPT54Family || isGPT52Family || isGPT51Family {
+        if isGPT56Family || isGPT55Family || isGPT54Family || isGPT52Family || isGPT51Family {
             switch parameter {
             case "temperature", "top_p", "top_logprobs":
                 // Conservative default: only treat as supported when the caller explicitly sets effort=none.

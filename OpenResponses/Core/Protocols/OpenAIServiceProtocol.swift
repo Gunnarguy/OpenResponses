@@ -215,7 +215,7 @@ protocol OpenAIServiceProtocol {
         func getConversation(conversationId: String) async throws -> ConversationDetail
         func updateConversation(conversationId: String, title: String?, metadata: [String: String]?, archived: Bool?) async throws -> ConversationDetail
         func deleteConversation(conversationId: String) async throws
-        func compactConversation(previousResponseId: String) async throws -> String
+        func compactConversation(previousResponseId: String, model: String) async throws -> String
         
         /// Runs content moderation check against OpenAI content policies.
         func checkModeration(input: String) async throws -> ModerationResult

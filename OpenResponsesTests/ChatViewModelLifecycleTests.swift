@@ -863,4 +863,8 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
     func deleteConversation(conversationId: String) async throws {
         deletedConversationIds.append(conversationId)
     }
+
+    func compactConversation(previousResponseId: String, model: String) async throws -> String {
+        return "compacted_response_id"
+    }
 }

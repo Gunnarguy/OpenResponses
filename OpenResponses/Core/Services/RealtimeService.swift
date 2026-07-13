@@ -68,6 +68,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
     }
 
     func connect(
+        model: String = "gpt-realtime-2.1",
         voice: String = "alloy",
         instructions: String? = nil,
         modalities: String = "audio,text"
@@ -96,7 +97,7 @@ class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {
         }
         #endif
         
-        let urlString = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2"
+        let urlString = "wss://api.openai.com/v1/realtime?model=\(model)"
         var request = URLRequest(url: URL(string: urlString)!)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         

@@ -72,9 +72,9 @@ struct PlaygroundSettingsPanel: View {
                                 viewModel.saveActivePrompt()
                             }
                         )) {
-                            Text("Low").tag("low")
-                            Text("Medium").tag("medium")
-                            Text("High").tag("high")
+                            ForEach(reasoningEffortOptions(for: viewModel.activePrompt.openAIModel), id: \.self) { option in
+                                Text(optionDisplayName(option)).tag(option)
+                            }
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
@@ -311,6 +311,39 @@ struct PlaygroundSettingsPanel: View {
         // Haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
+    }
+
+    private func reasoningEffortOptions(for modelId: String) -> [String] {
+        let id = modelId.lowercased()
+        if id.hasPrefix("gpt-5.6") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+        }
+        if id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        }
+        if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        }
+        if id == "gpt-5.2" || id == "gpt-5.2-pro" || id.hasPrefix("gpt-5.2-") {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        }
+        if id == "gpt-5.1" || id.hasPrefix("gpt-5.1-") {
+            return ["none", "minimal", "low", "medium", "high"]
+        }
+        return ["minimal", "low", "medium", "high"]
+    }
+
+    private func optionDisplayName(_ option: String) -> String {
+        switch option {
+        case "none": return "None"
+        case "minimal": return "Minimal"
+        case "low": return "Low"
+        case "medium": return "Medium"
+        case "high": return "High"
+        case "xhigh": return "X-High"
+        case "max": return "Max"
+        default: return option.capitalized
+        }
     }
 }
 

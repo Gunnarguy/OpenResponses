@@ -16,6 +16,7 @@ struct VoiceModeView: View {
     @AppStorage("realtime_voice") private var voice: String = "alloy"
     @AppStorage("realtime_instructions") private var instructions: String = "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
     @AppStorage("realtime_modalities") private var modalities: String = "audio,text"
+    @AppStorage("realtime_model") private var realtimeModel: String = "gpt-realtime-2.1"
     
     // Waveform bar count
     private let barCount = 18
@@ -245,6 +246,7 @@ struct VoiceModeView: View {
             }
             service.delegate = delegateWrapper
             service.connect(
+                model: realtimeModel,
                 voice: voice,
                 instructions: instructions,
                 modalities: modalities

@@ -4659,12 +4659,15 @@ class OpenAIService: OpenAIServiceProtocol {
     }
 
     /// Compacts a conversation context by summarizing the past messages.
-    func compactConversation(previousResponseId: String) async throws -> String {
+    func compactConversation(previousResponseId: String, model: String) async throws -> String {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
         }
 
-        let body: [String: Any] = ["previous_response_id": previousResponseId]
+        let body: [String: Any] = [
+            "previous_response_id": previousResponseId,
+            "model": model
+        ]
         let jsonData = try JSONSerialization.data(withJSONObject: body)
 
         let url = URL(string: "https://api.openai.com/v1/responses/compact")!

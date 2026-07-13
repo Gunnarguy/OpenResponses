@@ -3792,7 +3792,7 @@ class ChatViewModel: ObservableObject {
 
         Task {
             do {
-                let compactedItem = try await api.compactConversation(previousResponseId: responseId)
+                let compactedItem = try await api.compactConversation(previousResponseId: responseId, model: self.activePrompt.openAIModel)
                 await MainActor.run {
                     var newMessages = self.messages
                     newMessages.append(ChatMessage(id: UUID(), role: .system, text: "Context compacted to save tokens."))
