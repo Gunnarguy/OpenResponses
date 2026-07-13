@@ -3806,6 +3806,23 @@ class ChatViewModel: ObservableObject {
                 }
             } catch {
                 AppLogger.log("❌ Failed to compact conversation: \(error)", category: .network, level: .error)
+                await MainActor.run {
+                    var errorMessage = "Failed to compact conversation."
+                    let errorDesc = "\(error)".lowercased()
+                    if errorDesc.contains("not found") || errorDesc.contains("400") || errorDesc.contains("previous_response_not_found") {
+                        errorMessage = "Failed to compact context: The previous response has expired or is not found on the server."
+                        self.lastResponseId = nil
+                        if var updated = self.activeConversation {
+                            updated.lastResponseId = nil
+                            self.replaceConversationState(updated)
+                        }
+                    } else {
+                        errorMessage = "Failed to compact context: \(error.localizedDescription)"
+                    }
+                    var newMessages = self.messages
+                    newMessages.append(ChatMessage(id: UUID(), role: .system, text: errorMessage))
+                    self.messages = newMessages
+                }
             }
         }
     }

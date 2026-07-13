@@ -8,7 +8,7 @@ class ModelCompatibilityService {
     /// Normalizes non-API aliases (often used in docs/system cards or older saved presets)
     /// to concrete API model IDs before any capability lookup or request assembly occurs.
     public func normalizedModelId(for modelId: String) -> String {
-        let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         switch trimmed {
         case "gpt-5.5-thinking":
@@ -629,6 +629,7 @@ class ModelCompatibilityService {
         }
 
         let familyPrefixes = [
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6",
             "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.5",
             "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4",
             "gpt-5.2-pro", "gpt-5.2",
