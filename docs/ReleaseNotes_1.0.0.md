@@ -72,7 +72,7 @@ OpenResponses respects your privacy:
 - Conversations and files leave your device only when you explicitly send them to OpenAI or an enabled tool integration
 - Optional analytics disabled by default
 
-For full details, see our Privacy Policy.
+For full details, see the Privacy Policy.
 
 ## Known Limitations
 
@@ -89,7 +89,7 @@ For full details, see our Privacy Policy.
 
 ## Future Roadmap
 
-We're working on:
+I'm working on:
 
 - **Conversations API Integration:** Cloud-synced conversation history
 - **Enhanced File Support:** Direct file uploads to conversations

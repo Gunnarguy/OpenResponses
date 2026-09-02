@@ -8,7 +8,7 @@ A prompt is the set of instructions and context you provide to a model to guide 
 
 - **Instructions:** A specific task or command for the model to execute.
 - **Context:** External information or additional context to steer the model.
-- **Input Data:** The content we want the model to process.
+- **Input Data:** The content you want the model to process.
 - **Examples:** Preferred output format or style (few-shot prompting).
 
 This guide covers three core areas of prompting:

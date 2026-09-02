@@ -1,6 +1,6 @@
 # Production Checklist
 
-This checklist keeps release candidates honest. Run it before tagging a build or shipping a TestFlight so we catch regression-prone areas early. All steps assume the current OpenAI key is valid and rate limits are healthy.
+This checklist keeps release candidates honest. Run it before tagging a build or shipping a TestFlight so regression-prone areas surface early. All steps assume the current OpenAI key is valid and rate limits are healthy.
 
 ## 1. Environment & Configuration
 

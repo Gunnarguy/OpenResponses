@@ -62,7 +62,7 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 
 ### A. WKWebView Reload Loops and UI Freeze (The Scrolling Thrasher)
 - **Challenge:** Early iterations of the Computer Use feature rendered the active browser viewport inside a SwiftUI `UIViewRepresentable` wrapping a `WKWebView`. Whenever the user scrolled the chat timeline or typed a prompt, SwiftUI ran layout sweeps, repeatedly triggering `updateUIView(_:context:)`. Because the target URL was bound dynamically, this caused `WKWebView` to continuously invoke `.load(URLRequest)`, creating infinite reload loops, freezing the UI, and flooding system logs with `NSURLErrorCancelled` states.
-- **Solution:** We resolved this by introducing a state coordinator that tracks the last requested URL. We check the target URL against `coordinator.lastRequestedURL` and only load the request if they differ.
+- **Solution:** I resolved this by introducing a state coordinator that tracks the last requested URL. The app checks the target URL against `coordinator.lastRequestedURL` and only load the request if they differ.
   ```swift
   func updateUIView(_ webView: WKWebView, context: Context) {
       guard let url = context.environment.targetURL else { return }
@@ -76,7 +76,7 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 
 ### B. High-Velocity Concurrency in SSE Streaming
 - **Challenge:** High-frequency Server-Sent Events (SSE) payloads caused race conditions and data corruption when background thread decoders attempted to update the conversation timeline concurrently with user scroll gesture bindings.
-- **Solution:** We structured the `OpenAIService.streamChatRequest` to decode SSE stream tokens line-by-line and yield them in a Swift Concurrency `AsyncThrowingStream<StreamingEvent, Error>`. The `ChatViewModel` consumes this stream and schedules mutations of the active message list exclusively back to the Main Actor.
+- **Solution:** I structured the `OpenAIService.streamChatRequest` to decode SSE stream tokens line-by-line and yield them in a Swift Concurrency `AsyncThrowingStream<StreamingEvent, Error>`. The `ChatViewModel` consumes this stream and schedules mutations of the active message list exclusively back to the Main Actor.
   ```swift
   for try await event in stream {
       await MainActor.run {
@@ -88,7 +88,7 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 
 ### C. Safe Startup Keychain Migration
 - **Challenge:** Early prototype builds stored testing API keys as plaintext in standard `UserDefaults` (`openAIAPIKey`, `pineconeAPIKey`), which exposed developer credentials on jailbroken or backed-up devices.
-- **Solution:** We implemented an initialization migration hook during app startup:
+- **Solution:** I implemented an initialization migration hook during app startup:
   ```swift
   KeychainService.shared.migrateApiKeyFromUserDefaults()
   ```
@@ -103,11 +103,11 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 
 ### E. Scalable Settings via ResponseSettingsRegistry
 - **Challenge:** As OpenAI frequently adds parameters to the Responses API, manually hand-coding new settings rows and validation checks led to massive UI churn, incomplete payload coverage, and configuration drift.
-- **Solution:** We centralized all parameter definitions into a declarative `ResponseSettingsRegistry`. A `ResponseSettingDescriptor` dictates the API key mapping, UI grouping, default values, and valid bounds. The UI dynamically iterates over this registry to build the settings form, ensuring 100% parameter coverage without touching view code when new parameters arrive.
+- **Solution:** I centralized all parameter definitions into a declarative `ResponseSettingsRegistry`. A `ResponseSettingDescriptor` dictates the API key mapping, UI grouping, default values, and valid bounds. The UI dynamically iterates over this registry to build the settings form, ensuring 100% parameter coverage without touching view code when new parameters arrive.
 
 ### F. Chat-Native Computer Use and Tool Execution Timelines
 - **Challenge:** Initial Computer Use execution forced users into a heavy, modal-driven UI that broke the conversational flow of a chat app.
-- **Solution:** We introduced the `ToolExecutionTimeline` model mapped to each assistant message. As the Responses API streams tool call events, `ChatViewModel` dynamically upserts granular state (queued, running, awaiting approval) into the timeline. `MessageBubbleView` then renders expandable inline `ToolExecutionCard` components directly inside the chat transcript. This embeds browser automation loops natively into the conversation without requiring dedicated modal workflows.
+- **Solution:** I introduced the `ToolExecutionTimeline` model mapped to each assistant message. As the Responses API streams tool call events, `ChatViewModel` dynamically upserts granular state (queued, running, awaiting approval) into the timeline. `MessageBubbleView` then renders expandable inline `ToolExecutionCard` components directly inside the chat transcript. This embeds browser automation loops natively into the conversation without requiring dedicated modal workflows.
 
 ---
 
