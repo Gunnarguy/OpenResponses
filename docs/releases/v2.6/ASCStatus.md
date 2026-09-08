@@ -1,5 +1,7 @@
 # OpenResponses 2.6: App Store Connect reconciliation
 
+**Later delivery:** build 39 uploaded successfully and store metadata was updated on September 8. See the [delivery receipt](Delivery.md). The snapshot below predates that upload.
+
 **Read-only inspection:** September 8, 2026. The timestamped, selected API fields are retained in [ASC-Snapshot.json](ASC-Snapshot.json). Credentials were loaded from the existing local configuration; no key material, JWTs, reviewer credentials or contact details are included in this dossier. This inspection made GET requests only.
 
 ## What Apple currently has

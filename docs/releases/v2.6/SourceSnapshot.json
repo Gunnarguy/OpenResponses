@@ -189,7 +189,7 @@
       "path": "OpenResponses/Core/Services/BrowserExecution.swift",
       "change": "Added",
       "phase": "September",
-      "sha256": "b07bf67d91c045f0e11154fbd672083448930e5a4430842cce6ae292acb0ec21"
+      "sha256": "ffc917bb4d285d57d1e5e4572f806ec10b0c155407e65bfa536474048eb40e74"
     },
     {
       "path": "OpenResponses/Core/Services/ComputerService.swift",

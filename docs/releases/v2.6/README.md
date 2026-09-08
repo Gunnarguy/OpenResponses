@@ -38,7 +38,7 @@ The September 8 release and MCP account pass passed **294 unit/integration tests
 
 Live ASC on September 8 reports **v2.5/build 4 released**, **v2.6 Prepare for Submission with no build selected**, and latest uploaded **v2.6/build 38**. Xcode Cloud maps build 38 to committed HEAD `bf5a783` with a successful archive. It excludes the newer working-tree changes; TestFlight reports missing export compliance. See [ASC reconciliation](ASCStatus.md).
 
-Release delivery is now authorized and proceeding through Xcode Cloud. The ASC figures above are the pre-delivery snapshot; the upload, processing and metadata update require separate confirmation.
+**Delivery update:** version 2.6/build 39 uploaded successfully using stable Xcode, and ASC metadata was updated. Apple processing was pending at the receipt. See [delivery evidence](Delivery.md); the ASC figures above remain the pre-delivery snapshot.
 
 ## Scope at a glance
 

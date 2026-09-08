@@ -8,6 +8,11 @@ final class BrowserCallback<Value> {
     private var interrupt: (() -> Void)?
     private var finished = false
 
+    // Swift 6.3.3 crashes while optimizing the synthesized generic destructor.
+    // Keep this destructor unoptimized until the stable toolchain includes the fix.
+    @_optimize(none)
+    deinit {}
+
     func wait(timeout: Duration, label: String, onInterrupt: @escaping () -> Void = {},
               start: (@escaping (Result<Value, Error>) -> Void) -> Void) async throws -> Value {
         try Task.checkCancellation()

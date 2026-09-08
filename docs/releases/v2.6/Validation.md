@@ -74,7 +74,7 @@ The last ASC inspection on September 8 reported v2.5/build 4 released; v2.6 Prep
 
 GitHub CI has been updated locally to select an available iPhone simulator, execute `xcodebuild test -only-testing:OpenResponsesTests`, and retain its xcresult bundle. The edited workflow has not yet been committed/pushed/run remotely. The local pass is not evidence of a GitHub or Xcode Cloud test run.
 
-The user authorized committing, pushing and uploading this candidate to App Store Connect on September 8 after the final checks. Delivery is proceeding through the main-branch Xcode Cloud workflow. The ASC snapshot below predates that delivery; upload and processing must be verified separately.
+The user authorized committing, pushing and uploading this candidate to App Store Connect on September 8 after the final checks. Cloud build 39 hit a Swift 6.3.3 optimizer crash in the synthesized `BrowserCallback` destructor. An explicit unoptimized destructor works around that compiler defect; a local Release archive with stable Xcode 26.6 (17F113) succeeded. A preceding Xcode 27 beta archive succeeded locally but Apple rejected its unsupported SDK. All eight browser execution regression tests also passed after the workaround (`/tmp/OpenResponsesReleaseBrowserTests.xcresult`). The stable archive uploaded successfully as 2.6/build 39 at 18:23:53 UTC; Apple processing was pending. See the [delivery receipt](Delivery.md). The ASC snapshot below predates that delivery; upload and processing must be verified separately.
 
 ## Remaining release checks
 
