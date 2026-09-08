@@ -8,8 +8,8 @@ The repository currently contains `.github/workflows/ci.yml`, triggered by pushe
 
 | Job | Actual checked-in behavior |
 | --- | --- |
-| Build & Test | macOS 15, latest-stable Xcode selected by the setup action, `xcodebuild test`, a dynamically selected available iPhone simulator, signing disabled. Executes unit/integration tests and uploads the xcresult bundle. |
-| Lint | Installs/runs SwiftLint on macOS 15; lint step has `continue-on-error: true`. |
+| Build & Test | macOS 26, Xcode 26.6 (17F113) pinned by the setup action, `xcodebuild test`, a dynamically selected available iPhone simulator, signing disabled. Executes unit/integration tests and uploads the xcresult bundle. |
+| Lint | Installs/runs SwiftLint on macOS 26; lint step has `continue-on-error: true`. |
 | Security Scan | Ubuntu scan for a specific API-key-shaped pattern in Swift/JSON. This is a narrow pattern check, not an exhaustive secret audit. |
 | Docs Check | Requires README, LICENSE and PRIVACY files. It does not validate the complete release dossier or all Markdown links. |
 
@@ -17,7 +17,7 @@ Older documentation referring to active `ios-ci.yml`, `release-check.yml`, autom
 
 ## Local tests and device verification
 
-The September 8 final local run executed **294 unit/integration tests**, zero failures, on the iPhone 16 Pro Max simulator using Xcode beta. Signed device validation is recorded separately. The updated workflow has not yet been committed, pushed or run in GitHub; local test results must not be attributed to a remote CI run.
+The September 8 final local run executed **294 unit/integration tests**, zero failures, on the iPhone 16 Pro Max simulator using Xcode beta. Signed device validation is recorded separately. GitHub CI run 34267148194 (commit `5b270d8`, macOS 26 runner, Xcode 26.6, iPhone 17 Pro simulator on iOS 26.5) executed the same 294 tests with zero failures. The two preceding runs on the macOS 15 image (Xcode 26.3, iOS 26.2 simulator) crashed 29 tests in the Swift runtime's isolated-deinit hand-off when a `@MainActor` class was released from a synchronous test (swiftlang/swift#87316); the workflow now pins the release toolchain.
 
 Use the [validation ledger](releases/v2.6/Validation.md) for the exact result, reproducible command shape and remaining manual checks. Choose an available simulator and keep DerivedData outside iCloud-backed Documents. Require final `TEST SUCCEEDED` / `BUILD SUCCEEDED`, not just a process that started.
 
