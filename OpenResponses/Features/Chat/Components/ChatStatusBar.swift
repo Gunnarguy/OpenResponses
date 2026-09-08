@@ -99,30 +99,8 @@ struct ChatStatusBar: View {
                     viewModel.saveActivePrompt()
                 }
             )) {
-                Group {
-                    Text("gpt-5.6-terra").tag("gpt-5.6-terra")
-                    Text("gpt-5.6-sol").tag("gpt-5.6-sol")
-                    Text("gpt-5.6-luna").tag("gpt-5.6-luna")
-                    Text("gpt-5.6").tag("gpt-5.6")
-                }
-                Group {
-                    Text("gpt-5.5").tag("gpt-5.5")
-                    Text("gpt-5.5-pro").tag("gpt-5.5-pro")
-                    Text("gpt-5.5-mini").tag("gpt-5.5-mini")
-                }
-                Group {
-                    Text("gpt-5.4").tag("gpt-5.4")
-                    Text("gpt-5.4-pro").tag("gpt-5.4-pro")
-                    Text("gpt-5.4-mini").tag("gpt-5.4-mini")
-                }
-                Group {
-                    Text("gpt-5").tag("gpt-5")
-                    Text("gpt-5-mini").tag("gpt-5-mini")
-                    Text("o3").tag("o3")
-                    Text("o3-mini").tag("o3-mini")
-                    Text("gpt-4o").tag("gpt-4o")
-                    Text("gpt-4o-mini").tag("gpt-4o-mini")
-                    Text("computer-use-preview").tag("computer-use-preview")
+                ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel), id: \.self) { model in
+                    Text(model).tag(model)
                 }
             }
         } label: {

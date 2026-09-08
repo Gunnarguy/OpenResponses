@@ -1,1 +1,1 @@
-GPT-5.4, Apple Tools
+Responses API & Voice Tools

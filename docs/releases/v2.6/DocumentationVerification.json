@@ -1,0 +1,49 @@
+{
+  "checkedAt": "2026-09-08T18:05:01.312947+00:00",
+  "documentsChecked": 35,
+  "documentWords": 31817,
+  "relativeLinksChecked": 359,
+  "missingLinkTargets": [],
+  "storeCopyLimits": {
+    "name": {
+      "characters": 13,
+      "limit": 30,
+      "passed": true
+    },
+    "subtitle": {
+      "characters": 27,
+      "limit": 30,
+      "passed": true
+    },
+    "promotional_text": {
+      "characters": 163,
+      "limit": 170,
+      "passed": true
+    },
+    "keywords": {
+      "characters": 85,
+      "limit": 100,
+      "passed": true
+    },
+    "description": {
+      "characters": 3076,
+      "limit": 4000,
+      "passed": true
+    },
+    "release_notes": {
+      "characters": 3227,
+      "limit": 4000,
+      "passed": true
+    },
+    "beta_test_notes": {
+      "characters": 2283,
+      "limit": 4000,
+      "passed": true
+    }
+  },
+  "implementationFilesHashChecked": 129,
+  "implementationFilesChanged": [],
+  "credentialPatternHits": [],
+  "gitDiffCheckPassed": true,
+  "notes": "Documentation consistency checks follow the 294-test implementation pass, live OAuth registration and simulator UI checks, and signed iPhone build/install/launch. Pattern scanning does not constitute an exhaustive secret audit."
+}

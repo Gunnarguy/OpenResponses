@@ -1,278 +1,82 @@
 import SwiftUI
 
+/// Account sign-in is the normal path. API keys remain an explicit custom-server option.
 struct RemoteMCPSetupSheet: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @Environment(\.dismiss) private var dismiss
-
-    @State private var label: String = ""
-    @State private var serverURL: String = ""
-    @State private var authHeaderKey: String = "Authorization"
-    @State private var token: String = ""
-    @State private var allowedToolsCSV: String = ""
-    @State private var approvalMode: String = "never"
-
-    @State private var errorMessage: String?
-
-    @State private var isTesting: Bool = false
-    @State private var diagStatus: String? = nil
-
-    private var isValid: Bool {
-        let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let url = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tkn = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !lbl.isEmpty, !url.isEmpty else { return false }
-        guard url.lowercased().hasPrefix("https://") else { return false }
-        if isNotionHostedMCP {
-            return !tkn.isEmpty && !tokenLooksLikeNotionIntegration
-        }
-        return true
+    @StateObject private var flow = MCPConnectFlow()
+    @State private var name = ""
+    @State private var serverURL = ""
+    @State private var authentication = Authentication.account
+    @State private var header = "Authorization"
+    @State private var token = ""
+    @State private var error: String?
+    @AppStorage("exploreModeEnabled") private var demo = false
+    private enum Authentication: String, CaseIterable {
+        case account = "Account sign-in", publicServer = "Public server", apiKey = "API key (advanced)"
     }
-
-    private var isNotionHostedMCP: Bool {
-        serverURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains("mcp.notion.com")
-    }
-
-    private var tokenLooksLikeNotionIntegration: Bool {
-        let lower = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
-        return tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_")
-    }
+    private var address: String { serverURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var valid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (try? MCPOAuthSecurity.publicHTTPS(address)) != nil }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Label("Remote Server", systemImage: "server.rack")) {
-                    TextField("Label (e.g., Notion HTTP MCP)", text: $label)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    TextField("Server URL (https://…)", text: $serverURL)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                }
-
-                Section(header: Label("Authorization", systemImage: "key.fill"),
-                        footer: Text("Provide an OAuth/API token only when your server requires one. Public MCP servers can leave this blank. For mcp.notion.com, paste a Notion OAuth access token—not an ntn_/secret_ integration token.").font(.caption))
-                {
-                    TextField("Header Key (default: Authorization)", text: $authHeaderKey)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    SecureField("Token (optional for public servers)", text: $token)
-                }
-
-                Section(header: Label("Policy", systemImage: "checkmark.seal")) {
-                    TextField("Allowed Tools (CSV, optional)", text: $allowedToolsCSV)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-
-                    Picker("Approval", selection: $approvalMode) {
-                        Text("Never").tag("never")
-                        Text("Always").tag("always")
-                        Text("Auto").tag("auto")
+                Section {
+                    TextField("Name", text: $name)
+                    TextField("https://provider.example/mcp", text: $serverURL)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Picker("Connection", selection: $authentication) {
+                        ForEach(Authentication.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    .pickerStyle(.segmented)
+                } header: { Text("Custom server") } footer: {
+                    Text("Use the remote MCP address provided by the service. Account sign-in discovers its authorization service and opens the provider’s login.")
                 }
-
-                if let err = errorMessage {
+                if authentication == .apiKey {
                     Section {
-                        Text(err).font(.caption).foregroundColor(.red)
+                        TextField("Header name", text: $header).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        SecureField("API key", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    } header: { Text("Advanced authentication") } footer: {
+                        Text("Only for servers that explicitly support API keys. For hosted Notion and other OAuth services, choose Account sign-in.")
                     }
                 }
-
-                Section(header: Label("Diagnostics", systemImage: "checkmark.seal")) {
-                    if isTesting {
-                        HStack {
-                            ProgressView()
-                            Text("Testing…")
-                        }
+                Section {
+                    if flow.connected != nil {
+                        Label("Connected and enabled for this chat", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        Button("Done") { dismiss() }
+                    } else if flow.busy {
+                        ProgressView(flow.progress)
+                        Button("Cancel Sign-in") { flow.cancel() }
                     } else {
-                        Button {
-                            Task {
-                                isTesting = true
-                                diagStatus = nil
-
-                                let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let urlStr = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let headerKey = authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Authorization" : authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(trimmedToken)
-                                let isNotionOfficial = urlStr.lowercased().contains("mcp.notion.com")
-                                if isNotionOfficial && trimmedToken.isEmpty {
-                                    diagStatus = "Notion hosted MCP requires a Notion OAuth access token. Paste one here, or use Direct Notion Integration instead."
-                                    isTesting = false
-                                    return
-                                }
-                                if isNotionOfficial && tokenLooksLikeNotionIntegration {
-                                    diagStatus = "A Notion integration token (ntn_/secret_) won't work with the hosted Notion MCP. Paste a Notion OAuth access token instead."
-                                    isTesting = false
-                                    return
-                                }
-
-                                // Persist minimal auth for probe (matches OpenAIService.resolveMCPAuthorization expectations)
-                                if trimmedToken.isEmpty {
-                                    _ = KeychainService.shared.delete(forKey: "mcp_manual_\(lbl)")
-                                    _ = KeychainService.shared.delete(forKey: "mcp_auth_\(lbl)")
-                                } else {
-                                    let headers = [headerKey: normalizedAuth]
-                                    if let data = try? JSONSerialization.data(withJSONObject: headers, options: [.sortedKeys]),
-                                       let str = String(data: data, encoding: .utf8)
-                                    {
-                                        _ = KeychainService.shared.save(value: str, forKey: "mcp_manual_\(lbl)")
-                                    }
-                                }
-
-                                var probePrompt = viewModel.activePrompt
-                                probePrompt.enableMCPTool = true
-                                probePrompt.mcpIsConnector = false
-                                probePrompt.mcpServerLabel = lbl
-                                probePrompt.mcpServerURL = urlStr
-                                probePrompt.mcpAllowedTools = allowedToolsCSV.trimmingCharacters(in: .whitespacesAndNewlines)
-                                probePrompt.mcpRequireApproval = approvalMode
-                                probePrompt.mcpAuthHeaderKey = headerKey
-
-                                do {
-                                    let (foundLabel, count) = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: probePrompt)
-                                    let d = UserDefaults.standard
-                                    d.set(true, forKey: "mcp_probe_ok_\(foundLabel)")
-                                    d.set(Date().timeIntervalSince1970, forKey: "mcp_probe_ok_at_\(foundLabel)")
-                                    if let stored = KeychainService.shared.load(forKey: "mcp_manual_\(foundLabel)"),
-                                       let data = stored.data(using: .utf8),
-                                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
-                                    {
-                                        let ah = obj[headerKey] ?? obj["Authorization"] ?? ""
-                                        if ah.isEmpty {
-                                            d.removeObject(forKey: "mcp_probe_token_hash_\(foundLabel)")
-                                        } else {
-                                            let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: ah)
-                                            d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
-                                        }
-                                    } else if trimmedToken.isEmpty {
-                                        d.removeObject(forKey: "mcp_probe_token_hash_\(foundLabel)")
-                                    } else {
-                                        let hash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: normalizedAuth)
-                                        d.set(hash, forKey: "mcp_probe_token_hash_\(foundLabel)")
-                                    }
-                                    d.set(count, forKey: "mcp_probe_tool_count_\(foundLabel)")
-                                    diagStatus = "MCP list_tools OK (\(foundLabel)): \(count) tools"
-                                } catch {
-                                    let lower = error.localizedDescription.lowercased()
-                                    if lower.contains("401") || lower.contains("unauthorized") {
-                                        diagStatus = "Probe failed: Unauthorized (401). Check the token."
-                                    } else if lower.contains("timed out") || lower.contains("timeout") {
-                                        diagStatus = "Probe failed: Connection timed out. Verify the URL is reachable."
-                                    } else {
-                                        diagStatus = "Probe failed: \(error.localizedDescription)"
-                                    }
-                                }
-
-                                isTesting = false
-                            }
-                        } label: {
-                            Label("Test MCP Connection", systemImage: "checkmark.seal")
-                        }
-                        .disabled(!isValid)
+                        Button(demo ? "Leave Demo & Connect" : "Connect") { connect() }
+                            .disabled(!valid || (authentication == .apiKey && token.isEmpty))
                     }
-
-                    if let status = diagStatus {
-                        Text(status)
-                            .font(.caption)
-                            .foregroundColor(status.contains("OK") ? .green : .orange)
-                    }
+                    if let error = flow.error ?? error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+                } footer: {
+                    Text("The connection is saved securely on this device. OpenAI receives its authorization when you use it in chat or discover tools. Tool calls ask for your approval by default.")
                 }
             }
-            .navigationTitle("Add Custom MCP Remote")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(!isValid)
-                }
-            }
-            .onAppear {
-                // Pre-fill with any existing remote config for quick edits
-                let prompt = viewModel.activePrompt
-                if !prompt.mcpIsConnector && prompt.enableMCPTool {
-                    if label.isEmpty { label = prompt.mcpServerLabel }
-                    if serverURL.isEmpty { serverURL = prompt.mcpServerURL }
-                    if approvalMode.isEmpty { approvalMode = prompt.mcpRequireApproval.isEmpty ? "never" : prompt.mcpRequireApproval }
-                    if authHeaderKey.isEmpty { authHeaderKey = prompt.mcpAuthHeaderKey.isEmpty ? "Authorization" : prompt.mcpAuthHeaderKey }
-                    if allowedToolsCSV.isEmpty { allowedToolsCSV = prompt.mcpAllowedTools }
-
-                    if token.isEmpty,
-                       let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"),
-                       !stored.isEmpty
-                    {
-                        if let data = stored.data(using: .utf8),
-                           let headers = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                            token = NotionAuthService.shared.stripBearer(headers[authHeaderKey] ?? headers["Authorization"] ?? "")
-                        } else {
-                            token = NotionAuthService.shared.stripBearer(stored)
-                        }
-                    }
-                }
-            }
+            .navigationTitle("Add Custom Server").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .onDisappear { flow.cancel() }
         }
     }
-
-    private func save() {
-        let lbl = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let url = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let headerKey = authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Authorization" : authHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tkn = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        let allowed = allowedToolsCSV.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !lbl.isEmpty, !url.isEmpty else {
-            errorMessage = "Please provide a label and URL."
-            return
-        }
-        guard url.lowercased().hasPrefix("https://") else {
-            errorMessage = "Server URL must start with https://"
-            return
-        }
-
-        if url.lowercased().contains("mcp.notion.com") {
-            if tkn.isEmpty {
-                errorMessage = "Notion hosted MCP requires a Notion OAuth access token. Paste one here, or use Direct Notion Integration instead."
-                return
-            }
-            if tokenLooksLikeNotionIntegration {
-                errorMessage = "A Notion integration token (ntn_/secret_) won't work with the hosted Notion MCP. Paste a Notion OAuth access token instead."
-                return
-            }
-        }
-
-        // Normalize token value for headers
-        let normalizedAuth = NotionAuthService.shared.normalizeAuthorizationValue(tkn)
-
-        // Update active prompt configuration
-        var prompt = viewModel.activePrompt
-        prompt.enableMCPTool = true
-        prompt.mcpIsConnector = false
-        prompt.mcpServerLabel = lbl
-        prompt.mcpServerURL = url
-        prompt.mcpAllowedTools = allowed
-        prompt.mcpRequireApproval = approvalMode
-        prompt.mcpAuthHeaderKey = headerKey
-
-        if tkn.isEmpty {
-            prompt.secureMCPHeaders = [:]
+    private func connect() {
+        if demo { demo = false; viewModel.exploreModeEnabled = false }
+        error = nil
+        if authentication == .apiKey {
+            do {
+                // Hosted Notion never accepts integration tokens on its MCP endpoint.
+                if MCPDiscoveryConfiguration.isNotionHosted(address) { throw MCPAuthorizationError.unsupportedSignIn }
+                let connection = try MCPConnectionStore.shared.addAPIKey(name: name, serverURL: address,
+                    header: header.trimmingCharacters(in: .whitespacesAndNewlines), token: token)
+                try viewModel.setMCPConnection(connection.id, enabled: true)
+                token = ""; dismiss()
+            } catch { self.error = error.localizedDescription }
         } else {
-            var headers = prompt.secureMCPHeaders
-            headers.removeValue(forKey: "Authorization")
-            headers.removeValue(forKey: headerKey)
-            headers[headerKey] = normalizedAuth
-            prompt.secureMCPHeaders = headers
+            flow.connect(provider: MCPProvider(id: "custom", name: name.trimmingCharacters(in: .whitespacesAndNewlines), summary: "",
+                category: .development, serverURL: address, signIn: authentication == .publicServer ? .publicAccess : .automatic)) {
+                try viewModel.setMCPConnection($0.id, enabled: true)
+            }
         }
-
-        viewModel.replaceActivePrompt(with: prompt)
-        viewModel.saveActivePrompt()
-
-        dismiss()
     }
-}
-
-#Preview {
-    RemoteMCPSetupSheet()
-        .environmentObject(ChatViewModel())
 }

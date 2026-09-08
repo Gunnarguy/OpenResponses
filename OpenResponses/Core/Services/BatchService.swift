@@ -5,7 +5,13 @@ class BatchService {
     
     private let baseURL = "https://api.openai.com/v1"
     
-    private init() {}
+    private let download: (URLRequest) async throws -> (URL, URLResponse)
+
+    init(download: @escaping (URLRequest) async throws -> (URL, URLResponse) = { request in
+        try await URLSession.shared.download(for: request)
+    }) {
+        self.download = download
+    }
     
     private var apiKey: String? {
         KeychainService.shared.load(forKey: "openAIKey")
@@ -92,30 +98,9 @@ class BatchService {
     }
     
     func listBatches() async throws -> [BatchJob] {
-        let headers = try createHeaders()
-        let url = URL(string: "\(baseURL)/batches")!
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        for (key, val) in headers {
-            request.setValue(val, forHTTPHeaderField: key)
-        }
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        if httpResponse.statusCode != 200 {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMsg)
-        }
-        
-        let listResponse = try JSONDecoder().decode(AssistantListResponse<BatchJob>.self, from: data)
-        return listResponse.data
+        try await ResourcePagination.list(path: "/batches", as: BatchJob.self)
     }
-    
+
     func cancelBatch(batchId: String) async throws -> BatchJob {
         let headers = try createHeaders()
         let url = URL(string: "\(baseURL)/batches/\(batchId)/cancel")!
@@ -140,32 +125,23 @@ class BatchService {
         return try JSONDecoder().decode(BatchJob.self, from: data)
     }
     
-    /// Downloads the result file content as String.
-    func downloadBatchResult(fileId: String) async throws -> String {
-        guard let key = apiKey, !key.isEmpty else {
-            throw OpenAIServiceError.missingAPIKey
+    /// Download directly to disk so large result/error files never become a truncated UI string.
+    func downloadBatchResult(fileId: String, isErrorFile: Bool = false) async throws -> URL {
+        var request = try ResponsesAPIClient().request(path: "/files/\(fileId)/content", method: "GET")
+        request.timeoutInterval = 120
+        let (temporaryURL, response) = try await download(request)
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        // Error responses are small JSON; successful files stay on disk.
+        if (response as? HTTPURLResponse)?.statusCode != 200 {
+            let errorData = (try? Data(contentsOf: temporaryURL)) ?? Data()
+            try ResponsesAPIClient.validate(response, data: errorData)
         }
-        
-        let url = URL(string: "\(baseURL)/files/\(fileId)/content")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        if httpResponse.statusCode != 200 {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMsg)
-        }
-        
-        guard let contentString = String(data: data, encoding: .utf8) else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        return contentString
+        try Task.checkCancellation()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BatchExports", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let output = directory.appendingPathComponent(isErrorFile ? "batch-errors.jsonl" : "batch-results.jsonl")
+        try FileManager.default.moveItem(at: temporaryURL, to: output)
+        return output
     }
 }

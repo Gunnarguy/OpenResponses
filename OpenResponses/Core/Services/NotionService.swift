@@ -91,7 +91,7 @@ final class NotionService {
     func compactSearchResult(_ raw: [String: Any], maxResults: Int = 20, maxProperties: Int = 12, maxPreviewLength: Int = 160) -> [String: Any] {
         guard let resultArray = raw["results"] as? [[String: Any]] else { return raw }
 
-        let slice = Array(resultArray.prefix(maxResults))
+        let slice = resultArray
         var compactResults: [[String: Any]] = []
         compactResults.reserveCapacity(slice.count)
 
@@ -120,12 +120,9 @@ final class NotionService {
         if let nextCursor = raw["next_cursor"] { finalResponse["next_cursor"] = nextCursor }
 
         let rawHasMore = raw["has_more"] as? Bool ?? false
-        finalResponse["has_more"] = rawHasMore || resultArray.count > maxResults
+        finalResponse["has_more"] = rawHasMore
         finalResponse["results"] = compactResults
-        if resultArray.count > maxResults {
-            finalResponse["truncated"] = true
-            finalResponse["results_in_batch"] = resultArray.count
-        }
+
 
         return finalResponse
     }

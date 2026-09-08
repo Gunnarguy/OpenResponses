@@ -348,7 +348,7 @@ enum OpenAIEndpoint {
 }
 
 /// Enhanced error type for OpenAI service errors.
-enum OpenAIServiceError: Error {
+enum OpenAIServiceError: LocalizedError {
     case missingAPIKey
     case requestFailed(Int, String)  // HTTP status code and message
     case invalidResponseData
@@ -357,6 +357,8 @@ enum OpenAIServiceError: Error {
     case decodingError(Error)
     case rateLimited(Int, String)  // Retry after seconds and message
     case fileError(String)
+
+    var errorDescription: String? { userFriendlyDescription }
     
     /// A user-friendly description of the error.
     var userFriendlyDescription: String {

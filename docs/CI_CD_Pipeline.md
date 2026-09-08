@@ -1,261 +1,36 @@
-# CI/CD Pipeline Documentation
+# OpenResponses CI/CD and delivery evidence
 
-This document explains the continuous integration and deployment setup for OpenResponses.
+**Verified:** September 8, 2026 against [the checked-in workflow](../.github/workflows/ci.yml) and the [live ASC/Xcode Cloud snapshot](releases/v2.6/ASCStatus.md).
 
-## Overview
+## GitHub Actions
 
-The project uses **GitHub Actions** for automated testing, linting, and release preparation. The pipeline runs on every push and pull request to ensure code quality and catch issues early.
+The repository currently contains `.github/workflows/ci.yml`, triggered by pushes and pull requests to `main`, with per-ref concurrency cancellation.
 
-## Workflows
+| Job | Actual checked-in behavior |
+| --- | --- |
+| Build & Test | macOS 15, latest-stable Xcode selected by the setup action, `xcodebuild test`, a dynamically selected available iPhone simulator, signing disabled. Executes unit/integration tests and uploads the xcresult bundle. |
+| Lint | Installs/runs SwiftLint on macOS 15; lint step has `continue-on-error: true`. |
+| Security Scan | Ubuntu scan for a specific API-key-shaped pattern in Swift/JSON. This is a narrow pattern check, not an exhaustive secret audit. |
+| Docs Check | Requires README, LICENSE and PRIVACY files. It does not validate the complete release dossier or all Markdown links. |
 
-### 1. iOS CI (`ios-ci.yml`)
+Older documentation referring to active `ios-ci.yml`, `release-check.yml`, automatic UI-test execution or a complete metadata release lane is superseded by this table. No workflow implementation was changed during the documentation task.
 
-**Triggers:** Push to any branch, PRs to `main`
+## Local tests and device verification
 
-**Jobs:**
+The September 8 final local run executed **294 unit/integration tests**, zero failures, on the iPhone 16 Pro Max simulator using Xcode beta. Signed device validation is recorded separately. The updated workflow has not yet been committed, pushed or run in GitHub; local test results must not be attributed to a remote CI run.
 
-#### Build and Test
-- Runs on macOS 14 (latest GitHub Actions runner)
-- Uses Xcode 16.1
-- Builds the project for iOS Simulator (iPhone 16 Pro)
-- Runs all unit tests (`OpenResponsesTests`)
-- Uploads test results as artifacts (retained for 30 days)
-- Reports build warnings
+Use the [validation ledger](releases/v2.6/Validation.md) for the exact result, reproducible command shape and remaining manual checks. Choose an available simulator and keep DerivedData outside iCloud-backed Documents. Require final `TEST SUCCEEDED` / `BUILD SUCCEEDED`, not just a process that started.
 
-**Key Commands:**
-```bash
-xcodebuild build-for-testing \
-  -project OpenResponses.xcodeproj \
-  -scheme OpenResponses \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.1'
-```
+## Xcode Cloud and uploaded builds
 
-#### Lint
-- Installs and runs SwiftLint
-- Checks code style and best practices
-- Configuration: `.swiftlint.yml`
-- Reports violations but doesn't fail the build
+ASC's retained Cloud listing returned run **38**, source `bf5a783f7912b9e12f37e88e63c5c6891412eb94`, with a successful **Archive - iOS** action and a relationship to uploaded 2.6/build 38. No test action was returned. The run predates the completed working-tree implementation.
 
-#### Security Scan
-- Scans for exposed API keys (`sk-*` patterns)
-- Checks for hardcoded secrets
-- Verifies no `.env` files are committed
-- Fails the build if secrets are found
+The local candidate now declares build 39; the previously uploaded Cloud binary is build 38. Record the delivery system's actual build number with the source SHA; do not assume local project numbering identifies the uploaded binary.
 
-#### Markdown Lint
-- Validates all markdown documentation
-- Ensures consistent formatting
-- Continues on error (non-blocking)
+At inspection, build 38 was processed `VALID` but internal/external TestFlight states both reported `MISSING_EXPORT_COMPLIANCE`. The 2.6 App Store version had no build selected. An archive success does not imply review or public release.
 
-### 2. Release Preparation (`release-check.yml`)
+## Release documentation workflow
 
-**Triggers:** Push to `release/*` branches, version tags (`v*`)
+Maintain [What's New](ReleaseNotes_2.6.0.md), [changelog](../CHANGELOG.md), [technical changes](releases/v2.6/TechnicalChanges.md), [validation](releases/v2.6/Validation.md), and [store copy](AppStoreMetadata.md) together. Before an upload, include intended untracked source and map the final candidate to its revision. After an upload, refresh the ASC record, eligibility, beta information and selected version build.
 
-**Jobs:**
-
-#### Version Consistency Check
-- Extracts version from Xcode project
-- Verifies release notes exist for the version
-- Ensures `PRIVACY.md` is present
-- Checks for TODO/FIXME comments
-
-#### Archive Build
-- Creates a production-like archive build
-- Reports archive size
-- Validates build configuration
-
-#### Documentation Validation
-- Checks for required documentation files:
-  - `README.md`
-  - `LICENSE`
-  - `PRIVACY.md`
-  - `docs/ROADMAP.md`
-  - `docs/AppStoreMetadata.md`
-  - `docs/AppStoreReleasePlan.md`
-- Validates internal links in markdown files
-
-#### App Store Readiness Check
-- Verifies Info.plist privacy descriptions
-- Checks for AppIcon (1024×1024)
-- Validates bundle ID format
-- Confirms deployment target (iOS 17.0)
-
-## Local Development
-
-### Running Tests Locally
-
-```bash
-# Build and test
-xcodebuild test \
-  -project OpenResponses.xcodeproj \
-  -scheme OpenResponses \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-
-# Or use Xcode: Cmd+U
-```
-
-### Running SwiftLint
-
-```bash
-# Install (if not already installed)
-brew install swiftlint
-
-# Lint all files
-swiftlint
-
-# Auto-fix issues where possible
-swiftlint --fix
-
-# Lint specific file
-swiftlint lint --path OpenResponses/App/OpenResponsesApp.swift
-```
-
-### Security Scanning
-
-```bash
-# Check for exposed secrets
-grep -r "sk-[a-zA-Z0-9]\{48\}" --include="*.swift" --include="*.json" .
-
-# Verify .env files are gitignored
-git check-ignore .env test.env
-```
-
-## Adding New Tests
-
-When adding new test files:
-
-1. Create test file in `OpenResponsesTests/`
-2. Import `@testable import OpenResponses`
-3. Inherit from `XCTestCase`
-4. Name test methods with `test` prefix
-5. CI will automatically run new tests
-
-Example:
-```swift
-import XCTest
-@testable import OpenResponses
-
-final class MyNewTests: XCTestCase {
-    func testSomething() {
-        XCTAssertTrue(true)
-    }
-}
-```
-
-## App Store Delivery & CI/CD (Xcode Cloud)
-
-Continuous Integration, testing, and deployment to TestFlight and the App Store are managed natively using **Xcode Cloud**. Fastlane is not used in the build pipeline.
-
-### Workflow Configuration
-Xcode Cloud workflows are configured directly in Xcode or App Store Connect:
-
-1. **Trigger:** Automated runs are triggered on every push to the `main` branch or pull requests.
-2. **Actions:**
-   - Run automated unit and UI tests.
-   - Archive the application using the `Release` configuration.
-3. **Deployment:** Automatically distribute archived builds to TestFlight internal testing groups once App Store Connect processing is complete.
-
-### Key Benefits of Xcode Cloud
-- Native integration with App Store Connect without requiring external third-party credential manager setups or custom CI build agents.
-- Automatic certificate signing, provisioning profile generation, and Entitlements verification.
-- Integrated distribution streams straight to App Store Connect TestFlight pipelines.
-
-## Troubleshooting
-
-### Build Failures
-
-**Issue:** Code signing errors
-**Solution:** CI uses `CODE_SIGNING_REQUIRED=NO` for simulator builds
-
-**Issue:** Test timeouts
-**Solution:** Increase timeout or check for network dependencies
-
-**Issue:** Missing simulator
-**Solution:** Update destination to available simulator in workflow
-
-### SwiftLint Errors
-
-**Issue:** Too many violations
-**Solution:** Run `swiftlint --fix` to auto-correct
-
-**Issue:** Rule conflicts
-**Solution:** Update `.swiftlint.yml` to disable conflicting rules
-
-### Security Scan False Positives
-
-**Issue:** Scanner flags non-secret patterns
-**Solution:** Update regex in `ios-ci.yml` security-scan job
-
-## Monitoring
-
-### GitHub Actions Dashboard
-
-View workflow runs at:
-```
-https://github.com/Gunnarguy/OpenResponses/actions
-```
-
-### Artifacts
-
-Test results are uploaded as artifacts and retained for 30 days:
-- Download `.xcresult` bundle
-- Open in Xcode: `xcodebuild -resultBundlePath TestResults.xcresult`
-
-### Notifications
-
-Failed builds trigger:
-- GitHub UI notifications
-- Email to commit author (if configured)
-
-## Best Practices
-
-1. **Run tests locally before pushing**
-   ```bash
-   xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses
-   ```
-
-2. **Fix SwiftLint warnings incrementally**
-   - Don't disable all rules
-   - Configure thresholds in `.swiftlint.yml`
-
-3. **Keep CI fast**
-   - Use cached dependencies
-   - Parallelize independent jobs
-   - Don't run tests on documentation-only changes
-
-4. **Secure secrets**
-   - Never commit API keys
-   - Use GitHub Secrets for sensitive data
-   - Verify with security scan job
-
-5. **Document breaking changes**
-   - Update this doc when changing workflows
-   - Note required environment changes
-
-## Performance
-
-Current CI execution times (approximate):
-
-- **Build and Test:** 8-12 minutes
-- **Lint:** 2-3 minutes
-- **Security Scan:** < 1 minute
-- **Release Check:** 5-7 minutes
-
-**Total for typical push:** ~15 minutes
-
-## Future Enhancements
-
-- [ ] Add code coverage reporting
-- [ ] Integrate with Codecov or similar
-- [ ] Add performance benchmarks
-- [ ] Deploy to TestFlight automatically
-- [ ] Add screenshot generation tests
-- [ ] Implement UI regression testing
-- [ ] Add static analysis (SwiftFormat)
-- [ ] Create release notes automatically from commits
-
----
-
-**Last Updated:** 2025-11-08  
-**Maintained By:** Development Team  
-**Questions?** Open an issue or check GitHub Actions logs
+The text files under `fastlane/metadata` are local copy sources. Preparing or editing them does not run a deployment lane. The [release plan](AppStoreReleasePlan.md) lists remaining external actions and validation gates.

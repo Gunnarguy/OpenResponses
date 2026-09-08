@@ -6,7 +6,6 @@ struct VoiceModeView: View {
     
     @State private var statusText = "Connecting..."
     @State private var transcriptText = ""
-    @State private var isMuted = false
     @State private var audioLevel: Float = 0.0
     @State private var delegateWrapper = VoiceModeDelegateWrapper()
     @State private var scale: CGFloat = 1.0
@@ -91,7 +90,7 @@ struct VoiceModeView: View {
                         .tracking(2)
                         .foregroundColor(.blue.opacity(0.8))
                     
-                    Text(service.currentState == "Connected" ? (audioLevel > 0.05 ? "Speaking..." : "Listening...") : service.currentState)
+                    Text(service.currentState)
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -135,7 +134,7 @@ struct VoiceModeView: View {
                                 )
                                 .frame(
                                     width: 6,
-                                    height: max(6, CGFloat(audioLevel * 180 * Float.random(in: 0.4...1.2)))
+                                    height: max(6, CGFloat(audioLevel * 180 * (0.4 + 0.8 * Float(abs(sin(Double(index) * 1.7))))))
                                 )
                                 .animation(.spring(response: 0.15, dampingFraction: 0.5), value: audioLevel)
                         }
@@ -173,24 +172,16 @@ struct VoiceModeView: View {
                 HStack(spacing: 40) {
                     // Mute Microphone
                     Button {
-                        isMuted.toggle()
-                        // Since we just stop mic sending in a real implementation:
-                        if isMuted {
-                            service.disconnect()
-                            statusText = "Muted"
-                        } else {
-                            service.connect()
-                            statusText = "Listening"
-                        }
+                        service.setMicrophoneMuted(!service.isMicrophoneMuted)
                     } label: {
                         VStack(spacing: 6) {
-                            Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
+                            Image(systemName: service.isMicrophoneMuted ? "mic.slash.fill" : "mic.fill")
                                 .font(.title2)
-                                .foregroundColor(isMuted ? .red : .white)
+                                .foregroundColor(service.isMicrophoneMuted ? .red : .white)
                                 .frame(width: 60, height: 60)
-                                .background(isMuted ? Color.red.opacity(0.15) : Color.white.opacity(0.08))
+                                .background(service.isMicrophoneMuted ? Color.red.opacity(0.15) : Color.white.opacity(0.08))
                                 .clipShape(Circle())
-                            Text(isMuted ? "Unmute" : "Mute")
+                            Text(service.isMicrophoneMuted ? "Unmute" : "Mute")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.6))
                         }
@@ -237,7 +228,7 @@ struct VoiceModeView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             delegateWrapper.onConnect = { statusText = "Connected" }
-            delegateWrapper.onDisconnect = { statusText = "Disconnected" }
+            delegateWrapper.onDisconnect = { statusText = "Disconnected"; audioLevel = 0 }
             delegateWrapper.onTranscript = { transcriptText += $0 }
             delegateWrapper.onAudioLevel = { audioLevel = $0 }
             delegateWrapper.onError = { message in
@@ -271,6 +262,8 @@ class VoiceModeDelegateWrapper: RealtimeServiceDelegate {
     var onConnect: (() -> Void)?
     var onDisconnect: (() -> Void)?
     var onTranscript: ((String) -> Void)?
+    var onCompleteUserMessage: ((String) -> Void)?
+    var onCompleteAssistantMessage: ((String) -> Void)?
     var onAudioLevel: ((Float) -> Void)?
     var onError: ((String) -> Void)?
     
@@ -287,6 +280,16 @@ class VoiceModeDelegateWrapper: RealtimeServiceDelegate {
     func realtimeServiceDidReceiveTranscript(_ text: String) {
         DispatchQueue.main.async { [weak self] in
             self?.onTranscript?(text)
+        }
+    }
+    func realtimeServiceDidCompleteUserMessage(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onCompleteUserMessage?(text)
+        }
+    }
+    func realtimeServiceDidCompleteAssistantMessage(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onCompleteAssistantMessage?(text)
         }
     }
     func realtimeServiceDidReceiveAudioLevel(_ level: Float) {

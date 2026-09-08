@@ -1,9 +1,8 @@
 import Foundation
 
 enum AppFeatureFlags {
-    /// MCP is temporarily disabled in the shipping app while App Review focuses on the
-    /// core OpenAI experience and explicit first-send privacy disclosures.
-    static let isMCPAvailable = false
+    /// MCP uses the same first-send consent, Keychain credentials, and explicit tool approvals as chat.
+    static let isMCPAvailable = true
 
     /// Increment this when the consent copy changes and users should be asked again.
     static let aiDataSharingConsentVersion = 2

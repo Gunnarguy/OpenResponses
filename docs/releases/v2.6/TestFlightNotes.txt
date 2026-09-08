@@ -1,0 +1,21 @@
+OpenResponses 2.6 release-candidate test guide
+
+Use the candidate containing the completed September source changes. The previously uploaded build 38 predates those working-tree changes.
+
+Please test:
+• Upgrade with existing chats and presets; switch chats during streaming, stop a response, delete an active chat, background and reopen the app.
+• Speak for several turns in voice mode. Interrupt an answer, mute/unmute, change audio routes and recover from an interruption. Check that the visualizer returns to listening.
+• Try Astra/Sol/Terra/Luna settings appropriate to your account. Verify reasoning controls and actual tool results, including cancellation.
+• Open Settings → Model → API Workbench. Inspect/export a response, count input tokens, try compaction, and continue a client tool call with its actual call ID.
+• Discover a configured MCP server, inspect its tools, refresh, cancel and check an authentication failure. Private OAuth servers may need separate setup.
+• Navigate public pages with browser tools, use back/forward, type into a harmless form and stop a run. Check source links from hosted web search.
+• Upload a searchable file and observe indexing, partial failure and Check Indexing Again.
+• Save complete available Batch output/error files. Import a reviewed JSONL dataset and inspect validation errors without starting a paid training job unless you intend to.
+
+Report the build number, device/OS, steps, expected result and actual result. Remove credentials and private conversation content from diagnostic material before sharing.
+
+Known boundaries: remote history retrieves known IDs rather than enumerating the whole account; browser automation cannot handle every CAPTCHA/frame/native-input flow; model, MCP and fine-tuning access depends on your accounts. Retired Assistants live operations are disabled; local JSON migration remains.
+
+MCP account pass: connect Notion through its browser login; cancel/retry, rename accounts, select several per chat, discover and restrict tools, and reconnect after expiry. Check registry search and provider-setup labels.
+
+Workbench recovery: type an unfinished request, relaunch, and verify the draft and selectors survive. Cancel template replacement and try an invalid schema; no network request should start.

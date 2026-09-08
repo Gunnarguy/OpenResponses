@@ -13,6 +13,15 @@ struct Prompt: Codable, Identifiable, Equatable {
     var promptCacheOptions: PromptCacheOptions?
     var temperature: Double
 
+    /// Runtime context supplied by the active conversation, excluded from preset persistence.
+    var compactedInputJSON: String?
+    var modernOptions: ModernResponseOptions?
+
+    var currentOptions: ModernResponseOptions {
+        get { modernOptions ?? ModernResponseOptions() }
+        set { modernOptions = newValue }
+    }
+
     // Instructions
     var systemInstructions: String
     var developerInstructions: String
@@ -203,8 +212,21 @@ struct Prompt: Codable, Identifiable, Equatable {
     // MARK: - Identifiable
     var id: UUID = UUID()
 
+    /// A stable routing key for automatic prompt caching.
+    ///
+    /// Saved prompts persist their UUID, so identical prompt prefixes are routed
+    /// consistently without forcing users to manage a key. An explicit key still wins.
+    var effectivePromptCacheKey: String {
+        let explicit = promptCacheKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty {
+            return explicit
+        }
+        return "openresponses:prompt:\(id.uuidString.lowercased())"
+    }
+
     // MARK: - Codable
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case modernOptions
         case name, openAIModel, reasoningEffort, reasoningSummary, promptCacheOptions, temperature, systemInstructions, developerInstructions
         case enableWebSearch, webSearchMode, webSearchInstructions, webSearchMaxPages, webSearchCrawlDepth, webSearchAllowedDomains, webSearchBlockedDomains
     case enableCodeInterpreter, codeInterpreterContainerType, codeInterpreterPreloadFileIds, enableImageGeneration, imageGenerationModel, imageGenerationSize, imageGenerationQuality, imageGenerationOutputFormat, imageGenerationBackground, enableFileSearch, selectedVectorStoreIds
@@ -231,7 +253,7 @@ struct Prompt: Codable, Identifiable, Equatable {
     static func defaultPrompt() -> Prompt {
         return Prompt(
             name: "Default",
-            openAIModel: "gpt-5.4",
+            openAIModel: CurrentModelCatalog.defaultModel,
             reasoningEffort: "medium",
             reasoningSummary: "", // Added
             temperature: 1.0,
@@ -248,7 +270,7 @@ struct Prompt: Codable, Identifiable, Equatable {
             codeInterpreterContainerType: "auto",
             codeInterpreterPreloadFileIds: "",
             enableImageGeneration: true,
-            imageGenerationModel: "gpt-image-1",
+            imageGenerationModel: CurrentModelCatalog.imageModel,
             imageGenerationSize: "auto",
             imageGenerationQuality: "high",
             imageGenerationOutputFormat: "png",
@@ -334,5 +356,27 @@ struct Prompt: Codable, Identifiable, Equatable {
 /// Represents caching options for supported models
 struct PromptCacheOptions: Codable, Equatable {
     var mode: String
-    var ttl: Int?
+    var ttl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case mode, ttl
+    }
+
+    init(mode: String, ttl: String? = nil) {
+        self.mode = mode
+        self.ttl = ttl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decode(String.self, forKey: .mode)
+        if let currentTTL = try? container.decode(String.self, forKey: .ttl) {
+            ttl = currentTTL
+        } else if (try? container.decode(Int.self, forKey: .ttl)) != nil {
+            // Older builds stored a numeric TTL. The current API supports only "30m".
+            ttl = "30m"
+        } else {
+            ttl = nil
+        }
+    }
 }

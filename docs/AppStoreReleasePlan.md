@@ -1,50 +1,46 @@
-# App Store Release Plan
+# OpenResponses 2.6 release plan
 
-Last updated: 2025-11-08
+**Reconciled:** September 8, 2026 against the working tree, final local test/device artifacts, and live App Store Connect/Xcode Cloud records.
 
-This document tracks the remaining work needed to ship OpenResponses to the App Store. It mirrors the active todo list and should be updated whenever a task moves forward.
+## Current position
 
-## Target
+The completed implementation is locally **2.6/build 39**, with 294 passing tests and signed iPhone build verification. MCP provider setup and account-level checks remain release dependencies. The user authorized committing, pushing and uploading the completed September implementation on September 8. The historical July `v2.6.0` tag is incomplete.
 
-- **Release window:** Q3 2026 (ASAP once checklist is green)
-- **Proposed versioning:** Marketing version `2.6`, build number `1`
+ASC currently releases **2.5/build 4**. Its 2.6 version is **Prepare for Submission with no build selected**. Latest uploaded **2.6/build 38** has a successful Cloud archive mapped to `bf5a783`, but excludes the later working-tree updates. Both TestFlight states report **missing export compliance**. Its beta What's New is empty. See the [ASC snapshot and explanation](releases/v2.6/ASCStatus.md).
 
-## Readiness Checklist
+## Verified and prepared
 
-| ID | Area | Status | Summary | Notes / Owners |
-| -- | ---- | ------ | ------- | --------------- |
-| 1 | Versioning | ✅ Complete | Marketing version set to `2.6`; build number `1` confirmed | Next: Release scheme/TestFlight seed review |
-| 2 | Privacy strings | ✅ Complete | Info.plist keys for Calendars, Contacts, Files, Local Network, Location (optional), Photos, Reminders verified in build settings | Confirmed in `project.pbxproj` (GENERATE_INFOPLIST_FILE build settings) |
-| 3 | Sensitive logging | ✅ Complete | Disabled detailed network logging outside DEBUG; forced sanitized OpenAI logs in release | `AnalyticsService` & `AppLogger` updated |
-| 4 | Secrets audit | ✅ Complete | Repository scanned; no hardcoded keys found; `.gitignore` updated; environment setup documented | See `docs/EnvironmentSetup.md` |
-| 5 | Icons & launch | 🟡 In progress | AppIcon 1024×1024 PNG verified; launch screen generated via SwiftUI; needs device preview pass | Review on physical device before TestFlight |
-| 6 | Store metadata | 🟡 In progress | Privacy policy, release notes, and comprehensive metadata prepared | See `docs/AppStoreMetadata.md` for complete submission content |
-| 7 | Capabilities | 🟡 In progress | Code signing: Automatic; Team: Z3E334EXZD; Bundle ID: `Gunndamental.OpenResponses`; no custom entitlements | Verify provisioning before TestFlight upload |
-| 8 | Accessibility & l10n | 🟡 In progress | Comprehensive accessibility audit checklist created; VoiceOver labels found in key UI; Dynamic Type confirmed | Perform manual testing with devices |
-| 9 | Third-party notices | ✅ Complete | AboutView created with MIT License; added to Advanced tab | No external dependencies found |
-| 10 | Tests & CI | ✅ Complete | Unit tests for OpenAIService and PromptPersistence; Xcode Cloud workflows for CI/CD and deployment | See `docs/CI_CD_Pipeline.md` |
-| 11 | Security/data handling | 🟡 Planned | Document data flows, analytics opt-in, update privacy policy | Align with Apple guidelines section 5 |
-| 12 | Documentation | 🟡 In progress | Keep `PRODUCTION_CHECKLIST.md`, roadmap, API reference synchronized; prep release notes | Create release notes draft + doc sync |
+- [x] Identify the last source labeled v2.5 and document the uncertain exact source SHA of the shipped v2.5 binary.
+- [x] Inventory 129 app/test/project files and retain source hashes, 57 post-baseline commits, and the late pre-staging interval.
+- [x] Record latest local 294-test result, signed build 39, device installation/launch and preservation of six existing conversation files.
+- [x] Query live ASC version/build/localization and retained Cloud records using existing credentials without exposing secrets.
+- [x] Prepare full release notes, technical changes, upgrade guide, validation ledger, store copy, beta test guide and reviewer walkthrough.
+- [x] Preserve old July/ASC copy as clearly labeled history.
 
-_Status legend:_ `✅ Complete`, `🟡 Planned/In progress`, `🔴 Not started`
+## Required before distribution
 
-## Recent Updates
+- [ ] Review/include intended dirty and untracked implementation files in a release source revision; do not ship only the old tag or committed HEAD.
+- [ ] Confirm the actual uploaded build number for the next candidate. The local candidate is build 39; uploaded build 38 already exists. Confirm the number assigned by the chosen delivery path.
+- [ ] Execute appropriate tests for the final implementation revision and record results with that SHA. The local suite passes 294 tests; the updated GitHub test workflow must also run on the final pushed revision.
+- [ ] Archive/upload the completed revision; verify Cloud action status, processing, binary version and source mapping.
+- [ ] Resolve the actual export-compliance questions for that binary and verify TestFlight eligibility.
+- [ ] Supply beta What to Test and authorized reviewer access; confirm no private key/token appears in public metadata or screenshots.
+- [ ] Perform the remaining physical voice/audio-route, private MCP, browser-site and broader accessibility/device checks relevant to release scope.
+- [ ] Verify current screenshots, privacy disclosures/questionnaire, rating, territories, pricing and support links in ASC.
+- [ ] Synchronize reviewed 2.6 description, subtitle, promotional text, keywords, What's New and review notes from the prepared sources.
+- [ ] Select the verified completed build for the 2.6 version, inspect all submission requirements and submit when authorized.
+- [ ] Record Apple's actual review state and release outcome. `AFTER_APPROVAL` is the current configured release mode, not a completed approval.
 
-- **2025-11-08:** GitHub Actions CI/CD pipeline configured with automated testing, linting, security scanning, and release validation (Task 10).
-- **2025-11-08:** Comprehensive accessibility audit checklist created; existing accessibility implementation verified (Task 8).
-- **2025-11-08:** AboutView created with MIT License display; added to Advanced tab in Settings (Task 9).
-- **2025-11-08:** App Store Connect metadata document created with descriptions, keywords, URLs, screenshots specs, and review notes (Task 6).
-- **2025-11-08:** Secrets audit completed; no hardcoded keys in source; `.gitignore` expanded; `docs/EnvironmentSetup.md` created.
-- **2025-11-08:** Marketing version bumped to `1.0.0` and Release build configuration reviewed for build `1`.
-- **2025-11-08:** Network logging now DEBUG-only; OpenAI request/response bodies always sanitized in release builds.
-- **2025-11-08:** Verified Info.plist privacy descriptions via `INFOPLIST_KEY_*` settings (calendars, contacts, documents, file system, local network, location, photos, reminders).
+## Delivery rules
 
-## Next Actions
+A local build proves compilation; an install and launch prove device delivery; a successful Cloud archive proves that run; `VALID` upload processing does not prove release eligibility. Metadata edits, build selection, TestFlight distribution, review submission and public release are separate actions. This documentation task inspected ASC read-only and prepared local copy; it did not perform those external changes.
 
-1. ✅ ~~Audit Release/TestFlight scheme and queue build `1` for TestFlight (Task 1 follow-up).~~
-2. Validate AppIcon asset catalog coverage and launch screen UX on physical device (Task 5).
-3. Perform manual accessibility testing with VoiceOver and Dynamic Type (Task 8).
-4. Review and complete any remaining documentation for Task 11 (security/data flows).
-5. **Ready for TestFlight beta:** Once Tasks 5 and 8 manual testing is complete.
+Do not overwrite the historical `v2.6.0` tag to make the record appear current. Choose the intended release revision explicitly and document how it relates to the old tag. Preserve unrelated working-tree changes while preparing it.
 
-Keep this file updated whenever a task status or note changes.
+## Documentation and evidence
+
+- [Release dossier](releases/v2.6/README.md) and [full What's New](ReleaseNotes_2.6.0.md).
+- [Validation ledger](releases/v2.6/Validation.md), [source inventory](releases/v2.6/SourceInventory.md) and [ASC reconciliation](releases/v2.6/ASCStatus.md).
+- [Metadata sources](AppStoreMetadata.md), [reviewer guide](AppReviewNotes.md) and [CI/CD behavior](CI_CD_Pipeline.md).
+
+Refresh this checklist when the source, candidate or ASC state changes. Do not carry forward old “TestFlight queued,” “all UI tests passed,” or “release complete” claims without new evidence.

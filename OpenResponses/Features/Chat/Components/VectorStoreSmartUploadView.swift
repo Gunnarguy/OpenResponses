@@ -31,6 +31,8 @@ struct VectorStoreSmartUploadView: View {
     
     // Upload Progress Tracking
     @State private var isUploading = false
+    @State private var uploadTask: Task<Void, Never>?
+    @State private var uploadStoreId: String?
     @State private var uploadProgress: [UploadProgress] = []
     @State private var currentFileIndex = 0
     @State private var totalFiles = 0
@@ -57,7 +59,7 @@ struct VectorStoreSmartUploadView: View {
             Group {
                 if isLoading {
                     ProgressView("Loading vector stores...")
-                } else if isUploading {
+                } else if isUploading || !uploadProgress.isEmpty {
                     uploadProgressView
                 } else {
                     contentView
@@ -67,12 +69,10 @@ struct VectorStoreSmartUploadView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        if !isUploading {
-                            dismiss()
-                        }
+                    Button(isUploading ? "Stop" : "Done") {
+                        if isUploading { uploadTask?.cancel() }
+                        else { dismiss() }
                     }
-                    .disabled(isUploading)
                 }
                 
                 // Add quick create button for when user has 1 or 2 stores (making it easy to add another)
@@ -101,10 +101,10 @@ struct VectorStoreSmartUploadView: View {
             allowedContentTypes: [.pdf, .plainText, .json, .data, .text, .rtf, .spreadsheet, .presentation, .zip, .commaSeparatedText],
             allowsMultipleSelection: true
         ) { result in
-            Task {
-                await handleFileSelection(result)
-            }
+            uploadTask = Task { await handleFileSelection(result) }
         }
+        .interactiveDismissDisabled(isUploading)
+        .onDisappear { uploadTask?.cancel() }
         .sheet(isPresented: $showingCreateStore) {
             CreateVectorStoreSimpleView()
                 .environmentObject(viewModel)
@@ -134,7 +134,7 @@ struct VectorStoreSmartUploadView: View {
                         .progressViewStyle(.linear)
                         .tint(.blue)
                     
-                    Text("Uploading \(currentFileIndex) of \(totalFiles) files")
+                    Text(isUploading ? "Processing \(currentFileIndex) of \(totalFiles) files" : "\(uploadProgress.filter { $0.status == .completed }.count) of \(totalFiles) files ready")
                         .font(.headline)
                     
                     if let targetStore = targetVectorStore {
@@ -146,6 +146,16 @@ struct VectorStoreSmartUploadView: View {
                 .padding(.vertical, 8)
             }
             
+            if !isUploading {
+                Section {
+                    if uploadProgress.contains(where: { $0.status == .indexing }) {
+                        Button("Check Indexing Again") {
+                            uploadTask = Task { await checkIndexingAgain() }
+                        }
+                    }
+                    Button("Add More Files") { uploadProgress = [] }
+                }
+            }
             Section("File Progress") {
                 ForEach(uploadProgress) { progress in
                     HStack(spacing: 12) {
@@ -438,6 +448,8 @@ struct VectorStoreSmartUploadView: View {
             
             // Initialize progress tracking
             isUploading = true
+            uploadStoreId = targetStore.id
+            defer { isUploading = false; uploadTask = nil }
             totalFiles = urls.count
             currentFileIndex = 0
             uploadProgress = []
@@ -462,6 +474,7 @@ struct VectorStoreSmartUploadView: View {
             
             // Process each file
             for (index, url) in urls.enumerated() {
+                if Task.isCancelled { break }
                 currentFileIndex = index
                 
                 AppLogger.log("📤 [\(index + 1)/\(urls.count)] Starting upload: \(url.lastPathComponent)", category: .fileManager, level: .info)
@@ -528,6 +541,10 @@ struct VectorStoreSmartUploadView: View {
                     
                     AppLogger.log("   ✅ File added to vector store! Status: \(vectorStoreFile.status)", category: .openAI, level: .info)
                     
+                    uploadProgress[index].isAttached = true
+                    _ = try await VectorStoreIndexing.waitUntilReady(initial: vectorStoreFile) { timeout in
+                        try await api.retrieveVectorStoreFile(vectorStoreId: targetStore.id, fileId: uploadedFile.id, timeout: timeout)
+                    }
                     uploadProgress[index].status = .completed
                     currentFileIndex = index + 1
                     
@@ -537,8 +554,18 @@ struct VectorStoreSmartUploadView: View {
                     AppLogger.log("❌ [\(index + 1)/\(urls.count)] Failed to upload '\(url.lastPathComponent)': \(error.localizedDescription)", category: .fileManager, level: .error)
                     AppLogger.log("   Error details: \(error)", category: .fileManager, level: .debug)
                     
-                    uploadProgress[index].status = .failed
-                    uploadProgress[index].errorMessage = error.localizedDescription
+                    if uploadProgress[index].isAttached {
+                        if case VectorStoreIndexing.IndexingError.failed = error {
+                            uploadProgress[index].status = .failed
+                        } else {
+                            uploadProgress[index].status = .indexing
+                        }
+                    } else {
+                        uploadProgress[index].status = .failed
+                    }
+                    uploadProgress[index].errorMessage = Task.isCancelled
+                        ? "Stopped waiting. Uploaded files remain in Files; indexing may continue."
+                        : error.localizedDescription
                     
                     // Continue with other files instead of stopping
                     continue
@@ -551,23 +578,13 @@ struct VectorStoreSmartUploadView: View {
             
             AppLogger.log("🏁 Upload batch complete: \(successCount) succeeded, \(failedCount) failed", category: .fileManager, level: .info)
             
-            // Wait a moment to show final state
-            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-            
-            // Dismiss if at least one file succeeded
-            if successCount > 0 {
-                AppLogger.log("✅ Dismissing upload view - at least one file succeeded", category: .fileManager, level: .info)
-                
-                // Call completion handler before dismissing
-                onUploadComplete?(successCount, failedCount)
-                
-                dismiss()
-            } else {
-                AppLogger.log("⚠️ All files failed - keeping upload view open", category: .fileManager, level: .warning)
-                errorMessage = "All \(urls.count) file(s) failed to upload. Check the console for details."
-                isUploading = false
+            // Keep the outcome visible, including partial failures and files still indexing.
+            for index in uploadProgress.indices where uploadProgress[index].status == .pending {
+                uploadProgress[index].status = .failed
+                uploadProgress[index].errorMessage = "Not uploaded: stopped by user."
             }
-            
+            onUploadComplete?(successCount, uploadProgress.filter { $0.status == .failed }.count)
+
         case .failure(let error):
             AppLogger.log("❌ File selection failed: \(error.localizedDescription)", category: .fileManager, level: .error)
             errorMessage = "Failed to select files: \(error.localizedDescription)"
@@ -575,6 +592,29 @@ struct VectorStoreSmartUploadView: View {
         }
     }
     
+    @MainActor
+    private func checkIndexingAgain() async {
+        guard let storeId = uploadStoreId else { return }
+        isUploading = true
+        defer { isUploading = false; uploadTask = nil }
+        for index in uploadProgress.indices where uploadProgress[index].status == .indexing {
+            guard !Task.isCancelled, let fileId = uploadProgress[index].fileId else { break }
+            do {
+                let file = try await api.retrieveVectorStoreFile(vectorStoreId: storeId, fileId: fileId)
+                _ = try await VectorStoreIndexing.waitUntilReady(initial: file) { timeout in
+                    try await api.retrieveVectorStoreFile(vectorStoreId: storeId, fileId: fileId, timeout: timeout)
+                }
+                uploadProgress[index].status = .completed
+                uploadProgress[index].errorMessage = nil
+            } catch {
+                if case VectorStoreIndexing.IndexingError.failed = error { uploadProgress[index].status = .failed }
+                uploadProgress[index].errorMessage = error.localizedDescription
+            }
+        }
+        onUploadComplete?(uploadProgress.filter { $0.status == .completed }.count,
+                          uploadProgress.filter { $0.status == .failed }.count)
+    }
+
     private func formatBytes(_ bytes: Int) -> String {
         return Formatters.fileByteCountFormatter.string(fromByteCount: Int64(bytes))
     }
@@ -722,6 +762,7 @@ struct UploadProgress: Identifiable {
     let filename: String
     var status: UploadStatus
     var fileId: String?
+    var isAttached = false
     var errorMessage: String?
     var fileSize: Int
     var wasConverted: Bool = false
@@ -731,7 +772,8 @@ struct UploadProgress: Identifiable {
         case pending
         case converting // Converting unsupported file type
         case uploading
-        case processing // Adding to vector store
+        case processing // Waiting for indexing
+        case indexing // Uploaded; polling stopped before completion
         case completed
         case failed
         
@@ -740,7 +782,7 @@ struct UploadProgress: Identifiable {
             case .pending: return "clock"
             case .converting: return "arrow.triangle.2.circlepath"
             case .uploading: return "arrow.up.circle.fill"
-            case .processing: return "gearshape.2.fill"
+            case .processing, .indexing: return "gearshape.2.fill"
             case .completed: return "checkmark.circle.fill"
             case .failed: return "xmark.circle.fill"
             }
@@ -751,7 +793,7 @@ struct UploadProgress: Identifiable {
             case .pending: return .gray
             case .converting: return .orange
             case .uploading: return .blue
-            case .processing: return .purple
+            case .processing, .indexing: return .purple
             case .completed: return .green
             case .failed: return .red
             }
@@ -762,8 +804,9 @@ struct UploadProgress: Identifiable {
             case .pending: return "Waiting..."
             case .converting: return "Converting file format..."
             case .uploading: return "Uploading..."
-            case .processing: return "Adding to vector store..."
-            case .completed: return "Complete!"
+            case .processing: return "Indexing for search..."
+            case .indexing: return "Uploaded · indexing not yet confirmed"
+            case .completed: return "Ready for search"
             case .failed: return "Failed"
             }
         }

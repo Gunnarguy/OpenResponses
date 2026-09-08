@@ -1,8 +1,37 @@
-OpenResponses 2.0 is a major update since the original App Store launch.
+OpenResponses 2.6 expands the playground with current models, a new API Workbench, continuing voice conversations, and a more dependable tool and storage engine.
 
-- Added GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5-mini, refreshed model aliases, and better model compatibility controls
-- Added Apple Calendar, Contacts, and Reminders tools with safer permission flows and improved local-time handling
-- Added Explore Demo, camera capture, better file and image attachments, message quick actions, and cleaner chat and settings UI
-- Added Request Inspector, activity feed, reasoning traces, token usage, and more reliable streaming and tool-call follow-through
-- Added an explicit first-send OpenAI data sharing notice with Allow & Send consent before live requests leave the device
-- Strengthened App Store disclosures, privacy copy, and approval flows for computer use and other sensitive actions
+CURRENT MODELS AND CONTROLS
+• Shared model catalog for GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, with model-aware reasoning and request settings.
+• GPT Image 2 controls and partial image previews; current Realtime and transcription models.
+• Optional automatic compaction, hosted shell, tool search, async/programmatic calling and multi-agent responses for supported configurations. Model and tool availability depends on your API account.
+
+NEW API WORKBENCH
+• Edit literal JSON without smart quotes; recover request drafts after relaunch and confirm replacement before discarding edits.
+• Explore HTTP, streaming and WebSocket responses, with invalid schemas rejected before sending.
+• Inspect raw events, export complete responses, count input tokens and compact context.
+• Retrieve or cancel background responses, inspect known conversations, continue client tool calls with real results, and try steering and current tool templates.
+
+VOICE THAT KEEPS GOING
+• More reliable listening after the assistant answers, interruption handling, mute and audio-route recovery.
+• Corrected microphone format conversion and playback completion so the voice bars do not remain stuck in a speaking state.
+
+MCP, WEB SEARCH AND BROWSER TOOLS
+• New Connections page with provider browser sign-in, several accounts per chat, account naming, reconnect and permissions.
+• 44 catalog entries plus live MCP Registry search. Providers requiring app registration or callback setup are clearly labeled.
+• Secure OAuth refresh and hosted tool discovery with schema inspection, cancellation and bounded retries.
+• More reliable on-device browser navigation, precise page-element actions, back/forward controls and correctly sized screenshots.
+• Shared browser action limits, deadlines and cancellation; safer recovery from stale callbacks and duplicate tool calls.
+• Corrected hosted web-search settings and clearer source/citation handling.
+
+CONVERSATIONS AND ACTIVITY
+• Richer response artifacts, tool results, image previews and multi-agent activity.
+• Complete compacted context and better hydration of known remote conversation items.
+• Safer chat switching and deletion during streaming, background save checkpoints and clearer storage errors. Existing conversations and presets remain compatible.
+
+FILES AND DEVELOPER LABS
+• File upload progress now distinguishes uploading, indexing, failure and search readiness. Check indexing again without uploading duplicates.
+• Save complete Batch output and error files through the system share sheet, including available partial results.
+• Import and validate reviewed text-chat JSONL datasets for eligible fine-tuning accounts. Chat export is clearly a draft, and restricted service availability is explained.
+• Complete cursor pagination for supported file/job lists and improved Notion search pagination.
+
+Retained Assistant JSON can still be imported into Responses presets; retired live Assistants operations are disabled. Demo Mode, Keychain credentials, first-send consent and existing Apple/Notion integrations remain available.

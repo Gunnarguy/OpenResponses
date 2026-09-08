@@ -1,0 +1,285 @@
+{
+  "capturedAt": "2026-09-08T15:34:05Z",
+  "app": {
+    "id": "6757338355",
+    "name": "OpenResponses",
+    "bundleId": "Gunndamental.OpenResponses"
+  },
+  "versions": [
+    {
+      "id": "0c2f1dae-2b40-4d4c-b77e-c434bf0922c5",
+      "version": "2.6",
+      "state": "PREPARE_FOR_SUBMISSION",
+      "legacyState": "PREPARE_FOR_SUBMISSION",
+      "createdDate": "2026-06-25T13:06:21-07:00",
+      "releaseType": "AFTER_APPROVAL",
+      "selectedBuild": null
+    },
+    {
+      "id": "70aaaa18-0af9-47d1-b098-cca22fb3c909",
+      "version": "2.5",
+      "state": "READY_FOR_DISTRIBUTION",
+      "legacyState": "READY_FOR_SALE",
+      "createdDate": "2026-06-19T20:47:20-07:00",
+      "releaseType": "AFTER_APPROVAL",
+      "selectedBuild": {
+        "type": "builds",
+        "id": "d6f79902-8ce2-48d5-82c4-e29770559ab9"
+      }
+    }
+  ],
+  "builds": [
+    {
+      "id": "055415b9-3e51-476d-a80b-bae53d2b5ef2",
+      "marketingVersion": "2.6",
+      "version": "38",
+      "uploadedDate": "2026-09-02T09:54:49-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "9e34f702-5387-45f2-b34c-477519fdce2c",
+      "marketingVersion": "2.6",
+      "version": "37",
+      "uploadedDate": "2026-07-12T22:44:26-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": false
+    },
+    {
+      "id": "1fa0b47d-064a-42b9-84e5-44be4b6936fb",
+      "marketingVersion": "2.6",
+      "version": "35",
+      "uploadedDate": "2026-07-12T22:38:52-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "c627d508-a085-4244-856e-55503e49c14e",
+      "marketingVersion": "2.6",
+      "version": "32",
+      "uploadedDate": "2026-07-11T17:10:48-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "f4b04ede-40ce-46e5-a2db-84a4003ca4d7",
+      "marketingVersion": "2.6",
+      "version": "31",
+      "uploadedDate": "2026-07-11T16:00:19-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "c1afcebd-de82-4833-b5f3-e235f29afaed",
+      "marketingVersion": "2.6",
+      "version": "30",
+      "uploadedDate": "2026-07-11T15:53:17-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "0df51d8e-d426-4220-b5a3-cad088b7b4ea",
+      "marketingVersion": "2.6",
+      "version": "29",
+      "uploadedDate": "2026-07-11T15:44:27-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "b26a3e6d-96ba-40b4-8a8b-15d373f8aa6b",
+      "marketingVersion": "2.6",
+      "version": "28",
+      "uploadedDate": "2026-07-11T12:01:39-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "8e074c03-16d4-4453-80b0-1f286e316c1a",
+      "marketingVersion": "2.6",
+      "version": "25",
+      "uploadedDate": "2026-07-10T23:15:36-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "5686e118-f6aa-4649-8aee-d1137e42f7b7",
+      "marketingVersion": "2.6",
+      "version": "24",
+      "uploadedDate": "2026-07-10T21:27:43-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "09aae5e2-2ea4-4595-bc4b-7122d12dd175",
+      "marketingVersion": "2.6",
+      "version": "22",
+      "uploadedDate": "2026-07-10T20:58:43-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "b569e0b7-9471-48bf-bb29-1faec7ff133c",
+      "marketingVersion": "2.6",
+      "version": "21",
+      "uploadedDate": "2026-07-10T20:47:32-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "3b1a211b-25e2-4160-8581-86e08e5070ff",
+      "marketingVersion": "2.6",
+      "version": "20",
+      "uploadedDate": "2026-06-27T19:49:06-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "9a958650-f6a5-47e9-b486-58c599f1764d",
+      "marketingVersion": "2.6",
+      "version": "19",
+      "uploadedDate": "2026-06-27T00:39:29-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "69eed00d-a2f0-4419-9a06-3806c8d22d39",
+      "marketingVersion": "2.6",
+      "version": "18",
+      "uploadedDate": "2026-06-26T08:33:29-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "3163584f-d66e-46fc-ad90-a76d0274f6c6",
+      "marketingVersion": "2.6",
+      "version": "17",
+      "uploadedDate": "2026-06-26T08:27:14-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "f60cb068-c855-44cd-9693-60c6c87b7793",
+      "marketingVersion": "2.6",
+      "version": "16",
+      "uploadedDate": "2026-06-25T21:42:25-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "2903a41c-4576-472c-86eb-1991dd64a388",
+      "marketingVersion": "2.6",
+      "version": "15",
+      "uploadedDate": "2026-06-25T18:57:54-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "f19ec1e3-9072-4213-8862-97fe977a9f23",
+      "marketingVersion": "2.6",
+      "version": "14",
+      "uploadedDate": "2026-06-25T18:49:34-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "0f657212-b523-4d0c-8477-5ae5fd180d76",
+      "marketingVersion": "2.6",
+      "version": "13",
+      "uploadedDate": "2026-06-25T17:13:48-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "78ac585b-157a-41fb-afd1-1053de4ccee0",
+      "marketingVersion": "2.6",
+      "version": "11",
+      "uploadedDate": "2026-06-25T17:03:24-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "0e8586f3-e5a1-4fb8-a81d-da60c0d39efb",
+      "marketingVersion": "2.6",
+      "version": "10",
+      "uploadedDate": "2026-06-25T16:47:48-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "3aac4dbd-d279-4c5d-8db0-f1828d45536a",
+      "marketingVersion": "2.6",
+      "version": "9",
+      "uploadedDate": "2026-06-25T16:33:46-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": null
+    },
+    {
+      "id": "d6f79902-8ce2-48d5-82c4-e29770559ab9",
+      "marketingVersion": "2.5",
+      "version": "4",
+      "uploadedDate": "2026-06-19T21:08:46-07:00",
+      "processingState": "VALID",
+      "expired": false,
+      "usesNonExemptEncryption": false
+    }
+  ],
+  "ciRuns": [
+    {
+      "id": "708ca5ce-69d3-409e-bd44-7344e5f91a07",
+      "number": 38,
+      "createdDate": "2026-09-02T16:50:27.168Z",
+      "finishedDate": "2026-09-02T16:55:53.413Z",
+      "completionStatus": "SUCCEEDED",
+      "executionProgress": "COMPLETE",
+      "issueCounts": null,
+      "sourceCommit": "bf5a783f7912b9e12f37e88e63c5c6891412eb94",
+      "builds": [
+        "055415b9-3e51-476d-a80b-bae53d2b5ef2"
+      ],
+      "actions": [
+        {
+          "name": "Archive - iOS",
+          "actionType": "ARCHIVE",
+          "completionStatus": "SUCCEEDED"
+        }
+      ]
+    }
+  ],
+  "latestBuildBetaDetail": {
+    "autoNotifyEnabled": true,
+    "internalBuildState": "MISSING_EXPORT_COMPLIANCE",
+    "externalBuildState": "MISSING_EXPORT_COMPLIANCE"
+  },
+  "latestBuildBetaLocalizations": [],
+  "reviewDetailSummary": {
+    "id": "707fce7e-4301-4414-acfa-845932f46888",
+    "demoAccountRequired": false,
+    "demoAccountNamePresent": false,
+    "demoAccountPasswordPresent": false,
+    "notesPresent": true,
+    "notesCharacters": 1706
+  }
+}

@@ -2,6 +2,14 @@ import Foundation
 
 struct ResponseSettingsRegistry {
     static let all: [ResponseSettingDescriptor] = [
+        ResponseSettingDescriptor(
+            promptKeyPathName: "promptCacheOptions", apiField: "prompt_cache_options", group: .reasoning,
+            exposure: .advanced, title: "Prompt cache options", description: "Optional cache mode and 30-minute lifetime for supported models. Only configure writes for a reusable prefix of at least 1,024 tokens.", defaultValueDescription: "Omitted"
+        ),
+        ResponseSettingDescriptor(
+            promptKeyPathName: "modernOptions", group: .reasoning, exposure: .advanced,
+            title: "Current Responses capabilities", description: "Compaction, tool search, hosted shell, reasoning context and mode, and image controls.", defaultValueDescription: "Model defaults"
+        ),
         // MARK: - Model and Generation
         ResponseSettingDescriptor(
             promptKeyPathName: "name",
@@ -18,17 +26,17 @@ struct ResponseSettingsRegistry {
             exposure: .primary,
             title: "Model",
             description: "The OpenAI model to use for this request.",
-            defaultValueDescription: "gpt-4o"
+            defaultValueDescription: "gpt-6-astra"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "reasoningEffort",
-            apiField: "reasoning_effort",
+            apiField: "reasoning.effort",
             group: .reasoning,
             exposure: .advanced,
             title: "Reasoning Effort",
             description: "How much effort the model should spend reasoning.",
             defaultValueDescription: "medium",
-            validValues: ["none", "minimal", "low", "medium", "high", "xhigh"]
+            validValues: ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "reasoningSummary",
@@ -85,8 +93,8 @@ struct ResponseSettingsRegistry {
             promptKeyPathName: "webSearchMode",
             group: .toolAdvanced,
             exposure: .advanced,
-            title: "Search Mode",
-            description: "The operational mode for web search.",
+            title: "Search Style",
+            description: "Search style guidance for the assistant.",
             defaultValueDescription: "default",
             requiresTool: "web_search"
         ),
@@ -103,8 +111,8 @@ struct ResponseSettingsRegistry {
             promptKeyPathName: "webSearchMaxPages",
             group: .toolAdvanced,
             exposure: .advanced,
-            title: "Max Pages",
-            description: "Maximum number of pages to retrieve.",
+            title: "Preferred Page Limit",
+            description: "Guidance for hosted web search, not an enforced retrieval limit. The on-device browser separately enforces 20 distinct pages per turn.",
             defaultValueDescription: "0",
             requiresTool: "web_search"
         ),
@@ -112,8 +120,8 @@ struct ResponseSettingsRegistry {
             promptKeyPathName: "webSearchCrawlDepth",
             group: .toolAdvanced,
             exposure: .advanced,
-            title: "Crawl Depth",
-            description: "How deep to crawl linked pages.",
+            title: "Preferred Crawl Depth",
+            description: "Guidance on following links. Hosted search does not expose a hard crawl-depth limit.",
             defaultValueDescription: "0",
             requiresTool: "web_search"
         ),
@@ -796,7 +804,7 @@ struct ResponseSettingsRegistry {
             group: .debug,
             exposure: .debug,
             title: "Include Reasoning Content",
-            description: "Show internal thought process when available.",
+            description: "Show API-provided reasoning information when available.",
             defaultValueDescription: "false"
         ),
         ResponseSettingDescriptor(
@@ -822,7 +830,7 @@ struct ResponseSettingsRegistry {
             group: .legacy,
             exposure: .advanced,
             title: "Use Published Prompt",
-            description: "Load system instructions from a published prompt.",
+            description: "Legacy remote prompts retire November 30, 2026. Move instructions into your local prompt before then.",
             defaultValueDescription: "false"
         ),
         ResponseSettingDescriptor(

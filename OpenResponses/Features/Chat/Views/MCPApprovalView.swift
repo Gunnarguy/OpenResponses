@@ -44,7 +44,7 @@ struct MCPApprovalView: View {
             
             // Tool details
             VStack(alignment: .leading, spacing: 8) {
-                detailRow(label: "Server", value: approval.serverLabel, icon: "server.rack")
+                detailRow(label: "Server", value: MCPConnectionStore.shared.displayName(for: approval.serverLabel), icon: "server.rack")
                 detailRow(label: "Tool", value: approval.toolName, icon: "wrench.and.screwdriver.fill")
                 
                 // Arguments (expandable)

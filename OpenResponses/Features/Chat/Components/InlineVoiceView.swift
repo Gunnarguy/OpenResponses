@@ -3,14 +3,15 @@ import SwiftUI
 struct InlineVoiceView: View {
     @Binding var isPresented: Bool
     @StateObject private var service = RealtimeService.shared
+    @EnvironmentObject private var viewModel: ChatViewModel
     
     @State private var statusText = "Connecting..."
     @State private var audioLevel: Float = 0.0
-    @State private var isMuted = false
     @State private var transcriptText = ""
     @State private var delegateWrapper = VoiceModeDelegateWrapper()
     @State private var scale: CGFloat = 1.0
     
+    @AppStorage("realtime_model") private var realtimeModel: String = "gpt-realtime-2.1"
     @AppStorage("realtime_voice") private var voice: String = "alloy"
     @AppStorage("realtime_instructions") private var instructions: String = "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
     @AppStorage("realtime_modalities") private var modalities: String = "audio,text"
@@ -20,6 +21,9 @@ struct InlineVoiceView: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
+            Text("Separate voice session · earlier chat and chat tools are not included")
+                .font(.caption2).foregroundStyle(.secondary).padding(.top, 6)
+
             
             // Inline transcript display
             if !transcriptText.isEmpty {
@@ -46,18 +50,11 @@ struct InlineVoiceView: View {
             HStack(spacing: 16) {
                 // Mute button
                 Button(action: {
-                    isMuted.toggle()
-                    if isMuted {
-                        service.disconnect()
-                        statusText = "Muted"
-                    } else {
-                        service.connect(voice: voice, instructions: instructions, modalities: modalities)
-                        statusText = "Listening"
-                    }
+                    service.setMicrophoneMuted(!service.isMicrophoneMuted)
                 }) {
-                    Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
+                    Image(systemName: service.isMicrophoneMuted ? "mic.slash.fill" : "mic.fill")
                         .font(.title2)
-                        .foregroundColor(isMuted ? .red : .primary)
+                        .foregroundColor(service.isMicrophoneMuted ? .red : .primary)
                         .frame(width: 44, height: 44)
                         .background(Color(uiColor: .tertiarySystemFill))
                         .clipShape(Circle())
@@ -67,7 +64,7 @@ struct InlineVoiceView: View {
                 
                 // Visualizer and status
                 VStack(spacing: 4) {
-                    Text(service.currentState == "Connected" ? (audioLevel > 0.05 ? "Speaking..." : "Listening...") : service.currentState)
+                    Text(service.currentState)
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
@@ -79,7 +76,7 @@ struct InlineVoiceView: View {
                                 .fill(LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom))
                                 .frame(
                                     width: 4,
-                                    height: max(4, CGFloat(audioLevel * 40 * Float.random(in: 0.5...1.5)))
+                                    height: max(4, CGFloat(audioLevel * 40 * (0.5 + Float(abs(sin(Double(index) * 1.7))))))
                                 )
                                 .animation(.spring(response: 0.2, dampingFraction: 0.6), value: audioLevel)
                         }
@@ -113,15 +110,24 @@ struct InlineVoiceView: View {
     
     private func setupService() {
         delegateWrapper.onConnect = { statusText = "Connected" }
-        delegateWrapper.onDisconnect = { statusText = "Disconnected" }
+        delegateWrapper.onDisconnect = { statusText = "Disconnected"; audioLevel = 0 }
         delegateWrapper.onTranscript = { transcriptText += $0 }
+        delegateWrapper.onCompleteUserMessage = { text in
+            viewModel.addRealtimeTranscript(text, role: .user)
+        }
+        delegateWrapper.onCompleteAssistantMessage = { text in
+            viewModel.addRealtimeTranscript(text, role: .assistant)
+            // Clear inline transcript for the next turn
+            transcriptText = ""
+        }
         delegateWrapper.onAudioLevel = { audioLevel = $0 }
         delegateWrapper.onError = { message in
             statusText = "Error"
-            print("Voice error: \(message)")
+            transcriptText = message
         }
         service.delegate = delegateWrapper
         service.connect(
+            model: realtimeModel,
             voice: voice,
             instructions: instructions,
             modalities: modalities

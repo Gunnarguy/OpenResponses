@@ -44,7 +44,7 @@ struct RequestInspectorView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("API Request Preview")
                                 .font(.headline)
-                            Text("This is the actual JSON payload that will be sent to the OpenAI Responses API")
+                            Text("Prepared request with credentials and attachment bytes redacted.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -170,6 +170,8 @@ struct RequestInspectorView: View {
     private var validationWarnings: [String] {
         var warnings: [String] = []
         let prompt = viewModel.activePrompt
+        do { try ResponseConfigurationValidation.validate(prompt) }
+        catch { warnings.append(error.localizedDescription) }
         
         if viewModel.activeConversation?.remoteId != nil && viewModel.lastResponseId != nil {
             warnings.append("Both conversation ID and previous_response_id are set. The API may reject this.")
@@ -259,15 +261,12 @@ struct RequestInspectorView: View {
         // Secret redaction for preview
         if var toolsArray = requestObject["tools"] as? [[String: Any]] {
             for (toolIndex, var tool) in toolsArray.enumerated() {
-                if let toolType = tool["type"] as? String, toolType.hasPrefix("mcp_") {
-                    // Redact headers
-                    if var headers = tool["headers"] as? [String: Any] {
-                        if headers["Authorization"] != nil {
-                            headers["Authorization"] = "[REDACTED_SECRET]"
-                        }
-                        tool["headers"] = headers
-                        toolsArray[toolIndex] = tool
+                if tool["type"] as? String == "mcp" {
+                    if tool["authorization"] != nil { tool["authorization"] = "[REDACTED_SECRET]" }
+                    if let headers = tool["headers"] as? [String: Any] {
+                        tool["headers"] = headers.mapValues { _ in "[REDACTED_SECRET]" }
                     }
+                    toolsArray[toolIndex] = tool
                 }
             }
             requestObject["tools"] = toolsArray

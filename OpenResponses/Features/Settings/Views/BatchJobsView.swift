@@ -6,6 +6,15 @@ struct BatchJobsView: View {
     @State private var errorMessage: String? = nil
     @State private var statusMessage: String? = nil
     @State private var isFileImporterPresented = false
+    @State private var exportedFile: BatchExport?
+    @State private var downloadTask: Task<Void, Never>?
+    @State private var downloadingFileId: String?
+    @State private var exportDirectory: URL?
+
+    private struct BatchExport: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
     
     @AppStorage("batch_endpoint") private var endpoint: String = "/v1/chat/completions"
     
@@ -92,17 +101,26 @@ struct BatchJobsView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 
-                                if job.status == "completed", let outputFileId = job.outputFileId {
+                                if let outputFileId = job.outputFileId {
                                     Button {
                                         downloadResults(fileId: outputFileId)
                                     } label: {
-                                        Label("Get Results", systemImage: "arrow.down.doc.fill")
+                                        Label(downloadingFileId == outputFileId ? "Downloading…" : "Save Results", systemImage: "arrow.down.doc.fill")
                                             .font(.caption)
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .tint(.green)
+                                    .disabled(downloadingFileId != nil)
                                 }
-                                
+                                if let errorFileId = job.errorFileId {
+                                    Button { downloadResults(fileId: errorFileId, isErrorFile: true) } label: {
+                                        Label("Save Errors", systemImage: "exclamationmark.arrow.circlepath")
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(downloadingFileId != nil)
+                                }
+
                                 if ["validating", "in_progress"].contains(job.status) {
                                     Button(role: .destructive) {
                                         cancelJob(job.id)
@@ -130,8 +148,13 @@ struct BatchJobsView: View {
                 }
             }
         }
-        .onAppear {
-            loadJobs()
+        .onAppear { loadJobs() }
+        .onDisappear { downloadTask?.cancel() }
+        .sheet(item: $exportedFile, onDismiss: {
+            if let exportDirectory { try? FileManager.default.removeItem(at: exportDirectory) }
+            exportDirectory = nil
+        }) { file in
+            ShareSheet(items: [file.url])
         }
         .alert("Status Update", isPresented: Binding(
             get: { statusMessage != nil },
@@ -219,21 +242,25 @@ struct BatchJobsView: View {
         }
     }
     
-    private func downloadResults(fileId: String) {
-        Task {
+    private func downloadResults(fileId: String, isErrorFile: Bool = false) {
+        guard downloadingFileId == nil else { return }
+        downloadingFileId = fileId
+        downloadTask = Task {
+            defer { downloadingFileId = nil; downloadTask = nil }
             do {
-                let results = try await BatchService.shared.downloadBatchResult(fileId: fileId)
-                await MainActor.run {
-                    self.statusMessage = "Results downloaded successfully:\n\n\(results.prefix(400))..."
+                let url = try await BatchService.shared.downloadBatchResult(fileId: fileId, isErrorFile: isErrorFile)
+                guard !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+                    return
                 }
+                exportDirectory = url.deletingLastPathComponent()
+                exportedFile = BatchExport(url: url)
             } catch {
-                await MainActor.run {
-                    self.errorMessage = "Failed to download results: \(error.localizedDescription)"
-                }
+                if !Task.isCancelled { errorMessage = "Failed to download results: \(error.localizedDescription)" }
             }
         }
     }
-    
+
     private func uploadAndSubmitBatch(fileURL: URL) {
         isLoading = true
         Task {

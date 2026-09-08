@@ -141,6 +141,12 @@ enum MCPApprovalUtils {
         if let alternate = trimmedIfNotEmpty(itemServerLabel) {
             return (alternate, false)
         }
+        if let ids = prompt.currentOptions.mcpConnectionIDs {
+            if ids.count == 1, let connection = MCPConnectionStore.shared.connections.first(where: { $0.id == ids.first }) {
+                return (connection.serverLabel, true)
+            }
+            return ("MCP \(fallbackId.map { String($0.prefix(6)) } ?? "Server")", true)
+        }
         if let cached = trimmedIfNotEmpty(lastMCPServerLabel) {
             return (cached, true)
         }

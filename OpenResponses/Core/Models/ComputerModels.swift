@@ -10,6 +10,13 @@ enum ComputerUseError: Error, LocalizedError {
     case navigationFailed(Error)
     case screenshotFailed
     case invalidResponse
+    case timedOut(String)
+    case navigationBlocked
+    case processTerminated
+    case limitExceeded(String)
+    case targetUnavailable(String)
+    case approvalRequired
+    case duplicateCall
 
     var errorDescription: String? {
         switch self {
@@ -24,9 +31,21 @@ enum ComputerUseError: Error, LocalizedError {
         case .navigationFailed(let error):
             return "The web view failed to navigate: \(error.localizedDescription)"
         case .screenshotFailed:
-            return "Failed to capture a screenshot of the web view."
+            return "Failed to capture a screenshot. The preceding action may have occurred; read the page before retrying it."
         case .invalidResponse:
             return "The response from the model was invalid for computer use."
+        case .timedOut(let step):
+            return "Timed out waiting for \(step). The action may already have occurred; read the page before retrying."
+        case .navigationBlocked:
+            return "The browser only opens HTTP or HTTPS pages without embedded credentials."
+        case .processTerminated:
+            return "The browser process stopped. Read or navigate again to recover; the last action was not replayed."
+        case .limitExceeded(let message), .targetUnavailable(let message):
+            return message
+        case .duplicateCall:
+            return "This browser tool call was already attempted. Read the current page before issuing a new action."
+        case .approvalRequired:
+            return "Browser actions are paused until the pending safety check is resolved."
         }
     }
 }
@@ -85,6 +104,7 @@ struct BrowserElementDescriptor: Codable, Hashable {
     let type: String?
     let href: String?
     let role: String?
+    var ref: String? = nil
 }
 
 /// A DOM-aware snapshot of the currently visible page state for the live browser harness.
@@ -97,6 +117,8 @@ struct BrowserPageState: Codable, Hashable {
     let buttons: [BrowserElementDescriptor]
     let links: [BrowserElementDescriptor]
     let inputs: [BrowserElementDescriptor]
+    var snapshotId: String? = nil
+    var httpStatus: Int? = nil
 }
 
 /// The result of a DOM-aware browser automation command.

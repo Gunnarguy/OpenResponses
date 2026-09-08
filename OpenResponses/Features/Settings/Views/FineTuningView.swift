@@ -1,10 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FineTuningView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @State private var jobs: [FineTuningJob] = []
     @State private var isLoading = false
-    @State private var selectedBaseModel = "gpt-4o-mini"
+    @State private var selectedBaseModel = "gpt-4.1-mini-2025-04-14"
     @State private var statusMessage: String? = nil
     @State private var errorMessage: String? = nil
     
@@ -12,37 +13,48 @@ struct FineTuningView: View {
     @AppStorage("ft_batch_size") private var batchSize: String = "auto"
     @AppStorage("ft_learning_rate") private var learningRateMultiplier: String = "auto"
     
-    private let availableBaseModels = ["gpt-4o-mini", "gpt-4o-2024-08-26", "gpt-3.5-turbo-0125"]
+    private let availableBaseModels = ["gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14", "gpt-4.1-2025-04-14"]
+    @State private var dataset: FineTuningDataset?
+    @State private var datasetFilename: String?
+    @State private var showingImporter = false
+    @State private var showingExporter = false
+    @State private var exportDocument: JSONLDocument?
+    @State private var isSubmitting = false
     
     var body: some View {
         List {
-            Section("Launch Custom Training Job") {
+            Section("Fine-tuning availability") {
+                Text("OpenAI is winding down fine-tuning. New accounts cannot access it; existing fine-tuning users may still create jobs while their account remains eligible.")
+                    .font(.callout)
+                Link("Current availability and requirements", destination: URL(string: "https://developers.openai.com/api/docs/guides/supervised-fine-tuning")!)
+            }
+            Section("Prepare Training Data") {
+                Button("Import Reviewed JSONL") { showingImporter = true }
+                    .disabled(isSubmitting)
+                if let dataset {
+                    Text("\(dataset.exampleCount) validated examples · \(datasetFilename ?? "Training data")")
+                        .font(.caption)
+                }
+                Text("Import at least 10 text-only examples, one conversation per line. Review the answers before training. A single chat is only one example.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Export Current Chat as Draft") { exportChatDraft() }
+                    .disabled(viewModel.messages.isEmpty || isSubmitting)
+            }
+            Section("Launch Training Job") {
                 Picker("Base Model", selection: $selectedBaseModel) {
-                    ForEach(availableBaseModels, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
+                    ForEach(availableBaseModels, id: \.self) { model in Text(model).tag(model) }
                 }
                 .pickerStyle(.menu)
-                
                 Button {
                     exportAndStartFineTuning()
                 } label: {
-                    Label("Export & Train Custom Model", systemImage: "cpu.fill")
+                    Label(isSubmitting ? "Submitting…" : "Upload & Start Training", systemImage: "cpu.fill")
                 }
-                .foregroundColor(.purple)
-                .disabled(viewModel.messages.count < 3)
-                
-                if viewModel.messages.count < 3 {
-                    Text("ℹ️ Active conversation needs at least 3 messages (system, user, assistant exchanges) to qualify for training export.")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                } else {
-                    Text("Converts active chat thread containing \(viewModel.messages.count) messages into a fine-tuning dataset, uploads it, and launches the training job.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                .disabled(dataset == nil || isSubmitting)
+                Text("Uploads the selected dataset and starts a billable job using your existing account access.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            
+
             Section("Hyperparameters (Optional)") {
                 HStack {
                     Text("Epochs")
@@ -75,7 +87,7 @@ struct FineTuningView: View {
                         Spacer()
                     }
                 } else if jobs.isEmpty {
-                    Text("No custom models have been created yet. Launch one above.")
+                    Text("No training jobs found for this account.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -149,8 +161,24 @@ struct FineTuningView: View {
                 }
             }
         }
-        .onAppear {
-            loadJobs()
+        .onAppear { loadJobs() }
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.plainText, .json, .data]) { result in
+            do {
+                let url = try result.get()
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size <= 50 * 1024 * 1024 else { throw OpenAIServiceError.invalidRequest("Choose a file smaller than 50 MB.") }
+                dataset = try FineTuningDataset.validate(Data(contentsOf: url))
+                datasetFilename = url.lastPathComponent
+            } catch {
+                dataset = nil
+                datasetFilename = nil
+                errorMessage = error.localizedDescription
+            }
+        }
+        .fileExporter(isPresented: $showingExporter, document: exportDocument, contentType: .plainText, defaultFilename: "chat-training-draft.jsonl") { result in
+            if case .failure(let error) = result { errorMessage = error.localizedDescription }
         }
         .alert("Status", isPresented: Binding(
             get: { statusMessage != nil },
@@ -209,58 +237,41 @@ struct FineTuningView: View {
         }
     }
     
-    private func exportAndStartFineTuning() {
-        isLoading = true
-        Task {
-            do {
-                // Map local messages to dataset messages
-                let tuningMessages = viewModel.messages.compactMap { msg -> FineTuningMessage? in
-                    guard let text = msg.text, !text.isEmpty else { return nil }
-                    let roleStr: String
-                    switch msg.role {
-                    case .user: roleStr = "user"
-                    case .assistant: roleStr = "assistant"
-                    case .system: roleStr = "system"
-                    }
-                    return FineTuningMessage(role: roleStr, content: text)
-                }
-                
-                // Fine-tuning dataset needs at least 1 prompt-response format, wrap inside a single conversation object
-                let conversation = FineTuningConversation(messages: tuningMessages)
-                
-                // Compile to jsonl payload
-                let jsonlData = try FineTuningService.shared.compileFineTuningJSONL(conversations: [conversation])
-                
-                // Upload dataset
-                let openaiFile = try await OpenAIService().uploadFile(
-                    fileData: jsonlData,
-                    filename: "fine_tuning_input.jsonl",
-                    purpose: "fine-tune"
-                )
-                
-                // Launch run
-                let job = try await FineTuningService.shared.createFineTuningJob(
-                    trainingFileId: openaiFile.id,
-                    model: selectedBaseModel,
-                    nEpochs: nEpochs,
-                    batchSize: batchSize,
-                    learningRateMultiplier: learningRateMultiplier
-                )
-                
-                await MainActor.run {
-                    self.jobs.insert(job, at: 0)
-                    self.isLoading = false
-                    self.statusMessage = "Successfully exported conversation, uploaded dataset, and scheduled training run \(job.id)!"
-                }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = "Failed to start fine-tuning: \(error.localizedDescription)"
-                    self.isLoading = false
-                }
+    private func exportChatDraft() {
+        do {
+            // App status/error messages are not training instructions.
+            let messages = viewModel.messages.compactMap { message -> FineTuningMessage? in
+                guard message.role != .system, let text = message.text, !text.isEmpty else { return nil }
+                return FineTuningMessage(role: message.role == .user ? "user" : "assistant", content: text)
             }
+            let data = try FineTuningService.shared.compileFineTuningJSONL(conversations: [.init(messages: messages)])
+            exportDocument = JSONLDocument(data: data)
+            showingExporter = true
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func exportAndStartFineTuning() {
+        guard let dataset, !isSubmitting else { return }
+        isSubmitting = true
+        let model = selectedBaseModel
+        let epochs = nEpochs
+        let size = batchSize
+        let rate = learningRateMultiplier
+        Task {
+            defer { isSubmitting = false }
+            do {
+                _ = try FineTuningDataset.validate(dataset.data)
+                try FineTuningService.validateHyperparameters(nEpochs: epochs, batchSize: size, learningRateMultiplier: rate)
+                let file = try await OpenAIService().uploadFile(fileData: dataset.data, filename: "fine_tuning_input.jsonl", purpose: "fine-tune")
+                let job = try await FineTuningService.shared.createFineTuningJob(
+                    trainingFileId: file.id, model: model, nEpochs: epochs,
+                    batchSize: size, learningRateMultiplier: rate)
+                jobs.insert(job, at: 0)
+                statusMessage = "Training job \(job.id) submitted with \(dataset.exampleCount) examples. Status: \(job.status)."
+            } catch { errorMessage = "Could not start training: \(error.localizedDescription)" }
         }
     }
-    
+
     private func statusColor(_ status: String) -> Color {
         switch status {
         case "succeeded": return .green

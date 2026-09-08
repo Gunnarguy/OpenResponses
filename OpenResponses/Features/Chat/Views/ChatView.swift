@@ -91,7 +91,7 @@ struct ChatView: View {
         .sheet(
             isPresented: Binding(
                 get: { viewModel.pendingSafetyApproval != nil },
-                set: { newValue in if !newValue { viewModel.pendingSafetyApproval = nil } }
+                set: { newValue in if !newValue { viewModel.denySafetyChecks() } }
             )
         ) {
             SafetyApprovalSheet()
@@ -219,6 +219,7 @@ struct ChatView: View {
 
             if showingVoiceMode {
                 InlineVoiceView(isPresented: $showingVoiceMode)
+                    .environmentObject(viewModel)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 inputRow

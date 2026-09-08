@@ -12,9 +12,16 @@ class ConversationStorageService {
     /// An in-memory cache of the conversations, sorted by their last modified date.
     /// Using a cache avoids repeatedly reading from the disk.
     private var conversationsCache: [Conversation]?
+    private let writer = DispatchQueue(label: "OpenResponses.conversation-storage", qos: .utility)
+    private var pending: [UUID: Conversation] = [:]
+    private var saveErrors: [UUID: (Error) -> Void] = [:]
+    private var scheduledFlush: Task<Void, Never>?
+    private let saveDelayNanoseconds: UInt64
+    private(set) var completedWriteCount = 0
 
     /// Initializes the storage service. It sets up the storage directory and ensures it exists.
-    init(storageURL: URL = ConversationStorageService.prepareStorageURL()) {
+    init(storageURL: URL = ConversationStorageService.prepareStorageURL(), saveDelayNanoseconds: UInt64 = 750_000_000) {
+        self.saveDelayNanoseconds = saveDelayNanoseconds
         self.storageURL = storageURL
 
         if !FileManager.default.fileExists(atPath: storageURL.path) {
@@ -95,12 +102,59 @@ class ConversationStorageService {
     /// - Parameter conversation: The `Conversation` object to save.
     /// - Throws: An error if the conversation cannot be encoded or saved.
     func saveConversation(_ conversation: Conversation) throws {
+        pending[conversation.id] = nil
+        saveErrors[conversation.id] = nil
         let fileURL = storageURL.appendingPathComponent("\(conversation.id.uuidString).json")
+        try writer.sync { try Self.write(conversation, to: fileURL) }
+        completedWriteCount += 1
+        updateCache(with: conversation)
+    }
+
+    /// Coalesces bursts without postponing the checkpoint indefinitely during a long stream.
+    func scheduleSave(_ conversation: Conversation, onError: @escaping (Error) -> Void) {
+        pending[conversation.id] = conversation
+        saveErrors[conversation.id] = onError
+        updateCache(with: conversation)
+        guard scheduledFlush == nil else { return }
+        scheduledFlush = Task { [weak self, saveDelayNanoseconds] in
+            do { try await Task.sleep(nanoseconds: saveDelayNanoseconds) }
+            catch { return }
+            self?.flushScheduledSaves()
+        }
+    }
+
+    /// Submits immutable snapshots in order; later edits and deletes cannot be overwritten by an older save.
+    func flushScheduledSaves() {
+        scheduledFlush?.cancel()
+        scheduledFlush = nil
+        let snapshots = pending
+        let callbacks = saveErrors
+        pending.removeAll()
+        saveErrors.removeAll()
+        for (id, conversation) in snapshots {
+            let fileURL = storageURL.appendingPathComponent("\(id.uuidString).json")
+            writer.async {
+                let result = Result { try Self.write(conversation, to: fileURL) }
+                Task { @MainActor [weak self] in
+                    switch result {
+                    case .success: self?.completedWriteCount += 1
+                    case .failure(let error): callbacks[id]?(error)
+                    }
+                }
+            }
+        }
+    }
+
+    func flushPendingSaves() async {
+        flushScheduledSaves()
+        await withCheckedContinuation { continuation in
+            writer.async { continuation.resume() }
+        }
+    }
+
+    private nonisolated static func write(_ conversation: Conversation, to fileURL: URL) throws {
         let data = try JSONEncoder().encode(conversation)
         try data.write(to: fileURL, options: .atomic)
-        
-        // Update the cache
-        updateCache(with: conversation)
     }
 
     /// Deletes a conversation from the disk.
@@ -109,10 +163,14 @@ class ConversationStorageService {
     func deleteConversation(withId conversationId: UUID) throws {
         let fileURL = storageURL.appendingPathComponent("\(conversationId.uuidString).json")
         
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try FileManager.default.removeItem(at: fileURL)
+        pending[conversationId] = nil
+        saveErrors[conversationId] = nil
+        try writer.sync {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
         }
-        
+
         // Remove from cache
         conversationsCache?.removeAll { $0.id == conversationId }
     }

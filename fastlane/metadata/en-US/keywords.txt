@@ -1,1 +1,1 @@
-gpt5,gpt54,reasoning,o3,assistant,privacy,calendar,reminders,contacts,websearch,imagegen,code,ios
+OpenAI,Responses,API,AI,voice,MCP,developer,playground,prompts,chat,tools,JSON,images

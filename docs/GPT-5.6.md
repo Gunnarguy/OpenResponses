@@ -1,5 +1,8 @@
 # OpenAI GPT-5.6 Family Integration
 
+> Historical July integration note. Current model ordering, supported settings and execution behavior are documented in the [2.6 technical record](releases/v2.6/TechnicalChanges.md). Treat provider-performance, pricing and caching statements below as historical claims requiring current verification, not release guarantees.
+
+
 *Last Updated: 2026-07-10*
 
 On July 9, 2026, OpenAI released the **GPT-5.6** series. OpenResponses provides comprehensive, day-one support for these models through the standard Responses API.

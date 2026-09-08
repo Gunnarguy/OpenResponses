@@ -48,11 +48,7 @@ struct SettingsHomeView: View {
                         showingNotionQuickConnect: $showingNotionQuickConnect,
                         showingFileManager: $showingFileManager
                     )
-                    case .mcp: MCPTab(
-                        showingConnectorGallery: $showingMCPGallery,
-                        showingRemoteSetup: $showingRemoteMCPSheet,
-                        showingNotionQuickConnect: $showingNotionQuickConnect
-                    )
+                    case .mcp: MCPConnectionsView(viewModel: viewModel)
                     case .advanced: AdvancedTab()
                     }
                 }
@@ -64,7 +60,7 @@ struct SettingsHomeView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "gearshape.fill")
                             .foregroundColor(.blue)
-                        Text("Settings").font(.headline)
+                        Text(selectedTab == .mcp ? "Connections" : "Settings").font(.headline)
                     }
                 }
             }
@@ -315,13 +311,13 @@ private struct GeneralTab: View {
                 }
 
                 Button(role: .destructive) { resetConfirm = true } label: {
-                    Label("Reset All Settings", systemImage: "arrow.counterclockwise")
+                    Label("Reset Prompt Settings", systemImage: "arrow.counterclockwise")
                 }
-                .alert("Reset Settings?", isPresented: $resetConfirm) {
+                .alert("Reset Prompt Settings?", isPresented: $resetConfirm) {
                     Button("Cancel", role: .cancel) {}
                     Button("Reset", role: .destructive) { viewModel.resetToDefaultPrompt() }
                 } message: {
-                    Text("Restore all settings to defaults.")
+                    Text("Restore the current prompt configuration to defaults. API keys, conversation history, and voice preferences are kept.")
                 }
             } header: {
                 Label("Presets", systemImage: "bookmark.fill")
@@ -377,6 +373,7 @@ private struct ModelTab: View {
                     onSave: { viewModel.saveActivePrompt() }
                 )
             }
+            ModernResponseSettings()
         }
     }
 }
@@ -570,64 +567,21 @@ private struct ToolsTab: View {
             // MARK: External Integrations
 
             Section {
-                // Notion Integration
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "square.grid.2x2.fill")
-                            .foregroundColor(.black)
-                            .font(.title2)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Notion")
-                                .fontWeight(.semibold)
-                            Text(hasNotionIntegrationToken ? "Connected" : "Not connected")
-                                .font(.caption)
-                                .foregroundColor(hasNotionIntegrationToken ? .green : .secondary)
-                        }
-
-                        Spacer()
-
-                        if hasNotionIntegrationToken {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                        }
-                    }
-
-                    if hasNotionIntegrationToken {
-                        Toggle(isOn: $viewModel.activePrompt.enableNotionIntegration) {
-                            Text("Enable Notion Tools")
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                            .tint(.blue)
-                    }
-
-                    Button {
-                        showingNotionQuickConnect = true
-                    } label: {
-                        HStack {
-                            Text(hasNotionIntegrationToken ? "Manage Connection" : "Connect Notion")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    if !hasNotionIntegrationToken {
-                        Text("Connect your Notion workspace to search pages, query databases, and create content.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                NavigationLink {
+                    MCPConnectionsView(viewModel: viewModel)
+                } label: {
+                    Label("Connect Apps & Accounts", systemImage: "link.circle.fill")
+                }
+                Text("Connect Notion and other services with account sign-in in Connections.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if hasNotionIntegrationToken {
+                    DisclosureGroup("Existing Notion integration") {
+                        Toggle("Enable Legacy Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                        Button("Manage Existing Integration Key") { showingNotionQuickConnect = true }
+                        Text("Your existing direct Notion integration is preserved. Use Connections for the hosted Notion MCP sign-in.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-.padding(.vertical, 4)
 
                 #if canImport(EventKit)
                     Toggle(isOn: $viewModel.activePrompt.enableAppleIntegrations) {
@@ -1307,7 +1261,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
             }
 
         if !isComputerUseSupported {
-            Text("Requires a computer-capable model such as gpt-5.5 or gpt-5.5-mini.")
+            Text("Requires a computer-capable model such as Astra or GPT-5.6.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         } else if viewModel.activePrompt.enableComputerUse {
@@ -1414,216 +1368,6 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
     }
 }
 
-// MARK: - MCP Tab (Consolidated)
-
-private struct MCPTab: View {
-    @EnvironmentObject private var viewModel: ChatViewModel
-    @Binding var showingConnectorGallery: Bool
-    @Binding var showingRemoteSetup: Bool
-    @Binding var showingNotionQuickConnect: Bool
-    @State private var isTesting = false
-    @State private var diagStatus: String?
-    @State private var showClearConfirm = false
-
-    private var prompt: Prompt { viewModel.activePrompt }
-    private var isMCPSupported: Bool {
-        ModelCompatibilityService.shared.isToolSupported(
-            .mcp,
-            for: prompt.openAIModel,
-            isStreaming: prompt.enableStreaming && !prompt.backgroundMode
-        )
-    }
-    private var remoteConfigured: Bool {
-        !prompt.mcpIsConnector &&
-        !prompt.mcpServerLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !prompt.mcpServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-    private var connectorConfigured: Bool {
-        prompt.mcpIsConnector && (prompt.mcpConnectorId ?? "").isEmpty == false
-    }
-    private var hasConfiguration: Bool { remoteConfigured || connectorConfigured }
-    private var mcpEnabled: Bool { prompt.enableMCPTool }
-
-    var body: some View {
-        Form {
-            // MARK: Status
-
-            Section {
-                Toggle("Enable MCP", isOn: Binding(
-                    get: { viewModel.activePrompt.enableMCPTool },
-                    set: { newValue in
-                        var updated = viewModel.activePrompt
-                        updated.enableMCPTool = newValue
-                        viewModel.replaceActivePrompt(with: updated)
-                        viewModel.saveActivePrompt()
-                    }
-                ))
-                .disabled(!isMCPSupported)
-            } header: {
-                Label("MCP Status", systemImage: "power")
-            } footer: {
-                if isMCPSupported {
-                    Text(mcpEnabled ? "MCP tool calls are active." : "MCP is configured but disabled.")
-                } else {
-                    Text("The selected model doesn’t support MCP. Use gpt-5.5, gpt-5.5-mini, or gpt-5.5-nano.")
-                }
-            }
-
-            // MARK: Configuration
-
-            Section {
-                if remoteConfigured {
-                    configuredRemoteRow
-                } else if connectorConfigured {
-                    configuredConnectorRow
-                } else {
-                    Text("No MCP server configured.")
-                        .foregroundColor(.secondary)
-                }
-            } header: {
-                Label("Current Configuration", systemImage: "bolt.shield")
-            }
-
-            // MARK: Diagnostics
-            if remoteConfigured {
-                Section {
-                    if isTesting {
-                        HStack {
-                            ProgressView()
-                            Text("Testing…")
-                        }
-                    } else {
-                        Button { testMCPConnection() } label: {
-                            Label("Test Connection", systemImage: "checkmark.seal")
-                        }
-                    }
-
-                    if let diagStatus {
-                        Text(diagStatus)
-                            .font(.caption)
-                            .foregroundColor(diagStatus.contains("OK") ? .green : .orange)
-                    }
-                } header: {
-                    Label("Diagnostics", systemImage: "waveform")
-                }
-            }
-
-            // MARK: Actions
-
-            Section {
-                Button { showingNotionQuickConnect = true } label: {
-                    Label("Direct Notion Integration", systemImage: "square.grid.2x2.fill")
-                }
-
-                Button { showingConnectorGallery = true } label: {
-                    Label("Browse Connectors", systemImage: "square.grid.2x2.fill")
-                }
-
-                Button { showingRemoteSetup = true } label: {
-                    Label("Configure Remote Server", systemImage: "server.rack")
-                }
-
-                if hasConfiguration {
-                    Button(role: .destructive) { showClearConfirm = true } label: {
-                        Label("Remove Configuration", systemImage: "trash")
-                    }
-                }
-            } header: {
-                Label("Actions", systemImage: "slider.horizontal.3")
-            }
-        }
-.onAppear { diagStatus = nil }
-        .alert("Remove MCP Configuration?", isPresented: $showClearConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove", role: .destructive) { clearMCPConfiguration() }
-        } message: {
-            Text("This clears all MCP settings and tokens.")
-        }
-    }
-
-    private var configuredRemoteRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(prompt.mcpServerLabel).font(.headline)
-            Text(prompt.mcpServerURL).font(.caption).foregroundColor(.secondary)
-            HStack {
-                Image(systemName: "circle.fill")
-                    .foregroundColor(mcpEnabled ? .green : .gray)
-                    .font(.system(size: 8))
-                Text(mcpEnabled ? "Active" : "Disabled")
-.font(.caption)
-            }
-        }
-.padding(.vertical, 4)
-    }
-
-    private var configuredConnectorRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let connectorId = prompt.mcpConnectorId,
-               let connector = MCPConnector.connector(for: connectorId) {
-                Text(connector.name).font(.headline)
-                Text(connector.description).font(.caption).foregroundColor(.secondary)
-            } else {
-                Text("Unknown Connector").font(.headline)
-            }
-            HStack {
-                Image(systemName: "circle.fill")
-                    .foregroundColor(mcpEnabled ? .green : .gray)
-                    .font(.system(size: 8))
-                Text(mcpEnabled ? "Active" : "Disabled")
-                    .font(.caption)
-            }
-        }
-.padding(.vertical, 4)
-    }
-
-    private func testMCPConnection() {
-        guard remoteConfigured else { return }
-        isTesting = true
-        diagStatus = nil
-        let currentPrompt = viewModel.activePrompt
-        Task {
-            do {
-                let result = try await AppContainer.shared.openAIService.probeMCPListTools(prompt: currentPrompt)
-                await MainActor.run {
-                    diagStatus = "OK: \(result.count) tools available"
-                    isTesting = false
-                }
-            } catch {
-                await MainActor.run {
-                    diagStatus = "Failed: \(error.localizedDescription)"
-                    isTesting = false
-                }
-            }
-        }
-    }
-
-    private func clearMCPConfiguration() {
-        var prompt = viewModel.activePrompt
-        let oldConnector = prompt.mcpConnectorId
-
-        if let oldConnector {
-            KeychainService.shared.delete(forKey: "mcp_connector_\(oldConnector)")
-        }
-        prompt.secureMCPHeaders = [:]
-
-        prompt.enableMCPTool = false
-        prompt.mcpIsConnector = false
-        prompt.mcpConnectorId = nil
-        prompt.mcpServerLabel = ""
-        prompt.mcpServerURL = ""
-        prompt.mcpAllowedTools = ""
-        prompt.mcpRequireApproval = "never"
-        prompt.mcpHeaders = ""
-        prompt.mcpAuthHeaderKey = "Authorization"
-        prompt.mcpKeepAuthInHeaders = false
-
-        viewModel.replaceActivePrompt(with: prompt)
-        viewModel.saveActivePrompt()
-        viewModel.lastMCPServerLabel = nil
-        diagStatus = nil
-    }
-}
-
 // MARK: - Advanced Tab (Consolidated)
 
 private struct AdvancedTab: View {
@@ -1677,7 +1421,9 @@ Toggle(isOn: backgroundModeBinding) {
 
                 Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
                     Text("Auto").tag("auto")
-                    Text("Default").tag("default")
+                    Text("Standard").tag("default")
+                    Text("Flex").tag("flex")
+                    Text("Fast").tag("fast")
                 }
 .pickerStyle(.segmented)
             } header: {

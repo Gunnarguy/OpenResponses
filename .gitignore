@@ -122,6 +122,11 @@ AuthKey_*.p8
 # All markdown documentation files (to prevent accidental secret commits)
 *.md
 !README.md
+!/CHANGELOG.md
+!/ARCHITECTURE.md
+!/APP_STORE.md
+!/ROADMAP.md
+!/SECURITY.md
 !LICENSE.md
 !PRIVACY.md
 !docs/**/*.md

@@ -496,38 +496,13 @@ final class OpenResponsesTests: XCTestCase {
         )
     }
 
-    func testComputerServicePrefersProgrammaticSearchForSearchStyleSubmissions() {
-        XCTAssertTrue(
-            ComputerService.testing_shouldPreferProgrammaticSearch(
-                fieldHint: "Google Search",
-                submit: true,
-                currentURL: "https://www.google.com"
-            )
-        )
-
-        XCTAssertTrue(
-            ComputerService.testing_shouldPreferProgrammaticSearch(
-                fieldHint: nil,
-                submit: true,
-                currentURL: "https://www.amazon.com"
-            )
-        )
-
-        XCTAssertFalse(
-            ComputerService.testing_shouldPreferProgrammaticSearch(
-                fieldHint: "Email",
-                submit: true,
-                currentURL: "https://accounts.google.com"
-            )
-        )
-
-        XCTAssertFalse(
-            ComputerService.testing_shouldPreferProgrammaticSearch(
-                fieldHint: "Google Search",
-                submit: false,
-                currentURL: "https://www.google.com"
-            )
-        )
+    func testComputerServiceEncodesSearchQueryAsOneParameterAndMatchesRealHosts() throws {
+        let url = try XCTUnwrap(ComputerService.testing_searchResultsURL(siteKeyword: "google", query: "C++ & dogs #1"))
+        let components = try XCTUnwrap(URLComponents(string: url))
+        XCTAssertEqual(components.queryItems, [URLQueryItem(name: "q", value: "C++ & dogs #1")])
+        XCTAssertTrue(url.contains("%2B%2B"))
+        XCTAssertNil(ComputerService.testing_searchResultsURL(currentURL: "https://google.evil.example", query: "dogs"))
+        XCTAssertNil(ComputerService.testing_searchResultsURL(currentURL: "https://notgoogle.com", query: "dogs"))
     }
 
     func testComputerServiceNormalizesComputerUseMouseMetadata() {

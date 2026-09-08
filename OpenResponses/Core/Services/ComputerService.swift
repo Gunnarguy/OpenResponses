@@ -15,7 +15,7 @@ struct JavaScriptResult: @unchecked Sendable {
 ///
 /// The service is designed to be run on the main actor as it interacts with `WKWebView`, a UI component.
 @MainActor
-class ComputerService: NSObject, WKNavigationDelegate {
+class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
     private let autoAttachWebView: Bool
     private var webView: WKWebView?
 
@@ -26,12 +26,51 @@ class ComputerService: NSObject, WKNavigationDelegate {
         webView?.superview != nil
     }
 
-    // Continuations to bridge delegate-based asynchronous operations with async/await.
-    private var navigationContinuation: CheckedContinuation<Void, Error>?
-    private var javascriptContinuation: CheckedContinuation<JavaScriptResult, Error>?
-    // Suppresses model-originated clicks for a brief window after we programmatically submit a search.
-    // This helps avoid the model immediately clicking promo/suggestion tiles before results finish loading.
-    private var suppressClicksUntil: Date?
+    private let execution = BrowserExecution()
+    private var navigationPolicy = BrowserNavigationPolicy()
+    private var activeNavigationID: ObjectIdentifier?
+    private var navigations: [ObjectIdentifier: (Result<Void, Error>) -> Void] = [:]
+    private var pendingCallbacks: [UUID: (Error) -> Void] = [:]
+    private var pageError: Error?
+    private var lastHTTPStatus: Int?
+    private var recoveryNotice: String?
+    private let automationWorld = WKContentWorld.world(name: "OpenResponsesAutomation")
+
+    func beginTurn() {
+        cancelPendingOperations()
+        execution.beginTurn()
+        navigationPolicy = BrowserNavigationPolicy()
+    }
+
+    func cancelPendingOperations() {
+        execution.cancel()
+        webView?.stopLoading()
+        failPendingCallbacks(CancellationError())
+    }
+
+    func setApprovalPending(_ pending: Bool) {
+        execution.approvalPending = pending
+        if pending { cancelPendingOperations() }
+    }
+
+    private func failPendingCallbacks(_ error: Error) {
+        let pending = pendingCallbacks.values
+        pendingCallbacks.removeAll()
+        let loads = navigations.values
+        navigations.removeAll()
+        activeNavigationID = nil
+        pending.forEach { $0(error) }
+        loads.forEach { $0(.failure(error)) }
+    }
+
+    private func runBrowser<T>(actions: Int = 1, callID: String? = nil, operation: @escaping @MainActor () async throws -> T) async throws -> T {
+        try await execution.run(actions: actions, callID: callID, onInterrupt: { [weak self] in
+            self?.webView?.stopLoading()
+        }) { [self] in
+            pageError = nil
+            return try await operation()
+        }
+    }
 
     init(autoAttachWebView: Bool = ComputerService.shouldAutoAttachWebView()) {
         self.autoAttachWebView = autoAttachWebView
@@ -47,7 +86,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         // Proactively attempt to attach when app is ready
         Task { @MainActor in
             // Small delay to let the app fully initialize
-            try? await Task.sleep(for: .seconds(0.5))
+            do { try await Task.sleep(for: .seconds(0.5)) } catch { return }
             self.attachToWindowHierarchy()
         }
     }
@@ -57,6 +96,41 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     // Note: We avoid isolated deinit (requires iOS 18.4+) and rely on successful attach to unregister observers.
+
+    /// Release the browser surface and outstanding work without clearing website data.
+    func closeBrowser() {
+        cancelPendingOperations()
+        webView?.navigationDelegate = nil
+        webView?.uiDelegate = nil
+        webView?.removeFromSuperview()
+        webView = nil
+        unregisterAttachObservers()
+    }
+
+#if DEBUG
+    func testing_loadHTML(_ html: String) async throws -> BrowserAutomationResult {
+        try await runBrowser {
+            try await self.prepareWebViewForExecution()
+            try await self.loadNavigation { self.webView?.loadHTMLString(html, baseURL: nil) }
+            return try await self.captureBrowserAutomationResult(actionOutput: "Fixture loaded")
+        }
+    }
+
+    func testing_simulateProcessTermination() {
+        if let webView { webViewWebContentProcessDidTerminate(webView) }
+    }
+
+    func testing_evaluatePage(_ script: String) async throws -> Any? {
+        guard let webView else { throw ComputerUseError.webViewNotAvailable }
+        let value: JavaScriptResult = try await boundedCallback(label: "fixture script") { finish in
+            webView.evaluateJavaScript(script) { value, error in
+                if let error { finish(.failure(error)) }
+                else { finish(.success(JavaScriptResult(value: value))) }
+            }
+        }
+        return value.value
+    }
+#endif
 
     /// Returns the current URL loaded in the WebView, if any.
     func currentURL() -> String? {
@@ -84,12 +158,12 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
         webView = WKWebView(frame: webViewFrame, configuration: configuration)
         webView?.navigationDelegate = self
+        webView?.uiDelegate = self
         webView?.isOpaque = false
         webView?.backgroundColor = .white
         webView?.scrollView.backgroundColor = .white
         webView?.scrollView.isScrollEnabled = true
-        // Present as iPhone Safari to encourage mobile layouts that match our tool display
-        webView?.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+        // Keep the installed WebKit version in the user agent instead of spoofing an old OS.
 
         // Attempt immediate attach; if not possible, set up observers to retry when app/window becomes active.
         attachToWindowHierarchy()
@@ -116,8 +190,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             ?? windowScenes.compactMap { $0.windows.first(where: { $0.isKeyWindow }) }.first
 
         if let window = keyWindow {
-            // IMPORTANT: Keep the webView within window bounds so WebKit renders paint frames.
-            // Position it completely off-screen but still in the window hierarchy for reliable rendering.
+            // Keep the browser attached and opaque; snapshotting does not require onscreen interaction.
             webView.frame = CGRect(x: -1000, y: -1000, width: 440, height: 956) // Move completely off-screen
             webView.alpha = 1.0 // Keep full alpha since it's positioned off-screen
             webView.isHidden = false // Must not be hidden for reliable snapshots
@@ -179,7 +252,63 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
     /// Executes a batch of computer actions sequentially and returns a single post-action screenshot.
     /// This matches the GA computer-use contract where GPT-5.4 emits `actions[]` for one computer call.
-    func executeActions(_ actions: [ComputerAction]) async throws -> ComputerActionResult {
+    func executeActions(_ actions: [ComputerAction], callID: String? = nil) async throws -> ComputerActionResult {
+        try await runBrowser(actions: actions.count, callID: callID) { try await self.performComputerActions(actions) }
+    }
+
+    func liveBrowserNavigate(to urlString: String, callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) { try await self.browserNavigate(to: urlString) }
+    }
+
+    func liveBrowserRead(callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) { try await self.captureBrowserAutomationResult(actionOutput: "Read current page state") }
+    }
+
+    func liveBrowserSearch(query: String, site: String?, callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) { try await self.browserSearch(query: query, site: site) }
+    }
+
+    func liveBrowserClick(targetText: String, elementRef: String? = nil, callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) {
+            try await self.prepareWebViewForExecution()
+            let output = try await self.domAction("click", arguments: ["target": targetText, "ref": elementRef ?? ""])
+            return try await self.captureBrowserAutomationResult(actionOutput: output)
+        }
+    }
+
+    func liveBrowserType(text: String, fieldHint: String?, submit: Bool, elementRef: String? = nil, callID: String? = nil) async throws -> BrowserAutomationResult {
+        guard text.utf8.count <= 100_000 else { throw ComputerUseError.invalidParameters }
+        return try await runBrowser(callID: callID) {
+            try await self.prepareWebViewForExecution()
+            let output = try await self.domAction("type", arguments: ["text": text, "hint": fieldHint ?? "", "submit": submit, "ref": elementRef ?? ""])
+            return try await self.captureBrowserAutomationResult(actionOutput: output)
+        }
+    }
+
+    func liveBrowserScroll(direction: String, amount: Int?, callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) { try await self.browserScroll(direction: direction, amount: amount) }
+    }
+
+    func liveBrowserHistory(action: String, callID: String? = nil) async throws -> BrowserAutomationResult {
+        try await runBrowser(callID: callID) {
+            try await self.prepareWebViewForExecution()
+            guard let webView = self.webView else { throw ComputerUseError.webViewNotAvailable }
+            switch action {
+            case "back":
+                guard webView.canGoBack else { throw ComputerUseError.targetUnavailable("No previous page in browser history.") }
+                try await self.loadNavigation { webView.goBack() }
+            case "forward":
+                guard webView.canGoForward else { throw ComputerUseError.targetUnavailable("No next page in browser history.") }
+                try await self.loadNavigation { webView.goForward() }
+            case "reload":
+                try await self.loadNavigation { webView.reload() }
+            default: throw ComputerUseError.invalidParameters
+            }
+            return try await self.captureBrowserAutomationResult(actionOutput: "Browser history: \(action)")
+        }
+    }
+
+    private func performComputerActions(_ actions: [ComputerAction]) async throws -> ComputerActionResult {
         guard !actions.isEmpty else {
             throw ComputerUseError.invalidParameters
         }
@@ -194,13 +323,15 @@ class ComputerService: NSObject, WKNavigationDelegate {
         let screenshot = try await takeScreenshot()
         let currentURL = webView?.url?.absoluteString
         let output = actions.count == 1
-            ? "Action '\(actions[0].type)' completed successfully."
-            : "Executed \(actions.count) computer actions successfully."
+            ? "Dispatched action '\(actions[0].type)'. Inspect the screenshot to confirm the result."
+            : "Dispatched \(actions.count) computer actions. Inspect the screenshot to confirm the result."
 
         return ComputerActionResult(screenshot: screenshot, currentURL: currentURL, output: output)
     }
 
     private func prepareWebViewForExecution() async throws {
+        try Task.checkCancellation()
+        if webView == nil { setupWebView() }
         guard let webView = webView else {
             throw ComputerUseError.webViewNotAvailable
         }
@@ -213,7 +344,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
         // If still not attached after first attempt, wait and retry once
         if !didAttachToWindow {
-            try? await Task.sleep(for: .seconds(1))
+            try await Task.sleep(for: .seconds(1))
             await MainActor.run {
                 attachToWindowHierarchy()
             }
@@ -231,6 +362,10 @@ class ComputerService: NSObject, WKNavigationDelegate {
     }
 
     private func performAction(_ action: ComputerAction) async throws {
+        try Task.checkCancellation()
+        guard !execution.approvalPending else { throw ComputerUseError.approvalRequired }
+        if let text = action.parameters["text"] as? String, text.utf8.count > 100_000 { throw ComputerUseError.invalidParameters }
+        if let path = action.parameters["path"] as? [Any], path.count > 1_000 { throw ComputerUseError.invalidParameters }
         switch action.type {
         case "navigate":
             guard let urlString = action.parameters["url"] as? String,
@@ -287,7 +422,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
         case "scroll":
             if let x = Self.valueAsDouble(action.parameters["x"]),
                let y = Self.valueAsDouble(action.parameters["y"]) {
-                try? await moveMouse(to: CGPoint(x: x, y: y))
+                try await moveMouse(to: CGPoint(x: x, y: y))
             }
             let scrollY = Self.valueAsDouble(action.parameters["scroll_y"]) ?? Self.valueAsDouble(action.parameters["scrollY"]) ?? 0
             let scrollX = Self.valueAsDouble(action.parameters["scroll_x"]) ?? Self.valueAsDouble(action.parameters["scrollX"]) ?? 0
@@ -311,8 +446,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
                            Self.valueAsDouble(action.parameters["secs"]) ??
                            Self.valueAsDouble(action.parameters["s"])
             let milliseconds: Double = msParam ?? (secParam != nil ? (secParam! * 1000.0) : 1000.0)
+            guard milliseconds.isFinite, (0...10_000).contains(milliseconds) else { throw ComputerUseError.invalidParameters }
             let nanos = UInt64(milliseconds * 1_000_000)
-            try? await Task.sleep(nanoseconds: nanos)
+            try await Task.sleep(nanoseconds: nanos)
 
         default:
             AppLogger.log("⚠️ [ComputerService] Unknown action type: '\(action.type)'. Attempting graceful handling.", category: .general, level: .warning)
@@ -335,7 +471,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 try await moveMouse(to: CGPoint(x: x, y: y))
 
             default:
-                AppLogger.log("❌ [ComputerService] Unsupported action type: '\(action.type)'. Returning screenshot of current state.", category: .general, level: .error)
+                throw ComputerUseError.invalidActionType(action.type)
             }
         }
     }
@@ -348,496 +484,69 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
         try await ensureWebViewReady()
         try await waitForDomReadyAndPaint()
-        try? await Task.sleep(nanoseconds: extraWaitTime)
+        try await Task.sleep(nanoseconds: extraWaitTime)
     }
 
     // MARK: - Private Action Implementations
 
     /// Navigates the web view to the specified URL.
     private func navigate(to url: URL) async throws {
-        // Ensure a valid scheme; default to https if missing
-        let finalURL: URL = {
-            if url.scheme == nil || url.scheme?.isEmpty == true {
-                return URL(string: "https://\(url.absoluteString)") ?? url
-            }
-            return url
-        }()
-        AppLogger.log("🌐 [Navigation] Starting navigation to: \(finalURL.absoluteString)", category: .general, level: .debug)
-        try await withCheckedThrowingContinuation { continuation in
-            self.navigationContinuation = continuation
-            self.webView?.load(URLRequest(url: finalURL))
-        }
-        AppLogger.log("🌐 [Navigation] Completed: \(webView?.url?.absoluteString ?? "unknown")", category: .general, level: .debug)
+        let finalURL = try BrowserNavigationPolicy.url(url.absoluteString)
+        try await loadNavigation { self.webView?.load(URLRequest(url: finalURL, timeoutInterval: 20)) }
     }
 
-    /// Simulates a click at a specific point on the web page.
-    /// Uses multiple strategies to ensure clicks work on modern JavaScript-heavy sites.
+    private func loadNavigation(_ load: () -> WKNavigation?) async throws {
+        try Task.checkCancellation()
+        let callback = BrowserCallback<Void>()
+        var navigationID: ObjectIdentifier?
+        try await callback.wait(timeout: .seconds(20), label: "page navigation", onInterrupt: { [weak self] in
+            guard let self, let navigationID else { return }
+            self.navigations.removeValue(forKey: navigationID)
+            // A cancelled callback can arrive after the next operation starts loading.
+            if self.activeNavigationID == navigationID {
+                self.activeNavigationID = nil
+                self.webView?.stopLoading()
+            }
+        }) { finish in
+            guard let navigation = load() else {
+                finish(.failure(ComputerUseError.webViewNotAvailable))
+                return
+            }
+            navigationID = ObjectIdentifier(navigation)
+            activeNavigationID = navigationID
+            navigations[ObjectIdentifier(navigation)] = finish
+        }
+        if let pageError { throw pageError }
+    }
+
+    /// Coordinates are CSS pixels in the advertised 440 x 956 viewport. Never redirect a click
+    /// to a nearby menu, consent button, or form, and never dispatch the same click twice.
     private func click(at point: CGPoint, buttonCode: Int = 0, modifierKeys: [String] = []) async throws {
-        // If a post-search suppression window is active, skip executing the click to avoid misclicks
-        if let until = suppressClicksUntil, Date() < until {
-            AppLogger.log("🛡️ [Click Guard] Suppressing click during post-search stabilization window", category: .general, level: .info)
-            return
-        }
-        // Adjust for high-DPI screenshots: model might send coordinates in physical pixels.
-        // Convert to CSS pixels by dividing by devicePixelRatio when coordinates exceed viewport.
-        let modifierFlags = Self.mouseModifierFlags(from: modifierKeys)
-        let buttonsMask = Self.mouseButtonsMask(for: buttonCode)
-        let script = """
-        (function() {
-            // Generic top-left hamburger/menu guardrail: if the point is near the top-left corner,
-            // avoid clicking generic containers; try to resolve a visible icon-like control first.
-            function findHamburgerNearTopLeft(x, y) {
-                var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-                var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-                // Envelope ~80x80 CSS px in top-left; conservative and site-agnostic
-                if (x > 80 || y > 80) return null;
-                // Probe several selectors that commonly represent menus/buttons
-                var candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [aria-label]'));
-                // Filter to visible, small-ish controls that are near (x,y)
-                candidates = candidates.filter(function(el){
-                    var r = el.getBoundingClientRect();
-                    if (r.width <= 0 || r.height <= 0) return false;
-                    // visibility check
-                    var style = window.getComputedStyle(el);
-                    if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return false;
-                    // proximity to top-left and reasonable icon bounds
-                    var cx = r.left + r.width/2, cy = r.top + r.height/2;
-                    var near = (cx < 120 && cy < 120);
-                    var iconSized = (r.width <= 64 && r.height <= 64);
-                    // textual cues
-                    var txt = (el.innerText || '').toLowerCase();
-                    var lab = (el.getAttribute('aria-label') || '').toLowerCase();
-                    var title = (el.getAttribute('title') || '').toLowerCase();
-                    var looksLikeMenu = lab.includes('menu') || lab.includes('hamburger') || title.includes('menu') || title.includes('hamburger') || txt === '';
-                    return near && iconSized && looksLikeMenu;
-                });
-                // Prefer the closest candidate to (x,y)
-                if (candidates.length) {
-                    candidates.sort(function(a,b){
-                        var ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
-                        var acx=ra.left+ra.width/2, acy=ra.top+ra.height/2;
-                        var bcx=rb.left+rb.width/2, bcy=rb.top+rb.height/2;
-                        function d(cx,cy){ var dx=cx-x, dy=cy-y; return dx*dx+dy*dy; }
-                        return d(acx,acy)-d(bcx,bcy);
-                    });
-                    return candidates[0];
-                }
-                return null;
-            }
-            function pickClickableFromPoint(x,y){
-                var list = (document.elementsFromPoint ? document.elementsFromPoint(x,y) : [document.elementFromPoint(x,y)].filter(Boolean));
-                for (var i=0;i<list.length;i++){
-                    var el = list[i];
-                    var clickable = el.closest && el.closest('a,button,input,textarea,select,[role="button"],[onclick],[tabindex],label');
-                    if (clickable) return clickable;
-                }
-                return document.elementFromPoint(x,y);
-            }
-            function isVisible(el){
-                if (!el) return false;
-                var r = el.getBoundingClientRect();
-                if (r.width <= 0 || r.height <= 0) return false;
-                var s = window.getComputedStyle(el);
-                if (s.visibility === 'hidden' || s.display === 'none' || s.pointerEvents === 'none' || parseFloat(s.opacity||'1') === 0) return false;
-                return true;
-            }
-            function isEditable(el){
-                if (!el) return false;
-                if (el.isContentEditable) return true;
-                var tag = (el.tagName || '').toUpperCase();
-                if (tag === 'TEXTAREA') return true;
-                if (tag !== 'INPUT') return false;
-                var type = (el.getAttribute('type') || 'text').toLowerCase();
-                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
-            }
-            function findEditableDescendant(root){
-                if (!root) return null;
-                if (root.control && isEditable(root.control) && isVisible(root.control)) return root.control;
-                if (isEditable(root) && isVisible(root)) return root;
-                if (!root.querySelectorAll) return null;
-                var candidates = Array.from(root.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).filter(isVisible);
-                return candidates.find(isEditable) || null;
-            }
-            function pickEditableFromPoint(x,y){
-                var list = (document.elementsFromPoint ? document.elementsFromPoint(x,y) : [document.elementFromPoint(x,y)].filter(Boolean));
-                for (var i=0;i<list.length;i++){
-                    var el = list[i];
-                    if (isEditable(el) && isVisible(el)) return el;
-                    var nested = findEditableDescendant(el);
-                    if (nested) return nested;
-                    if (el.closest) {
-                        var labelled = el.closest('label, form, [role="search"]');
-                        var labelledEditable = findEditableDescendant(labelled);
-                        if (labelledEditable) return labelledEditable;
-                    }
-                }
-                return null;
-            }
-            function looksLikeConsentOverlay(node){
-                if (!node || node === document.body) return false;
-                var txt = ((node.innerText||'') + ' ' + (node.className||'') + ' ' + (node.id||'')).toLowerCase();
-                if (txt.includes('cookie') || txt.includes('consent') || txt.includes('privacy') || txt.includes('onetrust') || txt.includes('gdpr')){
-                    var r = node.getBoundingClientRect();
-                    return (r.height > 120 && isVisible(node));
-                }
-                return false;
-            }
-            function findAncestorOverlay(el){
-                var cur = el;
-                while (cur && cur !== document.body){
-                    if (looksLikeConsentOverlay(cur)) return cur;
-                    cur = cur.parentElement;
-                }
-                return null;
-            }
-            function textOf(el){
-                var t = (el.innerText||'').trim();
-                if (!t && (el.value||'').trim()) t = el.value.trim();
-                if (!t){
-                    var lab = (el.getAttribute('aria-label')||'').trim();
-                    var title = (el.getAttribute('title')||'').trim();
-                    t = lab || title;
-                }
-                return (t||'');
-            }
-            function findConsentButtonWithin(root, x, y){
-                var candidates = Array.from(root.querySelectorAll('button, [role="button"], a, input[type="button"], input[type="submit"]')).filter(isVisible);
-                if (!candidates.length) return null;
-                var PRIORITY = [
-                    /accept all/i,
-                    /accept/i,
-                    /agree/i,
-                    /allow/i,
-                    /ok/i,
-                    /got it/i,
-                    /continue/i
-                ];
-                function score(el){
-                    var t = textOf(el);
-                    for (var i=0;i<PRIORITY.length;i++){
-                        if (PRIORITY[i].test(t)) return 1000 - i*10; // prioritize earlier matches
-                    }
-                    // distance bonus to keep clicks near intended area
-                    var r = el.getBoundingClientRect();
-                    var cx = r.left + r.width/2, cy = r.top + r.height/2;
-                    var dx = cx - x, dy = cy - y;
-                    var dist2 = dx*dx + dy*dy;
-                    return Math.max(0, 500 - Math.min(dist2, 500));
-                }
-                candidates.sort(function(a,b){ return score(b) - score(a); });
-                return candidates[0] || null;
-            }
-            var px = \(point.x);
-            var py = \(point.y);
-            var buttonCode = \(buttonCode);
-            var buttonsMask = \(buttonsMask);
-            var ctrlKey = \(modifierFlags.ctrl ? "true" : "false");
-            var metaKey = \(modifierFlags.meta ? "true" : "false");
-            var altKey = \(modifierFlags.alt ? "true" : "false");
-            var shiftKey = \(modifierFlags.shift ? "true" : "false");
-            var dpr = (window.devicePixelRatio || 1);
-            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
-            px = Math.max(0, Math.min(vw - 1, px));
-            py = Math.max(0, Math.min(vh - 1, py));
-
-            // Guardrail: attempt to resolve a precise top-left icon if applicable.
-            // If the point is near the top-left but no menu-like control is found, refuse the click.
-            var nearTopLeft = (px <= 80 && py <= 80);
-            var el = null;
-            if (nearTopLeft) {
-                el = findHamburgerNearTopLeft(px, py);
-                if (!el) {
-                    return "Refused click: no menu-like control visible near top-left.";
-                }
-            } else {
-                el = pickEditableFromPoint(px, py) || pickClickableFromPoint(px, py);
-                // If the selected element appears to be a consent/cookie overlay container,
-                // prefer a visible consent button within it (e.g., "Accept All").
-                var overlay = el && looksLikeConsentOverlay(el) ? el : (el ? findAncestorOverlay(el) : null);
-                if (overlay) {
-                    var consentBtn = findConsentButtonWithin(overlay, px, py);
-                    if (consentBtn) el = consentBtn;
-                }
-            }
-            if (!el) { return "No element found at point (" + px + ", " + py + ")."; }
-            var editableTarget = findEditableDescendant(el);
-            if (!isEditable(el) && editableTarget) {
-                el = editableTarget;
-            }
-            try { el.scrollIntoView({block:'center', inline:'center', behavior:'auto'}); } catch(e) {}
-            var el2 = pickEditableFromPoint(px, py) || pickClickableFromPoint(px, py) || el; el = el2;
-            var refinedEditableTarget = findEditableDescendant(el);
-            if (!isEditable(el) && refinedEditableTarget) {
-                el = refinedEditableTarget;
-            }
-            var rect = el.getBoundingClientRect();
-            var clickX = Math.round(rect.left + Math.min(rect.width/2, Math.max(1, rect.width - 1)));
-            var clickY = Math.round(rect.top + Math.min(rect.height/2, Math.max(1, rect.height - 1)));
-            clickX = Math.max(0, Math.min(vw - 1, clickX));
-            clickY = Math.max(0, Math.min(vh - 1, clickY));
-
-            var result = "Clicked element: " + el.tagName + (el.className ? "." + el.className : "") + (el.id ? "#" + el.id : "") + " at (" + clickX + ", " + clickY + ")";
-            try {
-                if (el.focus) el.focus();
-                ['mousedown','mouseup','click'].forEach(function(type){
-                    var ev = new MouseEvent(type, {
-                        bubbles:true,
-                        cancelable:true,
-                        view:window,
-                        clientX:clickX,
-                        clientY:clickY,
-                        button:buttonCode,
-                        buttons:(type==='mousedown'?buttonsMask:0),
-                        ctrlKey:ctrlKey,
-                        metaKey:metaKey,
-                        altKey:altKey,
-                        shiftKey:shiftKey
-                    });
-                    el.dispatchEvent(ev);
-                });
-                if (buttonCode === 2) {
-                    el.dispatchEvent(new MouseEvent('contextmenu', {
-                        bubbles:true,
-                        cancelable:true,
-                        view:window,
-                        clientX:clickX,
-                        clientY:clickY,
-                        button:2,
-                        buttons:0,
-                        ctrlKey:ctrlKey,
-                        metaKey:metaKey,
-                        altKey:altKey,
-                        shiftKey:shiftKey
-                    }));
-                } else if (buttonCode === 0 && el.click) {
-                    el.click();
-                }
-                if (el.href && el.tagName === 'A') { result += " (Link: " + el.href + ")"; }
-            } catch(e) { result += " (Error: " + e.message + ")"; }
-            return result;
-        })();
-        """
-        let clickResult = (try await evaluateJavaScript(script)).value
-        AppLogger.log("🖱️ Click result: \(clickResult ?? "No result")", category: .general, level: .info)
-
-        // Give JavaScript frameworks time to process the click
-        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+        let flags = Self.mouseModifierFlags(from: modifierKeys)
+        _ = try await domAction("pointClick", arguments: [
+            "x": point.x, "y": point.y, "button": buttonCode,
+            "ctrlKey": flags.ctrl, "metaKey": flags.meta, "altKey": flags.alt, "shiftKey": flags.shift
+        ])
     }
 
-    // MARK: - Universal element targeting by visible text
-
-    /// Attempts to locate a clickable point for an element whose visible text matches the provided text.
-    /// Site-agnostic: scans a broad set of elements, filters by visibility, and prefers exact match, then contains.
-    /// Returns CSS pixel coordinates within the viewport or nil if no reasonable candidate is found.
-    func findClickablePointByVisibleText(_ text: String, preferExact: Bool = true) async throws -> CGPoint? {
-        guard webView != nil else { return nil }
-        let escaped = text.sanitizedForJS()
-        let script = """
-        (function(){
-            function norm(s){ return (s||'').trim().replace(/\\s+/g,' ').toLowerCase(); }
-            function isVisible(el){
-                if(!el) return false;
-                var style = window.getComputedStyle(el);
-                if(!style || style.visibility==='hidden' || style.display==='none' || style.pointerEvents==='none') return false;
-                var r = el.getBoundingClientRect();
-                if(r.width<=1 || r.height<=1) return false;
-                if(r.bottom < -10 || r.right < -10 || r.top > (window.innerHeight+10) || r.left > (window.innerWidth+10)) return false;
-                return true;
-            }
-            var target = norm('\(escaped)');
-            var selectors = 'a,button,[role="button"],input[type="submit"],input[type="button"],[onclick],[tabindex],div,span,h1,h2,h3,h4,h5,h6,li,article,section';
-            var els = Array.from(document.querySelectorAll(selectors)).filter(isVisible);
-            if(!els.length) return null;
-            function score(el){
-                var t = norm(el.innerText);
-                if(!t) return -1;
-                if(t === target) return 100; // exact match
-                if(t.includes(target)) return 60 + Math.min(20, Math.floor((target.length/Math.max(1,t.length))*20));
-                var tt = new Set(t.split(' '));
-                var tg = new Set(target.split(' '));
-                var inter = 0; tg.forEach(w=>{ if(tt.has(w)) inter++; });
-                if(inter>0) return 30 + inter;
-                return -1;
-            }
-            var best = null; var bestScore = -1;
-            for (var el of els){
-                var s = score(el);
-                if (s > bestScore){ bestScore = s; best = el; }
-            }
-            if(!best || bestScore < 0) return null;
-            var r = best.getBoundingClientRect();
-            var cx = Math.max(1, Math.min(window.innerWidth-1, r.left + r.width/2));
-            var cy = Math.max(1, Math.min(window.innerHeight-1, r.top + r.height/2));
-            return {x: cx, y: cy, text: best.innerText};
-        })();
-        """
-        let result = (try await evaluateJavaScript(script)).value
-        if let dict = result as? [String: Any], let x = dict["x"] as? CGFloat, let y = dict["y"] as? CGFloat {
-            self.suppressClicksUntil = Date().addingTimeInterval(0.5)
-            return CGPoint(x: x, y: y)
-        }
-        return nil
-    }
-
-    /// Simulates a double-click at a specific point on the web page.
     private func doubleClick(at point: CGPoint, buttonCode: Int = 0, modifierKeys: [String] = []) async throws {
-        let modifierFlags = Self.mouseModifierFlags(from: modifierKeys)
-        let script = """
-        (function() {
-            var px = \(point.x);
-            var py = \(point.y);
-            var buttonCode = \(buttonCode);
-            var ctrlKey = \(modifierFlags.ctrl ? "true" : "false");
-            var metaKey = \(modifierFlags.meta ? "true" : "false");
-            var altKey = \(modifierFlags.alt ? "true" : "false");
-            var shiftKey = \(modifierFlags.shift ? "true" : "false");
-            var dpr = (window.devicePixelRatio || 1);
-            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
-            px = Math.max(0, Math.min(vw - 1, px));
-            py = Math.max(0, Math.min(vh - 1, py));
-
-            var el = document.elementFromPoint(px, py);
-            if (el) {
-                el.focus();
-                var event = new MouseEvent('dblclick', {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: px,
-                    clientY: py,
-                    button: buttonCode,
-                    ctrlKey: ctrlKey,
-                    metaKey: metaKey,
-                    altKey: altKey,
-                    shiftKey: shiftKey
-                });
-                el.dispatchEvent(event);
-                return "Double-clicked element: " + el.tagName;
-            }
-            return "No element found at point for double-click.";
-        })();
-        """
-        _ = try await evaluateJavaScript(script)
+        let flags = Self.mouseModifierFlags(from: modifierKeys)
+        _ = try await domAction("pointDoubleClick", arguments: [
+            "x": point.x, "y": point.y, "button": buttonCode,
+            "ctrlKey": flags.ctrl, "metaKey": flags.meta, "altKey": flags.alt, "shiftKey": flags.shift
+        ])
     }
 
-    /// Simulates moving the mouse to a specific point (hover effect).
     private func moveMouse(to point: CGPoint) async throws {
-        let script = """
-        (function() {
-            var px = \(point.x);
-            var py = \(point.y);
-            var dpr = (window.devicePixelRatio || 1);
-            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-            var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-            if (px > vw || py > vh) { px = px / dpr; py = py / dpr; }
-            px = Math.max(0, Math.min(vw - 1, px));
-            py = Math.max(0, Math.min(vh - 1, py));
-
-            var el = document.elementFromPoint(px, py);
-            if (el) {
-                var event = new MouseEvent('mouseover', {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: px,
-                    clientY: py
-                });
-                el.dispatchEvent(event);
-
-                var moveEvent = new MouseEvent('mousemove', {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: px,
-                    clientY: py
-                });
-                el.dispatchEvent(moveEvent);
-
-                return "Moved mouse to element: " + el.tagName;
-            }
-            return "No element found at point for mouse move.";
-        })();
-        """
-        _ = try await evaluateJavaScript(script)
+        _ = try await domAction("pointMove", arguments: ["x": point.x, "y": point.y])
     }
 
     /// Types the given text into the currently focused editable element.
     private func type(text: String) async throws {
-        let script = """
-        (function() {
-            function isVisible(el){
-                if (!el) return false;
-                var style = window.getComputedStyle(el);
-                var rect = el.getBoundingClientRect();
-                return style && style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-            }
-            function isEditable(el){
-                if (!el) return false;
-                if (el.isContentEditable) return true;
-                var tag = (el.tagName || '').toUpperCase();
-                if (tag === 'TEXTAREA') return true;
-                if (tag !== 'INPUT') return false;
-                var type = (el.getAttribute('type') || 'text').toLowerCase();
-                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
-            }
-            function allEditableCandidates(){
-                return Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).filter(function(el){
-                    return isVisible(el) && isEditable(el);
-                });
-            }
-            function looksSearchLike(el){
-                if (!el || !el.getAttribute) return false;
-                var attrs = [
-                    el.getAttribute('type') || '',
-                    el.getAttribute('name') || '',
-                    el.getAttribute('id') || '',
-                    el.getAttribute('aria-label') || '',
-                    el.getAttribute('placeholder') || ''
-                ].join(' ').toLowerCase();
-                return attrs.includes('search') || attrs.includes('query') || attrs === 'q';
-            }
-            function fireInputEvents(el){
-                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
-                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(e) {}
-            }
-
-            var el = document.activeElement;
-            if (!isEditable(el) && el && el.querySelectorAll) {
-                var nested = Array.from(el.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]')).find(function(candidate){
-                    return isVisible(candidate) && isEditable(candidate);
-                });
-                if (nested) el = nested;
-            }
-
-            if (!isEditable(el)) {
-                var candidates = allEditableCandidates();
-                el = candidates.find(looksSearchLike) || candidates[0] || null;
-            }
-
-            if (el && isEditable(el)) {
-                if (el.focus) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
-                var value = '\(text.sanitizedForJS())';
-                if (el.isContentEditable) {
-                    el.textContent = value;
-                    fireInputEvents(el);
-                    return "Filled text into contenteditable element";
-                }
-
-                if (typeof el.select === 'function') {
-                    try { el.select(); } catch(e) {}
-                }
-                el.value = value;
-                fireInputEvents(el);
-                return "Filled text into " + el.tagName;
-            }
-            return "No active editable element found.";
-        })();
-        """
-        _ = try await evaluateJavaScript(script)
+        _ = try await domAction("type", arguments: ["text": text, "hint": "", "submit": false, "focusedOnly": true])
     }
 
-    /// Simulates key press combinations like Ctrl+A, Ctrl+C, etc.
+    /// Simulates a keyboard action on the focused element.
     private func keypress(keys: [String]) async throws {
         // Handle common keyboard shortcuts via JavaScript
         let keyCombo = keys.joined(separator: "+").uppercased()
@@ -878,7 +587,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
                 var el = document.activeElement;
                 if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
                     try {
-                        document.execCommand('paste');
+                        if (!document.execCommand('paste')) return 'Paste failed: clipboard access unavailable';
                         return "Pasted into " + el.tagName;
                     } catch (e) {
                         return "Paste failed: " + e.message;
@@ -901,30 +610,18 @@ class ComputerService: NSObject, WKNavigationDelegate {
             """
         case "ENTER", "RETURN":
             script = """
-            (function() {
-                var el = document.activeElement;
-                if (el) {
-                    if (el.form && typeof el.form.requestSubmit === 'function') {
-                        try {
-                            el.form.requestSubmit();
-                            return "Submitted form via requestSubmit from " + el.tagName;
-                        } catch (e) {}
-                    }
-                    if (el.form) {
-                        try {
-                            el.form.submit();
-                            return "Submitted form via submit from " + el.tagName;
-                        } catch (e) {}
-                    }
-                    var event = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 });
-                    el.dispatchEvent(event);
-                    var event2 = new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13 });
-                    el.dispatchEvent(event2);
-                    return "Enter key pressed on " + el.tagName;
-                } else {
-                    return "No active element for Enter key";
+            (() => {
+                const el = document.activeElement;
+                if (!el || el === document.body) return "No active element for Enter key";
+                if (el.form) {
+                    if (!el.form.reportValidity()) return "Form validation prevented submission";
+                    el.form.requestSubmit();
+                    return "Requested form submission once";
                 }
-            })();
+                el.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', bubbles:true, cancelable:true}));
+                el.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', bubbles:true, cancelable:true}));
+                return "Dispatched Enter key";
+            })()
             """
         case "ESCAPE", "ESC":
             script = """
@@ -987,7 +684,7 @@ class ComputerService: NSObject, WKNavigationDelegate {
             """
         }
 
-        _ = try await evaluateJavaScript(script)
+        try await evaluateActionScript(script)
     }
 
     /// Performs a drag gesture along the specified path
@@ -1024,8 +721,9 @@ class ComputerService: NSObject, WKNavigationDelegate {
             var dpr = (window.devicePixelRatio || 1);
             var vw = window.innerWidth || document.documentElement.clientWidth || 0;
             var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-            function normX(v){ if (v>vw||v<0) v = v/dpr; return Math.max(0, Math.min(vw-1, v)); }
-            function normY(v){ if (v>vh||v<0) v = v/dpr; return Math.max(0, Math.min(vh-1, v)); }
+            if (rawPath.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x >= vw || p.y < 0 || p.y >= vh)) return "No valid drag path: coordinates must be in the current viewport";
+            function normX(v){ return v; }
+            function normY(v){ return v; }
             var points = rawPath.map(function(point) {
                 return { x: normX(point.x), y: normY(point.y) };
             });
@@ -1096,13 +794,13 @@ class ComputerService: NSObject, WKNavigationDelegate {
         })();
         """
 
-        _ = try await evaluateJavaScript(script)
+        try await evaluateActionScript(script)
     }
 
     /// Scrolls the web page vertically by a given amount.
     private func scroll(x: Double, y: Double) async throws {
         let script = "window.scrollBy(\(x), \(y));"
-        _ = try await evaluateJavaScript(script)
+        try await evaluateActionScript(script)
     }
 
     /// Scrolls to the very bottom of the page deterministically.
@@ -1120,103 +818,52 @@ class ComputerService: NSObject, WKNavigationDelegate {
         """
         _ = try await evaluateJavaScript(js)
         // Give layout/render a brief moment, then ensure we have a paint before screenshot
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try await Task.sleep(nanoseconds: 250_000_000)
         try await waitForDomReadyAndPaint()
     }
 
     /// Captures a screenshot of the web view's visible content.
     private func takeScreenshot() async throws -> String? {
-        guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
-
-        // Debug: Log webview state before screenshot
-        print("📸 [Screenshot Debug] WebView state: frame=\(webView.frame), url=\(webView.url?.absoluteString ?? "nil"), isLoading=\(webView.isLoading)")
-        print("📸 [Screenshot Debug] WebView estimated progress: \(webView.estimatedProgress)")
-
-        // Critical: Temporarily restore alpha to 1.0 for screenshot capture
-        let originalAlpha = webView.alpha
-        webView.alpha = 1.0
-
-        // Critical: Verify WebView has proper dimensions before screenshot
-        if webView.frame.width <= 0 || webView.frame.height <= 0 {
-            print("📸 [Screenshot Debug] WebView has invalid frame dimensions: \(webView.frame)")
-
-            // Try to fix the frame
-            let width: CGFloat = 440
-            let height: CGFloat = 956
-            webView.frame = CGRect(x: 0, y: 0, width: width, height: height)
-            webView.setNeedsLayout()
-            webView.layoutIfNeeded()
-
-            print("📸 [Screenshot Debug] Fixed WebView frame to: \(webView.frame)")
-
-            // Wait a moment for layout to complete
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        }
-
+        try Task.checkCancellation()
+        guard let webView else { throw ComputerUseError.webViewNotAvailable }
+        webView.layoutIfNeeded()
         let config = WKSnapshotConfiguration()
         config.afterScreenUpdates = true
-        // Match the view's width to reduce rescaling artifacts
-        config.snapshotWidth = NSNumber(value: Float(webView.bounds.width))
-
-        // Retry snapshot a few times if the WebKit content process is still getting ready
-        for attempt in 1...5 {
+        config.snapshotWidth = NSNumber(value: 440)
+        // A read-only snapshot may be retried; failed writes are never replayed.
+        for attempt in 0..<2 {
             do {
-                let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+                return try await boundedCallback(label: "browser screenshot") { finish in
                     webView.takeSnapshot(with: config) { image, error in
-                        if let error = error {
-                            print("📸 [Screenshot Debug] Attempt \(attempt) failed: \(error)")
-                            continuation.resume(throwing: error)
-                            return
+                        if let error { finish(.failure(error)); return }
+                        guard let image, image.size.width > 0, image.size.height > 0 else {
+                            finish(.failure(ComputerUseError.screenshotFailed)); return
                         }
-                        if let image = image, let data = image.pngData() {
-                            print("📸 [Screenshot Debug] Attempt \(attempt) succeeded: \(image.size.width)x\(image.size.height) pixels, \(data.count) bytes")
-                            // Validate that we got meaningful content (not just a tiny white/empty image)
-                            if data.count > 1000 {
-                                continuation.resume(returning: data.base64EncodedString())
-                            } else {
-                                print("📸 [Screenshot Debug] Attempt \(attempt) produced tiny/empty image: \(data.count) bytes")
-                                continuation.resume(throwing: ComputerUseError.screenshotFailed)
-                            }
-                        } else {
-                            print("📸 [Screenshot Debug] Attempt \(attempt) failed: no image or PNG data")
-                            continuation.resume(throwing: ComputerUseError.screenshotFailed)
+                        // WKSnapshotConfiguration uses points; PNG encodes device pixels (3x on
+                        // modern iPhones). Match the tool's 440 x 956 coordinate space exactly.
+                        let size = CGSize(width: 440, height: 956)
+                        let format = UIGraphicsImageRendererFormat()
+                        format.scale = 1
+                        format.opaque = true
+                        let normalized = UIGraphicsImageRenderer(size: size, format: format).image { context in
+                            UIColor.white.setFill()
+                            context.fill(CGRect(origin: .zero, size: size))
+                            image.draw(in: CGRect(origin: .zero, size: size))
                         }
+                        guard let data = normalized.pngData(), !data.isEmpty else {
+                            finish(.failure(ComputerUseError.screenshotFailed)); return
+                        }
+                        finish(.success(data.base64EncodedString()))
                     }
                 }
-
-                // Restore alpha and return successful result
-                webView.alpha = originalAlpha
-                return result
             } catch {
-                print("📸 [Screenshot Debug] Attempt \(attempt) exception: \(error)")
-                // Small backoff before next attempt
-                try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
-                if attempt == 5 {
-                    print("📸 [Screenshot Debug] All attempts failed, generating fallback")
-                    // Restore original alpha before returning fallback
-                    webView.alpha = originalAlpha
-
-                    // Provide a larger, more visible fallback image with diagnostic info
-                    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 440, height: 100))
-                    let img = renderer.image { ctx in
-                        UIColor.systemRed.setFill()
-                        ctx.fill(CGRect(x: 0, y: 0, width: 440, height: 100))
-
-                        let text = "WebView Screenshot Failed\nFrame: \(webView.frame)\nURL: \(webView.url?.absoluteString ?? "None")"
-                        let attrs: [NSAttributedString.Key: Any] = [
-                            .foregroundColor: UIColor.white,
-                            .font: UIFont.systemFont(ofSize: 14)
-                        ]
-                        text.draw(in: CGRect(x: 10, y: 20, width: 420, height: 60), withAttributes: attrs)
-                    }
-                    return img.pngData()?.base64EncodedString()
-                }
+                try Task.checkCancellation()
+                if let pageError { throw pageError }
+                if attempt == 1 { throw ComputerUseError.screenshotFailed }
+                try await Task.sleep(for: .milliseconds(200))
             }
         }
-
-        // Restore original alpha before returning
-        webView.alpha = originalAlpha
-        return nil
+        throw ComputerUseError.screenshotFailed
     }
 
     nonisolated static func searchResultsURL(for currentURL: URL?, query: String) -> URL? {
@@ -1231,276 +878,62 @@ class ComputerService: NSObject, WKNavigationDelegate {
     private nonisolated static func searchResultsURL(forHost host: String, query: String) -> URL? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return nil }
-        guard let encodedQuery = trimmedQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            return nil
-        }
-
-        if host.contains("google") {
-            return URL(string: "https://www.google.com/search?q=\(encodedQuery)")
-        }
-        if host.contains("bing") {
-            return URL(string: "https://www.bing.com/search?q=\(encodedQuery)")
-        }
-        if host.contains("duckduckgo") {
-            return URL(string: "https://duckduckgo.com/?q=\(encodedQuery)")
-        }
-        if host.contains("amazon") {
-            return URL(string: "https://www.amazon.com/s?k=\(encodedQuery)")
-        }
-        if host.contains("youtube") {
-            return URL(string: "https://www.youtube.com/results?search_query=\(encodedQuery)")
-        }
-        if host.contains("github") {
-            return URL(string: "https://github.com/search?q=\(encodedQuery)")
-        }
-
-        return nil
+        let destinations: [(String, String, String)] = [
+            ("google", "https://www.google.com/search", "q"),
+            ("bing", "https://www.bing.com/search", "q"),
+            ("duckduckgo", "https://duckduckgo.com/", "q"),
+            ("amazon", "https://www.amazon.com/s", "k"),
+            ("youtube", "https://www.youtube.com/results", "search_query"),
+            ("github", "https://github.com/search", "q")
+        ]
+        let normalized = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard let destination = destinations.first(where: { name, _, _ in
+            normalized == name || normalized == name + ".com" || normalized.hasSuffix("." + name + ".com")
+                || (name == "google" && ["google.co.uk", "www.google.co.uk"].contains(normalized))
+        }) else { return nil }
+        var components = URLComponents(string: destination.1)
+        components?.queryItems = [URLQueryItem(name: destination.2, value: trimmedQuery)]
+        let encodedQuery = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        components?.percentEncodedQuery = encodedQuery
+        return components?.url
     }
 
-    /// Focuses a site search box (if present), types the query, and submits it.
-    ///
-    /// Behavior:
-    /// - Prefer direct results URLs for known search engines/sites.
-    /// - Amazon: uses specific selectors and prefers clicking the submit button (avoids intercepts).
-    /// - Other sites (incl. Google/Bing): tries a broad set of search selectors and submits via form or Enter.
-    /// - Adds a short post-submit click suppression window to avoid immediate promo/suggestion clicks.
-    @discardableResult
-    func performSearchIfOnKnownEngine(query: String) async throws -> Bool {
-        guard let webView = webView else { return false }
-        let host = webView.url?.host?.lowercased()
-        let isAmazon = (host?.contains("amazon.") ?? false)
-
-        if let directSearchURL = Self.searchResultsURL(for: webView.url, query: query) {
-            AppLogger.log("🔎 [Search Override] Navigating directly to search results: \(directSearchURL.absoluteString)", category: .general, level: .info)
-            try await navigate(to: directSearchURL)
-            self.suppressClicksUntil = Date().addingTimeInterval(1.0)
-            try await waitForNavigationToSettle()
-            return true
-        }
-
-        let escaped = query.sanitizedForJS()
-        let js: String
-        if isAmazon {
-            js = """
-            (function(){
-                // Try common Amazon search selectors
-                var sel = document.querySelector('#twotabsearchtextbox, input[name="field-keywords"], input[aria-label="Search Amazon"], input[type="search"][name="k"]');
-                if(!sel){ return 'No Amazon search box found'; }
-                if (sel.focus) sel.focus();
-                sel.value = '';
-                sel.value = '\(escaped)';
-                try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
-                try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
-                try { sel.dispatchEvent(new Event('change', {bubbles:true})); } catch(e) {}
-                // Prefer clicking the submit button to avoid Amazon intercepts
-                var submitBtn = document.querySelector('#nav-search-submit-button, input[type="submit"][value], input[type="submit"]');
-                if (submitBtn) {
-                    try { submitBtn.click(); return 'Amazon search submitted via button'; } catch(e) {}
-                }
-                // Fallback: press Enter in the field
-                try {
-                    var kd = new KeyboardEvent('keydown', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(kd);
-                    var ku = new KeyboardEvent('keyup', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(ku);
-                    return 'Amazon search submitted via Enter';
-                } catch(e) {}
-                return 'Amazon search typed but not submitted';
-            })();
-            """
-        } else {
-            js = """
-            (function(){
-                function isVisible(el){
-                    if(!el) return false;
-                    var style = window.getComputedStyle(el);
-                    var rect = el.getBoundingClientRect();
-                    return style && style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-                }
-                // Broad set of search selectors for generic sites, Google, Bing, etc.
-                var selectors = [
-                    'input[name="q"]', 'textarea[name="q"]',
-                    'input[type="search"]', 'textarea[type="search"]',
-                    'input[aria-label="Search"]', 'textarea[aria-label="Search"]',
-                    'input[placeholder*="Search" i]', 'textarea[placeholder*="Search" i]',
-                    'input[placeholder*="search" i]', 'textarea[placeholder*="search" i]'
-                ];
-                var sel = null;
-                for (var s of selectors){
-                    var cands = Array.from(document.querySelectorAll(s));
-                    sel = cands.find(isVisible);
-                    if (sel) break;
-                }
-                if(!sel){ return 'No search box found'; }
-                if (sel.focus) sel.focus();
-                sel.value = '';
-                sel.value = '\(escaped)';
-                try { sel.setSelectionRange(sel.value.length, sel.value.length); } catch(e) {}
-                try { sel.dispatchEvent(new Event('input', {bubbles:true})); } catch(e) {}
-                try { sel.dispatchEvent(new Event('change', {bubbles:true})); } catch(e) {}
-                // Try to submit via nearby submit button first, then form.submit, then Enter
-                var submitted = false;
-                try {
-                    var root = sel.form || document;
-                    var btn = root.querySelector('button[type="submit"], input[type="submit"], [aria-label="Search" i][role="button"], [type="image"][name="btnG"]');
-                    if (btn && isVisible(btn)) { btn.click(); submitted = true; }
-                } catch(e) {}
-                if (!submitted && sel.form && typeof sel.form.requestSubmit === 'function') {
-                    try { sel.form.requestSubmit(); submitted = true; } catch(e) {}
-                }
-                if (!submitted && sel.form) { try { sel.form.submit(); submitted = true; } catch(e) {} }
-                if (!submitted) {
-                    try {
-                        var kd = new KeyboardEvent('keydown', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(kd);
-                        var ku = new KeyboardEvent('keyup', {key:'Enter', keyCode:13, which:13, bubbles:true}); sel.dispatchEvent(ku);
-                        submitted = true;
-                    } catch(e) {}
-                }
-                return submitted ? 'Search submitted' : 'Search typed but not submitted';
-            })();
-            """
-        }
-        let searchResult = ((try await evaluateJavaScript(js)).value as? String) ?? ""
-        let didSubmit = searchResult.lowercased().contains("submitted")
-        AppLogger.log("🔎 [Search Override] \(searchResult)", category: .general, level: didSubmit ? .info : .debug)
-        guard didSubmit else { return false }
-        // Start a short suppression window to ignore model-originated clicks right after programmatic submit
-        self.suppressClicksUntil = Date().addingTimeInterval(1.0)
-        try await waitForNavigationToSettle()
-        return true
-    }
-
-    /// Navigates the persistent live browser session and returns a DOM-aware page snapshot.
-    func liveBrowserNavigate(to urlString: String) async throws -> BrowserAutomationResult {
-        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw ComputerUseError.invalidParameters
-        }
-
-        guard let url = URL(string: trimmed.hasPrefix("http") ? trimmed : "https://\(trimmed)") else {
-            throw ComputerUseError.invalidParameters
-        }
-
+    private func browserNavigate(to value: String) async throws -> BrowserAutomationResult {
+        let url = try BrowserNavigationPolicy.url(value)
         try await prepareWebViewForExecution()
         try await navigate(to: url)
-        try await waitForDomReadyAndPaint()
         return try await captureBrowserAutomationResult(actionOutput: "Navigated to \(url.absoluteString)")
     }
 
-    /// Returns a compact DOM-aware snapshot of the current page state.
-    func liveBrowserRead() async throws -> BrowserAutomationResult {
-        try await captureBrowserAutomationResult(actionOutput: "Read current page state")
+    private func browserSearch(query: String, site: String?) async throws -> BrowserAutomationResult {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let url = directSearchURL(query: query, site: site) else { throw ComputerUseError.invalidParameters }
+        try await prepareWebViewForExecution()
+        try await navigate(to: url)
+        return try await captureBrowserAutomationResult(actionOutput: "Opened search results")
     }
 
-    /// Searches within the current site or a known search destination and returns the updated page state.
-    func liveBrowserSearch(query: String, site: String?) async throws -> BrowserAutomationResult {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
+    private func browserScroll(direction: String, amount: Int?) async throws -> BrowserAutomationResult {
+        try await prepareWebViewForExecution()
+        let normalized = direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard ["up", "down"].contains(normalized), amount == nil || (1...2400).contains(amount!) else {
             throw ComputerUseError.invalidParameters
         }
-
-        try await prepareWebViewForExecution()
-
-        if let directURL = directSearchURL(query: trimmedQuery, site: site) {
-            try await navigate(to: directURL)
-            try await waitForDomReadyAndPaint()
-            return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedQuery) via \(directURL.absoluteString)")
-        }
-
-        _ = try await performSearchIfOnKnownEngine(query: trimmedQuery)
-        return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedQuery)")
-    }
-
-    /// Clicks a visible control by text/label in the live DOM and returns the updated page state.
-    func liveBrowserClick(targetText: String) async throws -> BrowserAutomationResult {
-        let trimmedTarget = targetText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTarget.isEmpty else {
-            throw ComputerUseError.invalidParameters
-        }
-
-        try await prepareWebViewForExecution()
-        let clickMessage = try await clickVisibleElement(matching: trimmedTarget)
-        try await waitForDomReadyAndPaint()
-        return try await captureBrowserAutomationResult(actionOutput: clickMessage)
-    }
-
-    /// Types into a visible field in the live DOM and optionally submits the form.
-    func liveBrowserType(text: String, fieldHint: String?, submit: Bool) async throws -> BrowserAutomationResult {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
-            throw ComputerUseError.invalidParameters
-        }
-
-        try await prepareWebViewForExecution()
-
-        if Self.shouldPreferProgrammaticSearchSubmission(
-            fieldHint: fieldHint,
-            submit: submit,
-            currentURL: webView?.url
-        ) {
-            do {
-                let didSearch = try await performSearchIfOnKnownEngine(query: trimmedText)
-                if didSearch {
-                    try await waitForNavigationToSettle()
-                    return try await captureBrowserAutomationResult(actionOutput: "Searched for \(trimmedText)")
-                }
-            } catch {
-                AppLogger.log("⚠️ [Live Browser] Programmatic search submission failed, falling back to field typing: \(error)", category: .general, level: .warning)
-            }
-        }
-
-        let typeMessage = try await typeIntoVisibleField(text: trimmedText, fieldHint: fieldHint, submit: submit)
-
-        if submit {
-            try await waitForNavigationToSettle()
-        } else {
-            try await waitForDomReadyAndPaint()
-        }
-
-        return try await captureBrowserAutomationResult(actionOutput: typeMessage)
-    }
-
-    /// Scrolls the live page and returns the updated DOM-aware snapshot.
-    func liveBrowserScroll(direction: String, amount: Int?) async throws -> BrowserAutomationResult {
-        try await prepareWebViewForExecution()
-
-        let normalizedDirection = direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let baseAmount = max(200, min(amount ?? 700, 2400))
-        let deltaY: Double = normalizedDirection == "up" ? Double(-baseAmount) : Double(baseAmount)
-        try await scroll(x: 0, y: deltaY)
-        try await waitForDomReadyAndPaint()
-        return try await captureBrowserAutomationResult(actionOutput: "Scrolled \(normalizedDirection == "up" ? "up" : "down") by \(baseAmount) points")
+        let distance = amount ?? 700
+        try await scroll(x: 0, y: Double(normalized == "up" ? -distance : distance))
+        return try await captureBrowserAutomationResult(actionOutput: "Scrolled \(normalized) by \(distance) points")
     }
 
     private func directSearchURL(query: String, site: String?) -> URL? {
-        let trimmedSite = site?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if !trimmedSite.isEmpty {
-            if let direct = Self.searchResultsURL(forSiteKeyword: trimmedSite, query: query) {
-                return direct
-            }
-
-            if let parsedURL = URL(string: trimmedSite),
-               let host = parsedURL.host?.lowercased(),
-               let direct = Self.searchResultsURL(forSiteKeyword: host, query: query) {
-                return direct
-            }
-
-            let sanitizedHost = trimmedSite
-                .replacingOccurrences(of: "https://", with: "")
-                .replacingOccurrences(of: "http://", with: "")
-                .split(separator: "/")
-                .first
-                .map(String.init) ?? trimmedSite
-
-            if let direct = Self.searchResultsURL(forSiteKeyword: sanitizedHost, query: query) {
-                return direct
-            }
+        let site = site?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !site.isEmpty {
+            if let direct = Self.searchResultsURL(forSiteKeyword: site, query: query) { return direct }
+            guard let url = try? BrowserNavigationPolicy.url(site), let host = url.host else { return nil }
+            if let direct = Self.searchResultsURL(for: url, query: query) { return direct }
+            return Self.searchResultsURL(forSiteKeyword: "google", query: "site:" + host + " " + query)
         }
-
-        if let direct = Self.searchResultsURL(for: webView?.url, query: query) {
-            return direct
-        }
-
-        return Self.searchResultsURL(forSiteKeyword: "google", query: query)
+        return Self.searchResultsURL(for: webView?.url, query: query)
+            ?? Self.searchResultsURL(forSiteKeyword: "google", query: query)
     }
 
     private func captureBrowserAutomationResult(actionOutput: String?) async throws -> BrowserAutomationResult {
@@ -1514,565 +947,193 @@ class ComputerService: NSObject, WKNavigationDelegate {
 
         try await waitForDomReadyAndPaint()
 
-        let state = try await readBrowserPageState()
+        var state = try await readBrowserPageState()
+        state.httpStatus = lastHTTPStatus
         let screenshot = try await takeScreenshot()
         let currentURL = state.url ?? webView?.url?.absoluteString
 
+        let output = [actionOutput, recoveryNotice].compactMap { $0 }.joined(separator: " ")
+        recoveryNotice = nil
         return BrowserAutomationResult(
             state: state,
             screenshot: screenshot,
             currentURL: currentURL,
-            output: actionOutput
+            output: output
         )
     }
 
-    private func readBrowserPageState(maxVisibleTextChars: Int = 1800, maxElementsPerSection: Int = 12) async throws -> BrowserPageState {
-        let script = """
-        (function() {
-            function normalizeText(value) {
-                return (value || '').replace(/\\s+/g, ' ').trim();
-            }
+    private func readBrowserPageState() async throws -> BrowserPageState {
+        let value = try await evaluateJavaScript(BrowserDOM.script(action: "read", arguments: ["snapshotId": UUID().uuidString]))
+        guard let object = value.value as? [String: Any] else { throw ComputerUseError.invalidResponse }
+        return try JSONDecoder().decode(BrowserPageState.self, from: JSONSerialization.data(withJSONObject: object))
+    }
 
-            function isVisible(el) {
-                if (!el) return false;
-                var style = window.getComputedStyle(el);
-                if (!style) return false;
-                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
-                    return false;
-                }
-                var rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0;
-            }
-
-            function textOf(el) {
-                if (!el) return '';
-                return normalizeText(el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('value') || '');
-            }
-
-            function labelForInput(el) {
-                if (!el) return '';
-                var aria = normalizeText(el.getAttribute('aria-label') || '');
-                if (aria) return aria;
-                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
-                if (placeholder) return placeholder;
-                if (el.labels && el.labels.length > 0) {
-                    var labelText = normalizeText(Array.from(el.labels).map(function(label){ return label.innerText || label.textContent || ''; }).join(' '));
-                    if (labelText) return labelText;
-                }
-                if (el.id) {
-                    var explicitLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
-                    var explicitText = normalizeText(explicitLabel ? (explicitLabel.innerText || explicitLabel.textContent || '') : '');
-                    if (explicitText) return explicitText;
-                }
-                var name = normalizeText(el.getAttribute('name') || '');
-                if (name) return name;
-                return normalizeText(el.id || el.tagName || '');
-            }
-
-            function takeUnique(items) {
-                var seen = new Set();
-                return items.filter(function(item) {
-                    var key = JSON.stringify(item);
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
-            }
-
-            function describeElements(selector, mapper) {
-                return takeUnique(Array.from(document.querySelectorAll(selector))
-                    .filter(isVisible)
-                    .map(mapper)
-                    .filter(function(item) { return item && item.text; }))
-                    .slice(0, \(maxElementsPerSection));
-            }
-
-            var bodyText = normalizeText(document.body ? (document.body.innerText || document.body.textContent || '') : '');
-            if (bodyText.length > \(maxVisibleTextChars)) {
-                bodyText = bodyText.slice(0, \(maxVisibleTextChars)) + '…';
-            }
-
-            var headings = takeUnique(Array.from(document.querySelectorAll('h1, h2, h3'))
-                .filter(isVisible)
-                .map(function(el) { return textOf(el); })
-                .filter(Boolean))
-                .slice(0, \(maxElementsPerSection));
-
-            var buttons = describeElements('button, [role="button"], input[type="button"], input[type="submit"], summary', function(el) {
-                return {
-                    text: textOf(el),
-                    hint: normalizeText(el.getAttribute('aria-label') || el.getAttribute('title') || ''),
-                    type: normalizeText(el.getAttribute('type') || el.tagName.toLowerCase()),
-                    href: null,
-                    role: normalizeText(el.getAttribute('role') || el.tagName.toLowerCase())
-                };
-            });
-
-            var links = describeElements('a[href]', function(el) {
-                return {
-                    text: textOf(el),
-                    hint: normalizeText(el.getAttribute('title') || el.getAttribute('aria-label') || ''),
-                    type: 'link',
-                    href: el.href || null,
-                    role: normalizeText(el.getAttribute('role') || 'link')
-                };
-            });
-
-            var inputs = describeElements('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]', function(el) {
-                var inputType = normalizeText(el.getAttribute('type') || (el.tagName ? el.tagName.toLowerCase() : 'input'));
-                return {
-                    text: labelForInput(el),
-                    hint: normalizeText(el.getAttribute('placeholder') || el.getAttribute('aria-label') || ''),
-                    type: inputType,
-                    href: null,
-                    role: normalizeText(el.getAttribute('role') || (inputType === 'search' ? 'searchbox' : 'textbox'))
-                };
-            });
-
-            return {
-                url: window.location.href || null,
-                title: normalizeText(document.title || ''),
-                readyState: document.readyState || 'unknown',
-                visibleTextPreview: bodyText,
-                headings: headings,
-                buttons: buttons,
-                links: links,
-                inputs: inputs
-            };
-        })();
-        """
-
-        let rawState = (try await evaluateJavaScript(script)).value
-
-        guard let stateObject = rawState as? [String: Any],
-              JSONSerialization.isValidJSONObject(stateObject) else {
+    private func domAction(_ action: String, arguments: [String: Any]) async throws -> String {
+        let result = try await evaluateJavaScript(BrowserDOM.script(action: action, arguments: arguments))
+        guard let object = result.value as? [String: Any], let success = object["ok"] as? Bool else {
             throw ComputerUseError.invalidResponse
         }
-
-        let data = try JSONSerialization.data(withJSONObject: stateObject, options: [])
-        return try JSONDecoder().decode(BrowserPageState.self, from: data)
+        let message = object["message"] as? String ?? "Browser action failed. Read the page before retrying."
+        guard success else { throw ComputerUseError.targetUnavailable(message) }
+        return message
     }
 
-    private func waitForNavigationToSettle(timeoutMs: Int = 5000, minimumProgress: Double = 0.85) async throws {
-        guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
-
-        let start = Date()
-        while Date().timeIntervalSince(start) * 1000 < Double(timeoutMs) {
-            try await waitForDomReadyAndPaint(timeoutMs: 800)
-
-            let elapsedMs = Date().timeIntervalSince(start) * 1000
-            let isLoading = webView.isLoading
-            let progress = webView.estimatedProgress
-            let progressString = String(format: "%.2f", progress)
-            let hasMeaningfulContent = (try? await pageHasMeaningfulVisibleContent()) ?? false
-
-            if (!isLoading && progress >= minimumProgress)
-                || (!isLoading && hasMeaningfulContent)
-                || (hasMeaningfulContent && progress >= 0.95)
-                || (hasMeaningfulContent && elapsedMs >= 1200 && progress >= 0.5) {
-                AppLogger.log(
-                    "✅ [Navigation] Settled page load: loading=\(isLoading), progress=\(progressString), meaningful=\(hasMeaningfulContent)",
-                    category: .general,
-                    level: .debug
-                )
-                return
+    private func evaluateActionScript(_ script: String) async throws {
+        let value = try await evaluateJavaScript(script)
+        if let message = value.value as? String {
+            let normalized = message.lowercased()
+            if normalized.hasPrefix("no ") || normalized.contains("failed") || normalized.hasPrefix("unsupported") {
+                throw ComputerUseError.targetUnavailable(message)
             }
-
-            try? await Task.sleep(nanoseconds: 150_000_000)
         }
-
-        let timeoutProgressString = String(format: "%.2f", webView.estimatedProgress)
-        AppLogger.log(
-            "⚠️ [Navigation] Timed out waiting for page settle: loading=\(webView.isLoading), progress=\(timeoutProgressString)",
-            category: .general,
-            level: .warning
-        )
     }
 
-    private nonisolated static func isSearchLikeFieldHint(_ fieldHint: String?) -> Bool {
-        let normalized = fieldHint?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
-
-        guard !normalized.isEmpty else { return false }
-
-        let searchKeywords = ["search", "query", "find", "look up", "lookup"]
-        return searchKeywords.contains { normalized.contains($0) }
-    }
-
-    private nonisolated static func isKnownSearchHost(_ host: String?) -> Bool {
-        let normalizedHost = host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        guard !normalizedHost.isEmpty else { return false }
-
-        let knownHosts = ["google", "bing", "duckduckgo", "amazon", "youtube", "github"]
-        return knownHosts.contains { normalizedHost.contains($0) }
-    }
-
-    private nonisolated static func shouldPreferProgrammaticSearchSubmission(fieldHint: String?, submit: Bool, currentURL: URL?) -> Bool {
-        guard submit else { return false }
-
-        if isSearchLikeFieldHint(fieldHint) {
-            return true
+    private func boundedCallback<T>(label: String, start: (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
+        try Task.checkCancellation()
+        let id = UUID()
+        let callback = BrowserCallback<T>()
+        defer { pendingCallbacks.removeValue(forKey: id) }
+        return try await callback.wait(timeout: .seconds(6), label: label) { finish in
+            pendingCallbacks[id] = { finish(.failure($0)) }
+            start(finish)
         }
-
-        let trimmedFieldHint = fieldHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if trimmedFieldHint.isEmpty, isKnownSearchHost(currentURL?.host) {
-            return true
-        }
-
-        return false
     }
 
-    private func pageHasMeaningfulVisibleContent(minTextLength: Int = 80, minInteractiveCount: Int = 3) async throws -> Bool {
-        let script = """
-        (function() {
-            function isVisible(el) {
-                if (!el) return false;
-                var style = window.getComputedStyle(el);
-                if (!style) return false;
-                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
-                    return false;
-                }
-                var rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            }
-
-            var text = ((document.body && (document.body.innerText || document.body.textContent)) || '').replace(/\\s+/g, ' ').trim();
-            var interactiveCount = Array.from(document.querySelectorAll('a[href], button, input:not([type="hidden"]), textarea, [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [contenteditable="true"]'))
-                .filter(isVisible)
-                .length;
-            var headingCount = Array.from(document.querySelectorAll('h1, h2, h3')).filter(isVisible).length;
-            var title = (document.title || '').trim();
-
-            return {
-                textLength: text.length,
-                interactiveCount: interactiveCount,
-                headingCount: headingCount,
-                titleLength: title.length
-            };
-        })();
-        """
-
-        guard let result = (try await evaluateJavaScript(script)).value as? [String: Any] else {
-            return false
-        }
-
-        let textLength = Self.valueAsDouble(result["textLength"]) ?? 0
-        let interactiveCount = Self.valueAsDouble(result["interactiveCount"]) ?? 0
-        let headingCount = Self.valueAsDouble(result["headingCount"]) ?? 0
-        let titleLength = Self.valueAsDouble(result["titleLength"]) ?? 0
-
-        return textLength >= Double(minTextLength)
-            || interactiveCount >= Double(minInteractiveCount)
-            || headingCount >= 1
-            || titleLength >= 8
-    }
-
-    private func clickVisibleElement(matching text: String) async throws -> String {
-        let escaped = text.sanitizedForJS()
-        let script = """
-        (function() {
-            function normalizeText(value) {
-                return (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-            }
-
-            function isVisible(el) {
-                if (!el) return false;
-                var style = window.getComputedStyle(el);
-                if (!style) return false;
-                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
-                    return false;
-                }
-                var rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            }
-
-            function textOf(el) {
-                return (el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('value') || '').replace(/\\s+/g, ' ').trim();
-            }
-
-            var target = normalizeText('\(escaped)');
-            var candidates = Array.from(document.querySelectorAll('a[href], button, [role="button"], input[type="button"], input[type="submit"], summary, label'))
-                .filter(isVisible)
-                .map(function(el) {
-                    var text = textOf(el);
-                    var normalized = normalizeText(text);
-                    var exact = normalized === target;
-                    var contains = normalized.includes(target) || normalizeText(el.getAttribute('aria-label') || '').includes(target);
-                    var score = exact ? 100 : (contains ? 70 - Math.max(0, normalized.length - target.length) : -1);
-                    return { el: el, text: text, score: score };
-                })
-                .filter(function(candidate) { return candidate.score >= 0; })
-                .sort(function(lhs, rhs) { return rhs.score - lhs.score; });
-
-            if (!candidates.length) {
-                return { clicked: false, message: 'No visible control matched "\(escaped)".' };
-            }
-
-            var best = candidates[0].el;
-            var label = candidates[0].text || best.getAttribute('aria-label') || best.getAttribute('title') || best.tagName;
-
-            try { best.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' }); } catch (e) {}
-            try { if (best.focus) best.focus({ preventScroll: true }); } catch (e) { if (best.focus) best.focus(); }
-            try {
-                ['mousedown', 'mouseup', 'click'].forEach(function(type) {
-                    best.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
-                });
-            } catch (e) {}
-            try { if (best.click) best.click(); } catch (e) {}
-
-            return { clicked: true, message: 'Clicked "' + label + '".' };
-        })();
-        """
-
-        if let result = (try await evaluateJavaScript(script)).value as? [String: Any],
-           let message = result["message"] as? String {
-            return message
-        }
-
-        return "Attempted to click \(text)."
-    }
-
-    private func typeIntoVisibleField(text: String, fieldHint: String?, submit: Bool) async throws -> String {
-        let escapedText = text.sanitizedForJS()
-        let escapedHint = fieldHint?.trimmingCharacters(in: .whitespacesAndNewlines).sanitizedForJS() ?? ""
-        let submitLiteral = submit ? "true" : "false"
-        let script = """
-        (function() {
-            function normalizeText(value) {
-                return (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-            }
-
-            function isVisible(el) {
-                if (!el) return false;
-                var style = window.getComputedStyle(el);
-                if (!style) return false;
-                if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none' || parseFloat(style.opacity || '1') === 0) {
-                    return false;
-                }
-                var rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            }
-
-            function isEditable(el) {
-                if (!el) return false;
-                if (el.isContentEditable) return true;
-                var tag = (el.tagName || '').toUpperCase();
-                if (tag === 'TEXTAREA') return true;
-                if (tag !== 'INPUT') return false;
-                var type = (el.getAttribute('type') || 'text').toLowerCase();
-                return ['button','submit','checkbox','radio','file','hidden','image','range','color'].indexOf(type) === -1;
-            }
-
-            function labelForInput(el) {
-                var aria = normalizeText(el.getAttribute('aria-label') || '');
-                if (aria) return aria;
-                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
-                if (placeholder) return placeholder;
-                if (el.labels && el.labels.length > 0) {
-                    var labelText = normalizeText(Array.from(el.labels).map(function(label){ return label.innerText || label.textContent || ''; }).join(' '));
-                    if (labelText) return labelText;
-                }
-                if (el.id) {
-                    var explicitLabel = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
-                    var explicitText = normalizeText(explicitLabel ? (explicitLabel.innerText || explicitLabel.textContent || '') : '');
-                    if (explicitText) return explicitText;
-                }
-                var name = normalizeText(el.getAttribute('name') || '');
-                if (name) return name;
-                return normalizeText(el.id || el.tagName || '');
-            }
-
-            function describe(el) {
-                return labelForInput(el) || normalizeText(el.getAttribute('placeholder') || '') || normalizeText(el.getAttribute('aria-label') || '') || normalizeText(el.tagName || 'field');
-            }
-
-            function fireInputEvents(el) {
-                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
-                try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
-            }
-
-            var targetHint = normalizeText('\(escapedHint)');
-            var targetText = '\(escapedText)';
-            var shouldSubmit = \(submitLiteral);
-            var activeElement = document.activeElement;
-            var candidates = Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"], [role="textbox"], [role="searchbox"]'))
-                .filter(function(el) { return isVisible(el) && isEditable(el); });
-
-            var best = null;
-            var bestScore = -1;
-
-            candidates.forEach(function(el, index) {
-                var descriptor = describe(el);
-                var placeholder = normalizeText(el.getAttribute('placeholder') || '');
-                var aria = normalizeText(el.getAttribute('aria-label') || '');
-                var fieldType = normalizeText(el.getAttribute('type') || 'text');
-                var score = 0;
-
-                if (el === activeElement && isEditable(el)) score += 40;
-                if (fieldType === 'search' || placeholder.includes('search') || aria.includes('search') || descriptor.includes('search')) score += 10;
-
-                if (targetHint) {
-                    if (descriptor === targetHint || placeholder === targetHint || aria === targetHint) {
-                        score += 100;
-                    } else if (descriptor.includes(targetHint) || placeholder.includes(targetHint) || aria.includes(targetHint)) {
-                        score += 70;
-                    } else {
-                        score -= 5;
-                    }
-                }
-
-                score -= Math.min(index, 10);
-
-                if (score > bestScore) {
-                    best = el;
-                    bestScore = score;
-                }
-            });
-
-            if (!best) {
-                return { typed: false, message: 'No visible input matched the requested field.' };
-            }
-
-            try { best.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' }); } catch (e) {}
-            try { if (best.focus) best.focus({ preventScroll: true }); } catch (e) { if (best.focus) best.focus(); }
-
-            if (best.isContentEditable) {
-                best.textContent = targetText;
-                fireInputEvents(best);
-            } else {
-                try { if (typeof best.select === 'function') best.select(); } catch (e) {}
-                best.value = targetText;
-                fireInputEvents(best);
-            }
-
-            if (shouldSubmit) {
-                if (best.form && typeof best.form.requestSubmit === 'function') {
-                    try { best.form.requestSubmit(); } catch (e) {}
-                } else if (best.form) {
-                    try { best.form.submit(); } catch (e) {}
-                } else {
-                    try {
-                        best.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-                        best.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-                    } catch (e) {}
-                }
-            }
-
-            var description = describe(best) || 'field';
-            return {
-                typed: true,
-                message: (shouldSubmit ? 'Filled and submitted ' : 'Filled ') + '"' + description + '".'
-            };
-        })();
-        """
-
-        if let result = (try await evaluateJavaScript(script)).value as? [String: Any],
-           let message = result["message"] as? String {
-            return message
-        }
-
-        return submit ? "Filled a field and submitted it." : "Filled a field."
-    }
-
-    /// Evaluates a JavaScript string in the web view.
     private func evaluateJavaScript(_ script: String) async throws -> JavaScriptResult {
-        try await withCheckedThrowingContinuation { continuation in
-            self.javascriptContinuation = continuation
-            self.webView?.evaluateJavaScript(script) { result, error in
-                if let error = error {
-                    self.javascriptContinuation?.resume(throwing: ComputerUseError.javascriptError(error.localizedDescription))
-                } else {
-                    self.javascriptContinuation?.resume(returning: JavaScriptResult(value: result))
-                }
-                self.javascriptContinuation = nil
+        try Task.checkCancellation()
+        guard let webView else { throw ComputerUseError.webViewNotAvailable }
+        if let pageError { throw pageError }
+        return try await boundedCallback(label: "page script") { finish in
+            webView.evaluateJavaScript(script, in: nil, in: automationWorld) { result in
+                finish(result.map { JavaScriptResult(value: $0) })
             }
         }
     }
 
-    /// Ensures the WKWebView has loaded at least a minimal document so snapshots succeed reliably.
     private func ensureWebViewReady() async throws {
-        guard let webView = webView else { throw ComputerUseError.webViewNotAvailable }
-        if webView.url == nil && !(webView.isLoading) {
-            let html = """
-            <html><head><meta name=viewport content="initial-scale=1.0"></head>
-            <body style='background:#ffffff;height:100vh;'></body></html>
-            """
-            try await withCheckedThrowingContinuation { continuation in
-                self.navigationContinuation = continuation
-                webView.loadHTMLString(html, baseURL: nil)
-            }
+        try Task.checkCancellation()
+        guard let webView else { throw ComputerUseError.webViewNotAvailable }
+        if webView.url == nil && !webView.isLoading {
+            try await loadNavigation { webView.loadHTMLString("<html><head><meta name='viewport' content='width=device-width, initial-scale=1'></head><body></body></html>", baseURL: nil) }
         }
-        // Give WebKit a moment to render
-        try? await Task.sleep(nanoseconds: 120_000_000) // 120ms
     }
 
-    /// Waits until the DOM is ready and at least one paint has occurred, to avoid blank captures.
-    private func waitForDomReadyAndPaint(timeoutMs: Int = 3000) async throws {
-        print("⏳ [DOM Debug] Starting DOM ready check...")
-        let start = Date()
-        while Date().timeIntervalSince(start) * 1000 < Double(timeoutMs) {
-            do {
-                let ready: Bool = try await withCheckedThrowingContinuation { cont in
-                    let js = """
-                    (function() {
-                        try { if (document.visibilityState === 'prerender') return false; } catch(e) {}
-                        var rs = document.readyState;
-                        var painted = false;
-                        try {
-                            painted = (window.innerWidth>0 && window.innerHeight>0 && document.body && document.body.getBoundingClientRect().height>0);
-                        } catch(e) { painted = false; }
-                        var result = (rs === 'interactive' || rs === 'complete') && painted;
-                        console.log('DOM Check - readyState:', rs, 'painted:', painted, 'result:', result);
-                        return result;
-                    })();
-                    """
-                    self.webView?.evaluateJavaScript(js) { result, error in
-                        if let error = error {
-                            print("⏳ [DOM Debug] JS error: \(error)")
-                            cont.resume(returning: false)
-                        }
-                        else {
-                            let isReady = (result as? Bool) ?? false
-                            print("⏳ [DOM Debug] DOM ready result: \(isReady)")
-                            cont.resume(returning: isReady)
+    /// Wait for a stable, usable document, rather than treating estimated download progress as readiness.
+    private func waitForNavigationToSettle(timeoutMs: Int = 5000, minimumProgress: Double = 0.85) async throws {
+        try await waitForDomReadyAndPaint(timeoutMs: timeoutMs)
+    }
+
+    private func waitForDomReadyAndPaint(timeoutMs: Int = 5000) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .milliseconds(timeoutMs))
+        var previous: String?
+        var stableSince = clock.now
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            let result = try await evaluateJavaScript("""
+            (() => {
+              if (!document.body || document.readyState === 'loading' || innerWidth <= 0) return null;
+              return JSON.stringify([location.href, document.readyState, document.body.scrollHeight,
+                document.body.innerText.length, document.querySelectorAll('a,button,input').length]);
+            })()
+            """)
+            let state = result.value as? String
+            if state != nil && state == previous {
+                if stableSince.duration(to: clock.now) >= .milliseconds(300) {
+                    // callAsyncJavaScript awaits promises; evaluateJavaScript(requestAnimationFrame(...)) does not.
+                    guard let webView else { throw ComputerUseError.webViewNotAvailable }
+                    let _: JavaScriptResult = try await boundedCallback(label: "page paint") { finish in
+                        webView.callAsyncJavaScript("await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;", arguments: [:], in: nil, in: automationWorld) { result in
+                            finish(result.map { JavaScriptResult(value: $0) })
                         }
                     }
-                }
-                if ready {
-                    print("⏳ [DOM Debug] DOM is ready! Requesting animation frames...")
-                    // Two RAFs to ensure a paint frame has been presented
-                    _ = try? await evaluateJavaScript("requestAnimationFrame(()=>requestAnimationFrame(()=>{}))")
-                    print("⏳ [DOM Debug] Animation frames completed")
                     return
                 }
-            } catch {
-                print("⏳ [DOM Debug] Exception during check: \(error)")
-                // ignore and retry
-            }
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            } else { previous = state; stableSince = clock.now }
+            try await Task.sleep(for: .milliseconds(100))
         }
-        print("⏳ [DOM Debug] Timeout reached after \(timeoutMs)ms")
+        throw ComputerUseError.timedOut("stable page content")
     }
 
-    // MARK: - WKNavigationDelegate
-
-    /// Called when a web view navigation finishes. Resumes the continuation for the `navigate` action.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        navigationContinuation?.resume(returning: ())
-        navigationContinuation = nil
+        guard self.webView === webView, let navigation else { return }
+        if activeNavigationID == ObjectIdentifier(navigation) { activeNavigationID = nil }
+        navigations.removeValue(forKey: ObjectIdentifier(navigation))?(.success(()))
     }
 
-    /// Called when a web view navigation fails. Resumes the continuation by throwing an error.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        navigationContinuation?.resume(throwing: ComputerUseError.navigationFailed(error))
-        navigationContinuation = nil
+        guard self.webView === webView, let navigation else { return }
+        if activeNavigationID == ObjectIdentifier(navigation) { activeNavigationID = nil }
+        navigations.removeValue(forKey: ObjectIdentifier(navigation))?(.failure(pageError ?? ComputerUseError.navigationFailed(error)))
     }
 
-    /// Called when a provisional navigation fails. Resumes the continuation by throwing an error.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        navigationContinuation?.resume(throwing: ComputerUseError.navigationFailed(error))
-        navigationContinuation = nil
+        self.webView(webView, didFail: navigation, withError: error)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard self.webView === webView else { decisionHandler(.cancel); return }
+        guard !execution.approvalPending else { decisionHandler(.cancel); return }
+        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+        // The empty document is generated internally, never accepted by browserNavigate.
+        if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
+        do {
+            try BrowserNavigationPolicy.validate(url)
+            if navigationAction.targetFrame?.isMainFrame != false { try navigationPolicy.admit(url) }
+            decisionHandler(.allow)
+        } catch {
+            if navigationAction.targetFrame?.isMainFrame != false { pageError = error }
+            decisionHandler(.cancel)
+        }
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // Follow ordinary target=_blank links in the same persistent session.
+        guard self.webView === webView, !execution.approvalPending, navigationAction.targetFrame == nil,
+              let url = navigationAction.request.url else { return nil }
+        do { try navigationPolicy.admit(url); webView.load(navigationAction.request) }
+        catch { pageError = error }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+        guard self.webView === webView, let url = webView.url else { return }
+        do { try navigationPolicy.admit(url) }
+        catch {
+            pageError = error
+            webView.stopLoading()
+            failPendingCallbacks(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        guard self.webView === webView else { decisionHandler(.cancel); return }
+        if navigationResponse.isForMainFrame {
+            lastHTTPStatus = (navigationResponse.response as? HTTPURLResponse)?.statusCode
+            if !navigationResponse.canShowMIMEType {
+                let error = ComputerUseError.targetUnavailable("This destination is a download the browser cannot display. Open or import the file explicitly.")
+                pageError = error
+                decisionHandler(.cancel)
+                failPendingCallbacks(error)
+                return
+            }
+        }
+        decisionHandler(.allow)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard self.webView === webView else { return }
+        pageError = ComputerUseError.processTerminated
+        execution.abort(ComputerUseError.processTerminated)
+        lastHTTPStatus = nil
+        recoveryNotice = "The browser restarted after its content process stopped. The interrupted action was not replayed."
+        failPendingCallbacks(ComputerUseError.processTerminated)
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.removeFromSuperview()
+        self.webView = nil
+        unregisterAttachObservers()
+        // Recreate lazily on the next action. Never replay the interrupted action.
     }
 }
 
@@ -2210,14 +1271,6 @@ extension ComputerService {
 
     nonisolated static func testing_searchResultsURL(siteKeyword: String, query: String) -> String? {
         searchResultsURL(forSiteKeyword: siteKeyword, query: query)?.absoluteString
-    }
-
-    nonisolated static func testing_shouldPreferProgrammaticSearch(fieldHint: String?, submit: Bool, currentURL: String?) -> Bool {
-        shouldPreferProgrammaticSearchSubmission(
-            fieldHint: fieldHint,
-            submit: submit,
-            currentURL: currentURL.flatMap(URL.init(string:))
-        )
     }
 
     nonisolated static func testing_mouseButtonCode(_ value: Any?) -> Int {

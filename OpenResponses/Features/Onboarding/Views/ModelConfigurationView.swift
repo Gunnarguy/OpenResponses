@@ -67,6 +67,10 @@ struct ModelConfigurationView: View {
                     activePrompt.reasoningEffort = defaultReasoningEffort
                 }
 
+                if supportsReasoning {
+                    activePrompt.reasoningEffort = CurrentModelCatalog.normalizedEffort(activePrompt.reasoningEffort, model: newModel)
+                }
+
                 if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
                     activePrompt.includeReasoningContent = true
                 } else if !supportsReasoning && activePrompt.includeReasoningContent {
@@ -252,24 +256,7 @@ struct ModelConfigurationView: View {
     }
 
     private func reasoningEffortOptions(for modelId: String) -> [String] {
-        let id = modelId.lowercased()
-        if id.hasPrefix("gpt-5.6") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-        }
-        if id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.2" || id == "gpt-5.2-pro" || id.hasPrefix("gpt-5.2-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.1" || id.hasPrefix("gpt-5.1-") {
-            return ["none", "minimal", "low", "medium", "high"]
-        }
-        // Default for other reasoning-capable models in this app.
-        return ["minimal", "low", "medium", "high"]
+        CurrentModelCatalog.reasoningEfforts(for: modelId)
     }
 
     private func optionDisplayName(_ option: String) -> String {
@@ -315,14 +302,21 @@ struct ModelConfigurationView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
-            TextField("Optional reasoning approach guide", text: $activePrompt.reasoningSummary)
-                .textFieldStyle(.roundedBorder)
+            Picker("Summary detail", selection: Binding(
+                get: { ["auto", "concise", "detailed"].contains(activePrompt.reasoningSummary) ? activePrompt.reasoningSummary : "" },
+                set: { activePrompt.reasoningSummary = $0 }
+            )) {
+                Text("Off").tag("")
+                Text("Automatic").tag("auto")
+                Text("Concise").tag("concise")
+                Text("Detailed").tag("detailed")
+            }
                 .disabled(activePrompt.enablePublishedPrompt)
                 .onChange(of: activePrompt.reasoningSummary) { _, _ in
                     onSave()
                 }
 
-            Text("Guide how the model should approach complex problems")
+            Text("Request a summary of the model’s reasoning. Availability depends on the selected model.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
@@ -428,7 +422,7 @@ struct ModelConfigurationView: View {
             Toggle("Strict Validation", isOn: $activePrompt.jsonSchemaStrict)
                 .font(.caption)
 
-            TextEditor(text: $activePrompt.jsonSchemaContent)
+            JSONCodeEditor(text: $activePrompt.jsonSchemaContent, label: "Output JSON schema")
                 .frame(minHeight: 140)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)

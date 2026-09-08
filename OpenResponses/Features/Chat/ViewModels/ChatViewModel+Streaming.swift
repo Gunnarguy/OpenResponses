@@ -37,6 +37,7 @@ extension ChatViewModel {
         case "response.content_part.done":
             handleContentPartDoneChunk(chunk, messageId: messageId)
         case "response.output_item.done":
+            if chunk.item?.type == "mcp_list_tools" { handleMCPListToolsChunk(chunk, messageId: messageId) }
             handleOutputItemDoneChunk(chunk, messageId: messageId)
         case "response.output_item.delta":
             handleOutputItemDeltaChunk(chunk, messageId: messageId)
@@ -54,6 +55,7 @@ extension ChatViewModel {
         case "response.output_item.added":
             handleOutputItemAddedChunk(chunk, messageId: messageId)
         case "response.output_item.completed":
+            if chunk.item?.type == "mcp_list_tools" { handleMCPListToolsChunk(chunk, messageId: messageId) }
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
         case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             handleMCPListToolsChunk(chunk, messageId: messageId)
@@ -349,7 +351,7 @@ extension ChatViewModel {
                 }
 
                 // Check for completed function calls that weren't processed during streaming
-                if item.type == "function_call" && item.status?.lowercased() == "completed" {
+                if managedResponseMessageId != messageId, item.type == "function_call" && item.status?.lowercased() == "completed" {
                     let callId = item.id // StreamingOutputItem uses just 'id', not 'callId'
                     let isCompleted = callId.isEmpty ? false : self.isCallCompleted(callId)
                     let isPending = callId.isEmpty ? false : self.isCallPending(callId)
@@ -373,6 +375,8 @@ extension ChatViewModel {
                 usage.input = finalUsage.inputTokens
                 usage.output = finalUsage.outputTokens
                 usage.total = finalUsage.totalTokens
+                usage.cachedInput = finalUsage.inputTokenDetails?.cachedTokens
+                usage.cacheWrite = finalUsage.inputTokenDetails?.cacheWriteTokens
                 usage.estimatedOutput = nil
             } else {
                 let finalText = updated[msgIndex].text ?? ""
@@ -421,7 +425,7 @@ extension ChatViewModel {
 
         // If the response contains a message-type output (not just function_call), the AI has finished
         // the function calling cycle and we should clear pending function call tracking
-        if let outputItems = chunk.response?.output {
+        if managedResponseMessageId != messageId, let outputItems = chunk.response?.output {
             let hasMessageOutput = outputItems.contains { $0.type == "message" }
             if hasMessageOutput {
                 AppLogger.log("✅ [Streaming] Response contains message output - clearing pending function calls", category: .streaming, level: .info)
@@ -432,7 +436,9 @@ extension ChatViewModel {
         // Check if we have pending function calls that will stream their outputs
         AppLogger.log("🔄 [Streaming] Completion state check: pendingFunctionCallCount=\(pendingFunctionCallCount), pendingParallelCallCount=\(pendingParallelCallCount), isAwaitingComputerOutput=\(isAwaitingComputerOutput), hasPendingFunctionCalls=\(hasPendingFunctionCalls)", category: .streaming, level: .info)
 
-        if !isAwaitingComputerOutput, !hasPendingFunctionCalls {
+        if managedResponseMessageId == messageId {
+            // The runner owns completion across all tool rounds, including text plus async calls.
+        } else if !isAwaitingComputerOutput, !hasPendingFunctionCalls {
             AppLogger.log("🔄 [Streaming] Setting streamingMessageId=nil (no pending work)", category: .streaming, level: .info)
             isStreaming = false
             streamingStatus = .idle
@@ -471,7 +477,7 @@ extension ChatViewModel {
             }
         }
 
-        if (messages[msgIndex].images?.isEmpty ?? true), let finalId = lastResponseId {
+        if managedResponseMessageId != messageId, (messages[msgIndex].images?.isEmpty ?? true), let finalId = lastResponseId {
             Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -585,7 +591,7 @@ extension ChatViewModel {
             cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             trackToolUsage(item, for: messageId)
             
-            if ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
+            if !(managedResponseMessageId == messageId && item.type == "function_call"), ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
                 let name = item.name ?? item.serverLabel ?? item.type
                 upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .queued)
             }
@@ -598,7 +604,7 @@ extension ChatViewModel {
             cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             handleCompletedStreamingItem(item, for: messageId)
             
-            if ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
+            if !(managedResponseMessageId == messageId && item.type == "function_call"), ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
                 let name = item.name ?? item.serverLabel ?? item.type
                 upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .completed, arguments: item.arguments)
             }
@@ -624,7 +630,7 @@ extension ChatViewModel {
         let inlineError = chunk.error
 
         // Handle cases where the list_tools call itself fails.
-        if status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
+        if chunk.type == "response.mcp_list_tools.failed" || status == "failed" || structuredError != nil || (inlineError?.isEmpty == false) {
             let errorDescription = describeMCPError(status: status, stringError: inlineError, structuredError: structuredError)
             AppLogger.log("Server '\(serverLabel)' failed to list tools: \(errorDescription)", category: .mcp, level: .error)
             logActivity("MCP: \(serverLabel) list_tools failed - \(errorDescription)")
@@ -651,8 +657,9 @@ extension ChatViewModel {
 
         lastMCPListToolsError.removeValue(forKey: serverLabel)
 
-        let discoveredTools = chunk.tools ?? chunk.item?.tools
-        let toolCount = discoveredTools?.count ?? 0
+        // Lifecycle events do not contain schemas. An absent array is not an empty catalog.
+        guard let discoveredTools = chunk.tools ?? chunk.item?.tools else { return }
+        let toolCount = discoveredTools.count
         AppLogger.log("Server '\(serverLabel)' listed \(toolCount) available tools.", category: .mcp, level: .info)
 
         // If the server explicitly reports zero tools, inform the user and prevent subsequent calls.
@@ -665,17 +672,7 @@ extension ChatViewModel {
         }
 
         // Store tools in the registry for future reference.
-        if let tools = discoveredTools {
-            mcpToolRegistry[serverLabel] = tools
-
-            // Log each tool for debugging.
-            for tool in tools {
-                if let name = tool["name"]?.value as? String {
-                    let description = (tool["description"]?.value as? String) ?? "No description"
-                    AppLogger.log("  - Registered Tool: \(name): \(description)", category: .mcp, level: .debug)
-                }
-            }
-        }
+        mcpToolRegistry[serverLabel] = discoveredTools
 
         logActivity("MCP: \(serverLabel) has \(toolCount) tools available")
         trackToolUsage(for: messageId, tool: "mcp")
@@ -1143,6 +1140,12 @@ extension ChatViewModel {
         // 2. Fall back to the label on the nested `item` object.
         if let alternate = trimmedIfNotEmpty(itemServerLabel) {
             return (alternate, false)
+        }
+        if let ids = activePrompt.currentOptions.mcpConnectionIDs {
+            if ids.count == 1, let connection = MCPConnectionStore.shared.connections.first(where: { $0.id == ids.first }) {
+                return (connection.serverLabel, true)
+            }
+            return ("MCP \(fallbackId.map { String($0.prefix(6)) } ?? "Server")", true)
         }
         // 3. Use the last seen MCP server label in this streaming session.
         if let cached = trimmedIfNotEmpty(lastMCPServerLabel) {

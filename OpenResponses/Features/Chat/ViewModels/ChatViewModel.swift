@@ -23,7 +23,7 @@ class ChatViewModel: ObservableObject {
     @Published var activePrompt: Prompt
     @Published var errorMessage: String?
     @Published var isConnectedToNetwork: Bool = true
-    /// When enabled and no OpenAI API key is configured, the app simulates responses locally.
+    /// When enabled, the app simulates responses locally even if an API key is configured.
     /// This is designed to let new users explore the UI without requiring credentials.
     @Published var exploreModeEnabled: Bool = UserDefaults.standard.bool(forKey: "exploreModeEnabled")
     @Published var currentModelCompatibility: [ModelCompatibilityService.ToolCompatibility] = []
@@ -35,7 +35,10 @@ class ChatViewModel: ObservableObject {
     @Published var currentStreamGeneration: UUID = UUID()
     // Computer-use preview removed
     /// When non-nil, a safety confirmation is required before proceeding with a computer-use action.
-    @Published var pendingSafetyApproval: SafetyApprovalRequest?
+    private var browserTurnMessageId: UUID?
+    @Published var pendingSafetyApproval: SafetyApprovalRequest? {
+        didSet { computerService.setApprovalPending(pendingSafetyApproval != nil) }
+    }
     /// When non-nil, the user must approve first-send OpenAI data sharing before a live request is sent.
     @Published var pendingAIDataSharingConsent: AIDataSharingConsentRequest?
     
@@ -63,6 +66,7 @@ class ChatViewModel: ObservableObject {
     private let storageService: ConversationStorageService
     private let backgroundPollIntervalNanoseconds: UInt64
     var streamingMessageId: UUID?
+    var managedResponseMessageId: UUID?
     private var cancellables = Set<AnyCancellable>()
     private var streamingTask: Task<Void, Never>?
     private var activeBackgroundResponseId: String?
@@ -99,6 +103,8 @@ class ChatViewModel: ObservableObject {
     private var functionOutputSummariesByMessageId: [UUID: [String]] = [:]
 
     /// Batches parallel function calls that need to be sent together
+    private var expectedFunctionCallCounts: [String: Int] = [:]
+    private var sendingFunctionBatches = Set<String>()
     private var pendingParallelCalls: [String: [OutputItem]] = [:]  // responseId -> [calls]
     private var parallelCallOutputs: [String: [String: String]] = [:]  // responseId -> [callId: output]
     private var parallelCallBatchTimer: [String: DispatchWorkItem] = [:]
@@ -463,7 +469,8 @@ class ChatViewModel: ObservableObject {
                 activePrompt.enableImageGeneration ||
                 activePrompt.enableComputerUse ||
                 activePrompt.enableNotionIntegration ||
-                activePrompt.enableAppleIntegrations
+                activePrompt.enableAppleIntegrations || activePrompt.enableCustomTool ||
+                activePrompt.enableMCPTool || activePrompt.currentOptions.hostedShell || activePrompt.currentOptions.programmaticTools
         )
     }
 
@@ -718,6 +725,7 @@ class ChatViewModel: ObservableObject {
         let actions: [ComputerAction]
         let previousResponseId: String
         let messageId: UUID
+        let generation: UUID
 
         var primaryAction: ComputerAction? {
             actions.first
@@ -746,6 +754,7 @@ class ChatViewModel: ObservableObject {
         guard let request = pendingSafetyApproval else { return }
         // Keep the sheet open until we start; then clear to dismiss
         pendingSafetyApproval = nil
+        guard request.generation == currentStreamGeneration else { return }
         Task { [weak self] in
             await self?.executeComputerCallWithApproval(request)
         }
@@ -755,6 +764,7 @@ class ChatViewModel: ObservableObject {
     func denySafetyChecks() {
         guard let request = pendingSafetyApproval else { return }
         pendingSafetyApproval = nil
+        cancelStreaming()
         // Inform the user and reset state to avoid API 400s
         let sys = ChatMessage(role: .system, text: "❌ Action canceled. Safety checks were not approved. The assistant won't proceed with this step.")
         messages.append(sys)
@@ -766,6 +776,7 @@ class ChatViewModel: ObservableObject {
 
     /// Continues the computer-use flow after user approval by executing the action and sending the screenshot back.
     private func executeComputerCallWithApproval(_ request: SafetyApprovalRequest) async {
+        guard request.generation == currentStreamGeneration, activePrompt.enableComputerUse else { return }
         AppLogger.log("[CUA] Proceeding after safety approval for callId=\(request.callId), actions=\(describeComputerActions(request.actions))", category: .openAI, level: .info)
         await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
         do {
@@ -774,7 +785,8 @@ class ChatViewModel: ObservableObject {
                 messageId: request.messageId,
                 context: "[CUA] (approved)"
             )
-            let result = try await computerService.executeActions(preparedActions)
+            let result = try await computerService.executeActions(preparedActions, callID: request.callId)
+            guard request.generation == currentStreamGeneration else { return }
             let abortAfterOutput = updateConsecutiveWaitGuard(
                 after: preparedActions,
                 context: "[CUA] (approved)"
@@ -798,6 +810,7 @@ class ChatViewModel: ObservableObject {
                         currentUrl: result.currentURL
                     )
                     await MainActor.run {
+                        guard request.generation == self.currentStreamGeneration else { return }
                         if abortAfterOutput {
                             self.consecutiveWaitCount = 0
                             self.isAwaitingComputerOutput = false
@@ -816,6 +829,7 @@ class ChatViewModel: ObservableObject {
                     }
                 } catch {
                     await MainActor.run {
+                        guard request.generation == self.currentStreamGeneration else { return }
                         self.cleanupComputerUseState(
                             error: error,
                             messageId: request.messageId,
@@ -830,6 +844,7 @@ class ChatViewModel: ObservableObject {
         } catch {
             AppLogger.log("[CUA] Error while executing approved computer_call: \(error)", category: .openAI, level: .error)
             await MainActor.run {
+                guard request.generation == self.currentStreamGeneration else { return }
                 self.cleanupComputerUseState(
                     error: error,
                     messageId: request.messageId,
@@ -867,80 +882,11 @@ class ChatViewModel: ObservableObject {
         messageId: UUID,
         context: String
     ) async throws -> [ComputerAction] {
-        guard !actions.isEmpty else { return actions }
-
-        var preparedActions = actions
-
-        if !activePrompt.ultraStrictComputerUse,
-           let firstAction = preparedActions.first,
-           firstAction.type == "screenshot",
-           firstAction.parameters["url"] == nil,
-           let derived = deriveURLForScreenshot(from: messageId) {
-            AppLogger.log("\(context) Auto-attaching URL to screenshot action: \(derived.absoluteString)", category: .openAI, level: .info)
-            preparedActions[0] = ComputerAction(type: "screenshot", parameters: ["url": derived.absoluteString])
-        }
-
-        if !activePrompt.ultraStrictComputerUse {
-            let firstNavigateIndex = preparedActions.firstIndex { $0.type == "navigate" }
-            let firstClickIndex = preparedActions.firstIndex { $0.type == "click" }
-
-            if let clickIndex = firstClickIndex,
-               (firstNavigateIndex == nil || clickIndex < firstNavigateIndex!),
-               computerService.isOnBlankPage(),
-               let derived = deriveURLForScreenshot(from: messageId) {
-                AppLogger.log("\(context) WebView blank before click; navigating to derived URL: \(derived.absoluteString)", category: .openAI, level: .info)
-                _ = try? await computerService.executeAction(ComputerAction(type: "navigate", parameters: ["url": derived.absoluteString]))
-                try? await Task.sleep(nanoseconds: 400_000_000)
-            }
-        }
-
-        if !activePrompt.ultraStrictComputerUse,
-           let searchQuery = extractExplicitSearchQuery(for: messageId) {
-            let refined = refineSearchPhrase(searchQuery)
-            let normalizedQuery = normalizedSearchOverrideQuery(refined)
-            let currentHost = currentComputerHost()
-            let currentRecord = SearchOverrideRecord(normalizedQuery: normalizedQuery, host: currentHost)
-
-            if !normalizedQuery.isEmpty,
-               appliedSearchOverrideForMessage[messageId] != currentRecord {
-                AppLogger.log("\(context) Intent override: attempting search for query '\(refined)' on current engine", category: .openAI, level: .info)
-                do {
-                    let didSubmitSearch = try await computerService.performSearchIfOnKnownEngine(query: refined)
-                    if didSubmitSearch {
-                        let appliedHost = currentComputerHost() ?? currentHost
-                        appliedSearchOverrideForMessage[messageId] = SearchOverrideRecord(
-                            normalizedQuery: normalizedQuery,
-                            host: appliedHost
-                        )
-                        AppLogger.log("\(context) Search override succeeded; refreshing screenshot instead of replaying stale UI actions", category: .openAI, level: .info)
-                        return [ComputerAction(type: "screenshot", parameters: [:])]
-                    }
-
-                    AppLogger.log("\(context) Search override deferred because no compatible search UI was available yet", category: .openAI, level: .debug)
-                } catch {
-                    AppLogger.log("\(context) performSearchIfOnKnownEngine failed: \(error)", category: .openAI, level: .warning)
-                }
-            }
-        }
-
-        if !activePrompt.ultraStrictComputerUse,
-           let clickIndex = preparedActions.firstIndex(where: { $0.type == "click" }),
-           let targetName = extractExplicitClickTarget(for: messageId) {
-            if let point = try? await computerService.findClickablePointByVisibleText(targetName) {
-                AppLogger.log("\(context) Click-by-text override resolved '\(targetName)' -> (\(point.x), \(point.y))", category: .openAI, level: .info)
-                var parameters = preparedActions[clickIndex].parameters
-                parameters["x"] = point.x
-                parameters["y"] = point.y
-                if parameters["button"] == nil {
-                    parameters["button"] = "left"
-                }
-                preparedActions[clickIndex] = ComputerAction(type: "click", parameters: parameters)
-            } else {
-                AppLogger.log("\(context) Click-by-text override failed to resolve target '\(targetName)'; proceeding with model coordinates", category: .openAI, level: .warning)
-            }
-        }
-
-        return preparedActions
+        try Task.checkCancellation()
+        guard activePrompt.enableComputerUse else { throw ComputerUseError.targetUnavailable("Browser tools are disabled in this chat.") }
+        guard pendingSafetyApproval == nil else { throw ComputerUseError.approvalRequired }
+        guard browserTurnMessageId == messageId else { throw CancellationError() }
+        return actions
     }
 
     private func attachComputerScreenshot(_ screenshot: String, to messageId: UUID, context: String) {
@@ -1052,6 +998,20 @@ class ChatViewModel: ObservableObject {
     }
 
     private func activateConversation(_ conversation: Conversation?) {
+        if activeConversation?.id != conversation?.id {
+            // Finish buffered text in its owning conversation before changing selection.
+            if isStreaming || streamingTask != nil || managedResponseMessageId != nil {
+                cancelStreaming()
+            }
+            for messageId in Array(deltaBuffers.keys) { flushDeltaBufferIfNeeded(for: messageId) }
+            deltaFlushWorkItems.values.forEach { $0.cancel() }
+            deltaFlushWorkItems.removeAll()
+            computerService.cancelPendingOperations()
+            browserTurnMessageId = nil
+            isResolvingComputerCalls = false
+            pendingSafetyApproval = nil
+            currentStreamGeneration = UUID()
+        }
         activeConversation = conversation
         recomputeCumulativeUsage()
     }
@@ -1112,12 +1072,16 @@ class ChatViewModel: ObservableObject {
     /// Uses final counts when available; falls back to live estimates for in-flight assistant messages.
     func recomputeCumulativeUsage() {
         var inputSum = 0
+        var cachedInputSum = 0
+        var cacheWriteSum = 0
         var outputSum = 0
         var totalSum = 0
         var estOut = 0
         for m in messages {
             guard m.role == .assistant, let tu = m.tokenUsage else { continue }
             if let i = tu.input { inputSum += i }
+            if let cached = tu.cachedInput { cachedInputSum += cached }
+            if let written = tu.cacheWrite { cacheWriteSum += written }
             if let o = tu.output { outputSum += o } else if let est = tu.estimatedOutput { estOut += est }
             if let t = tu.total { totalSum += t } else if let i = tu.input, let o = tu.output {
                 totalSum += (i + o)
@@ -1125,6 +1089,8 @@ class ChatViewModel: ObservableObject {
         }
         var agg = TokenUsage()
         agg.input = inputSum == 0 ? nil : inputSum
+        agg.cachedInput = cachedInputSum == 0 ? nil : cachedInputSum
+        agg.cacheWrite = cacheWriteSum == 0 ? nil : cacheWriteSum
         agg.output = outputSum == 0 ? nil : outputSum
         agg.total = totalSum == 0 ? nil : totalSum
         agg.estimatedOutput = estOut == 0 ? nil : estOut
@@ -1170,6 +1136,7 @@ class ChatViewModel: ObservableObject {
     /// Sends a user message and processes the assistant's response.
     /// This appends the user message to the chat and interacts with the OpenAI service.
     func sendUserMessage(_ text: String, bypassMCPGate: Bool = false, bypassAIDataSharingConsent: Bool = false) {
+        activePrompt.compactedInputJSON = activeConversation?.compactedInputJSON
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Do not allow sending a new message while a computer-use step is pending.
@@ -1183,6 +1150,15 @@ class ChatViewModel: ObservableObject {
             return
         }
 
+        if !exploreModeEnabled {
+            do { try ResponseConfigurationValidation.validate(activePrompt) }
+            catch {
+                let guidance = error.localizedDescription
+                if messages.last?.text != guidance { messages.append(ChatMessage(role: .system, text: guidance)) }
+                return
+            }
+        }
+
         // If there is no API key and Explore Demo is not enabled, avoid making a request that will fail.
         if isMissingOpenAIKey(), !exploreModeEnabled {
             let guidance = "🔑 No OpenAI API key is configured. Open Settings → General to add one, or enable Explore Demo (offline) to try the UI without API calls."
@@ -1192,8 +1168,8 @@ class ChatViewModel: ObservableObject {
             return
         }
 
-        // Explore Demo: if enabled and no API key is available, simulate a response locally.
-        if exploreModeEnabled, isMissingOpenAIKey() {
+        // Explore Demo always stays offline, including on devices with an API key.
+        if exploreModeEnabled {
             // Cancel any previous demo stream.
             streamingTask?.cancel()
             surfacedMCPToolWarnings.removeAll()
@@ -1215,8 +1191,12 @@ class ChatViewModel: ObservableObject {
             let assistantMsgId = UUID()
             messages.append(ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil))
             self.currentStreamGeneration = UUID()
+            computerService.beginTurn()
+            isResolvingComputerCalls = false
+            pendingSafetyApproval = nil
             let generation = self.currentStreamGeneration
             streamingMessageId = assistantMsgId
+            browserTurnMessageId = assistantMsgId
             resetStreamingReasoning(for: assistantMsgId)
             isStreaming = true
             streamingStatus = .connecting
@@ -1259,126 +1239,8 @@ class ChatViewModel: ObservableObject {
         // Log current prompt state for debugging
         AppLogger.log("Sending message with prompt: model=\(activePrompt.openAIModel), enableComputerUse=\(activePrompt.enableComputerUse)", category: .ui, level: .info)
 
-        // MCP gate for remote servers: require a successful list_tools probe with fresh token hash
-        if AppFeatureFlags.isMCPAvailable && activePrompt.enableMCPTool && !bypassMCPGate {
-            let label = activePrompt.mcpServerLabel
-            let url = activePrompt.mcpServerURL
-            let isRemote = activePrompt.enableMCPTool && !activePrompt.mcpIsConnector && !label.isEmpty && !url.isEmpty
-            if isRemote {
-                let defaults = UserDefaults.standard
-                let headers = activePrompt.secureMCPHeaders
-                let desiredKeyRaw = activePrompt.mcpAuthHeaderKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                let desiredKey = desiredKeyRaw.isEmpty ? "Authorization" : desiredKeyRaw
-                let authHeader: String? = {
-                    if let header = headers[desiredKey] ?? headers["Authorization"] {
-                        return header
-                    }
-
-                    guard let stored = KeychainService.shared.load(forKey: "mcp_manual_\(label)"), !stored.isEmpty else {
-                        return nil
-                    }
-
-                    if let data = stored.data(using: .utf8),
-                       let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-                        return parsed[desiredKey] ?? parsed["Authorization"]
-                    }
-
-                    return stored
-                }()
-
-                // 24h freshness window
-                let maxAgeSeconds: Double = 86_400
-                let now = Date().timeIntervalSince1970
-
-                // Light Notion guardrail for remote HTTP MCP: integration tokens are invalid here
-                let isNotionHostedMCP = url.lowercased().contains("mcp.notion.com")
-                if isNotionHostedMCP, let raw = authHeader {
-                    let lower = raw.lowercased()
-                    let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
-                    if tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_") {
-                        let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP requires an OAuth access token, not a Notion integration token. Paste a valid OAuth access token in Settings → MCP, or use Direct Notion Integration instead.")
-                        messages.append(sys)
-                        return
-                    }
-                }
-                if isNotionHostedMCP && authHeader == nil {
-                    let sys = ChatMessage(role: .system, text: "⚠️ Notion hosted MCP usually requires an OAuth access token. Paste one in Settings → MCP, or use Direct Notion Integration instead.")
-                    messages.append(sys)
-                    return
-                }
-
-                let looksLikeNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
-                if looksLikeNotion, let raw = authHeader {
-                    let lower = raw.lowercased()
-                    let tokenCore = lower.hasPrefix("bearer ") ? String(lower.dropFirst(7)) : lower
-                    if tokenCore.hasPrefix("ntn_") || tokenCore.hasPrefix("secret_") {
-                        // Warn but do not block chat: integration tokens should not be used as client auth for remote MCP servers.
-                        let sys = ChatMessage(role: .system, text: "⚠️ This looks like a Notion integration token. For self‑hosted MCP servers, keep the integration token server-side (env var) and use a server-issued Bearer token for the client. Continuing, but the server may return 401.")
-                        messages.append(sys)
-                    }
-                }
-
-                // Probe state (list_tools health)
-                let prOk = defaults.bool(forKey: "mcp_probe_ok_\(label)")
-                let prAt = defaults.double(forKey: "mcp_probe_ok_at_\(label)")
-                let prFresh = prAt > 0 && (now - prAt) < maxAgeSeconds
-                let currentHash: String? = {
-                    if let authHeader = authHeader {
-                        return NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
-                    }
-                    return nil
-                }()
-                let prStoredHash = defaults.string(forKey: "mcp_probe_token_hash_\(label)")
-                let prHashMatch: Bool = {
-                    switch (prStoredHash, currentHash) {
-                    case (nil, nil):
-                        return true
-                    case let (stored?, current?):
-                        return stored == current
-                    default:
-                        return false
-                    }
-                }()
-
-                let probeSatisfied = prOk && prFresh && prHashMatch
-
-                if !probeSatisfied {
-                    let labelForLog = label.isEmpty ? "(unnamed)" : label
-                    AppLogger.log("⛔️ [MCP Gate] Remote MCP probe not satisfied for '\(labelForLog)': ok=\(prOk), fresh=\(prFresh), hashMatch=\(prHashMatch). Attempting MCP health probe", category: .openAI, level: .warning)
-                    logActivity("Running MCP tool diagnostics")
-                    Task { [weak self] in
-                        guard let self = self else { return }
-                        do {
-                            let result = try await self.api.probeMCPListTools(prompt: self.activePrompt)
-                            await MainActor.run {
-                                let d = UserDefaults.standard
-                                d.set(true, forKey: "mcp_probe_ok_\(label)")
-                                d.set(Date().timeIntervalSince1970, forKey: "mcp_probe_ok_at_\(label)")
-                                if let authHeader = authHeader {
-                                    let authHash = NotionAuthService.shared.tokenHash(fromAuthorizationValue: authHeader)
-                                    d.set(authHash, forKey: "mcp_probe_token_hash_\(label)")
-                                } else {
-                                    d.removeObject(forKey: "mcp_probe_token_hash_\(label)")
-                                }
-                                d.set(result.count, forKey: "mcp_probe_tool_count_\(label)")
-                                AppLogger.log("✅ [MCP Gate] MCP probe succeeded for '\(result.label)': \(result.count) tools. Continuing send", category: .openAI, level: .info)
-                                self.logActivity("MCP tools validated (\(result.count))")
-                                // Retry sending the original message, bypassing the gate this once.
-                                self.sendUserMessage(trimmed, bypassMCPGate: true)
-                            }
-                        } catch {
-                            await MainActor.run {
-                                AppLogger.log("❌ [MCP Gate] MCP probe failed for '\(labelForLog)': \(error.localizedDescription)", category: .openAI, level: .error)
-                                let msg = "MCP tools list failed. Open MCP Connector Gallery → Remote server → Test MCP Connection (should show tool count). Details: \(error.localizedDescription.prefix(180))"
-                                let sys = ChatMessage(role: .system, text: msg)
-                                self.messages.append(sys)
-                            }
-                        }
-                    }
-                    return
-                }
-            }
-        }
+        // Responses performs MCP discovery within this turn. A separate diagnostic request
+        // must not block sending or reuse a label-only health flag from another endpoint.
 
         // Cancel any existing streaming task before starting a new one.
         // This prevents receiving chunks from a previous, unfinished stream.
@@ -1403,8 +1265,12 @@ class ChatViewModel: ObservableObject {
         let assistantMsg = ChatMessage(id: assistantMsgId, role: .assistant, text: "", images: nil)
         messages.append(assistantMsg)
         self.currentStreamGeneration = UUID()
+        computerService.beginTurn()
+        isResolvingComputerCalls = false
+        pendingSafetyApproval = nil
         let generation = self.currentStreamGeneration
         streamingMessageId = assistantMsgId // Track the new message for streaming
+        browserTurnMessageId = assistantMsgId
         resetStreamingReasoning(for: assistantMsgId)
 
         // Disable input while processing
@@ -1461,8 +1327,11 @@ class ChatViewModel: ObservableObject {
         // No audio path: proceed immediately
         // Call the OpenAI API asynchronously
     streamingTask = Task {
+            var managedStarted = false
             await MainActor.run { guard self.currentStreamGeneration == generation else { return }; self.streamingStatus = .connecting }
             do {
+                try await MCPConnectionStore.shared.prepare(prompt: self.activePrompt)
+                try Task.checkCancellation()
                 if self.activePrompt.enableInputModeration {
                     await MainActor.run { guard self.currentStreamGeneration == generation else { return }; self.logActivity("Running moderation safety check...") }
                     let moderationResult = try await self.api.checkModeration(input: finalUserText)
@@ -1590,11 +1459,100 @@ class ChatViewModel: ObservableObject {
                     )
                 }
                 if self.useAssistantsAPI {
-                    try await self.sendAssistantsMessageFlow(
-                        finalUserText: finalUserText,
-                        uploadedFileIds: uploadedFileIds,
-                        assistantMsgId: assistantMsgId
+                    throw OpenAIServiceError.invalidRequest("The Assistants API has shut down. Use a Responses preset to continue.")
+                } else if CurrentModelCatalog.isModern(activePrompt.openAIModel), !activePrompt.enableComputerUse, !activePrompt.backgroundMode {
+                    managedStarted = true
+                    let promptSnapshot = activePrompt
+                    let conversationID = activeConversation?.id
+                    var requestPrompt = promptSnapshot
+                    if !promptSnapshot.storeResponses {
+                        requestPrompt.compactedInputJSON = activeConversation?.responseContextJSON ?? activeConversation?.compactedInputJSON
+                    }
+                    var body = api.buildPreviewRequestObject(
+                        for: requestPrompt, userMessage: finalUserText, attachments: attachments,
+                        fileData: nil, fileNames: nil, fileIds: uploadedFileIds.isEmpty ? nil : uploadedFileIds,
+                        imageAttachments: imageAttachments, audioAttachments: audioAttachments,
+                        previousResponseId: promptSnapshot.storeResponses ? requestContext.previousResponseId : nil,
+                        conversationId: promptSnapshot.storeResponses ? requestContext.conversationId : nil, stream: streamingEnabled
                     )
+                    if !promptSnapshot.storeResponses, requestPrompt.compactedInputJSON == nil {
+                        let history: [[String: Any]] = existingConversationMessages.compactMap { message in
+                            guard let text = message.text, !text.isEmpty else { return nil }
+                            return ["role": message.role.rawValue, "content": text]
+                        }
+                        body["input"] = history + ResponseTurnRunner.inputItems(body["input"])
+                    }
+                    retryContextByMessageId.removeValue(forKey: assistantMsgId)
+                    managedResponseMessageId = assistantMsgId
+                    defer { if managedResponseMessageId == assistantMsgId { managedResponseMessageId = nil } }
+                    let presentation = ManagedResponsePresentation()
+                    let advertisedTools = body["tools"] as? [[String: Any]] ?? []
+                    var replayHistory: [[String: Any]]?
+                    if promptSnapshot.storeResponses, requestContext.previousResponseId != nil || requestContext.conversationId != nil {
+                        let stored = activeConversation?.responseContextJSON.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] }
+                        let previous = stored ?? existingConversationMessages.compactMap { message -> [String: Any]? in
+                            guard let text = message.text, !text.isEmpty else { return nil }
+                            return ["role": message.role.rawValue, "content": text]
+                        }
+                        replayHistory = previous + ResponseTurnRunner.inputItems(body["input"])
+                    }
+                    var concurrentNames = ResponseTurnRunner.concurrentFunctions
+                    if promptSnapshot.enableCustomTool, ["echo", "calculator"].contains(promptSnapshot.customToolExecutionType) {
+                        concurrentNames.insert(promptSnapshot.customToolName)
+                    }
+                    let result = try await ResponseTurnRunner().run(
+                        body: body, maxRounds: promptSnapshot.currentOptions.maxToolRounds, concurrentNames: concurrentNames, initialHistory: replayHistory,
+                        stream: { ResponsesAPIClient(managesMCPConnections: true).responseEvents(body: $0) },
+                        socket: body["multi_agent"] != nil ? try ResponsesAPIClient(managesMCPConnections: true).multiAgentConnection() : nil,
+                        execute: { call in
+                            try Task.checkCancellation()
+                            guard self.currentStreamGeneration == generation, self.activeConversation?.id == conversationID else { throw CancellationError() }
+                            let expectedType = call["type"] as? String == "custom_tool_call" ? "custom" : "function"
+                            guard advertisedTools.contains(where: { $0["type"] as? String == expectedType && $0["name"] as? String == call["name"] as? String }) else {
+                                return "Error: This tool was not enabled in the request."
+                            }
+                            var normalizedCall = call
+                            if call["type"] as? String == "custom_tool_call" {
+                                let input = call["input"] as? String ?? ""
+                                switch promptSnapshot.customToolExecutionType {
+                                case "echo": normalizedCall["arguments"] = input
+                                case "calculator": normalizedCall["arguments"] = ResponsesAPIClient.pretty(["expression": input])
+                                default: normalizedCall["arguments"] = ResponsesAPIClient.pretty(["input": input])
+                                }
+                            }
+                            let item = try JSONDecoder().decode(OutputItem.self, from: JSONSerialization.data(withJSONObject: normalizedCall))
+                            if let caller = call["caller"] as? [String: Any], caller["type"] as? String != "direct", !concurrentNames.contains(item.name ?? "") {
+                                return "Error: This function is available only as a direct tool call."
+                            }
+                            return await self.executeFunction(item, for: assistantMsgId) ?? "Error: The tool did not produce an output."
+                        },
+                        onCheckpoint: { checkpoint in
+                            guard self.currentStreamGeneration == generation, var conversation = self.activeConversation, conversation.id == conversationID else { return }
+                            conversation.responseContextJSON = ResponsesAPIClient.pretty(checkpoint.replayInput)
+                            self.updateActiveConversation(conversation)
+                        },
+                        onEvent: { event in
+                            guard self.currentStreamGeneration == generation else { return }
+                            presentation.receive(event, viewModel: self, messageId: assistantMsgId)
+                        },
+                        onToolResult: { call, output in
+                            guard self.currentStreamGeneration == generation else { return }
+                            presentation.toolResult(call, output: output, viewModel: self, messageId: assistantMsgId)
+                        }
+                    )
+                    try Task.checkCancellation()
+                    guard self.currentStreamGeneration == generation, self.activeConversation?.id == conversationID else { return }
+                    if var conversation = activeConversation {
+                        if !promptSnapshot.storeResponses { conversation.responseContextJSON = ResponsesAPIClient.pretty(result.replayInput) }
+                        if promptSnapshot.currentOptions.multiAgent {
+                            var metadata = conversation.metadata ?? [:]
+                            metadata["openresponses_multi_agent"] = "true"
+                            conversation.metadata = metadata
+                        }
+                        updateActiveConversation(conversation)
+                    }
+                    flushDeltaBufferIfNeeded(for: assistantMsgId)
+                    finalizeStreamingReasoning(for: assistantMsgId)
                 } else if streamingEnabled {
                     // Use streaming API with uploaded file IDs
                     let stream = api.streamChatRequest(
@@ -1650,12 +1608,17 @@ class ChatViewModel: ObservableObject {
                 if !(error is CancellationError) {
                     await MainActor.run {
                         guard self.currentStreamGeneration == generation else { return }
-                        self.resetStreamingState(error: error, messageId: assistantMsgId)
+                        self.resetStreamingState(messageId: assistantMsgId)
+                        ManagedResponsePresentation.finishActivity(self, messageId: assistantMsgId, status: .failed)
+                        if managedStarted { self.recoverInterruptedResponse() }
+                        self.handleError(error)
+                        self.messages.append(ChatMessage(role: .system, text: "Error: \(error.localizedDescription)"))
                     }
                 }
             }
             // Ensure we clear the streaming ID when the task is done, after do-catch
             await MainActor.run { [self] in
+                guard self.currentStreamGeneration == generation else { return }
                 // If a retry is in progress for this message, skip cleanup/logging here to avoid
                 // stomping the retry's state (flicker) and duplicate analytics.
                 let retryActive = self.retryContextByMessageId[assistantMsgId]?.retryScheduled == true
@@ -1687,6 +1650,8 @@ class ChatViewModel: ObservableObject {
                 } else {
                     AppLogger.log("🔄 [Streaming] Keeping streamingMessageId active for pending function calls", category: .streaming, level: .info)
                 }
+                self.flushDeltaBufferIfNeeded(for: assistantMsgId)
+                self.storageService.flushScheduledSaves()
                 // Stop any image generation heartbeats
                 self.stopImageGenerationHeartbeat(for: assistantMsgId)
                 // Mark as done and reset after a delay, unless we're awaiting computer output or pending function calls
@@ -1707,7 +1672,8 @@ class ChatViewModel: ObservableObject {
 
     /// Resolve all pending computer_call items before proceeding (handles chained calls like wait → screenshot).
     private func resolveAllPendingComputerCallsIfAny(for messageId: UUID) async throws -> Bool {
-        guard activePrompt.enableComputerUse else { return false }
+        let generation = currentStreamGeneration
+        guard activePrompt.enableComputerUse, browserTurnMessageId == messageId, pendingSafetyApproval == nil else { return false }
 
         // Prevent concurrent execution - only one resolution process at a time
         guard !isResolvingComputerCalls else {
@@ -1715,21 +1681,25 @@ class ChatViewModel: ObservableObject {
             return false
         }
         isResolvingComputerCalls = true
-        defer { isResolvingComputerCalls = false }
+        defer { if generation == currentStreamGeneration { isResolvingComputerCalls = false } }
 
         var resolvedAny = false
         var safetyCounter = 0
-        while safetyCounter < 5 { // Reduced from 8 to 5 to prevent infinite loops
+        while safetyCounter < 80 { // BrowserExecution enforces the shared action budget.
+            try Task.checkCancellation()
+            guard generation == currentStreamGeneration, pendingSafetyApproval == nil else { return resolvedAny }
             safetyCounter += 1
             guard let prevId = lastResponseId else { break }
-            AppLogger.log("[CUA] resolveAllPending: Getting response for prevId=\(prevId) (attempt \(safetyCounter)/5)", category: .openAI, level: .info)
+            AppLogger.log("[CUA] resolveAllPending: Getting response for prevId=\(prevId) (attempt \(safetyCounter)/80)", category: .openAI, level: .info)
             let full: OpenAIResponse
             do { full = try await api.getResponse(responseId: prevId) } catch {
+                guard generation == currentStreamGeneration else { return resolvedAny }
                 AppLogger.log("[CUA] getResponse failed while resolving pending calls: \(error)", category: .openAI, level: .warning)
                 await MainActor.run { self.lastResponseId = nil }
                 break
             }
 
+            guard generation == currentStreamGeneration else { return resolvedAny }
             // Log all computer call items in the response
             let computerCalls = full.output.filter { $0.type == "computer_call" }
             AppLogger.log("[CUA] resolveAllPending: Found \(computerCalls.count) computer_call items in response", category: .openAI, level: .info)
@@ -1739,53 +1709,6 @@ class ChatViewModel: ObservableObject {
 
             guard let computerCallItem = full.output.last(where: { $0.type == "computer_call" }) else { break }
 
-            if !activePrompt.ultraStrictComputerUse {
-                // HEURISTIC: If we get multiple screenshot calls but the message already has an image,
-                // halt to prevent screenshot loops. But allow navigation, clicks, and typing actions.
-                if let message = messages.first(where: { $0.id == messageId }), !(message.images?.isEmpty ?? true) {
-                    let actionTypes = extractComputerActionsFromOutputItem(computerCallItem)?.map { $0.type } ?? []
-
-                    // Check if this is a screenshot action - if so, halt to prevent loops
-                    let nonScreenshotTypes = actionTypes.filter { $0 != "screenshot" }
-                    if !actionTypes.isEmpty,
-                       nonScreenshotTypes.isEmpty,
-                       actionTypes.contains("screenshot") {
-                        AppLogger.log("[CUA] resolveAllPending: Heuristic halt: Message already contains screenshot and another screenshot was requested. Halting to prevent screenshot loops.", category: .openAI, level: .info)
-                        await MainActor.run {
-                            self.streamingStatus = .idle // Final state reset
-                            self.lastResponseId = nil // Clear to prevent future loops
-                        }
-                        break // Skip this tool call and exit the loop
-                    }
-
-                    // AGGRESSIVE LOOP PREVENTION: If we've made multiple attempts and still on about:blank, stop
-                    if safetyCounter >= 3,
-                       actionTypes.contains(where: { $0 == "click" || $0 == "type" }) {
-                        AppLogger.log("[CUA] resolveAllPending: Loop prevention: Too many actions (\(safetyCounter)) without progress. Halting.", category: .openAI, level: .warning)
-                        await MainActor.run {
-                            self.streamingStatus = .idle
-                            self.lastResponseId = nil
-                        }
-                        break
-                    }
-
-                    // URGENT INTERVENTION: If still on about:blank after first action and it's trying to click, stop
-                    if safetyCounter >= 2,
-                       computerService.isOnBlankPage(),
-                       actionTypes.contains("click") {
-                        AppLogger.log("[CUA] resolveAllPending: URGENT: Still clicking on about:blank after attempt \(safetyCounter). AI is not using navigate action properly. Stopping.", category: .openAI, level: .error)
-                        await MainActor.run {
-                            self.streamingStatus = .idle
-                            self.lastResponseId = nil
-                        }
-                        break
-                    }
-
-                    // Allow navigation, clicks, typing, etc. even if there's already an image
-                    AppLogger.log("[CUA] resolveAllPending: Message has image but allowing non-screenshot actions: \(describeComputerActions(extractComputerActionsFromOutputItem(computerCallItem) ?? []))", category: .openAI, level: .info)
-                }
-            }
-
             AppLogger.log("[CUA] resolveAllPending: Processing computerCall id=\(computerCallItem.id), callId=\(computerCallItem.callId ?? "nil")", category: .openAI, level: .info)
             resolvedAny = true
             await MainActor.run { self.isAwaitingComputerOutput = true; self.streamingStatus = .usingComputer }
@@ -1793,10 +1716,12 @@ class ChatViewModel: ObservableObject {
                 try await handleComputerToolCallFromOutputItem(computerCallItem, previousId: prevId, messageId: messageId)
                 // handleNonStreamingResponse inside will update lastResponseId
             } catch {
+                guard generation == currentStreamGeneration else { return resolvedAny }
                 AppLogger.log("[CUA] resolveAllPendingComputerCallsIfAny error: \(error)", category: .openAI, level: .warning)
                 await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
                 break
             }
+            guard generation == currentStreamGeneration else { return resolvedAny }
             await MainActor.run {
                 // Don't clear awaiting flag if a safety approval is pending
                 if self.pendingSafetyApproval == nil {
@@ -1806,6 +1731,7 @@ class ChatViewModel: ObservableObject {
             // Loop will check the newly updated lastResponseId for further pending calls
         }
 
+        guard generation == currentStreamGeneration else { return resolvedAny }
         // Reset wait counter when computer use chain completes (successful or not)
         await MainActor.run {
             self.consecutiveWaitCount = 0
@@ -1823,6 +1749,9 @@ class ChatViewModel: ObservableObject {
 
     /// Handles a computer tool call using a full-response OutputItem (not streaming) and a known previousId
     private func handleComputerToolCallFromOutputItem(_ outputItem: OutputItem, previousId: String, messageId: UUID) async throws {
+        let generation = currentStreamGeneration
+        guard browserTurnMessageId == messageId, activePrompt.enableComputerUse else { throw CancellationError() }
+        guard pendingSafetyApproval == nil else { throw ComputerUseError.approvalRequired }
         guard outputItem.type == "computer_call" else { return }
         let callId = outputItem.callId ?? ""
         AppLogger.log("[CUA] (resume) OutputItem callId='\(callId)', id='\(outputItem.id)'", category: .openAI, level: .info)
@@ -1842,7 +1771,8 @@ class ChatViewModel: ObservableObject {
                     callId: callId,
                     actions: actions,
                     previousResponseId: previousId,
-                    messageId: messageId
+                    messageId: messageId,
+                    generation: self.currentStreamGeneration
                 )
                 self.isAwaitingComputerOutput = true
                 self.streamingStatus = .usingComputer
@@ -1855,7 +1785,8 @@ class ChatViewModel: ObservableObject {
         let preparedActions = try await prepareComputerActionsForExecution(actions, messageId: messageId, context: "[CUA] (resume)")
 
         AppLogger.log("[CUA] (resume) Executing actions=\(describeComputerActions(preparedActions)) for callId='\(callId)'", category: .openAI)
-        let result = try await computerService.executeActions(preparedActions)
+        let result = try await computerService.executeActions(preparedActions, callID: callId)
+        guard generation == currentStreamGeneration else { throw CancellationError() }
         let abortAfterOutput = updateConsecutiveWaitGuard(after: preparedActions, context: "[CUA] (resume)")
 
         if let screenshot = result.screenshot, !screenshot.isEmpty {
@@ -1882,6 +1813,7 @@ class ChatViewModel: ObservableObject {
                 acknowledgedSafetyChecks: acknowledgedSafetyChecks,
                 currentUrl: result.currentURL
             )
+            guard generation == currentStreamGeneration else { throw CancellationError() }
             if abortAfterOutput {
                 await MainActor.run {
                     self.consecutiveWaitCount = 0
@@ -1906,6 +1838,7 @@ class ChatViewModel: ObservableObject {
 
     /// Batches parallel function calls from the same response to send together
     private func handleFunctionCallWithBatching(_ call: OutputItem, for messageId: UUID, responseId: String) async {
+        let generation = currentStreamGeneration
         var canonicalCallId: String?
         var shouldExecute = false
 
@@ -1956,6 +1889,7 @@ class ChatViewModel: ObservableObject {
         }
 
         let output = await executeFunction(call, for: messageId)
+        guard generation == currentStreamGeneration else { return }
         guard let output else {
             _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
             return
@@ -1979,6 +1913,9 @@ class ChatViewModel: ObservableObject {
 
             AppLogger.log("📦 [Batching] Stored output for \(canonicalCallId). Completed \(completedCount)/\(currentBatch.count) calls", category: .openAI, level: .info)
 
+            if let expected = self.expectedFunctionCallCounts[responseId], completedCount < expected {
+                return // A non-streaming response declares the complete batch before execution begins.
+            }
             if completedCount == currentBatch.count {
                 AppLogger.log("✅ [Batching] All \(currentBatch.count) parallel calls complete for response \(responseId). Sending batch.", category: .openAI, level: .info)
 
@@ -2020,7 +1957,6 @@ class ChatViewModel: ObservableObject {
 
         AppLogger.log("🔧 [Function Call] Executing: \(functionName)", category: .ui, level: .info)
         AppLogger.log("🔧 [Function Call] Call ID: \(callIdentifier)", category: .ui, level: .info)
-        AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
         let notionFunctions: Set<String> = [
             "searchNotion",
@@ -2070,12 +2006,22 @@ class ChatViewModel: ObservableObject {
 
     /// Sends all batched function outputs for a response together
     private func sendBatchedFunctionOutputs(responseId: String, messageId: UUID) async {
+        guard sendingFunctionBatches.insert(responseId).inserted else { return }
+        defer { sendingFunctionBatches.remove(responseId) }
+        let generation = currentStreamGeneration
+        if let expected = expectedFunctionCallCounts[responseId],
+           (parallelCallOutputs[responseId]?.count ?? 0) < expected { return }
         guard let calls = pendingParallelCalls[responseId],
               var outputs = parallelCallOutputs[responseId],
               !calls.isEmpty else {
             AppLogger.log("⚠️ [Batching] No calls or outputs found for response \(responseId)", category: .openAI, level: .warning)
             return
         }
+
+        if calls.contains(where: { call in
+            guard call.name?.hasPrefix("browser") == true, let id = canonicalIdentifier(for: call) else { return false }
+            return outputs[id] == nil
+        }) { return }
 
         var payloads: [FunctionCallOutputPayload] = []
         var seenCanonicalIds = Set<String>()
@@ -2149,7 +2095,9 @@ class ChatViewModel: ObservableObject {
             priorResponseId: priorResponseId
         )
 
+        guard generation == currentStreamGeneration else { return }
         if succeeded {
+            expectedFunctionCallCounts.removeValue(forKey: responseId)
             completedFunctionCallIds.formUnion(completedThisBatch)
             pendingFunctionCallIds.subtract(completedThisBatch)
             pendingParallelCalls.removeValue(forKey: responseId)
@@ -2187,45 +2135,9 @@ class ChatViewModel: ObservableObject {
 
         AppLogger.log("📤 [Batch] Sending \(payloads.count) outputs for response \(responseId)", category: .openAI, level: .info)
 
-        let supportsReasoning = ModelCompatibilityService.shared.getCapabilities(for: activePrompt.openAIModel)?.supportsReasoningEffort == true
+        let generation = currentStreamGeneration
         var previousResponseIdForAttempt = followUpContinuationContext(previousResponseId: priorResponseId).previousResponseId
-        var reasoningItemsForAttempt: [[String: Any]]?
-        var retainedReasoningItems: [[String: Any]]?
-
-        if supportsReasoning, let referenceId = priorResponseId {
-            let cached = reasoningBufferByResponseId[referenceId]
-            let awaited = await awaitReasoningPayload(for: referenceId, existingPayloads: cached)
-            reasoningItemsForAttempt = awaited
-            retainedReasoningItems = awaited ?? cached
-
-            if let current = reasoningItemsForAttempt, reasoningPayloadsRequireSummary(current) {
-                AppLogger.log("🧠 [Batch] Refreshing reasoning payload from response \(referenceId)", category: .openAI, level: .info)
-                do {
-                    let fetched = try await api.getResponse(responseId: referenceId)
-                    let refreshed = fetched.output.compactMap { makeReasoningPayload(from: $0) }
-                    if !refreshed.isEmpty {
-                        reasoningItemsForAttempt = refreshed
-                        retainedReasoningItems = refreshed
-                    }
-                } catch {
-                    AppLogger.log("⚠️ [Batch] Failed to refresh reasoning items: \(error)", category: .openAI, level: .warning)
-                    if case OpenAIServiceError.requestFailed(let statusCode, let message) = error,
-                       statusCode == 404 || message.lowercased().contains("not found") {
-                        AppLogger.log("♻️ [Batch] Dropping previous_response_id after 404 for \(referenceId)", category: .openAI, level: .info)
-                        previousResponseIdForAttempt = nil
-                        reasoningItemsForAttempt = retainedReasoningItems
-                    } else if reasoningItemsForAttempt == nil {
-                        reasoningItemsForAttempt = retainedReasoningItems
-                    }
-                }
-            }
-
-            if let sanitized = sanitizedReasoningPayloads(reasoningItemsForAttempt) {
-                reasoningItemsForAttempt = sanitized
-                retainedReasoningItems = sanitized
-            }
-        }
-
+        // Continuation carries reasoning server-side. Function outputs do not replay it.
         let shouldStreamFollowUp = effectiveStreamingEnabled
         var followUpCompleted = false
         var attemptsRemaining = previousResponseIdForAttempt == nil ? 1 : 2
@@ -2264,6 +2176,7 @@ class ChatViewModel: ObservableObject {
                             logActivity("Cancelled")
                             break
                         }
+                        guard generation == currentStreamGeneration else { return false }
                         handleStreamChunk(chunk, for: messageId)
                     }
 
@@ -2295,6 +2208,7 @@ class ChatViewModel: ObservableObject {
                         prompt: activePrompt
                     )
 
+                    guard generation == currentStreamGeneration else { return false }
                     await processNonStreamingResponse(finalResponse, for: messageId)
                     followUpCompleted = true
                 }
@@ -2304,7 +2218,6 @@ class ChatViewModel: ObservableObject {
                 if attemptsRemaining > 1 && isPreviousResponseNotFoundError(error) {
                     AppLogger.log("♻️ [Batch] Retrying without previous_response_id after API rejection", category: .openAI, level: .info)
                     previousResponseIdForAttempt = nil
-                    reasoningItemsForAttempt = retainedReasoningItems
                     attemptsRemaining -= 1
                     continue attemptLoop
                 }
@@ -2312,21 +2225,12 @@ class ChatViewModel: ObservableObject {
                 break
             }
 
-            if followUpCompleted {
-                break
-            }
-
+            if followUpCompleted { break }
             attemptsRemaining -= 1
         }
 
-        if followUpCompleted {
-            if let key = priorResponseId,
-               let retained = retainedReasoningItems,
-               !retained.isEmpty {
-                updateReasoningBuffer(with: retained, responseId: key)
-            }
-            return true
-        }
+        guard generation == currentStreamGeneration else { return false }
+        if followUpCompleted { return true }
 
         if let error = capturedError, !(error is CancellationError) {
             AppLogger.log("❌ [Batch] Error while returning batch: \(error)", category: .openAI, level: .error)
@@ -2350,6 +2254,13 @@ class ChatViewModel: ObservableObject {
 
     /// Extracts function execution logic (the big switch statement) to be reused by both batching and non-batching paths
     private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {
+        let browserGeneration = currentStreamGeneration
+        let browserCallID = canonicalIdentifier(for: call)
+        if functionName.hasPrefix("browser") {
+            guard activePrompt.enableComputerUse else { return "Error: Browser tools are disabled in this chat." }
+            guard pendingSafetyApproval == nil else { return "Error: Browser actions are paused for the pending safety check." }
+            guard browserTurnMessageId == messageId, !Task.isCancelled else { return nil }
+        }
         var output: String?
 
         switch functionName {
@@ -2364,7 +2275,8 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(BrowserNavigateArgs.self, from: argsData)
                 logActivity("🌐 Live browser: navigating to \(decodedArgs.url)")
-                let result = try await computerService.liveBrowserNavigate(to: decodedArgs.url)
+                let result = try await computerService.liveBrowserNavigate(to: decodedArgs.url, callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserNavigate", messageId: messageId)
             } catch {
                 output = "Error processing browserNavigate: \(error.localizedDescription)"
@@ -2373,7 +2285,8 @@ class ChatViewModel: ObservableObject {
         case "browserRead":
             do {
                 logActivity("🌐 Live browser: reading current page")
-                let result = try await computerService.liveBrowserRead()
+                let result = try await computerService.liveBrowserRead(callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserRead", messageId: messageId)
             } catch {
                 output = "Error processing browserRead: \(error.localizedDescription)"
@@ -2392,7 +2305,8 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(BrowserSearchArgs.self, from: argsData)
                 let siteDescription = decodedArgs.site?.trimmingCharacters(in: .whitespacesAndNewlines)
                 logActivity("🔎 Live browser: searching \"\(decodedArgs.query)\"\(siteDescription?.isEmpty == false ? " on \(siteDescription!)" : "")")
-                let result = try await computerService.liveBrowserSearch(query: decodedArgs.query, site: decodedArgs.site)
+                let result = try await computerService.liveBrowserSearch(query: decodedArgs.query, site: decodedArgs.site, callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserSearch", messageId: messageId)
             } catch {
                 output = "Error processing browserSearch: \(error.localizedDescription)"
@@ -2400,7 +2314,8 @@ class ChatViewModel: ObservableObject {
 
         case "browserClick":
             struct BrowserClickArgs: Decodable {
-                let targetText: String
+                let targetText: String?
+                let elementRef: String?
             }
             guard let argsData = call.arguments?.data(using: .utf8) else {
                 output = "Error: Invalid arguments for browserClick."
@@ -2408,8 +2323,9 @@ class ChatViewModel: ObservableObject {
             }
             do {
                 let decodedArgs = try JSONDecoder().decode(BrowserClickArgs.self, from: argsData)
-                logActivity("🖱️ Live browser: clicking \"\(decodedArgs.targetText)\"")
-                let result = try await computerService.liveBrowserClick(targetText: decodedArgs.targetText)
+                logActivity("🖱️ Live browser: clicking a page element")
+                let result = try await computerService.liveBrowserClick(targetText: decodedArgs.targetText ?? "", elementRef: decodedArgs.elementRef, callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserClick", messageId: messageId)
             } catch {
                 output = "Error processing browserClick: \(error.localizedDescription)"
@@ -2420,6 +2336,7 @@ class ChatViewModel: ObservableObject {
                 let text: String
                 let fieldHint: String?
                 let submit: Bool?
+                let elementRef: String?
             }
             guard let argsData = call.arguments?.data(using: .utf8) else {
                 output = "Error: Invalid arguments for browserType."
@@ -2432,12 +2349,24 @@ class ChatViewModel: ObservableObject {
                 let result = try await computerService.liveBrowserType(
                     text: decodedArgs.text,
                     fieldHint: decodedArgs.fieldHint,
-                    submit: decodedArgs.submit ?? false
+                    submit: decodedArgs.submit ?? false,
+                    elementRef: decodedArgs.elementRef,
+                    callID: browserCallID
                 )
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserType", messageId: messageId)
             } catch {
                 output = "Error processing browserType: \(error.localizedDescription)"
             }
+
+        case "browserHistory":
+            struct HistoryArgs: Decodable { let action: String }
+            do {
+                let args = try JSONDecoder().decode(HistoryArgs.self, from: Data((call.arguments ?? "{}").utf8))
+                let result = try await computerService.liveBrowserHistory(action: args.action, callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
+                output = encodeBrowserAutomationResult(result, action: "browserHistory", messageId: messageId)
+            } catch { output = "Error processing browserHistory: \(error.localizedDescription)" }
 
         case "browserScroll":
             struct BrowserScrollArgs: Decodable {
@@ -2451,7 +2380,8 @@ class ChatViewModel: ObservableObject {
             do {
                 let decodedArgs = try JSONDecoder().decode(BrowserScrollArgs.self, from: argsData)
                 logActivity("↕️ Live browser: scrolling \(decodedArgs.direction)")
-                let result = try await computerService.liveBrowserScroll(direction: decodedArgs.direction, amount: decodedArgs.amount)
+                let result = try await computerService.liveBrowserScroll(direction: decodedArgs.direction, amount: decodedArgs.amount, callID: browserCallID)
+                guard browserGeneration == currentStreamGeneration else { return nil }
                 output = encodeBrowserAutomationResult(result, action: "browserScroll", messageId: messageId)
             } catch {
                 output = "Error processing browserScroll: \(error.localizedDescription)"
@@ -2461,6 +2391,8 @@ class ChatViewModel: ObservableObject {
             struct NotionSearchArgs: Decodable {
                 let query: String
                 let filter_type: String?
+                let start_cursor: String?
+                let page_size: Int?
             }
             guard let argsData = call.arguments?.data(using: .utf8) else {
                 output = "Error: Invalid arguments for searchNotion."
@@ -2470,14 +2402,15 @@ class ChatViewModel: ObservableObject {
                 let decodedArgs = try JSONDecoder().decode(NotionSearchArgs.self, from: argsData)
                 let trimmedQuery = decodedArgs.query.trimmingCharacters(in: .whitespacesAndNewlines)
                 let normalizedFilter = NotionService.shared.normalizeSearchFilter(decodedArgs.filter_type)
-                let maxResults = trimmedQuery.isEmpty ? 12 : 25
+                let maxResults = max(1, min(decodedArgs.page_size ?? (trimmedQuery.isEmpty ? 12 : 25), 100))
                 AppLogger.log("🔍 [searchNotion] Query: \(trimmedQuery), Filter: \(normalizedFilter ?? "none")", category: .network, level: .info)
                 logActivity("🔍 Searching Notion for \"\(trimmedQuery.isEmpty ? "(all)" : trimmedQuery)\"")
 
                 let searchResult = try await NotionService.shared.search(
                     query: trimmedQuery,
                     filterType: normalizedFilter,
-                    pageSize: maxResults
+                    pageSize: maxResults,
+                    startCursor: decodedArgs.start_cursor
                 )
 
                 let compactResult = NotionService.shared.compactSearchResult(
@@ -2990,6 +2923,7 @@ class ChatViewModel: ObservableObject {
             }
         }
 
+        if functionName.hasPrefix("browser"), browserGeneration != currentStreamGeneration { return nil }
         return output
     }
 
@@ -3058,7 +2992,6 @@ class ChatViewModel: ObservableObject {
         AppLogger.log("🔧 [Function Call] Starting execution: \(functionName)", category: .ui, level: .info)
         let callIdForLog = call.id.isEmpty ? canonicalCallId : call.id
         AppLogger.log("🔧 [Function Call] Call ID: \(callIdForLog)", category: .ui, level: .info)
-        AppLogger.log("🔧 [Function Call] Arguments: \(call.arguments ?? "none")", category: .ui, level: .info)
 
         let notionFunctions: Set<String> = [
             "searchNotion",
@@ -3514,6 +3447,12 @@ class ChatViewModel: ObservableObject {
                 }
             }
 
+            let validEffort = CurrentModelCatalog.normalizedEffort(prompt.reasoningEffort, model: prompt.openAIModel)
+            if validEffort != prompt.reasoningEffort {
+                prompt.reasoningEffort = validEffort
+                didChange = true
+            }
+
             if !prompt.includeReasoningContent && !previousSupportedReasoning {
                 prompt.includeReasoningContent = true
                 didChange = true
@@ -3570,6 +3509,12 @@ class ChatViewModel: ObservableObject {
         let baselineModel = previousModelId ?? activePrompt.openAIModel
         let reasoningChanged = enforceReasoningDefaults(for: &updatedPrompt, previousModelId: baselineModel)
         let responsesAPIChanged = enforceResponsesAPIConstraints(for: &updatedPrompt)
+        if activePrompt.enableComputerUse && !updatedPrompt.enableComputerUse {
+            computerService.cancelPendingOperations()
+            browserTurnMessageId = nil
+            isResolvingComputerCalls = false
+            pendingSafetyApproval = nil
+        }
         activePrompt = updatedPrompt
         return reasoningChanged || responsesAPIChanged
     }
@@ -3695,11 +3640,15 @@ class ChatViewModel: ObservableObject {
     }
 
     func saveConversation(_ conversation: Conversation) {
-        do {
-            try storageService.saveConversation(conversation)
-        } catch {
-            handleError(error)
+        storageService.scheduleSave(conversation) { [weak self] error in
+            // Do not append a message here: that would trigger another failing save.
+            self?.errorMessage = "Could not save conversation: \(error.localizedDescription)"
         }
+    }
+
+    func flushConversationStorage() async {
+        for messageId in Array(deltaBuffers.keys) { flushDeltaBufferIfNeeded(for: messageId) }
+        await storageService.flushPendingSaves()
     }
 
     func applyDraftStorePreference(_ shouldStoreRemotely: Bool) {
@@ -3716,21 +3665,14 @@ class ChatViewModel: ObservableObject {
     }
 
     func fetchRemoteConversations() {
-        isFetchingRemoteConversations = true
-        Task {
-            do {
-                let response = try await api.listConversations(limit: 50, order: "desc")
-                await MainActor.run {
-                    self.remoteConversations = response.data
-                    self.isFetchingRemoteConversations = false
-                }
-            } catch {
-                AppLogger.log("❌ Failed to fetch remote conversations: \(error)", category: .network, level: .error)
-                await MainActor.run {
-                    self.isFetchingRemoteConversations = false
-                }
-            }
+        // OpenAI exposes CRUD by ID, not an account-wide list. Only enumerate IDs retained in local history.
+        remoteConversations = conversations.compactMap { conversation in
+            guard let remoteID = conversation.remoteId else { return nil }
+            return ConversationSummary(id: remoteID, object: "conversation", title: conversation.title,
+                                       metadata: conversation.metadata, createdAt: nil,
+                                       updatedAt: Int(conversation.lastModified.timeIntervalSince1970), archivedAt: nil)
         }
+        isFetchingRemoteConversations = false
     }
 
     func fetchAndSwitchToRemoteConversation(_ summary: ConversationSummary) {
@@ -3788,41 +3730,33 @@ class ChatViewModel: ObservableObject {
     }
 
     func compactCurrentConversation() {
-        guard let responseId = lastResponseId, !responseId.isEmpty else { return }
-
+        guard activeConversation?.metadata?["openresponses_multi_agent"] != "true", !activePrompt.currentOptions.multiAgent else {
+            errorMessage = "Multi-agent conversations compact automatically on OpenAI. Standalone compaction is not supported for them."
+            return
+        }
+        guard !isStreaming, let responseId = lastResponseId, !responseId.isEmpty,
+              let conversationID = activeConversation?.id else { return }
+        let model = activePrompt.openAIModel
         Task {
             do {
-                let compactedItem = try await api.compactConversation(previousResponseId: responseId, model: self.activePrompt.openAIModel)
+                let window = try await api.compactConversation(previousResponseId: responseId, model: model)
                 await MainActor.run {
-                    var newMessages = self.messages
-                    newMessages.append(ChatMessage(id: UUID(), role: .system, text: "Context compacted to save tokens."))
-                    self.messages = newMessages
-                    
+                    // Never overwrite a conversation that advanced or changed while compaction ran.
+                    guard self.activeConversation?.id == conversationID, self.lastResponseId == responseId, !self.isStreaming else { return }
                     if var updated = self.activeConversation {
-                        updated.messages = newMessages
-                        updated.lastResponseId = compactedItem
+                        updated.compactedInputJSON = window
+                        updated.responseContextJSON = nil
+                        updated.lastResponseId = nil
+                        updated.remoteId = nil
+                        updated.syncState = .localOnly
+                        self.lastResponseId = nil
+                        self.activePrompt.compactedInputJSON = window
                         self.replaceConversationState(updated)
+                        self.logActivity("Context compacted. The next turn will use the complete compacted window.")
                     }
                 }
             } catch {
-                AppLogger.log("❌ Failed to compact conversation: \(error)", category: .network, level: .error)
-                await MainActor.run {
-                    var errorMessage = "Failed to compact conversation."
-                    let errorDesc = "\(error)".lowercased()
-                    if errorDesc.contains("not found") || errorDesc.contains("400") || errorDesc.contains("previous_response_not_found") {
-                        errorMessage = "Failed to compact context: The previous response has expired or is not found on the server."
-                        self.lastResponseId = nil
-                        if var updated = self.activeConversation {
-                            updated.lastResponseId = nil
-                            self.replaceConversationState(updated)
-                        }
-                    } else {
-                        errorMessage = "Failed to compact context: \(error.localizedDescription)"
-                    }
-                    var newMessages = self.messages
-                    newMessages.append(ChatMessage(id: UUID(), role: .system, text: errorMessage))
-                    self.messages = newMessages
-                }
+                await MainActor.run { self.errorMessage = "Could not compact context: \(error.localizedDescription)" }
             }
         }
     }
@@ -3900,6 +3834,10 @@ class ChatViewModel: ObservableObject {
     }
 
     private func removeConversationLocally(_ conversation: Conversation) {
+        if activeConversation?.id == conversation.id {
+            cancelStreaming()
+            for messageId in Array(deltaBuffers.keys) { flushDeltaBufferIfNeeded(for: messageId) }
+        }
         conversations.removeAll { $0.id == conversation.id }
         do {
             try storageService.deleteConversation(withId: conversation.id)
@@ -3918,6 +3856,10 @@ class ChatViewModel: ObservableObject {
     private func prepareConversationContextForSend(seedMessages: [ChatMessage]) async -> (previousResponseId: String?, conversationId: String?) {
         guard let conversation = activeConversation else {
             return (lastResponseId, nil)
+        }
+
+        if conversation.compactedInputJSON != nil {
+            return (conversation.lastResponseId, nil)
         }
 
         if let remoteId = conversation.remoteId, !remoteId.isEmpty {
@@ -4005,8 +3947,11 @@ class ChatViewModel: ObservableObject {
         // Cancel any pending work
         if let work = deltaFlushWorkItems[messageId] { work.cancel() }
 
+        let conversationId = activeConversation?.id
+        let generation = currentStreamGeneration
         let work = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
+            guard let self, self.activeConversation?.id == conversationId,
+                  self.currentStreamGeneration == generation else { return }
             self.flushDeltaBuffer(for: messageId, messageIndex: messageIndex)
         }
         deltaFlushWorkItems[messageId] = work
@@ -4023,10 +3968,15 @@ class ChatViewModel: ObservableObject {
     private func flushDeltaBuffer(for messageId: UUID, messageIndex: Int) {
         guard let buffered = deltaBuffers[messageId], !buffered.isEmpty else { return }
         var updated = messages
-        let currentText = updated[messageIndex].text ?? ""
-        updated[messageIndex].text = currentText + buffered
-        messages = updated
+        // Indices can change after edits; the message identity is authoritative.
+        guard let index = updated.firstIndex(where: { $0.id == messageId }) else {
+            deltaBuffers[messageId] = nil
+            return
+        }
+        let currentText = updated[index].text ?? ""
+        updated[index].text = currentText + buffered
         deltaBuffers[messageId] = nil
+        messages = updated
     }
 
     /// Flush if buffer exists, regardless of known message index (e.g., on completion cleanup)
@@ -4047,19 +3997,8 @@ class ChatViewModel: ObservableObject {
     func attemptStreamingRetry(for messageId: UUID, reason: String) -> Bool {
         // If any buffered text exists, flush it before deciding eligibility
         flushDeltaBufferIfNeeded(for: messageId)
-        // If Notion MCP preflight was revoked/not OK, skip retry to avoid bypassing the gate
-        if activePrompt.enableMCPTool {
-            let label = activePrompt.mcpServerLabel
-            let url = activePrompt.mcpServerURL
-            let isNotion = label.lowercased().contains("notion") || url.lowercased().contains("notion")
-            if isNotion {
-                let ok = UserDefaults.standard.bool(forKey: "mcp_preflight_ok_\(label)")
-                if ok == false {
-                    AppLogger.log("[Streaming Retry] Skipping retry because Notion MCP preflight is not OK for '\(label)'", category: .openAI, level: .warning)
-                    return false
-                }
-            }
-        }
+        // Retrying a hosted tool turn can repeat an already-executed remote write.
+        if activePrompt.enableMCPTool { return false }
         guard var ctx = retryContextByMessageId[messageId], ctx.remainingAttempts > 0 else { return false }
 
         // Only retry if no text has been streamed yet (avoid duplicating partial outputs)
@@ -4169,6 +4108,8 @@ class ChatViewModel: ObservableObject {
 
     /// Handles computer tool calls by fetching the full response to get complete action details
     func handleComputerToolCallWithFullResponse(_ item: StreamingItem, messageId: UUID) async {
+        let generation = currentStreamGeneration
+        guard browserTurnMessageId == messageId, pendingSafetyApproval == nil else { return }
         guard activePrompt.enableComputerUse else { return }
         guard let previousId = lastResponseId else { return }
 
@@ -4191,6 +4132,7 @@ class ChatViewModel: ObservableObject {
                         if actions == nil { actions = extractComputerActionsFromOutputItem(match) }
                     }
                 } catch {
+                    guard generation == currentStreamGeneration else { return }
                     // If fetching fails (e.g., 404), proceed with what we have if possible
                     AppLogger.log("[CUA] Fallback getResponse failed: \(error). Proceeding with streaming item when possible.", category: .openAI, level: .warning)
                 }
@@ -4210,6 +4152,7 @@ class ChatViewModel: ObservableObject {
                 return
             }
 
+            guard generation == currentStreamGeneration else { return }
             // Check for pending safety checks – pause and ask the user
             if let safetyChecks = pendingSafety, !safetyChecks.isEmpty {
                 AppLogger.log("[CUA] SAFETY CHECKS DETECTED: \(safetyChecks.count) checks pending", category: .openAI, level: .warning)
@@ -4222,7 +4165,8 @@ class ChatViewModel: ObservableObject {
                         callId: finalCallId,
                         actions: actions,
                         previousResponseId: previousId,
-                        messageId: messageId
+                        messageId: messageId,
+                        generation: self.currentStreamGeneration
                     )
                     self.isAwaitingComputerOutput = true
                     self.streamingStatus = .usingComputer
@@ -4235,7 +4179,8 @@ class ChatViewModel: ObservableObject {
             let preparedActions = try await prepareComputerActionsForExecution(actions, messageId: messageId, context: "[CUA] (streaming)")
 
             AppLogger.log("[CUA] Executing actions=\(describeComputerActions(preparedActions))", category: .openAI)
-            let result = try await computerService.executeActions(preparedActions)
+            let result = try await computerService.executeActions(preparedActions, callID: finalCallId)
+            guard generation == currentStreamGeneration else { return }
 
             // Check for consecutive wait actions to prevent infinite loops - but do this AFTER executing the action
             // so we can capture any screenshots or results first
@@ -4267,6 +4212,7 @@ class ChatViewModel: ObservableObject {
                         acknowledgedSafetyChecks: acknowledgedSafetyChecks,
                         currentUrl: result.currentURL
                     )
+                    guard generation == currentStreamGeneration else { return }
                     if abortAfterOutput {
                         await MainActor.run {
                             self.consecutiveWaitCount = 0
@@ -4287,6 +4233,7 @@ class ChatViewModel: ObservableObject {
                         }
                     }
                 } catch {
+                    guard generation == currentStreamGeneration else { return }
                     AppLogger.log("[CUA] Failed to send computer_call_output: \(error)", category: .openAI, level: .error)
                     await MainActor.run {
                         self.cleanupComputerUseState(
@@ -4301,6 +4248,7 @@ class ChatViewModel: ObservableObject {
                 await MainActor.run { self.lastResponseId = nil; self.isAwaitingComputerOutput = false }
             }
         } catch {
+            guard generation == currentStreamGeneration else { return }
             AppLogger.log("[CUA] Error while handling computer_call: \(error)", category: .openAI, level: .error)
             await MainActor.run {
                 self.cleanupComputerUseState(
@@ -4769,6 +4717,8 @@ class ChatViewModel: ObservableObject {
 
     /// Sends computer call output back to OpenAI API
     private func sendComputerCallOutput(item: StreamingItem, output: Any, previousId: String, messageId: UUID) async {
+        let generation = currentStreamGeneration
+        guard browserTurnMessageId == messageId else { return }
         do {
             let response = try await api.sendComputerCallOutput(
                 call: item,
@@ -4776,8 +4726,10 @@ class ChatViewModel: ObservableObject {
                 model: activePrompt.openAIModel,
                 previousResponseId: previousId
             )
+            guard generation == currentStreamGeneration else { return }
             await self.processNonStreamingResponse(response, for: messageId)
         } catch {
+            guard generation == currentStreamGeneration else { return }
             await MainActor.run {
                 self.cleanupComputerUseState(
                     error: error,
@@ -4834,6 +4786,7 @@ class ChatViewModel: ObservableObject {
         guard let messageIndex = messages.firstIndex(where: { $0.id == messageId }) else { return }
 
         if item.type == "function_call" {
+            if managedResponseMessageId == messageId { return }
             let status = item.status?.lowercased() ?? "unknown"
             if status == "in_progress" {
                 AppLogger.log("⏳ [Function Call] Streaming item \(item.id) still in progress (callId=\(item.callId ?? "none"))", category: .openAI, level: .debug)
@@ -5167,6 +5120,7 @@ class ChatViewModel: ObservableObject {
 
     /// Resets the conversation by clearing messages and forgetting the last response ID.
     func clearConversation() {
+        cancelStreaming()
         guard var conversation = activeConversation else { return }
         conversation.messages.removeAll()
         conversation.lastResponseId = nil
@@ -5191,6 +5145,10 @@ class ChatViewModel: ObservableObject {
     /// Resets all streaming, computer-use, and batching state variables immediately upon completion, cancellation, or error.
     @MainActor
     private func resetStreamingState(error: Error? = nil, messageId: UUID? = nil) {
+        computerService.cancelPendingOperations()
+        browserTurnMessageId = nil
+        isResolvingComputerCalls = false
+        pendingSafetyApproval = nil
         // Increment generation to invalidate any stale callbacks
         self.currentStreamGeneration = UUID()
 
@@ -5226,6 +5184,8 @@ class ChatViewModel: ObservableObject {
         // Clear batching state
         pendingFunctionCallIds.removeAll()
         pendingParallelCalls.removeAll()
+        expectedFunctionCallCounts.removeAll()
+        sendingFunctionBatches.removeAll()
         parallelCallBatchTimer.values.forEach { $0.cancel() }
         parallelCallBatchTimer.removeAll()
 
@@ -5254,25 +5214,49 @@ class ChatViewModel: ObservableObject {
 
     /// Deletes a specific message from the active conversation.
     func deleteMessage(_ message: ChatMessage) {
+        if isStreaming { cancelStreaming() }
         guard var conversation = activeConversation,
               let index = conversation.messages.firstIndex(where: { $0.id == message.id })
         else { return }
 
         conversation.messages.remove(at: index)
+        // Remote response chains and opaque context still contain the deleted message. Fork from visible history.
+        conversation.responseContextJSON = nil
+        conversation.compactedInputJSON = nil
+        conversation.lastResponseId = nil
+        conversation.remoteId = nil
+        conversation.syncState = .localOnly
+        activePrompt.compactedInputJSON = nil
+        lastResponseId = nil
         appliedSearchOverrideForMessage.removeValue(forKey: message.id)
         streamingReasoningTextByMessageId.removeValue(forKey: message.id)
         streamingReasoningTraceIdByMessageId.removeValue(forKey: message.id)
         updateActiveConversation(conversation)
     }
 
-    /// Cancels the ongoing streaming request.
+    private func recoverInterruptedResponse() {
+        guard var conversation = activeConversation,
+              let data = conversation.responseContextJSON?.data(using: .utf8),
+              let history = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        let context = ResponsesAPIClient.pretty(ResponseTurnRunner.recoveryInput(history))
+        conversation.responseContextJSON = context
+        conversation.compactedInputJSON = context
+        conversation.lastResponseId = nil
+        conversation.remoteId = nil
+        conversation.syncState = .localOnly
+        updateActiveConversation(conversation)
+    }
+
     /// Cancels the ongoing streaming request.
     func cancelStreaming() {
         let backgroundResponseId = activeBackgroundResponseId
+        let cancellingConversationId = activeConversation?.id
         let cancellingMessageId = streamingMessageId
+        if managedResponseMessageId != nil { recoverInterruptedResponse() }
 
         // Call unified state cleanup helper
         resetStreamingState(messageId: cancellingMessageId)
+        if let cancellingMessageId { ManagedResponsePresentation.finishActivity(self, messageId: cancellingMessageId, status: .cancelled) }
 
         if let backgroundResponseId,
            let cancellingMessageId {
@@ -5284,16 +5268,21 @@ class ChatViewModel: ObservableObject {
             logActivity("Cancelling background response")
             streamingMessageId = nil
 
+            let cancellationGeneration = currentStreamGeneration
             Task { [weak self] in
                 guard let self else { return }
 
                 do {
                     let cancelled = try await api.cancelResponse(responseId: backgroundResponseId)
                     await MainActor.run {
+                        guard self.activeConversation?.id == cancellingConversationId,
+                              self.currentStreamGeneration == cancellationGeneration else { return }
                         self.handleCancelledBackgroundResponse(cancelled, for: cancellingMessageId)
                     }
                 } catch {
                     await MainActor.run {
+                        guard self.activeConversation?.id == cancellingConversationId,
+                              self.currentStreamGeneration == cancellationGeneration else { return }
                         self.handleError(error)
                         self.updateBackgroundMessage(
                             for: cancellingMessageId,
@@ -5320,6 +5309,7 @@ class ChatViewModel: ObservableObject {
         }
 
         streamingMessageId = nil
+        storageService.flushScheduledSaves()
     }
 
     /// Updates the streaming status based on the event type and item context
@@ -5422,7 +5412,7 @@ class ChatViewModel: ObservableObject {
         case "response.mcp_list_tools.added", "response.mcp_list_tools.updated", "response.mcp_list_tools.in_progress", "response.mcp_list_tools.completed", "response.mcp_list_tools.failed":
             let serverLabel = item?.serverLabel ?? "MCP"
             let status = item?.status?.lowercased()
-            if status == "failed" || item?.error != nil {
+            if eventType.hasSuffix("failed") || status == "failed" || item?.error != nil {
                 streamingStatus = .runningTool("MCP error")
                 logActivity("⚠️ MCP: Listing tools failed for \(serverLabel)")
             } else {
@@ -6382,12 +6372,17 @@ extension ChatViewModel {
 
         if !hasAssistantMessage, !functionCallItems.isEmpty {
             AppLogger.log("🔧 [handleNonStreamingResponse] No assistant message yet; handling \(functionCallItems.count) function call(s)", category: .openAI, level: .info)
+            let generation = currentStreamGeneration
+            if functionCallItems.count > 1 {
+                expectedFunctionCallCounts[response.id] = Set(functionCallItems.compactMap { canonicalIdentifier(for: $0) }).count
+            }
             Task { [weak self] in
-                guard let self = self else { return }
+                guard let self, generation == self.currentStreamGeneration else { return }
                 if functionCallItems.count == 1, let functionCallItem = functionCallItems.first {
                     await self.handleFunctionCall(functionCallItem, for: messageId)
                 } else {
                     for functionCallItem in functionCallItems {
+                        guard generation == self.currentStreamGeneration else { return }
                         await self.handleFunctionCallWithBatching(functionCallItem, for: messageId, responseId: response.id)
                     }
                 }
@@ -6461,6 +6456,8 @@ extension ChatViewModel {
             usageModel.input = usage.promptTokens
             usageModel.output = usage.completionTokens
             usageModel.total = usage.totalTokens
+            usageModel.cachedInput = usage.inputTokenDetails?.cachedTokens
+            usageModel.cacheWrite = usage.inputTokenDetails?.cacheWriteTokens
             updatedMessage.tokenUsage = usageModel
         }
 
@@ -6518,19 +6515,8 @@ extension ChatViewModel {
     // MARK: - Assistants API Methods
 
     func loadAssistants() {
-        Task {
-            do {
-                let list = try await AssistantsService.shared.listAssistants()
-                await MainActor.run {
-                    self.assistants = list
-                    if self.selectedAssistantId == nil, let first = list.first {
-                        self.selectedAssistantId = first.id
-                    }
-                }
-            } catch {
-                AppLogger.log("Failed to load assistants: \(error.localizedDescription)", category: .openAI, level: .error)
-            }
-        }
+        // The retired endpoint is never called. Retained exports can be imported in the migration lab.
+        useAssistantsAPI = false
     }
 
     func createNewAssistant(name: String, model: String, instructions: String, tools: [AssistantTool]? = nil) async throws {
@@ -6635,6 +6621,17 @@ extension ChatViewModel {
             usage.estimatedOutput = ChatViewModel.estimateTokens(for: text)
             updated[index].tokenUsage = usage
             messages = updated
+        }
+    }
+
+    func addRealtimeTranscript(_ text: String, role: ChatMessage.Role) {
+        guard !text.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            var updated = self.messages
+            let message = ChatMessage(id: UUID(), role: role, text: text)
+            updated.append(message)
+            self.messages = updated
         }
     }
 }

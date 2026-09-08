@@ -2,17 +2,13 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var viewModel: ChatViewModel
+    @EnvironmentObject private var viewModel: ChatViewModel
     @State private var showingSettings = false
     @State private var showingConversationList = false
     @State private var showingShareSheet = false
     @State private var showingOnboarding = false
     @State private var showingExploreWelcome = false
     private let keychainService = KeychainService.shared
-
-    init() {
-        _viewModel = StateObject(wrappedValue: AppContainer.shared.makeChatViewModel())
-    }
 
     var body: some View {
         NavigationStack {
@@ -75,7 +71,6 @@ struct ContentView: View {
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(items: [viewModel.exportConversationText()])
         }
-        .environmentObject(viewModel)
     }
 
     private func checkOnboardingAndAPIKey() {
@@ -110,7 +105,7 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView().environmentObject(AppContainer.shared.makeChatViewModel())
 }
 
 // MARK: - ShareSheet

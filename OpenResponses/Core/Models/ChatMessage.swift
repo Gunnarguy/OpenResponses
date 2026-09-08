@@ -72,7 +72,7 @@ struct ToolExecutionTimeline: Codable, Equatable, Identifiable {
 }
 
 /// Represents a single message in the chat (user, assistant, or system/error).
-struct ChatMessage: Identifiable, Codable {
+nonisolated struct ChatMessage: Identifiable, Codable {
     enum Role: String, Codable {
         case user
         case assistant
@@ -81,7 +81,10 @@ struct ChatMessage: Identifiable, Codable {
     let id: UUID
     let role: Role
     var text: String?
-    var images: [UIImage]?  // Any images associated with the message (for assistant outputs)
+    var images: [UIImage]? {
+        didSet { imageEncodingCache = MessageImageEncodingCache() }
+    }
+    private var imageEncodingCache = MessageImageEncodingCache()  // Any images associated with the message (for assistant outputs)
     var audioData: [Data]?  // Any audio data associated with the message
     var webURLs: [URL]?     // URLs to render as embedded web content
     var webContentURL: [URL]? // Detected URLs in the message content
@@ -174,8 +177,7 @@ struct ChatMessage: Identifiable, Codable {
         try container.encodeIfPresent(text, forKey: .text)
 
         if let images = images {
-            let imageData = images.compactMap { $0.pngData() }
-            try container.encode(imageData, forKey: .images)
+            try container.encode(imageEncodingCache.data(for: images), forKey: .images)
         }
         
         try container.encodeIfPresent(audioData, forKey: .audioData)
@@ -205,6 +207,10 @@ struct TokenUsage: Codable {
     var estimatedOutput: Int?
     /// Final prompt/input tokens reported by API
     var input: Int?
+    /// Input tokens served from the prompt cache
+    var cachedInput: Int? = nil
+    /// Input tokens written to the prompt cache
+    var cacheWrite: Int? = nil
     /// Final completion/output tokens reported by API
     var output: Int?
     /// Final total tokens reported by API
@@ -354,16 +360,46 @@ struct ImageFileContent: Codable {
     let file_id: String
 }
 
+/// Prompt-cache details nested inside Responses API usage.
+struct InputTokenDetails: Decodable {
+    let cachedTokens: Int?
+    let cacheWriteTokens: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case cachedTokens = "cached_tokens"
+        case cacheWriteTokens = "cache_write_tokens"
+    }
+}
+
 /// Token usage information from the API response
 struct UsageInfo: Decodable {
     let promptTokens: Int?
     let completionTokens: Int?
     let totalTokens: Int?
+    let inputTokenDetails: InputTokenDetails?
 
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
         case totalTokens = "total_tokens"
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case inputTokenDetails = "input_tokens_details"
+        case promptTokenDetails = "prompt_tokens_details"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        promptTokens =
+            try container.decodeIfPresent(Int.self, forKey: .inputTokens)
+            ?? container.decodeIfPresent(Int.self, forKey: .promptTokens)
+        completionTokens =
+            try container.decodeIfPresent(Int.self, forKey: .outputTokens)
+            ?? container.decodeIfPresent(Int.self, forKey: .completionTokens)
+        totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens)
+        inputTokenDetails =
+            try container.decodeIfPresent(InputTokenDetails.self, forKey: .inputTokenDetails)
+            ?? container.decodeIfPresent(InputTokenDetails.self, forKey: .promptTokenDetails)
     }
 }
 
@@ -1108,15 +1144,21 @@ struct StreamingUsage: Decodable, CustomStringConvertible {
     /// Total number of tokens used (input + output)
     let totalTokens: Int
 
+    /// Prompt-cache reads and writes reported by the API
+    let inputTokenDetails: InputTokenDetails?
+
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
+        case inputTokenDetails = "input_tokens_details"
     }
 
     /// Provides a readable description of the usage
     var description: String {
-        "StreamingUsage(in: \(inputTokens), out: \(outputTokens), total: \(totalTokens))"
+        let cached = inputTokenDetails?.cachedTokens ?? 0
+        let written = inputTokenDetails?.cacheWriteTokens ?? 0
+        return "StreamingUsage(in: \(inputTokens), out: \(outputTokens), total: \(totalTokens), cacheRead: \(cached), cacheWrite: \(written))"
     }
 }
 
@@ -1150,5 +1192,25 @@ struct MCPApprovalRequest: Identifiable, Codable {
         case pending
         case approved
         case rejected
+    }
+}
+
+/// Shared by value copies of an unchanged message; image replacement gets a fresh cache.
+nonisolated private final class MessageImageEncodingCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cachedData: [Data]?
+
+    func data(for images: [UIImage]) throws -> [Data] {
+        try lock.withLock {
+            if let cachedData { return cachedData }
+            let data = try images.map { image in
+                guard let data = image.pngData() else {
+                    throw EncodingError.invalidValue(image, .init(codingPath: [], debugDescription: "Unable to encode an attached image."))
+                }
+                return data
+            }
+            cachedData = data
+            return data
+        }
     }
 }

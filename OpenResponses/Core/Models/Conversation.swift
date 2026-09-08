@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a single, ongoing conversation, including its messages, sync state, and metadata.
-struct Conversation: Identifiable, Codable {
+nonisolated struct Conversation: Identifiable, Codable {
     /// Captures the current sync relationship between the local cache and the backend Conversations API.
     enum SyncState: String, Codable {
         case localOnly
@@ -26,6 +26,11 @@ struct Conversation: Identifiable, Codable {
 
     /// The ID of the last response from the OpenAI API. Maintains context for legacy `previous_response_id` flows.
     var lastResponseId: String?
+
+    /// Canonical standalone compaction output, replayed on the next turn.
+    var compactedInputJSON: String?
+    /// Complete opaque input/output history for stateless Responses continuations.
+    var responseContextJSON: String?
 
     /// The timestamp when the conversation was last modified. Used for sorting conversations.
     var lastModified: Date
@@ -67,6 +72,8 @@ struct Conversation: Identifiable, Codable {
         case title
         case messages
         case lastResponseId
+        case compactedInputJSON
+        case responseContextJSON
         case lastModified
         case metadata
         case lastSyncedAt
@@ -104,6 +111,8 @@ struct Conversation: Identifiable, Codable {
         remoteId = try container.decodeIfPresent(String.self, forKey: .remoteId)
         title = try container.decode(String.self, forKey: .title)
         messages = try container.decodeIfPresent([ChatMessage].self, forKey: .messages) ?? []
+        compactedInputJSON = try container.decodeIfPresent(String.self, forKey: .compactedInputJSON)
+        responseContextJSON = try container.decodeIfPresent(String.self, forKey: .responseContextJSON)
         lastResponseId = try container.decodeIfPresent(String.self, forKey: .lastResponseId)
         lastModified = try container.decodeIfPresent(Date.self, forKey: .lastModified) ?? Date()
         metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata)
@@ -118,6 +127,8 @@ struct Conversation: Identifiable, Codable {
         try container.encodeIfPresent(remoteId, forKey: .remoteId)
         try container.encode(title, forKey: .title)
         try container.encode(messages, forKey: .messages)
+        try container.encodeIfPresent(compactedInputJSON, forKey: .compactedInputJSON)
+        try container.encodeIfPresent(responseContextJSON, forKey: .responseContextJSON)
         try container.encodeIfPresent(lastResponseId, forKey: .lastResponseId)
         try container.encode(lastModified, forKey: .lastModified)
         try container.encodeIfPresent(metadata, forKey: .metadata)

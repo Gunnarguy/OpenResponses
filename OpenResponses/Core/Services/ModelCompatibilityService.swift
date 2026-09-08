@@ -204,7 +204,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort", "verbosity", "prompt_cache_options",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -224,7 +224,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort", "verbosity", "prompt_cache_options",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -244,7 +244,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort", "verbosity", "prompt_cache_options",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -264,7 +264,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort", "verbosity", "prompt_cache_options",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -286,7 +286,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -306,7 +306,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -326,7 +326,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -346,7 +346,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -368,7 +368,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -388,7 +388,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -408,7 +408,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -428,7 +428,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                 "reasoning_effort",
-                "temperature", "top_p", "top_logprobs",
+
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -449,8 +449,6 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                 "reasoning_effort",
-                // Conditionally supported (see isParameterSupported gating):
-                "temperature", "top_p", "top_logprobs",
                 "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                 "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
             ],
@@ -470,7 +468,6 @@ class ModelCompatibilityService {
                 tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
                 parameters: [
                     "reasoning_effort",
-                    "temperature", "top_p", "top_logprobs",
                     "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                     "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
                 ],
@@ -490,7 +487,7 @@ class ModelCompatibilityService {
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
                     "reasoning_effort",
-                    "temperature", "top_p", "top_logprobs",
+
                     "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
                     "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
                 ],
@@ -653,6 +650,14 @@ class ModelCompatibilityService {
     /// - Parameter modelId: The model identifier.
     /// - Returns: The model capabilities, or nil if the model is not supported.
     public func getCapabilities(for modelId: String) -> ModelCapabilities? {
+        if CurrentModelCatalog.isModern(modelId) {
+            return ModelCapabilities(
+                streaming: true,
+                tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
+                parameters: ["reasoning_effort", "verbosity", "prompt_cache_options", "prompt_cache_key", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "safety_identifier", "max_tool_calls", "metadata", "tool_choice"],
+                category: .latest, supportsReasoningEffort: true, supportsTemperature: false
+            )
+        }
         return modelCapabilities[capabilityKey(for: modelId)]
     }
 
@@ -714,30 +719,19 @@ class ModelCompatibilityService {
     /// GPT-5.5, GPT-5.4, GPT-5.2, and GPT-5.1 have API-level restrictions where some parameters
     /// (e.g., temperature/top_p/logprobs) are only valid when reasoning effort is `none`.
     public func isParameterSupported(_ parameter: String, for modelId: String, reasoningEffort: String?) -> Bool {
-        let key = capabilityKey(for: modelId)
-        guard let capabilities = modelCapabilities[key] else {
+        guard let capabilities = getCapabilities(for: modelId) else {
             return false
+        }
+
+        // Verified with live Responses requests: earlier GPT models still accept sampling with effort=none.
+        let key = capabilityKey(for: modelId)
+        if ["temperature", "top_p"].contains(parameter),
+           ["gpt-5.5", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.1"].contains(key) {
+            return reasoningEffort == "none"
         }
 
         guard capabilities.parameters.contains(parameter) else {
             return false
-        }
-
-        let normalizedEffort = reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let isGPT56Family = key == "gpt-5.6" || key == "gpt-5.6-sol" || key == "gpt-5.6-terra" || key == "gpt-5.6-luna"
-        let isGPT55Family = key == "gpt-5.5" || key == "gpt-5.5-pro" || key == "gpt-5.5-mini" || key == "gpt-5.5-nano"
-        let isGPT54Family = key == "gpt-5.4" || key == "gpt-5.4-pro" || key == "gpt-5.4-mini" || key == "gpt-5.4-nano"
-        let isGPT52Family = key == "gpt-5.2" || key == "gpt-5.2-pro"
-        let isGPT51Family = key == "gpt-5.1"
-
-        if isGPT56Family || isGPT55Family || isGPT54Family || isGPT52Family || isGPT51Family {
-            switch parameter {
-            case "temperature", "top_p", "top_logprobs":
-                // Conservative default: only treat as supported when the caller explicitly sets effort=none.
-                return normalizedEffort == "none"
-            default:
-                break
-            }
         }
 
         return true
@@ -835,7 +829,7 @@ class ModelCompatibilityService {
     ///   - isStreaming: Whether streaming is enabled
     /// - Returns: Array of tool compatibility information
     public func getCompatibleTools(for modelId: String, prompt: Prompt, isStreaming: Bool) -> [ToolCompatibility] {
-        guard modelCapabilities[modelId] != nil else { return [] }
+        guard getCapabilities(for: modelId) != nil else { return [] }
 
         let allTools: [(APICapabilities.ToolType, String, String, Bool)] = [
             (.webSearch, "Web Search", "Search the internet for current information", prompt.enableWebSearch),

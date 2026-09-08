@@ -34,6 +34,17 @@ class FineTuningService {
         return Data(jsonlString.utf8)
     }
     
+    static func validateHyperparameters(nEpochs: String, batchSize: String, learningRateMultiplier: String) throws {
+        for (name, value) in [("Epochs", nEpochs), ("Batch size", batchSize)] {
+            guard value == "auto" || (Int(value).map { $0 > 0 } ?? false) else {
+                throw OpenAIServiceError.invalidRequest("\(name) must be auto or a positive integer.")
+            }
+        }
+        guard learningRateMultiplier == "auto" || (Double(learningRateMultiplier).map { $0.isFinite && $0 > 0 } ?? false) else {
+            throw OpenAIServiceError.invalidRequest("Learning rate must be auto or a positive number.")
+        }
+    }
+
     func createFineTuningJob(
         trainingFileId: String,
         model: String,
@@ -41,6 +52,7 @@ class FineTuningService {
         batchSize: String = "auto",
         learningRateMultiplier: String = "auto"
     ) async throws -> FineTuningJob {
+        try Self.validateHyperparameters(nEpochs: nEpochs, batchSize: batchSize, learningRateMultiplier: learningRateMultiplier)
         let headers = try createHeaders()
         let url = URL(string: "\(baseURL)/fine_tuning/jobs")!
         
@@ -97,30 +109,9 @@ class FineTuningService {
     }
     
     func listFineTuningJobs() async throws -> [FineTuningJob] {
-        let headers = try createHeaders()
-        let url = URL(string: "\(baseURL)/fine_tuning/jobs")!
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        for (key, val) in headers {
-            request.setValue(val, forHTTPHeaderField: key)
-        }
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        if httpResponse.statusCode != 200 {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw OpenAIServiceError.requestFailed(httpResponse.statusCode, errorMsg)
-        }
-        
-        let listResponse = try JSONDecoder().decode(AssistantListResponse<FineTuningJob>.self, from: data)
-        return listResponse.data
+        try await ResourcePagination.list(path: "/fine_tuning/jobs", as: FineTuningJob.self)
     }
-    
+
     func cancelFineTuningJob(jobId: String) async throws -> FineTuningJob {
         let headers = try createHeaders()
         let url = URL(string: "\(baseURL)/fine_tuning/jobs/\(jobId)/cancel")!

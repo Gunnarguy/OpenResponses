@@ -9,11 +9,16 @@ struct VoiceModeSettingsSheet: View {
     @AppStorage("realtime_model") private var realtimeModel: String = "gpt-realtime-2.1"
     @AppStorage("realtime_barge_in") private var bargeIn: Bool = false
     
-    let voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    let voices = RealtimeService.supportedVoices
     
     var body: some View {
         NavigationStack {
             Form {
+                Section("Voice session context") {
+                    Text("Voice starts a separate audio session. Transcripts are saved to this chat, but earlier chat messages and connected chat tools are not sent to voice.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+
                 Section(header: Text("Model Selection")) {
                     Picker("Model", selection: $realtimeModel) {
                         Text("gpt-realtime-2.1").tag("gpt-realtime-2.1")
@@ -44,6 +49,7 @@ struct VoiceModeSettingsSheet: View {
                 
                 Section(header: Text("Turn Taking")) {
                     Toggle("Voice Barge-In", isOn: $bargeIn)
+                        .onChange(of: bargeIn) { _, enabled in RealtimeService.shared.setBargeInEnabled(enabled) }
                     Text("Allow interrupting the assistant by speaking. Recommended only when using headphones to prevent echo feedback loops.")
                         .font(.caption)
                         .foregroundColor(.secondary)

@@ -52,7 +52,7 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6", "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini", "o3", "o3-mini", "computer-use-preview"], id: \.self) { model in
+                        ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel), id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
@@ -81,14 +81,18 @@ struct PlaygroundSettingsPanel: View {
                             Text("Reasoning Summary")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            TextField("Optional reasoning approach guide", text: Binding(
-                                get: { viewModel.activePrompt.reasoningSummary },
+                            Picker("Summary detail", selection: Binding(
+                                get: { ["auto", "concise", "detailed"].contains(viewModel.activePrompt.reasoningSummary) ? viewModel.activePrompt.reasoningSummary : "" },
                                 set: { newValue in
                                     viewModel.activePrompt.reasoningSummary = newValue
                                     viewModel.saveActivePrompt()
                                 }
-                            ))
-                            .textFieldStyle(.roundedBorder)
+                            )) {
+                                Text("Off").tag("")
+                                Text("Automatic").tag("auto")
+                                Text("Concise").tag("concise")
+                                Text("Detailed").tag("detailed")
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -314,23 +318,7 @@ struct PlaygroundSettingsPanel: View {
     }
 
     private func reasoningEffortOptions(for modelId: String) -> [String] {
-        let id = modelId.lowercased()
-        if id.hasPrefix("gpt-5.6") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-        }
-        if id == "gpt-5.5" || id == "gpt-5.5-pro" || id == "gpt-5.5-mini" || id == "gpt-5.5-nano" || id.hasPrefix("gpt-5.5-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.4" || id == "gpt-5.4-mini" || id == "gpt-5.4-nano" || id.hasPrefix("gpt-5.4-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.2" || id == "gpt-5.2-pro" || id.hasPrefix("gpt-5.2-") {
-            return ["none", "minimal", "low", "medium", "high", "xhigh"]
-        }
-        if id == "gpt-5.1" || id.hasPrefix("gpt-5.1-") {
-            return ["none", "minimal", "low", "medium", "high"]
-        }
-        return ["minimal", "low", "medium", "high"]
+        CurrentModelCatalog.reasoningEfforts(for: modelId)
     }
 
     private func optionDisplayName(_ option: String) -> String {

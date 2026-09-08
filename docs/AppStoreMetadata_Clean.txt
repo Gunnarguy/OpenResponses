@@ -1,54 +1,116 @@
-APP NAME
+OPENRESPONSES 2.6 — LOCAL APP STORE COPY
+Updated September 8, 2026. Prepared locally; not uploaded to App Store Connect.
+
+NAME
 OpenResponses
 
 SUBTITLE
-Native GPT-5.2 Client
+Responses API & Voice Tools
 
 PROMOTIONAL TEXT
-GPT-5.2 on iOS. Web Search, Image Generation, and full API control—bring your own key.
+Explore current OpenAI models, continuing voice, MCP tools and browser automation, with an API Workbench for raw requests, streaming and complete response exports.
 
 DESCRIPTION
-A native iOS client for GPT-5.2 and reasoning models. Bring your own API key, stream responses in real time, and access built-in tools—all in a fast, privacy-focused app.
+OpenResponses is a native iPhone and iPad playground for the OpenAI Responses API. Bring your own API key, control your requests, inspect tool activity and explore current models in SwiftUI.
 
-MODELS
-• GPT-5.2, GPT-5.2-pro, GPT-5.1, GPT-5, and GPT-5-mini
-• o3 reasoning models with configurable effort
-• GPT-4.1 family, GPT-4o, and legacy fallbacks
+CHAT WITH CONTROL
+• Choose from a shared catalog including GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, alongside earlier supported models.
+• Adjust compatible reasoning, context, verbosity, image and tool settings.
+• Stream replies, inspect API-provided reasoning summaries, follow token usage and review request/response details.
+• Save prompt presets, attach photos and documents, export conversations and keep local history.
 
-BUILT-IN TOOLS
-• Web Search: Live answers with clickable citations
-• Image Generation: Create visuals with gpt-image-1
-• Code Interpreter: Run Python in a sandboxed cloud environment
-• File Search: Query vector stores and uploaded documents
+API WORKBENCH
+• Edit JSON requests using HTTP, streaming or WebSocket transports, with secure draft recovery and local schema validation.
+• Inspect raw events and export complete final response payloads.
+• Count input tokens, compact context, retrieve or cancel background responses and inspect known conversations.
+• Explore templates for hosted shell, tool search, custom tools, async/programmatic calling, multi-agent responses and images. Supply real client tool results when a request needs them.
 
-STREAMING & INSPECTION
-• Token-by-token streaming with reasoning indicators
-• Request Inspector shows every API payload and tool call
-• Local conversation history with export support
+VOICE, IMAGES AND TOOLS
+• Have continuing Realtime voice conversations with microphone mute and interruption handling.
+• Generate images with GPT Image 2 and supported partial previews.
+• Use hosted web search with sources, Code Interpreter and file search when enabled.
+• Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
+• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
+• Enable Calendar, Reminders, Contacts or Notion tools for the tasks that need them.
 
-PRO CONTROLS
-• Temperature, max tokens, reasoning effort, and tool routing
-• Prompt Library to save and reuse configurations
-• Model compatibility guidance built in
+FILES AND DEVELOPER LABS
+• Manage files and vector stores with clear indexing status.
+• Monitor Batch jobs and save full available output/error files.
+• Import reviewed text-chat JSONL datasets for fine-tuning where your account remains eligible. Exported chats are drafts for dataset preparation.
+• Import retained Assistant JSON into Responses presets. Retired live Assistants operations are disabled.
 
-APPLE INTEGRATION
-• Access Calendar, Contacts, and Reminders via AI tools
-• SwiftUI interface with Dark Mode and Dynamic Type
-• VoiceOver and reduced motion fully supported
+YOUR KEY, VISIBLE DATA FLOW
+• Explore Demo Mode without sending live API requests.
+• Store API credentials in the iOS Keychain and review the first-live-send data-sharing notice.
+• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
+• No separate OpenResponses account is required. OpenAI usage is billed to your own API account.
 
-PRIVACY
-• API keys stored in the iOS Keychain—never leave your device
-• No accounts, no analytics, no tracking
-• All data stays local unless you export it
+Requires iOS 17 or later. Live features need an OpenAI API key with appropriate billing and model/tool access; third-party tools may need their own accounts and permissions. Feature availability and service limits vary. AI output can be inaccurate; verify important information before acting.
 
-AI output can be inaccurate—always verify important information.
+WHAT'S NEW
+OpenResponses 2.6 expands the playground with current models, a new API Workbench, continuing voice conversations, and a more dependable tool and storage engine.
 
-REQUIREMENTS
-• iOS 17.0 or later
-• Your own API key with active billing
+CURRENT MODELS AND CONTROLS
+• Shared model catalog for GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, with model-aware reasoning and request settings.
+• GPT Image 2 controls and partial image previews; current Realtime and transcription models.
+• Optional automatic compaction, hosted shell, tool search, async/programmatic calling and multi-agent responses for supported configurations. Model and tool availability depends on your API account.
+
+NEW API WORKBENCH
+• Edit literal JSON without smart quotes; recover request drafts after relaunch and confirm replacement before discarding edits.
+• Explore HTTP, streaming and WebSocket responses, with invalid schemas rejected before sending.
+• Inspect raw events, export complete responses, count input tokens and compact context.
+• Retrieve or cancel background responses, inspect known conversations, continue client tool calls with real results, and try steering and current tool templates.
+
+VOICE THAT KEEPS GOING
+• More reliable listening after the assistant answers, interruption handling, mute and audio-route recovery.
+• Corrected microphone format conversion and playback completion so the voice bars do not remain stuck in a speaking state.
+
+MCP, WEB SEARCH AND BROWSER TOOLS
+• New Connections page with provider browser sign-in, several accounts per chat, account naming, reconnect and permissions.
+• 44 catalog entries plus live MCP Registry search. Providers requiring app registration or callback setup are clearly labeled.
+• Secure OAuth refresh and hosted tool discovery with schema inspection, cancellation and bounded retries.
+• More reliable on-device browser navigation, precise page-element actions, back/forward controls and correctly sized screenshots.
+• Shared browser action limits, deadlines and cancellation; safer recovery from stale callbacks and duplicate tool calls.
+• Corrected hosted web-search settings and clearer source/citation handling.
+
+CONVERSATIONS AND ACTIVITY
+• Richer response artifacts, tool results, image previews and multi-agent activity.
+• Complete compacted context and better hydration of known remote conversation items.
+• Safer chat switching and deletion during streaming, background save checkpoints and clearer storage errors. Existing conversations and presets remain compatible.
+
+FILES AND DEVELOPER LABS
+• File upload progress now distinguishes uploading, indexing, failure and search readiness. Check indexing again without uploading duplicates.
+• Save complete Batch output and error files through the system share sheet, including available partial results.
+• Import and validate reviewed text-chat JSONL datasets for eligible fine-tuning accounts. Chat export is clearly a draft, and restricted service availability is explained.
+• Complete cursor pagination for supported file/job lists and improved Notion search pagination.
+
+Retained Assistant JSON can still be imported into Responses presets; retired live Assistants operations are disabled. Demo Mode, Keychain credentials, first-send consent and existing Apple/Notion integrations remain available.
 
 KEYWORDS
-gpt5,gpt52,reasoning,o3,ai,assistant,websearch,imagegen,native,api,byok,streaming,ios
+OpenAI,Responses,API,AI,voice,MCP,developer,playground,prompts,chat,tools,JSON,images
+
+TESTFLIGHT WHAT TO TEST CANDIDATE
+OpenResponses 2.6 release-candidate test guide
+
+Use the candidate containing the completed September source changes. The previously uploaded build 38 predates those working-tree changes.
+
+Please test:
+• Upgrade with existing chats and presets; switch chats during streaming, stop a response, delete an active chat, background and reopen the app.
+• Speak for several turns in voice mode. Interrupt an answer, mute/unmute, change audio routes and recover from an interruption. Check that the visualizer returns to listening.
+• Try Astra/Sol/Terra/Luna settings appropriate to your account. Verify reasoning controls and actual tool results, including cancellation.
+• Open Settings → Model → API Workbench. Inspect/export a response, count input tokens, try compaction, and continue a client tool call with its actual call ID.
+• Discover a configured MCP server, inspect its tools, refresh, cancel and check an authentication failure. Private OAuth servers may need separate setup.
+• Navigate public pages with browser tools, use back/forward, type into a harmless form and stop a run. Check source links from hosted web search.
+• Upload a searchable file and observe indexing, partial failure and Check Indexing Again.
+• Save complete available Batch output/error files. Import a reviewed JSONL dataset and inspect validation errors without starting a paid training job unless you intend to.
+
+Report the build number, device/OS, steps, expected result and actual result. Remove credentials and private conversation content from diagnostic material before sharing.
+
+Known boundaries: remote history retrieves known IDs rather than enumerating the whole account; browser automation cannot handle every CAPTCHA/frame/native-input flow; model, MCP and fine-tuning access depends on your accounts. Retired Assistants live operations are disabled; local JSON migration remains.
+
+MCP account pass: connect Notion through its browser login; cancel/retry, rename accounts, select several per chat, discover and restrict tools, and reconnect after expiry. Check registry search and provider-setup labels.
+
+Workbench recovery: type an unfinished request, relaunch, and verify the draft and selectors survive. Cancel template replacement and try an invalid schema; no network request should start.
 
 SUPPORT URL
 https://github.com/Gunnarguy/OpenResponses/issues
@@ -56,17 +118,5 @@ https://github.com/Gunnarguy/OpenResponses/issues
 MARKETING URL
 https://github.com/Gunnarguy/OpenResponses
 
-PRIVACY POLICY URL
+PRIVACY URL
 https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md
-
-APP REVIEW INFORMATION - REVIEW NOTES
-The app does not request camera, microphone, speech recognition, or precise location permissions in this release.
-
-Reviewer Guide:
-1. Launch OpenResponses and paste an API key into Settings > Credentials (use the App Review note key if provided, or your own key).
-2. Open Settings > Model and select "GPT-5.2" or "GPT-4.1".
-3. Send "Summarize the WWDC 2025 keynote" to verify streaming responses.
-4. Enable Web Search under Settings > Tools and ask "What happened in tech news today?"
-5. Attach a PDF from the Files picker and ask "Summarize the attached document."
-
-Note: A ChatGPT Plus subscription does not cover API usage. You must use a platform.openai.com API key with active billing.

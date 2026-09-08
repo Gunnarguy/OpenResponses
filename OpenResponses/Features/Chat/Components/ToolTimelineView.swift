@@ -25,6 +25,11 @@ struct ToolExecutionCard: View {
         case "file_search_call", "file_search": return "doc.text.magnifyingglass"
         case "code_interpreter_call", "code_interpreter": return "terminal"
         case "image_generation_call", "image_generation": return "photo"
+        case "shell_call", "shell_call_output": return "terminal"
+        case "program", "program_output": return "curlybraces"
+        case "multi_agent_call", "message": return "person.3"
+        case "tool_search_call": return "magnifyingglass"
+        case "compaction": return "arrow.down.right.and.arrow.up.left"
         default: return "hammer"
         }
     }

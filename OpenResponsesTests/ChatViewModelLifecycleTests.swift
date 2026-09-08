@@ -36,9 +36,10 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Ship the release build.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition1 = await waitUntil {
             api.chatRequests.count == 1 && !viewModel.isStreaming
-        })
+        }
+        XCTAssertTrue(condition1)
 
         XCTAssertEqual(api.createConversationCalls.count, 1)
         XCTAssertEqual(api.chatRequests.first?.conversationId, "conv_remote_1")
@@ -47,7 +48,7 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(viewModel.activeConversation?.syncState, .synced)
     }
 
-    func testDeleteConversationRemovesRemoteConversationBeforeLocalCleanup() async {
+    func testDeleteConversationRemovesRemoteConversationBeforeLocalCleanup() async throws {
         let api = MockOpenAIService()
         let viewModel = makeViewModel(api: api)
 
@@ -61,10 +62,11 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.deleteConversation(conversation)
 
-        XCTAssertTrue(await waitUntil {
+        let condition2 = await waitUntil {
             api.deletedConversationIds == ["conv_remote_delete"] &&
             viewModel.conversations.allSatisfy { $0.id != conversation.id }
-        })
+        }
+        XCTAssertTrue(condition2)
     }
 
     func testBackgroundResponsePollsUntilCompletion() async {
@@ -81,10 +83,11 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Run the long task.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition3 = await waitUntil {
             !viewModel.isStreaming &&
             viewModel.messages.contains { $0.text == "Background work finished." }
-        })
+        }
+        XCTAssertTrue(condition3)
 
         XCTAssertEqual(api.getResponseCalls, ["resp_background_1"])
     }
@@ -147,9 +150,10 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Use the public MCP server.")
 
-        XCTAssertTrue(await waitUntil(timeout: 1.5) {
+        let condition4 = await waitUntil(timeout: 1.5) {
             api.chatRequests.count == 1 && viewModel.messages.contains { $0.text == "Public MCP ready." }
-        })
+        }
+        XCTAssertTrue(condition4)
 
         XCTAssertEqual(api.chatRequests.first?.userMessage, "Use the public MCP server.")
         XCTAssertTrue(api.createConversationCalls.count >= 0)
@@ -190,9 +194,10 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.approveAIDataSharingConsent()
 
-        XCTAssertTrue(await waitUntil {
+        let condition5 = await waitUntil {
             api.chatRequests.count == 1 && viewModel.messages.contains { $0.text == "Consent approved." }
-        })
+        }
+        XCTAssertTrue(condition5)
 
         XCTAssertEqual(api.chatRequests.first?.userMessage, "Send after approval.")
     }
@@ -236,18 +241,20 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Cancel this background job.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition6 = await waitUntil {
             viewModel.messages.contains { $0.text == "Background response in progress..." } ||
             !api.getResponseCalls.isEmpty
-        })
+        }
+        XCTAssertTrue(condition6)
 
         viewModel.cancelStreaming()
 
-        XCTAssertTrue(await waitUntil {
+        let condition7 = await waitUntil {
             api.cancelResponseCalls == ["resp_background_cancel"] &&
             !viewModel.isStreaming &&
             viewModel.messages.contains { $0.text?.contains("cancelled by user") == true }
-        })
+        }
+        XCTAssertTrue(condition7)
     }
 
     func testBackgroundFunctionFollowUpUsesConversationContinuationWhenRemoteConversationExists() async {
@@ -283,11 +290,12 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Calculate 2+2.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition8 = await waitUntil {
             api.sendFunctionOutputCalls.count == 1 &&
             api.streamFunctionOutputsCalls.isEmpty &&
             viewModel.messages.contains { $0.text == "The result is 4." }
-        })
+        }
+        XCTAssertTrue(condition8)
 
         XCTAssertNil(api.sendFunctionOutputCalls.first?.previousResponseId)
         XCTAssertEqual(api.sendFunctionOutputCalls.first?.conversationId, "conv_remote_function")
@@ -326,11 +334,12 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Calculate 2+2.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition9 = await waitUntil {
             api.sendFunctionOutputCalls.count == 1 &&
             api.streamFunctionOutputsCalls.isEmpty &&
             viewModel.messages.contains { $0.text == "The result is 4." }
-        })
+        }
+        XCTAssertTrue(condition9)
 
         XCTAssertEqual(api.sendFunctionOutputCalls.first?.previousResponseId, "resp_function_start")
         XCTAssertNil(api.sendFunctionOutputCalls.first?.conversationId)
@@ -368,11 +377,12 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Run both calculations.")
 
-        XCTAssertTrue(await waitUntil {
+        let condition10 = await waitUntil {
             api.sendFunctionOutputsCalls.count == 1 &&
             api.streamFunctionOutputsCalls.isEmpty &&
             viewModel.messages.contains { $0.text == "Batch results ready." }
-        })
+        }
+        XCTAssertTrue(condition10)
 
         XCTAssertEqual(api.sendFunctionOutputsCalls.first?.outputs.count, 2)
         XCTAssertNil(api.sendFunctionOutputsCalls.first?.previousResponseId)
@@ -387,12 +397,17 @@ final class ChatViewModelLifecycleTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         temporaryDirectories.append(directory)
 
-        return ChatViewModel(
+        let model = ChatViewModel(
             api: api,
             storageService: ConversationStorageService(storageURL: directory),
             startBackgroundWork: false,
             backgroundPollIntervalNanoseconds: backgroundPollIntervalNanoseconds
         )
+        // These tests exercise the protocol-backed Responses lifecycle. Modern turn-runner
+        // behavior has its own injected stream tests in StreamingEventDecodingTests.
+        model.exploreModeEnabled = false
+        model.activePrompt.openAIModel = "gpt-5.4"
+        return model
     }
 
     private func setRemoteConversation(id remoteId: String, for viewModel: ChatViewModel) {
@@ -606,6 +621,19 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         incompleteDetails: nil
     )
 
+    func checkModeration(input: String) async throws -> ModerationResult {
+        ModerationResult(flagged: false, categories: [:], categoryScores: [:])
+    }
+
+    func buildPreviewRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?,
+                                   fileData: [Data]?, fileNames: [String]?, fileIds: [String]?,
+                                   imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?,
+                                   previousResponseId: String?, conversationId: String?, stream: Bool) -> [String: Any] {
+        OpenAIService().buildPreviewRequestObject(for: prompt, userMessage: userMessage, attachments: attachments,
+            fileData: fileData, fileNames: fileNames, fileIds: fileIds, imageAttachments: imageAttachments,
+            audioAttachments: audioAttachments, previousResponseId: previousResponseId, conversationId: conversationId, stream: stream)
+    }
+
     func sendChatRequest(
         userMessage: String,
         prompt: Prompt,
@@ -614,6 +642,7 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         fileNames: [String]?,
         fileIds: [String]?,
         imageAttachments: [InputImage]?,
+        audioAttachments: [InputAudio]?,
         previousResponseId: String?,
         conversationId: String?
     ) async throws -> OpenAIResponse {
@@ -635,10 +664,11 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         fileNames: [String]?,
         fileIds: [String]?,
         imageAttachments: [InputImage]?,
+        audioAttachments: [InputAudio]?,
         previousResponseId: String?,
         conversationId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
-        AsyncThrowingStream { continuation in
+        return AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }
@@ -719,7 +749,7 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
                 conversationId: conversationId
             )
         )
-        AsyncThrowingStream { continuation in
+        return AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }
@@ -779,7 +809,7 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         previousResponseId: String?,
         prompt: Prompt
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
-        AsyncThrowingStream { continuation in
+        return AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }
@@ -800,7 +830,7 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         prompt: Prompt,
         stream: Bool
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
-        AsyncThrowingStream { continuation in
+        return AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }

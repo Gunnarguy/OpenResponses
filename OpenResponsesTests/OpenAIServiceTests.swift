@@ -96,6 +96,40 @@ final class OpenAIServiceTests: XCTestCase {
         }
     }
 
+    func testRequestAddsStableAutomaticPromptCacheKey() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+
+        let first = buildRequest(prompt: prompt)
+        let second = buildRequest(prompt: prompt)
+
+        let expected = "openresponses:prompt:\(prompt.id.uuidString.lowercased())"
+        XCTAssertEqual(first["prompt_cache_key"] as? String, expected)
+        XCTAssertEqual(second["prompt_cache_key"] as? String, expected)
+    }
+
+    func testExplicitPromptCacheKeyOverridesAutomaticKey() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-5.4"
+        prompt.promptCacheKey = "tenant:acme:assistant-v2"
+
+        let request = buildRequest(prompt: prompt)
+
+        XCTAssertEqual(
+            request["prompt_cache_key"] as? String,
+            "tenant:acme:assistant-v2"
+        )
+    }
+
+    @MainActor
+    func testLegacyNumericPromptCacheTTLNormalizesToCurrentValue() throws {
+        let data = Data(#"{"mode":"implicit","ttl":30}"#.utf8)
+        let options = try JSONDecoder().decode(PromptCacheOptions.self, from: data)
+
+        XCTAssertEqual(options.mode, "implicit")
+        XCTAssertEqual(options.ttl, "30m")
+    }
+
     func testModelAliasNormalizationForAPI() {
         var prompt = Prompt.defaultPrompt()
 
@@ -518,7 +552,7 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertFalse(hasDropboxConnector)
     }
 
-    func testMCPConnectorToolOmittedWhenFeatureFlagDisabledEvenWithAuthorization() {
+    func testMCPConnectorToolIncludedWithAuthorization() {
         let connectorId = "connector_dropbox"
         let authKey = "mcp_connector_\(connectorId)"
         XCTAssertTrue(KeychainService.shared.save(value: "test-oauth-token", forKey: authKey))
@@ -537,12 +571,12 @@ final class OpenAIServiceTests: XCTestCase {
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
         let tools = (request["tools"] as? [[String: Any]]) ?? []
-        XCTAssertFalse(tools.contains { tool in
+        XCTAssertTrue(tools.contains { tool in
             tool["type"] as? String == "mcp" && (tool["connector_id"] as? String == connectorId)
         })
     }
 
-    func testRemoteMCPToolOmittedWhenFeatureFlagDisabledForPublicServer() {
+    func testRemoteMCPToolIncludedForPublicServer() {
         let label = "deepwiki"
         _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
 
@@ -562,12 +596,12 @@ final class OpenAIServiceTests: XCTestCase {
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
         let tools = (request["tools"] as? [[String: Any]]) ?? []
-        XCTAssertFalse(tools.contains { tool in
+        XCTAssertTrue(tools.contains { tool in
             tool["type"] as? String == "mcp" && (tool["server_url"] as? String) == "https://mcp.deepwiki.com/mcp"
         })
     }
 
-    func testRemoteMCPToolOmittedWhenFeatureFlagDisabledWithAuthorization() {
+    func testRemoteMCPToolIncludedWithAuthorization() {
         let label = "github"
         _ = KeychainService.shared.delete(forKey: "mcp_manual_\(label)")
 
@@ -588,7 +622,7 @@ final class OpenAIServiceTests: XCTestCase {
         let request = buildRequest(prompt: prompt, message: "Use MCP tools")
 
         let tools = (request["tools"] as? [[String: Any]]) ?? []
-        XCTAssertFalse(tools.contains { tool in
+        XCTAssertTrue(tools.contains { tool in
             tool["type"] as? String == "mcp" && (tool["server_url"] as? String) == "https://api.githubcopilot.com/mcp/"
         })
     }
@@ -628,6 +662,7 @@ final class OpenAIServiceTests: XCTestCase {
         }
 
         XCTAssertTrue(tools.contains { $0["type"] as? String == "web_search" || $0["type"] as? String == "web_search_preview" })
+        XCTAssertFalse(tools.contains { $0["profile"] != nil }, "The live API rejects the legacy profile parameter")
     }
 
     func testMetadataParsedIntoDictionary() {
@@ -712,4 +747,158 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(input?.first?["content"] as? String, "preset")
         XCTAssertEqual(input?.first?["role"] as? String, "user")
     }
+    func testAstraSupportsToolsAndNormalizesLegacyEffortWithoutSampling() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-6-astra"
+        prompt.reasoningEffort = "none"
+        prompt.reasoningSummary = "auto"
+        prompt.temperature = 0.7
+        let request = buildRequest(prompt: prompt)
+        XCTAssertEqual((request["reasoning"] as? [String: Any])?["effort"] as? String, "low")
+        XCTAssertEqual((request["reasoning"] as? [String: Any])?["summary"] as? String, "auto")
+        XCTAssertNil(request["temperature"])
+        XCTAssertNil(request["top_p"])
+        XCTAssertTrue(((request["tools"] as? [[String: Any]]) ?? []).contains { $0["type"] as? String == "web_search" })
+        XCTAssertFalse(CurrentModelCatalog.reasoningEfforts(for: "gpt-6-astra").contains("none"))
+        XCTAssertFalse(CurrentModelCatalog.reasoningEfforts(for: "gpt-5.6-sol").contains("minimal"))
+    }
+
+    func testModernControlsApplyToInitialAndToolContinuationRequests() throws {
+        var prompt = Prompt.defaultPrompt()
+        prompt.currentOptions.automaticCompaction = true
+        prompt.currentOptions.compactThreshold = 120_000
+        prompt.currentOptions.reasoningContext = "all_turns"
+        prompt.currentOptions.reasoningMode = "pro"
+        for request in [buildRequest(prompt: prompt), try buildFunctionOutputsRequest(prompt: prompt, model: "gpt-6-astra", previousResponseID: "resp_test")] {
+            let management = request["context_management"] as? [[String: Any]]
+            XCTAssertEqual(management?.first?["compact_threshold"] as? Int, 120_000)
+            XCTAssertEqual((request["reasoning"] as? [String: Any])?["context"] as? String, "all_turns")
+            XCTAssertEqual((request["reasoning"] as? [String: Any])?["mode"] as? String, "pro")
+        }
+        prompt.openAIModel = "gpt-4o"
+        XCTAssertNil(buildRequest(prompt: prompt)["context_management"])
+    }
+
+    func testToolSearchDefersFunctionsAndHostedShellCanStandAlone() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableWebSearch = false
+        prompt.enableCodeInterpreter = false
+        prompt.enableFileSearch = false
+        prompt.enableImageGeneration = false
+        prompt.enableMCPTool = false
+        prompt.currentOptions.hostedShell = true
+        var tools = buildRequest(prompt: prompt)["tools"] as? [[String: Any]]
+        XCTAssertEqual(tools?.count, 1)
+        XCTAssertEqual(tools?.first?["type"] as? String, "shell")
+        XCTAssertEqual((tools?.first?["environment"] as? [String: Any])?["type"] as? String, "container_auto")
+        prompt.enableCustomTool = true
+        prompt.currentOptions.toolSearch = true
+        tools = buildRequest(prompt: prompt)["tools"] as? [[String: Any]]
+        XCTAssertTrue(tools?.contains { $0["type"] as? String == "tool_search" } == true)
+        XCTAssertEqual(tools?.first { $0["type"] as? String == "function" }?["defer_loading"] as? Bool, true)
+    }
+
+    @MainActor
+    func testCompactedWindowPreservesOpaqueItemsAndOnlyPrependsOnce() throws {
+        var prompt = Prompt.defaultPrompt()
+        prompt.compactedInputJSON = #"[{"type":"compaction","id":"cmp_123","encrypted_content":"opaque"},{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Retained"}]}]"#
+        let first = buildRequest(prompt: prompt)
+        let input = try XCTUnwrap(first["input"] as? [[String: Any]])
+        XCTAssertEqual(input.first?["encrypted_content"] as? String, "opaque")
+        XCTAssertEqual(input[1]["phase"] as? String, "final_answer")
+        let continued = buildRequest(prompt: prompt, previousResponseID: "resp_after_compaction")
+        XCTAssertFalse((continued["input"] as? [[String: Any]] ?? []).contains { $0["type"] as? String == "compaction" })
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(prompt)) as? [String: Any]
+        XCTAssertNil(encoded?["compactedInputJSON"], "Conversation context must never leak into a saved preset")
+    }
+
+    func testImageTwoTransparencyAndPartialPreviews() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.imageGenerationBackground = "transparent"
+        prompt.imageGenerationOutputFormat = "jpeg"
+        prompt.currentOptions.partialImages = 9
+        prompt.currentOptions.imageAction = "edit"
+        let tool = (buildRequest(prompt: prompt, stream: true)["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "image_generation" }
+        XCTAssertEqual(tool?["model"] as? String, "gpt-image-2")
+        XCTAssertEqual(tool?["output_format"] as? String, "png")
+        XCTAssertEqual(tool?["partial_images"] as? Int, 3)
+        XCTAssertEqual(tool?["action"] as? String, "edit")
+        let nonStreamingTool = (buildRequest(prompt: prompt)["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "image_generation" }
+        XCTAssertNil(nonStreamingTool?["partial_images"])
+        let count = ResponsesAPIClient.tokenCountBody(from: buildRequest(prompt: prompt, stream: true))
+        XCTAssertNil((count["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "image_generation" }?["partial_images"])
+    }
+
+    @MainActor
+    func testModernOptionsAreBackwardCompatibleAndOptIn() throws {
+        let prompt = Prompt.defaultPrompt()
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(prompt)) as? [String: Any])
+        json.removeValue(forKey: "modernOptions")
+        let restored = try JSONDecoder().decode(Prompt.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertFalse(restored.currentOptions.toolSearch)
+        XCTAssertFalse(restored.currentOptions.automaticCompaction)
+        XCTAssertNil(buildRequest(prompt: restored)["prompt_cache_options"], "Do not enable cache writes for short requests")
+    }
+
+    func testModelSnapshotCapabilitiesDoNotLeakToUnknownFamilies() {
+        XCTAssertTrue(CurrentModelCatalog.isModern("gpt-6-astra-2026-09-03"))
+        XCTAssertFalse(CurrentModelCatalog.isModern("gpt-6-astra-audio"))
+        XCTAssertTrue(CurrentModelCatalog.isRetired("computer-use-preview"))
+        XCTAssertFalse(CurrentModelCatalog.recommended.contains("computer-use-preview"))
+    }
+
+    func testTokenCountExcludesGenerationAndTransportFields() {
+        let body = ResponsesAPIClient.tokenCountBody(from: ["model": "gpt-6-astra", "input": "Hi", "stream": true, "background": true, "store": false, "max_output_tokens": 50, "tools": [["type": "web_search"]]])
+        XCTAssertEqual(Set(body.keys), ["model", "input", "tools"])
+    }
+
+    func testRealtimeUsesCurrentNestedAudioSchemaAndValidVoice() {
+        let session = RealtimeService.sessionConfiguration(voice: "fable", instructions: "Be brief", textOnly: false)
+        XCTAssertNil(session["input_audio_transcription"])
+        XCTAssertEqual(session["output_modalities"] as? [String], ["audio"])
+        let audio = session["audio"] as? [String: Any]
+        let input = audio?["input"] as? [String: Any]
+        XCTAssertEqual((input?["transcription"] as? [String: Any])?["model"] as? String, "gpt-live-transcribe")
+        XCTAssertEqual((audio?["output"] as? [String: Any])?["voice"] as? String, "marin")
+    }
+
+    @MainActor
+    func testNativeOrchestrationGatesIncompatibleParametersAndToolRoutes() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-6-astra"
+        prompt.enableCustomTool = true
+        prompt.customToolName = "read_echo"
+        prompt.customToolExecutionType = "echo"
+        prompt.currentOptions.customToolFormat = "text"
+        prompt.currentOptions.multiAgent = true
+        prompt.currentOptions.asyncTools = true
+        prompt.currentOptions.maxSubagents = 99
+        prompt.reasoningSummary = "detailed"
+        prompt.maxToolCalls = 8
+        let request = buildRequest(prompt: prompt, stream: true)
+        XCTAssertNil((request["reasoning"] as? [String: Any])?["summary"])
+        XCTAssertNil(request["max_tool_calls"])
+        XCTAssertEqual(request["parallel_tool_calls"] as? Bool, false)
+        XCTAssertEqual((request["multi_agent"] as? [String: Any])?["max_concurrent_subagents"] as? Int, 8)
+        let custom = (request["tools"] as? [[String: Any]])?.first { $0["name"] as? String == "read_echo" }
+        XCTAssertEqual(custom?["type"] as? String, "custom")
+        XCTAssertEqual(custom?["async"] as? Bool, true)
+        XCTAssertNil(custom?["parameters"])
+        prompt.currentOptions.programmaticTools = true
+        let programmatic = buildRequest(prompt: prompt)
+        let programTool = (programmatic["tools"] as? [[String: Any]])?.first { $0["name"] as? String == "read_echo" }
+        XCTAssertNil(programTool?["async"])
+        XCTAssertEqual(programTool?["allowed_callers"] as? [String], ["direct", "programmatic"])
+        prompt.customToolExecutionType = "webhook"
+        let webhook = (buildRequest(prompt: prompt)["tools"] as? [[String: Any]])?.first { $0["name"] as? String == "read_echo" }
+        XCTAssertNil(webhook?["async"])
+        XCTAssertNil(webhook?["allowed_callers"])
+        prompt.enableComputerUse = true
+        let computerRequest = buildRequest(prompt: prompt)
+        XCTAssertNil(computerRequest["multi_agent"])
+        XCTAssertFalse((computerRequest["tools"] as? [[String: Any]] ?? []).contains { $0["type"] as? String == "programmatic_tool_calling" })
+    }
+
 }

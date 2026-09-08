@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct OpenResponsesApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var storageBackgroundTask: UIBackgroundTaskIdentifier = .invalid
     @StateObject private var chatViewModel = AppContainer.shared.makeChatViewModel()
 
     init() {
@@ -20,6 +22,24 @@ struct OpenResponsesApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(chatViewModel)
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase != .active else { return }
+                    if storageBackgroundTask == .invalid {
+                        storageBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save conversations") {
+                            if storageBackgroundTask != .invalid {
+                                UIApplication.shared.endBackgroundTask(storageBackgroundTask)
+                                storageBackgroundTask = .invalid
+                            }
+                        }
+                    }
+                    Task {
+                        await chatViewModel.flushConversationStorage()
+                        if storageBackgroundTask != .invalid {
+                            UIApplication.shared.endBackgroundTask(storageBackgroundTask)
+                            storageBackgroundTask = .invalid
+                        }
+                    }
+                }
         }
     }
 }

@@ -60,6 +60,16 @@ struct MessageMetadataView: View {
                         tokenBadge(label: "total", value: total, color: .purple)
                     }
                 }
+                if (usage.cachedInput ?? 0) > 0 || (usage.cacheWrite ?? 0) > 0 {
+                    HStack(spacing: 12) {
+                        if let cached = usage.cachedInput, cached > 0 {
+                            tokenBadge(label: "cache read", value: cached, color: .cyan)
+                        }
+                        if let written = usage.cacheWrite, written > 0 {
+                            tokenBadge(label: "cache write", value: written, color: .indigo)
+                        }
+                    }
+                }
             }
             
             // File IDs from artifacts (for code interpreter outputs)

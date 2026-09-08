@@ -1,1 +1,1 @@
-GPT-5.4, Apple Calendar/Contacts/Reminders, camera and file attachments, Code Interpreter, computer use, and full Request Inspector.
+Explore current OpenAI models, continuing voice, MCP tools and browser automation, with an API Workbench for raw requests, streaming and complete response exports.

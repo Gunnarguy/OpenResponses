@@ -1,23 +1,21 @@
-Demo account: Not required.
+OpenResponses 2.6 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
 
-Review API key (for App Review only):
-[PASTE_REVIEW_API_KEY_HERE]
+The key is stored in iOS Keychain and sent to OpenAI for authentication. Before the first live request, the app presents its data-sharing notice and requires Allow & Send. Selected prompts, attachments and tool results are transmitted for processing; local history and optional remote storage are separate.
 
-Reviewer walkthrough:
-1. Launch OpenResponses. You can start Explore Demo to inspect onboarding and UI offline, or paste the Review API key (above) into Settings > General to test live features.
-2. Open Settings > Model and select "GPT-5.4" or "GPT-4.1". Send "Summarize the WWDC 2025 keynote".
-3. Confirm that the in-app OpenAI Data Sharing Notice appears before the request is sent. Tap "Allow & Send" to continue.
-4. Verify streaming, activity feed updates, and Assistant Thinking traces.
-5. Enable Web Search under Settings > Tools and ask "What happened in tech news today?"
-6. Enable Code Interpreter under Settings > Tools and ask "Plot the first 12 Fibonacci numbers."
-7. Attach a PDF from the Files picker, or use "Take Photo" from the chat composer, and ask the assistant to summarize the attachment.
-8. Inspect the API payload using the Request Inspector (tap the message menu > View Request).
-9. Optional: Enable Apple integrations and ask "What's in my reminders for today?", "What's on my calendar today?", or search for a contact.
-10. Optional: Enable Computer Use. The app will show disclosure and approval steps before requesting Local Network access or taking any automation action.
+Suggested review:
+1. Explore Demo, then configure an authorized test key for live requests.
+2. Select an account-available model, send a greeting, accept the first-send notice and inspect streaming, activity and request details.
+3. Send a follow-up and switch chats; existing history should remain available.
+4. Try Web Search and inspect sources. Attach a small file and observe vector-store indexing if using file search.
+5. Open Settings → Model → API Workbench to inspect raw requests, events, exports, token counting and compaction.
+6. Open voice mode, grant microphone access and speak for multiple turns. Test mute and return to listening after the answer.
 
-Notes:
-- A ChatGPT subscription does not cover API usage.
-- This review key has active billing and is intended for App Review verification only.
-- Camera, Photos/Files, Calendar, Contacts, Reminders, and Local Network permissions are requested only if related features are used.
-- Computer Use is optional and off by default.
-- Optional third-party connector configuration is not part of this shipping build.
+Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. DOM/screenshot actions share cancellation, deadlines and action limits. API-provided safety prompts may be denied; not every action has a separate approval. Stopping cannot reverse a website mutation already received.
+
+MCP setup/discovery uses OpenAI-hosted MCP. The endpoint and server authentication may be sent to OpenAI so it can connect. Private OAuth services may need separate account setup. Apple Calendar/Reminders/Contacts and Notion are optional and require their own permissions or credentials.
+
+Batch exports save complete available output/error files. Fine-tuning imports reviewed text-chat JSONL and explains restricted service availability; exporting one chat is only a draft. Paid jobs are not necessary to inspect these screens. Retained Assistant JSON can be imported into Responses presets; retired live Assistants operations are disabled. Arbitrary Workbench tool schemas do not execute arbitrary shell commands on the iPhone.
+
+
+MCP Connections: Settings → MCP opens the new account library. Supported providers use the iOS system browser for account sign-in; tool discovery is separate and uses the reviewer’s OpenAI API account after consent. Public entries need no provider account. The catalog explicitly identifies providers requiring developer registration or different callback setup; those entries do not claim working sign-in. Existing direct Notion integration keys remain under legacy management.
+Workbench request drafts persist securely; malformed schemas are rejected locally. Voice starts a separate session and does not inherit chat history/tools.

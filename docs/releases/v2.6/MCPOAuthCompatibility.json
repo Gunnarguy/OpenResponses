@@ -1,0 +1,605 @@
+{
+  "checkedAt": "2026-09-08T17:41:02.629146+00:00",
+  "scope": "Public metadata and app registration only; no provider account authorization or tool execution.",
+  "catalogEntries": 44,
+  "nativeRegistrationAccepted": 19,
+  "metadata": [
+    {
+      "id": "notion",
+      "status": 200,
+      "issuer": "https://mcp.notion.com",
+      "registration": true,
+      "pkce": [
+        "plain",
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.notion.com/mcp"
+    },
+    {
+      "id": "linear",
+      "status": 200,
+      "issuer": "https://mcp.linear.app",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.linear.app/mcp"
+    },
+    {
+      "id": "atlassian",
+      "status": 404,
+      "metadata": false
+    },
+    {
+      "id": "canva",
+      "status": 200,
+      "issuer": "https://mcp.canva.com",
+      "registration": true,
+      "pkce": [
+        "plain",
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.canva.com/mcp"
+    },
+    {
+      "id": "figma",
+      "status": 200,
+      "issuer": "https://api.figma.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post"
+      ],
+      "resource": "https://mcp.figma.com/mcp"
+    },
+    {
+      "id": "asana",
+      "status": 200,
+      "issuer": "https://app.asana.com",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post",
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.asana.com/v2/mcp"
+    },
+    {
+      "id": "monday",
+      "status": 200,
+      "issuer": "https://auth.monday.com/mcp",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post",
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.monday.com/mcp"
+    },
+    {
+      "id": "todoist",
+      "status": 200,
+      "issuer": "https://todoist.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://ai.todoist.net/mcp"
+    },
+    {
+      "id": "miro",
+      "status": 200,
+      "issuer": "https://mcp.miro.com/",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "none"
+      ],
+      "resource": "https://mcp.miro.com/"
+    },
+    {
+      "id": "airtable",
+      "status": 200,
+      "issuer": "https://airtable.com/oauth2/v1",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "none"
+      ],
+      "resource": "https://mcp.airtable.com"
+    },
+    {
+      "id": "stripe",
+      "status": 200,
+      "issuer": "https://access.stripe.com/mcp",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "none"
+      ],
+      "resource": "https://mcp.stripe.com"
+    },
+    {
+      "id": "paypal",
+      "status": 200,
+      "issuer": "https://mcp.paypal.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.paypal.com/mcp"
+    },
+    {
+      "id": "intercom",
+      "status": 404,
+      "metadata": false
+    },
+    {
+      "id": "hubspot",
+      "status": 200,
+      "issuer": "https://mcp.hubspot.com",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post"
+      ],
+      "resource": "https://mcp.hubspot.com"
+    },
+    {
+      "id": "box",
+      "status": 401,
+      "issuer": "https://api.box.com/",
+      "metadata": false
+    },
+    {
+      "id": "slack",
+      "status": 200,
+      "issuer": "https://mcp.slack.com",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post"
+      ],
+      "resource": "https://mcp.slack.com"
+    },
+    {
+      "id": "webflow",
+      "status": 200,
+      "issuer": "https://mcp.webflow.com",
+      "registration": true,
+      "pkce": [
+        "plain",
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.webflow.com/mcp"
+    },
+    {
+      "id": "vercel",
+      "status": 200,
+      "issuer": "https://vercel.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "client_secret_jwt",
+        "private_key_jwt"
+      ],
+      "resource": "https://mcp.vercel.com/"
+    },
+    {
+      "id": "supabase",
+      "status": 200,
+      "issuer": "https://api.supabase.com",
+      "registration": true,
+      "pkce": [
+        "S256",
+        "plain"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post"
+      ],
+      "resource": "https://mcp.supabase.com/mcp"
+    },
+    {
+      "id": "neon",
+      "status": 200,
+      "issuer": "https://mcp.neon.tech",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post",
+        "client_secret_basic",
+        "none"
+      ],
+      "resource": "https://mcp.neon.tech/mcp"
+    },
+    {
+      "id": "posthog",
+      "status": 200,
+      "issuer": "https://oauth.posthog.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "none",
+        "client_secret_post",
+        "private_key_jwt"
+      ],
+      "resource": "https://mcp.posthog.com/mcp"
+    },
+    {
+      "id": "amplitude",
+      "status": 200,
+      "issuer": "https://mcp.amplitude.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://mcp.amplitude.com"
+    },
+    {
+      "id": "deepwiki",
+      "status": 404,
+      "metadata": false
+    },
+    {
+      "id": "cloudflare-bindings",
+      "status": 200,
+      "issuer": "https://bindings.mcp.cloudflare.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://bindings.mcp.cloudflare.com/mcp"
+    },
+    {
+      "id": "cloudflare-observability",
+      "status": 200,
+      "issuer": "https://observability.mcp.cloudflare.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://observability.mcp.cloudflare.com/mcp"
+    },
+    {
+      "id": "cloudflare-builds",
+      "status": 200,
+      "issuer": "https://builds.mcp.cloudflare.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://builds.mcp.cloudflare.com/mcp"
+    },
+    {
+      "id": "cloudflare-browser",
+      "status": 200,
+      "issuer": "https://browser.mcp.cloudflare.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://browser.mcp.cloudflare.com/mcp"
+    },
+    {
+      "id": "cloudflare-radar",
+      "status": 200,
+      "issuer": "https://radar.mcp.cloudflare.com",
+      "registration": true,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic",
+        "client_secret_post",
+        "none"
+      ],
+      "resource": "https://radar.mcp.cloudflare.com/mcp"
+    },
+    {
+      "id": "cloudflare-docs",
+      "status": 404,
+      "metadata": false
+    },
+    {
+      "id": "zoom-workspace",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/zoom/streamable"
+    },
+    {
+      "id": "zoom-meetings",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/meeting/streamable"
+    },
+    {
+      "id": "zoom-docs",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/docs/streamable"
+    },
+    {
+      "id": "zoom-tasks",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/tasks/streamable"
+    },
+    {
+      "id": "zoom-chat",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/chat/streamable"
+    },
+    {
+      "id": "zoom-whiteboard",
+      "status": 200,
+      "issuer": "https://zoom.us",
+      "registration": false,
+      "pkce": [
+        "S256"
+      ],
+      "methods": [
+        "client_secret_basic"
+      ],
+      "resource": "https://mcp.zoom.us/mcp/whiteboard/streamable"
+    }
+  ],
+  "registration": [
+    {
+      "id": "notion",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "evidence": "previous live registration"
+    },
+    {
+      "id": "linear",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "evidence": "previous live registration"
+    },
+    {
+      "id": "atlassian",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "canva",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "monday",
+      "registrationStatus": 400,
+      "nativeCallbackAccepted": false,
+      "errorCode": null
+    },
+    {
+      "id": "todoist",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "miro",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "airtable",
+      "registrationStatus": 400,
+      "nativeCallbackAccepted": false,
+      "errorCode": "invalid_redirect_uri"
+    },
+    {
+      "id": "stripe",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "paypal",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "intercom",
+      "registrationStatus": 400,
+      "nativeCallbackAccepted": false,
+      "errorCode": "invalid_redirect_uri"
+    },
+    {
+      "id": "webflow",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "vercel",
+      "registrationStatus": 400,
+      "nativeCallbackAccepted": false,
+      "errorCode": "invalid_redirect_uri"
+    },
+    {
+      "id": "supabase",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "client_secret_post"
+    },
+    {
+      "id": "neon",
+      "registrationStatus": 200,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "posthog",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "sentry",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "amplitude",
+      "registrationStatus": 200,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "cloudflare-bindings",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "cloudflare-observability",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "cloudflare-builds",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "cloudflare-browser",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    },
+    {
+      "id": "cloudflare-radar",
+      "registrationStatus": 201,
+      "nativeCallbackAccepted": true,
+      "authMethod": "none"
+    }
+  ],
+  "notionBrowserHandoff": "Actual Notion login screen reached in signed iPhone 16 Pro Max simulator through ASWebAuthenticationSession.",
+  "excluded": "Client IDs, secrets, access tokens, refresh tokens, account identities and private registration responses."
+}

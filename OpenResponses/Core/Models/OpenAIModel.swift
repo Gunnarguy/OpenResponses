@@ -93,7 +93,7 @@ struct OpenAIModel: Codable, Identifiable {
 
     /// Whether this is a reasoning model (O-series or GPT-5)
     var isReasoningModel: Bool {
-        return id.hasPrefix("o1") || id.hasPrefix("o3") || id.hasPrefix("gpt-5")
+        return id.hasPrefix("o1") || id.hasPrefix("o3") || ModelCompatibilityService.shared.getCapabilities(for: id)?.supportsReasoningEffort == true
     }
 }
 

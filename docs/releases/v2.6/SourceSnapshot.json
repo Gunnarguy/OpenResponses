@@ -1,0 +1,783 @@
+{
+  "baseline": "855ab3b4aac8f19b487757c269e2e0a20d2cbb02",
+  "head": "bf5a783f7912b9e12f37e88e63c5c6891412eb94",
+  "version": "2.6",
+  "build": "39",
+  "captured": "2026-09-08T17:58:35.583688+00:00",
+  "files": [
+    {
+      "path": "OpenResponses.xcodeproj/project.pbxproj",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "4026c59f2c2d1ffb793cf31e155a485b417720863fba4bdaded6ff570802c57b"
+    },
+    {
+      "path": "OpenResponses/App/AppLogger.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "d1ff6dbc8fcbe50f2f2ec9701c60557e62efcb61a219b78beafa3379d4de0e4e"
+    },
+    {
+      "path": "OpenResponses/App/ContentView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "97ce51c9536d748beb61fda0af79b635ee85e26001ceba32fcf76899b5261c8e"
+    },
+    {
+      "path": "OpenResponses/App/OpenResponsesApp.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "9451677430b0ae87fbcb24025eef66c626ebcfb6d2892385cca79772cb8be217"
+    },
+    {
+      "path": "OpenResponses/Core/Models/APICapabilities.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "9e487657756cab964f8f75655fb8ad9dd542951e38ce37f991e6f6f9f9061fa4"
+    },
+    {
+      "path": "OpenResponses/Core/Models/AppleDataModels.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "c4ad7a4d95c57afec59a4cc0523dd4879776c864bf13b2abf2e7ca2f3bf423de"
+    },
+    {
+      "path": "OpenResponses/Core/Models/AssistantsModels.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "75c0d98ae38d99755a5af47f18a9bfec5df59fc988c173babfb0953952fabbcf"
+    },
+    {
+      "path": "OpenResponses/Core/Models/BatchModels.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "82e8c2a8151d2c41f21ffcefd27b81c8e668e5d5cb339dfe948ba1a0155f20a1"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ChatMessage.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "46acb352c65784f9f3487db63fef4f800a87b44172343b776c22c3db4cdc0131"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ComputerModels.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "6256660de5b5658c63183326cc5df46d5395a385db0bf016547e9d11ebbba88f"
+    },
+    {
+      "path": "OpenResponses/Core/Models/Conversation.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "30fc125cbaeb5889bf38cf530558aec387ecfae848a62f4ad435ed782db3a478"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ConversationAPIModels.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "2452e27af80d73da3c51cabdb027435c4d0c2e27b41da61b10e6b4364551b30f"
+    },
+    {
+      "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "d9ce7cebc2fc8a20502dc3f35ea9796a9f74a24f69f2ce150ee6b88371091cde"
+    },
+    {
+      "path": "OpenResponses/Core/Models/FineTuningModels.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "0bf391bb3e0ada6e9fbcb56f221a6c056118c6e504226200abf6b6fa3c4aa851"
+    },
+    {
+      "path": "OpenResponses/Core/Models/JSONLDocument.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "8ca0803879c2a33961ecafeaf67eeecd8c521801b44378989dfece442e438362"
+    },
+    {
+      "path": "OpenResponses/Core/Models/MCPProvider.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "c2270a0bb802bb74807428592f3d7c132ecf7738cd1c3f5b9de570125005b75b"
+    },
+    {
+      "path": "OpenResponses/Core/Models/OpenAIModel.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "055add89b17854caf1e5f479ddf09b085025a5685cf53ee412eedccdf07025fb"
+    },
+    {
+      "path": "OpenResponses/Core/Models/Prompt.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "37bacb17f63a90c573b54e503597292580a0674c977db2d45e6516b7b3153220"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ResponseModels.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "7d62ad44ba4e560146f35e5ca384bbba51291928010b8684332b680de00801fe"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ResponseSettingDescriptor.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "06e423b2f4096709c5a1ce8605fd5c20cfe04b214ff32fd646193964a871d586"
+    },
+    {
+      "path": "OpenResponses/Core/Models/ResponseSettingsRegistry.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "da6f965cc6b8373a1416be61d8e72efabb7754489cf482ef9137677feefc9d23"
+    },
+    {
+      "path": "OpenResponses/Core/Protocols/AssistantsServiceProtocol.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "6442c8eb276201cd9d5d8c5d0086c52c070098e0e8fc239d1f99ec3af52f8afd"
+    },
+    {
+      "path": "OpenResponses/Core/Protocols/OpenAIServiceProtocol.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "f5565bd70b893572ac8502b4bf6a0e94aa86c946a225d0ad316e8ad8075fd189"
+    },
+    {
+      "path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "031ab0c77d9f9a6526826432f9fcd9f1ee0815568ddd10a82ed39a4694ea3ce2"
+    },
+    {
+      "path": "OpenResponses/Core/Services/APIWorkbenchSession.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "ca3582a0904a6ab2ceb9c344ed06fafa57079de597b51bf8f287fbc9afa7607b"
+    },
+    {
+      "path": "OpenResponses/Core/Services/AppleCalendarRepository.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "81d357b4210361faf80f26769bb3b2f851ef015a0091d4fd58c6ced49445d244"
+    },
+    {
+      "path": "OpenResponses/Core/Services/AppleReminderRepository.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "1c94d6e6f0c22035a643dbaac750da64023933409a947e6bb9983c65aa2978e8"
+    },
+    {
+      "path": "OpenResponses/Core/Services/AssistantsService.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "f7aa3b4f6974712187b6a6bb22bf6342389752da67e9394db28af85d3d131368"
+    },
+    {
+      "path": "OpenResponses/Core/Services/BatchService.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "87e7c2166a6ce92d46f15148f227fedede5325330e8f373a1a56635230d00473"
+    },
+    {
+      "path": "OpenResponses/Core/Services/BrowserDOM.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "43b34b1c0b7038359d5f315f459ea20e0ca8165b890aa7254b13a0936d2ff912"
+    },
+    {
+      "path": "OpenResponses/Core/Services/BrowserExecution.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "b07bf67d91c045f0e11154fbd672083448930e5a4430842cce6ae292acb0ec21"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ComputerService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "8d7a1093b1d781195b071ee9846c13e4baea46da7409c06275de89d415168f16"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ContactsPermissionManager.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "0a261b91d34c29da10556202b0446a7115f5d399e9383cb422dbb86dee18feb8"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ContactsRepository.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "8441da1e1ee3015da7674ad473276ebb0ce75ab9c9e04db0d29e9be3ae66bb3f"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ConversationStorageService.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "95b62194af0ff5c9451d585b86cdec87a1bbdc344288f8e52f652eb51676a6e7"
+    },
+    {
+      "path": "OpenResponses/Core/Services/FileConverterService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "14bec6a024a5f4eeda233019aff731d6599ab092bf46a9f3ff352fd7174b4f4a"
+    },
+    {
+      "path": "OpenResponses/Core/Services/FineTuningService.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "cc1eed6f53701a0f796d29ef57a68cce022149162a68c2e6616cd8465cb33d6e"
+    },
+    {
+      "path": "OpenResponses/Core/Services/KeychainService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "06880ba518cc8c00d555ed4ae89f2f4773ca6880f9f05735b40164936c660864"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPAuthorization.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "88a97277471abaad88d08ca0742b6dcf1a3cd2f645ac01236c378d4afcb6693a"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPConfigurationService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "f751432cef14db4dc6856935f1ffe554dbbe26ad73572b4a63cdeedb86084a3e"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPConnectionStore.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "e3d9757581ca0cc418420f1c83e93e4a51d3c62251c00c086b29dbfb4d1722f6"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "a3beba794de51db276247f70976ebfc336b108af05a1d64c6de3e720477efb20"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPDiscoveryStream.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "0484830f278f431d0517a46af824f806122b265e71394a7b5248daa894fd4250"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPRegistryService.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "465642b4361fa28d2c53c6c162ac159f0f57899f668a925e8548eb96c7135c79"
+    },
+    {
+      "path": "OpenResponses/Core/Services/MCPWebAuthentication.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "e3f6b6a21028de312463b8e8ab17cb3395715448d939aaa30aa201c1f2e495e2"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ModelCompatibilityService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "d75e6cb4adb79176bdc333b391f14bdd059057740094d7ba3468ee214570d8cc"
+    },
+    {
+      "path": "OpenResponses/Core/Services/NotionService.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "6117998b1d9616b996cb197bb261b3ca33471de906a365934136fc4a8a8fa90c"
+    },
+    {
+      "path": "OpenResponses/Core/Services/OpenAIService.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "f4db9964d6e0c119104fad5cfa684eec8fb24f206cb4175fe7ca0dd9cb77ae93"
+    },
+    {
+      "path": "OpenResponses/Core/Services/RealtimeAudioPipeline.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "c2361456329df6a8fd2092d5d59fa5367c3ddb3d25213bfcf99c1a2c3d9230ab"
+    },
+    {
+      "path": "OpenResponses/Core/Services/RealtimeService.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "f9766cb607ecf2a485d61baa3aaa358596c690e6e0db2ff85468c5251c58d731"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ResourcePagination.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "df711a30577a3873f64b5eb9bbef3f2708e086570af330d2c5adc47f5b883193"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ResponseConfigurationValidation.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "006b731e086037b6e0d4189fcc08452e091c99af04659c3682ecc4c11f7bd8b8"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ResponseSocketRunner.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "1fa17ae38ea3bab4a8aa92f25982b27e66cba71424961a88a00e0cdbbfeb2740"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ResponseTurnRunner.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "2cde934161b7497df9944a651295793de10067796d6e8954dd47b2ec0b806b0f"
+    },
+    {
+      "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "eb1165d3896f77d2a0f39de16079cd4b204b8398a372c765c0454d37896b302c"
+    },
+    {
+      "path": "OpenResponses/Core/Services/VectorStoreIndexing.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "b8e0dd0b1203686a2df8b27d2248f02d3dd11533c4df66764396bd8d983d9b28"
+    },
+    {
+      "path": "OpenResponses/Core/Services/VoiceRecorderService.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "0e97c0f9e65aa2032f76cebc9e42aa93ad28d32f25be67feaf5425babc7edff8"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/GoogleProviders.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "fdde2dc474befcd50767b4e6b5d537697d7cfbd4105d1ed547dd88b2ce3d8919"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/NotionModels.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "335505127f933f6eea74640ead84e64184d55f7dd14869f6bbb6462d27b3f621"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/NotionProvider+Connect.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "2e14796deec15c513b12847cafd23d452f3bb4594b3588c21e5346960979f297"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/NotionProvider.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "3af836503dbe830674eb4496f9b860ec634d509af16ce869042345230031ba2a"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/ToolProvider.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "c0acd599153948b7d7aef991372a9faf98c959ab93ab7f76aa7ae3363c51ff0f"
+    },
+    {
+      "path": "OpenResponses/Core/ToolProviders/ToolProviderTypes.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "62a3ce4b0b5e3dfe9836ff65e8ea907d8e4a8cf40da2deb3c75aa4fe5353cd82"
+    },
+    {
+      "path": "OpenResponses/Core/Utilities/AppFeatureFlags.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "9275d3038f8f268bec8ef53f06444ee2964455f9904a6ca1ef0cb0be6ea53953"
+    },
+    {
+      "path": "OpenResponses/Core/Utilities/ImageProcessingUtils.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "b4bbf767a0778a2e3ec4f303ee92ecdc4c2de7f1aa6065c74d859f343053e5f9"
+    },
+    {
+      "path": "OpenResponses/Core/Utilities/MCPApprovalUtils.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "b76f2d1f0885379683fe77f49ac443d4a46668b98ad24d2d22ad1b13ca1b5fab"
+    },
+    {
+      "path": "OpenResponses/Core/Utilities/URLDetector.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "2e7afdbf5e056a1c504f1145e415085a39b5340ebb7459b5d2ca73b72529707d"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/AttachmentPills.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "fcae5e2e24111b47f2e0ec4f50e5efec0763cefc61188e415714150f083627a5"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/ChatInputView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "f21695e06d06b0b895e8454a4bddd3e2943c23b0d3d0eacce5c4435765d191e3"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/ChatStatusBar.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "4f63865a43c89a786d29ab0b969b199bc02a65e7de5ff2a24503a23dd5da55cb"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/DynamicModelSelector.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "208e08c1ace838a9c012196e7763696f9b212300c15925a4125552bc64447e72"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/FileManagerView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "1fa3e0493040e88f8a5035f85e5a484f8009b742b8696a330655849d76232776"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/FormattedTextView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "5b134a9de9c287acb3ef5b7ee498c6ea114cf0b7eeb489144891007a48722c20"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/ImagePickerView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "5fbaba707fa9d520253e06b3541ea2800143b3fa53d6c9aa47ee90138d432ba7"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "e9c845c0bc7d2cf6cb8fbd93bc8a4db7d9733db12e07b4fa7e745bda87945005"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/JSONCodeEditor.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "85a34f27895fb8d76b66cb4e95be2df1cad047331282f04e92a4b7e700d11e59"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "60b0411ce11dbc0ffdfaa53b174bce30a9cda1c97f62b73444e2da964ec82dce"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/MessageMetadataView.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "b6d42183eddb2fc3f4e72371a2f136aa1576d7569db96cff2c9fe1e522d6d31e"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/PlaygroundSettingsPanel.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "b85f50f3cec18f79ef5f8c562f4e656a06a58e0867a04b696eebe30682381579"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/RequestInspectorView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "9bbb8bb28ad46e262e09787a32bed6ba3c9a0ac292cf591c39d6fee0f967f6c2"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "b8cf51ca5727a49e5e4e1a7131f1225123e9c5aebbf45b952025c8aa19f4df90"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Components/VectorStoreSmartUploadView.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "fd392574a2c0f920be4a94de30df92fdcb1c2df583acab15a0932c568ea03e54"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "552fde6d99d0eb99c0dd611b91acfd0b0e2c3242ff81779d4846d95bde07b627"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "31ef4401fe3f400939911766dfb839921dbcae80549349747305c1c5e6e2fa67"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "ab208528fc3a888f233c9d9384ec4db62361455efe8c5b33edba5e878651763f"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Views/ChatView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "9880893e5123f09ea26a6d371da28a7b8b931f6546f5b21fb8a01a639699f163"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Views/CreateAssistantSheet.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "2a8a649ed9f9c95163d2f9a3e442f51117fecef2edb525e26e21c0d238cc6016"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Views/MCPApprovalView.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "c7fee3f3858921e28ae3110ec5d20828e1e042231ef5ec7a9b11f7bbe602fab9"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "cc5f7376fad1b1d922a8753c65de1c63e5262a09463e333d1771210714d62291"
+    },
+    {
+      "path": "OpenResponses/Features/Chat/Views/VoiceModeView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "5cb645a3f0af47eb2f0f960d053395bb55f14b3fa2ed2fe05856577185f4e8b8"
+    },
+    {
+      "path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "8ee087615c491a93eba2089b807b373452c1caa34a4074a424980413ad703322"
+    },
+    {
+      "path": "OpenResponses/Features/Conversations/Views/ConversationListView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "9d6026e011c3a4af74cf2b027dd2f998cdbd90eb3a82e9c73a9990d170ac2db9"
+    },
+    {
+      "path": "OpenResponses/Features/DebugTools/Views/DebugConsoleView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "8b8c6be139d2b008567ceea6478e8c4ecb05108544de826db99f098c8711cdc2"
+    },
+    {
+      "path": "OpenResponses/Features/DebugTools/Views/WebContentView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "599f563082b855f3b2b7fcc6929f71d028e2c2a16347036576aff7989a698305"
+    },
+    {
+      "path": "OpenResponses/Features/Onboarding/Views/ModelConfigurationView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "9a8fcfeed7965a399a12f1fa8f2505d61c05d34a90d2a8b23aad513d731f3c26"
+    },
+    {
+      "path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "86884d5c248307849af02aef9e62ed2e4e5c5bfa520447a52e3d0be1c5bffbf8"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "e8ad4a5c3d61828c4670a1b600226c5a54be99e1ed9e6f25175e0637c98f2349"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "d3b727b9aeb23973326ab2b972ab8e21615264b8b9e54e15fc75cb6048f33e21"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/FineTuningView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "46a203b366ebfa07782b80adfbf6eb7e1cd1d6b399e1498d4e8634ea8f92c470"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/LegacyMigrationLabView.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "1d6748e2eb1773bc2b4df941037395f76534442164ab2e8b0b548917bb685cd7"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "ef70944909d1d6c0188cddee3138e97c2c2862c743ee52ecc73047f2c196c25d"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/MCPConnectorGalleryView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "008b8b524ec7ac66e05e88843a859ce9158bc78504a12bf24314eb314d52672f"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/MCPDiscoverySection.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "5b1966fee996e6bea2c7f605acd16e2b9df7744392a5b2ee8ac626cc7e929e78"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "0c2fecdba4c466c3b473aaeea0a58b454de0a96398723ca1e5c8823718712e27"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/RemoteMCPSetupSheet.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "77ac74dcaa19c32056e6a40c40b40d69fbd658d9f85ca6e1b401b255f5c7f7f3"
+    },
+    {
+      "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "788a281f9ce489e92a8c29ef8037f8d1237144218aeaed3c979a9c67b29c57ff"
+    },
+    {
+      "path": "OpenResponses/Features/Tools/Views/ToolConnectionsView.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "02fb526b3aac1eacb7304a456c386638ac48f41ba738ae237d86c76c44da2666"
+    },
+    {
+      "path": "OpenResponses/Info.plist",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "58e84ec98df790193da0fe4fda62bf3462cdad6fc6234e461aea5390fc7bd55b"
+    },
+    {
+      "path": "OpenResponses/Resources/Localization/Localizable.xcstrings",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "456b78982c330651e6724ef85ab84fc090520d1d9d37e111929cb26c6721a33a"
+    },
+    {
+      "path": "OpenResponsesTests/AppCompletionTests.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "6682e4b51c2dfa40cbea57b3c8eb297e0ca770b319aa5fde8dce192e39a8f8a0"
+    },
+    {
+      "path": "OpenResponsesTests/AppleDateUtilitiesTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "5c7d7de5f2d23aa739beb3618725e9d4d5304a1defcfd5ee68c3624d0f82fd8f"
+    },
+    {
+      "path": "OpenResponsesTests/BrowserExecutionTests.swift",
+      "change": "Added",
+      "phase": "September",
+      "sha256": "48a3d7872c203ef8682d8ecb73719d53005fe5ab5c78d26d9deb4f0bb497bc27"
+    },
+    {
+      "path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "a47ce4d2e76a5007348645f0f95a18577c12eb7ee07a1018de5738397299b290"
+    },
+    {
+      "path": "OpenResponsesTests/DateFormattingTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "f714777ec97f4247d59be1bf50414d4003e6915afcbca9ad105c8ec206654dbb"
+    },
+    {
+      "path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6",
+      "sha256": "4ea0be54d156d2f4ce75c50993bc5a9ff234d719096c5ebc27d4c9db83d2f452"
+    },
+    {
+      "path": "OpenResponsesTests/ImageProcessingUtilsTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "cf2b663678f9ba2846c7e6d4762d16ac68bd9bc87c9ab7c9c377183c4efec506"
+    },
+    {
+      "path": "OpenResponsesTests/MCPApprovalUtilsTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "b94f7de1ff0f8b5ffefd3b82ee4d7eeb0e3f72ee0cc82713e8fc84e111feebdf"
+    },
+    {
+      "path": "OpenResponsesTests/MCPSecretPersistenceTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "91dda39f0e06325a99a99c6c9a002391f8aca87fda987759e20bd608cc068094"
+    },
+    {
+      "path": "OpenResponsesTests/OAuthCallbackValidationTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "ace526ff4144c1d1a7d8e12043a9dd755ce0c13b59c40184baff66e6937c7c73"
+    },
+    {
+      "path": "OpenResponsesTests/OpenAIServiceTests.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "0e8606f78fd17ce604ff39e2326c092364b6f092867b0c572586531c7a273abf"
+    },
+    {
+      "path": "OpenResponsesTests/OpenResponsesTests.swift",
+      "change": "Modified",
+      "phase": "Earlier v2.6 + September",
+      "sha256": "b8b8c16d5136f2abaa60bb33ed65f758747d034dc9f06bd543715cbd65990efb"
+    },
+    {
+      "path": "OpenResponsesTests/OptionalStringHelpersTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "95dfbc370b2d84a5dd4c501cf2f9c0b805c5bb6c4157e5575032ede24c75d762"
+    },
+    {
+      "path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "56f613a0da32ac3908b581f335bfcd7eadb744ad77eec01d21700714d36db71d"
+    },
+    {
+      "path": "OpenResponsesTests/StreamingEventDecodingTests.swift",
+      "change": "Modified",
+      "phase": "September",
+      "sha256": "872089db14207f12d8e7ebc341acb5c359df40442be9a7f5cc1d925eacd9aee9"
+    },
+    {
+      "path": "OpenResponsesTests/StreamingTerminationTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "2ed2c8feb6d870d039c346a4e8380e0ff008ea70324ab630b4a676f85053fccc"
+    },
+    {
+      "path": "OpenResponsesTests/UIImageExtensionsTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "76f3fcf57d7610473db0c83512006f0b638cb4fc10f90849a186e04dbce86e32"
+    },
+    {
+      "path": "OpenResponsesTests/URLDetectorTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "1b184947c8ca622ae9511b3e679140ffed9bd8bf50024f0bc85f93ea32a42bf2"
+    },
+    {
+      "path": "OpenResponsesTests/URLRedactionTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "f6b712adf517316aba9f3b184d4cf37ceb509628041f413960536241830b4350"
+    },
+    {
+      "path": "OpenResponsesTests/WebContentNavigationPolicyTests.swift",
+      "change": "Added",
+      "phase": "Earlier v2.6",
+      "sha256": "db809405c63bde51c4678debddb9dabdcc7664dc772acadc6c1191e9703eb863"
+    }
+  ]
+}

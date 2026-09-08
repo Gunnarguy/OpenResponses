@@ -1,44 +1,35 @@
-OpenResponses is a native iPhone client for the OpenAI Responses API built for people who want full control, clear observability, and modern tool support. Bring your own API key, stream responses in real time, inspect every request, and use the latest OpenAI models in a fast SwiftUI interface.
+OpenResponses is a native iPhone and iPad playground for the OpenAI Responses API. Bring your own API key, control your requests, inspect tool activity and explore current models in SwiftUI.
 
-Model Lineup
+CHAT WITH CONTROL
+• Choose from a shared catalog including GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, alongside earlier supported models.
+• Adjust compatible reasoning, context, verbosity, image and tool settings.
+• Stream replies, inspect API-provided reasoning summaries, follow token usage and review request/response details.
+• Save prompt presets, attach photos and documents, export conversations and keep local history.
 
-- GPT-5.4, GPT-5.3, GPT-5.2, GPT-5.1, GPT-5, and GPT-5-mini
-- o3 and o3-mini reasoning models with configurable effort
-- GPT-4.1 family, GPT-4o, and gpt-image-1
+API WORKBENCH
+• Edit JSON requests using HTTP, streaming or WebSocket transports, with secure draft recovery and local schema validation.
+• Inspect raw events and export complete final response payloads.
+• Count input tokens, compact context, retrieve or cancel background responses and inspect known conversations.
+• Explore templates for hosted shell, tool search, custom tools, async/programmatic calling, multi-agent responses and images. Supply real client tool results when a request needs them.
 
-What Makes It Different
+VOICE, IMAGES AND TOOLS
+• Have continuing Realtime voice conversations with microphone mute and interruption handling.
+• Generate images with GPT Image 2 and supported partial previews.
+• Use hosted web search with sources, Code Interpreter and file search when enabled.
+• Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
+• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
+• Enable Calendar, Reminders, Contacts or Notion tools for the tasks that need them.
 
-- Real-time streaming with activity feed, token usage, and Assistant Thinking traces
-- Request Inspector for payloads, tool calls, and raw Responses API details
-- Explore Demo so new users can try the interface before adding an API key
-- Prompt Library, advanced model controls, exports, and local conversation history
-- Message quick actions plus direct camera, photo, file, and document attachments
+FILES AND DEVELOPER LABS
+• Manage files and vector stores with clear indexing status.
+• Monitor Batch jobs and save full available output/error files.
+• Import reviewed text-chat JSONL datasets for fine-tuning where your account remains eligible. Exported chats are drafts for dataset preparation.
+• Import retained Assistant JSON into Responses presets. Retired live Assistants operations are disabled.
 
-Tools Included
+YOUR KEY, VISIBLE DATA FLOW
+• Explore Demo Mode without sending live API requests.
+• Store API credentials in the iOS Keychain and review the first-live-send data-sharing notice.
+• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
+• No separate OpenResponses account is required. OpenAI usage is billed to your own API account.
 
-- Web Search with live sources
-- Code Interpreter for Python, analysis, charts, and artifacts
-- Image Generation with gpt-image-1
-- File Search and vector store workflows
-- Computer Use preview with explicit approval steps
-- Direct Notion integration and Apple system tools when you choose to enable them
-
-Built for Apple
-
-- Calendar, Contacts, and Reminders tools when you enable them
-- Permissions shown only when related features are used
-- SwiftUI experience with Dark Mode, Dynamic Type, and VoiceOver support
-
-Privacy
-
-- Your OpenAI API key is stored in the iOS Keychain
-- Before the first live AI request, the app shows an in-app OpenAI data sharing notice and requires explicit approval
-- No required account
-- Conversation history stays on device unless you choose to send or export it
-
-AI output can be inaccurate or outdated. Verify important information before acting.
-
-Requirements
-
-- iOS 17.0 or later
-- Your own OpenAI API key with active billing
+Requires iOS 17 or later. Live features need an OpenAI API key with appropriate billing and model/tool access; third-party tools may need their own accounts and permissions. Feature availability and service limits vary. AI output can be inaccurate; verify important information before acting.

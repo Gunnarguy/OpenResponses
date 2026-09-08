@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LegacyMigrationLabView: View {
     @EnvironmentObject var viewModel: ChatViewModel
-    @State private var showingCreateAssistant = false
+    @State private var assistantJSON = ""
     @State private var showingConvertAlert = false
     @State private var convertMessage = ""
     
@@ -10,55 +10,44 @@ struct LegacyMigrationLabView: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Assistants API is deprecated by OpenAI and scheduled to shut down on August 26, 2026.")
+                    Text("The Assistants API shut down on August 26, 2026.")
                         .font(.subheadline)
                         .foregroundColor(.red)
                         .fontWeight(.medium)
                     
-                    Text("Use Responses for new work. This lab is for migrating existing Assistants to the Responses Prompt format.")
+                    Text("Import a retained Assistant JSON export and convert its instructions to a Responses preset. The retired API cannot retrieve missing exports.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 4)
             }
             
-            Section("Assistants API Mode") {
-                Toggle("Enable Legacy Assistants Mode", isOn: Binding(
-                    get: { viewModel.useAssistantsAPI },
-                    set: { newValue in
-                        if newValue {
-                            // Optionally show an alert here before enabling
-                            viewModel.useAssistantsAPI = true
-                        } else {
-                            viewModel.useAssistantsAPI = false
-                        }
+            Section("Import retained export") {
+                TextEditor(text: $assistantJSON).font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
+                Button("Import Assistant JSON") {
+                    do {
+                        let data = Data(assistantJSON.utf8)
+                        let imported: [Assistant]
+                        if let single = try? JSONDecoder().decode(Assistant.self, from: data) { imported = [single] }
+                        else if let list = try? JSONDecoder().decode([Assistant].self, from: data) { imported = list }
+                        else { imported = try JSONDecoder().decode(AssistantListResponse<Assistant>.self, from: data).data }
+                        viewModel.assistants = imported
+                        viewModel.selectedAssistantId = imported.first?.id
+                        assistantJSON = ""
+                    } catch {
+                        convertMessage = "Invalid Assistant export: \(error.localizedDescription)"
+                        showingConvertAlert = true
                     }
-                ))
-                
-                if viewModel.useAssistantsAPI {
-                    if viewModel.assistants.isEmpty {
-                        Text("No assistants found.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Picker("Select Assistant", selection: Binding(
-                            get: { viewModel.selectedAssistantId ?? "" },
-                            set: { viewModel.selectedAssistantId = $0.isEmpty ? nil : $0 }
-                        )) {
-                            ForEach(viewModel.assistants, id: \.id) { assistant in
-                                Text(assistant.name ?? assistant.id).tag(assistant.id)
-                            }
+                }.disabled(assistantJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if !viewModel.assistants.isEmpty {
+                    Picker("Assistant", selection: Binding(get: { viewModel.selectedAssistantId ?? "" }, set: { viewModel.selectedAssistantId = $0 })) {
+                        ForEach(viewModel.assistants) { assistant in
+                            Text(assistant.name ?? assistant.id).tag(assistant.id)
                         }
-                    }
-                    
-                    Button {
-                        showingCreateAssistant = true
-                    } label: {
-                        Label("Create Assistant", systemImage: "plus.circle")
                     }
                 }
             }
-            
+
             Section("Migration Tools") {
                 Button {
                     convertAssistantToPrompt()
@@ -69,10 +58,7 @@ struct LegacyMigrationLabView: View {
             }
         }
         .navigationTitle("Legacy Migration Lab")
-        .sheet(isPresented: $showingCreateAssistant) {
-            CreateAssistantSheet()
-                .environmentObject(viewModel)
-        }
+        .onAppear { viewModel.useAssistantsAPI = false }
         .alert("Migration Result", isPresented: $showingConvertAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -87,7 +73,7 @@ struct LegacyMigrationLabView: View {
         var preset = Prompt.defaultPrompt()
         preset.name = "Migrated: \(assistant.name ?? "Assistant")"
         preset.systemInstructions = assistant.instructions ?? ""
-        preset.openAIModel = assistant.model
+        preset.openAIModel = CurrentModelCatalog.isRetired(assistant.model) ? CurrentModelCatalog.defaultModel : assistant.model
         
         // Convert tools
         preset.enableCodeInterpreter = false

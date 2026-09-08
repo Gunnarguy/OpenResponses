@@ -17,17 +17,23 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
+## Version 2.6 documentation
+
+The [complete v2.5 → v2.6 release dossier](docs/releases/v2.6/README.md) covers the full source comparison, [What’s New](docs/ReleaseNotes_2.6.0.md), [changelog](CHANGELOG.md), technical behavior, upgrade steps, validation, and store/reviewer copy. Its [129-file inventory](docs/releases/v2.6/SourceInventory.md) includes committed work and the September implementation changes.
+
+**ASC checked September 8:** v2.5/build 4 is released; v2.6 is Prepare for Submission with no build selected. Uploaded build 38 predates the completed working-tree update and reports missing export compliance. See the [ASC reconciliation](docs/releases/v2.6/ASCStatus.md).
+
 ## Overview
 
 OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functions as a mobile developer playground and testing workspace, exposing low-level model parameters, tool execution, token-level streaming data, and raw request visibility without hiding the API behind a custom proxy layer.
 
 * **Target Audience:** AI engineers, prompt designers, and developers needing direct client-to-API control.
-* **Core Problem Solved:** Lack of visibility in standard AI interfaces. OpenResponses exposes raw token counters, network statuses, expandable reasoning traces for o1/o3-mini, and outbound/inbound JSON payloads.
+* **Core Problem Solved:** Lack of visibility in standard AI interfaces. OpenResponses exposes raw token counters, network statuses, expandable reasoning summaries for supported reasoning models, and outbound/inbound JSON payloads.
 * **Technical Characteristics:** Direct client-to-endpoint connections, local document parsing (with Vision OCR), and sandboxed browser automation loops.
 * **Feature Tiers:** 
   * **Core Playground**: Responses API (Chat, Tool Calling, Vision, Models)
   * **Developer Lab**: Batch API, Fine-Tuning
-  * **Legacy Migration**: Assistants API
+  * **Legacy Migration**: retained Assistant JSON imports
 * **Product Lineage:** OpenResponses is the active evolution of Gunnar Hostetler's API-tooling work and supersedes the older OpenAssistant Assistants API client.
 
 ---
@@ -52,11 +58,11 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 
 * **Direct API Connections:** Outbound HTTPS traffic routes directly from the iOS client to OpenAI and Notion endpoints without intermediate proxy servers.
 * **Asynchronous SSE Streaming:** Uses Swift Concurrency (`AsyncThrowingStream`) to parse Server-Sent Events line-by-line, dispatching UI updates to the `@MainActor` to avoid layout race conditions.
-* **Realtime Voice WebSockets:** Includes a premium Voice Mode leveraging `wss://` for bi-directional 24kHz PCM16 audio streaming (Direct BYOK WebSocket mode).
-* **Legacy Assistants:** Seamlessly toggle between stateless Responses and stateful Assistants thread runs for long-form context migration.
-* **Developer Labs:** Full in-app integration for generating JSONL datasets, submitting asynchronous Batch API runs, and scheduling Fine-Tuning jobs directly from local chat history.
-* **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the secure iOS Keychain. Plaintext keys are never written to `UserDefaults` or standard logs.
-* **Sandboxed Browser Automation:** Runs WKWebView browser execution ("Computer Use") using state coordinators to prevent layout reload loops, gated by step-by-step UI approvals.
+* **Realtime Voice WebSockets:** Includes Voice Mode using `wss://` for bi-directional 24kHz PCM16 audio streaming (Direct BYOK WebSocket mode).
+* **Retained Assistant Exports:** Import saved Assistant JSON and convert it to Responses presets. The Assistants API shut down on August 26, 2026.
+* **Developer Labs:** Batch job management with complete output/error exports, plus reviewed text-chat JSONL import and validation for eligible fine-tuning accounts. Current-chat export produces a draft dataset example.
+* **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the secure iOS Keychain. Request inspection/logging includes targeted credential redaction; keys are transmitted to the relevant service when needed for authentication.
+* **On-device Browser Automation:** Persistent WKWebView with serialized DOM and screenshot actions, precise element references, cancellation, deadlines, and per-turn limits. Pending computer safety checks pause both tool paths. See [browser execution](docs/browser-execution.md).
 * **Local Ingestion & OCR:** Extracts text from PDFs using `PDFKit` and recognizes text in image attachments using the native `Vision` OCR framework locally on-device.
 * **Observability Tools:** Includes inline collapsible reasoning panels, live connection monitors, and a Request Inspector rendering raw JSON payloads.
 
@@ -69,12 +75,15 @@ The following flowchart outlines the request lifecycle, tool branches, and appro
 ```mermaid
 flowchart TD
     A[Compose request] --> B[Send to Responses API]
-    B --> C[Read SSE stream]
-    C --> D{Tool call?}
-    D -->|Yes: Web/Interpreter| E[Run tool & fetch output] --> B
-    D -->|Yes: Computer Use| F{User approved?} -->|Yes| E
-    F -->|No| G[Abort chain]
-    D -->|No| H[Render response + thinking traces]
+    B --> C[Read response events]
+    C --> D{Execution owner}
+    D -->|Hosted tools| E[OpenAI executes configured tools] --> C
+    D -->|Client tool| F[Check enabled handler and execution rules]
+    F --> G[Execute and return actual result] --> B
+    D -->|Computer safety check| S[Pause for turn-scoped user decision]
+    S -->|Allow| G
+    S -->|Deny| X[Cancel pending work]
+    D -->|Completed| H[Render answer, summaries and artifacts]
 ```
 
 ---
@@ -86,8 +95,8 @@ The codebase separates views from network and system frameworks using the MVVM-S
 ```mermaid
 flowchart LR
     View[SwiftUI Views] <--->|Observe state| VM[ChatViewModel]
-    VM <--->|Request completions| Services[OpenAIService / ComputerService]
-    Services -.->|Authenticate| Keychain[Keychain Enclave]
+    VM <--->|Request completions| Services[Response runners / OpenAIService / ComputerService]
+    Services -.->|Authenticate| Keychain[iOS Keychain]
     Services <--->|API Payload| OpenAI[OpenAI Responses API]
 ```
 
@@ -132,8 +141,8 @@ flowchart TD
 | **App Entry** | [OpenResponsesApp.swift](OpenResponses/App/OpenResponsesApp.swift) | Initial bootstrapping and startup migrations. |
 | **DI Container** | [AppContainer.swift](OpenResponses/App/AppContainer.swift) | Service locator for dependency injection. |
 | **Main UI** | [ContentView.swift](OpenResponses/App/ContentView.swift) | Navigation shell and tab container. |
-| **Chat View** | [ChatView.swift](OpenResponses/Features/Chat/ChatView.swift) | Chat rendering and text/attachment inputs. |
-| **Chat ViewModel** | [ChatViewModel.swift](OpenResponses/Features/Chat/ChatViewModel.swift) | Session state management, settings, and tool approvals. |
+| **Chat View** | [ChatView.swift](OpenResponses/Features/Chat/Views/ChatView.swift) | Chat rendering and text/attachment inputs. |
+| **Chat ViewModel** | [ChatViewModel.swift](OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift) | Session state management, settings, and tool approvals. |
 | **OpenAI Client** | [OpenAIService.swift](OpenResponses/Core/Services/OpenAIService.swift) | Payload assembly and SSE stream parsing. |
 | **Keychain Storage** | [KeychainService.swift](OpenResponses/Core/Services/KeychainService.swift) | Secure credentials management. |
 | **Browser Automation** | [ComputerService.swift](OpenResponses/Core/Services/ComputerService.swift) | Sandboxed browser automation and capture loops. |
@@ -150,8 +159,8 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 | :--- | :--- | :--- | :--- | :--- |
 | **OpenAI API Key** | Keychain (`openAIKey`) | None | **Yes** | Authenticates all OpenAI network requests. |
 | **Notion Token** | Keychain (`notionApiKey`) | None | No | Authenticates Notion integration requests. |
-| **Model Selection** | `UserDefaults` | `gpt-5.5` | **Yes** | Target completions model (e.g. `gpt-4o`, `o3-mini`). |
-| **Reasoning Effort** | `UserDefaults` | `medium` | No | Configures reasoning constraints (`low`, `medium`, `high`). |
+| **Model Selection** | `UserDefaults` | `gpt-6-astra` | **Yes** | Responses model; Astra, Sol, Terra, and Luna are available in the current catalog. |
+| **Reasoning Effort** | `UserDefaults` | `medium` | No | Configures model-aware effort choices; current models also expose higher efforts where supported. |
 | **Web Search** | `UserDefaults` | `true` | No | Toggles OpenAI web search capabilities. |
 | **Code Interpreter** | `UserDefaults` | `true` | No | Toggles OpenAI sandboxed Python containers. |
 | **Computer Use** | `UserDefaults` | `false` | No | Toggles local browser automation tool. |
@@ -160,39 +169,19 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 
 ---
 
-## v2.6 Release Freeze
+## September 2026 API refresh
 
-The v2.6 release finalizes OpenResponses as a native iOS Playground for the OpenAI Responses API. The feature scope is frozen to ensure high quality and clarity around the app's purpose.
+The playground now includes a shared current-model catalog, Astra-compatible reasoning controls, GPT Image 2, current Realtime transcription and voices, opt-in automatic compaction, persisted reasoning, pro reasoning, hosted shell, and deferred function/MCP loading through tool search. Saved presets and earlier supported models remain usable.
 
-**What is Done:**
-* Model selection, prompt controls, tool configuration, streaming, Computer Use, MCP, request inspection, files/images, and developer lab utilities.
-* Transitioned Assistants API into a legacy migration lab.
-* Native Chat-Native Computer Use Tool Execution Cards.
-* Standardized Realtime Voice GA endpoints.
+Native chat now executes configured function/custom tools, Astra async lookups, programmatic tool calls, and multi-agent responses. Multi-agent uses WebSocket result injection so waiting agents can resume immediately. Read-only calls can overlap; writes run sequentially. Root answers, subagent activity, tool results, and image previews appear in the chat. Interrupted turns preserve known results and mark uncertain outcomes without automatically retrying writes. MCP configuration is available again. These orchestration features apply to current-model foreground requests with Computer Use disabled.
 
-**What is Intentionally Not Done:**
-* Deep Lifecycle Completeness (e.g. Conversations CRUD, `compact`, explicit cancel).
-* Strict Parameter/Gating Hardening (preventing invalid combinations before API hit).
-* Exhaustive Debug Utilities for missing tools/features.
-* Full parity for every endpoint listed in the OpenAI API documentation.
+**Settings → Model → API Workbench** exposes editable requests over HTTP, SSE, and persistent Responses WebSockets. It includes steering, tool-result batches and live injection, full response export, input token counting, standalone compaction, response retrieval/cancellation/input items, and conversation retrieval/items. Examples cover asynchronous functions, custom text tools, programmatic tool calling, hosted shell, image generation, apply patch, and the multi-agent beta. Workbench client tools use actual results supplied by the user; native chat executes its configured tools.
 
-**Settings Coverage Matrix**
-The following prompt options are fully exposed and supported via the `ResponseSettingsRegistry`:
+Manual chat compaction preserves the complete returned output window, including opaque items, then replays it on the next turn. It never treats a compaction ID as a response ID. The workbench displays unknown events and exports the complete final response; its on-screen event preview is bounded.
 
-| Field | API Key | Group | Default | Description |
-|---|---|---|---|---|
-| Preset Name | `name` | Hidden | `Default` | The name of this preset. |
-| Model | `model` | Model | `gpt-4o` | The OpenAI model to use for this request. |
-| Reasoning Effort | `reasoning_effort` | Reasoning | `medium` | How much effort the model should spend reasoning. |
-| Reasoning Summary | `reasoningSummary` | Reasoning | `auto` | How the reasoning process is summarized. |
-| Temperature | `temperature` | Model | `1.0` | Controls randomness. |
-| System Instructions | `messages` | Instructions | `You are a helpful assistant.` | Top-level instructions defining the assistant's behavior. |
-| Developer Instructions | `messages` | Instructions | *None* | Override developer-level instructions. |
-| Web Search | `tools` | Tools | `true` | Enables OpenAI web search tool. |
-| File Search | `tools` | Tools | `true` | Enables OpenAI file search tool. |
-| Code Interpreter | `tools` | Tools | `true` | Enables OpenAI code interpreter tool. |
-| Computer Use | `tools` | Tools | `false` | Enables local browser automation. |
-| Max Output Tokens | `max_completion_tokens` | Limits | *None* | Limit on the maximum tokens generated. |
+Current API contracts and verification details are recorded in [API refresh notes](docs/api-refresh-2026-09.md). These are source/build capabilities, not an App Store deployment claim.
+
+**Settings coverage:** The shared `ResponseSettingsRegistry` and modern response controls expose saved prompt settings. Request mapping is model-aware: verbosity/reasoning use nested API fields, unsupported sampling is omitted, and preset names remain local metadata. See the [technical settings table](docs/releases/v2.6/TechnicalChanges.md) for current defaults and execution constraints.
 
 ---
 
@@ -227,7 +216,7 @@ The following prompt options are fully exposed and supported via the `ResponseSe
 | Test Type | Command / Procedure | Expected Result |
 | :--- | :--- | :--- |
 | **Build Target** | Build project in Xcode (`Cmd+B`) | Compilation completes with no errors. |
-| **Unit Tests** | `xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination 'platform=iOS Simulator,name=iPhone 16 Pro'` | All unit test suites pass successfully. |
+| **Unit/integration tests** | Use an available simulator and the command in the [validation ledger](docs/releases/v2.6/Validation.md). | Latest implementation run: 294 tests, zero failures. |
 | **Secret Scan** | `python3 scripts/secret_scan.py` | CLI tool returns success with no keys detected. |
 | **Preflight check** | `bash scripts/preflight_check.sh` | Confirms Info.plist privacy descriptions are present. |
 
@@ -236,7 +225,7 @@ The following prompt options are fully exposed and supported via the `ResponseSe
 ## Privacy & Security
 
 OpenResponses operates under a local-first threat model:
-* **Direct Network Boundaries:** All requests are sent directly from the device over HTTPS.
+* **Network boundaries:** The device contacts configured API providers over HTTPS or secure WebSockets. Hosted tools, including MCP, may contact their configured services from OpenAI infrastructure.
 * **Keychain Storage:** Storing API keys securely in the iOS Keychain.
 * **Opt-In Safety Notice:** Requires explicit user confirmation prior to sending the first completions payload.
 
@@ -248,6 +237,8 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 | Document | Purpose |
 |---|---|
+| [2.6 release dossier](docs/releases/v2.6/README.md) | Complete release documentation and evidence index |
+| [Changelog](CHANGELOG.md) | Detailed categorized 2.5 → 2.6 changes |
 | [Architecture](ARCHITECTURE.md) | System design, data flow, and service boundaries |
 | [Security](SECURITY.md) | Secret handling, local storage, and release checks |
 | [Privacy](PRIVACY.md) | Data storage, API transmission, and user controls |
@@ -261,33 +252,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 ## Roadmap
 
-### Phase 1: Core Playground & Tool Integrations (Completed)
-- [x] **Model Selector Playground:** Dynamic sorting and capability gating for chat models from GPT-4o up to GPT-5.6 (Sol, Terra, Luna).
-- [x] **Streaming Observability:** Real-time Server-Sent Events (SSE) parsing with live token counters and request inspector panels.
-- [x] **Collapsible Thinking UX:** Surfaces collapsible reasoning traces for o1/o3 models inline under dedicated cards.
-- [x] **Local History:** On-device JSON conversation database with prompt preset libraries.
-- [x] **Secure Enclave Storage:** Migration hooks moving keys from standard `UserDefaults` securely into the iOS Keychain.
-- [x] **Code Interpreter:** Sandboxed Python executions rendering text logs and visual charts inline in chat view.
-- [x] **Web Search:** Multi-source citation annotations parsing with page-crawl depths.
-- [x] **Computer Use Harness:** Sandboxed local WKWebView automation loop (`computer` and legacy `computer_use_preview` tools) with step-by-step UI safety approval dialogs and scroll/click throttles.
-- [x] **Model Context Protocol (MCP) Integration:** Pair remote MCP servers securely using Keychain-stored custom authentication headers.
-
-### Phase 2: Remote Conversations & Rich Annotations (Completed)
-- [x] **Backend-Managed Conversations:** Integrate the `/v1/conversations` API methods to list, fetch, update, and delete remote threads.
-- [x] **Rich Citations Rendering:** Map inline URL and document citation markers into SwiftUI `AttributedString` bubbles.
-- [x] **Short Conversation Compaction:** Integrate `POST /v1/responses/compact` executions to compress long chats to fit context caps.
-- [x] **Structured JSON Outputs:** Add `response_format` JSON schema selection to prompt settings for strict data extractions.
-
-### Phase 3: Developer Labs & Legacy Features (Completed)
-- [x] **Assistants API:** Stateful thread runs, assistant creation, and CRUD management (Legacy Migration).
-- [x] **Realtime API:** Voice Mode with websocket connections, PCM16 audio (Direct BYOK WebSocket mode).
-- [x] **Batch API:** File uploads, JSONL generation, and high-throughput background job monitoring (Developer Lab).
-- [x] **Fine-Tuning API:** Creation of fine-tuning datasets from chat history and custom model training execution (Developer Lab).
-- [x] **Moderation API:** Real-time input interception using `/v1/moderations` to ensure policy compliance before completions.
-
-### Phase 4: Local Sandboxing & Advanced Integrations (Planned)
-- [ ] **On-Device Python Execution:** Run local Python containers using Pyodide/WebAssembly to avoid remote sandboxes.
-- [ ] **On-Device Embedding Cache:** Cache vector embeddings locally to save token costs on recurring documents.
+The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Remaining work includes release-candidate distribution, broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
 
 ---
 

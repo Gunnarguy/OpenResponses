@@ -27,7 +27,7 @@ struct OnboardingView: View {
         ),
         OnboardingPage(
             title: "API Key Required",
-            description: "To get started, you'll need an OpenAI API key. Your key stays on this device, and the assistant may still produce inaccurate answers—review everything before acting.",
+            description: "Live requests need an OpenAI API key. Your key is stored in this device’s Keychain and sent to OpenAI for authentication. Review AI answers before acting.",
             imageName: "key.fill",
             color: .orange
         )

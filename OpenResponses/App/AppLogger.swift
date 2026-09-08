@@ -154,6 +154,10 @@ enum AppLogger: Sendable {
             for (k, v) in dict {
                 let lowerKey = k.lowercased()
 
+                if lowerKey == "headers", let headers = v as? [String: Any] {
+                    dict[k] = headers.mapValues { _ in "***REDACTED***" }
+                    continue
+                }
                 // Completely redact sensitive values regardless of type
                 if sensitiveKeys.contains(where: { lowerKey.contains($0) }) {
                     dict[k] = "***REDACTED***"
@@ -527,6 +531,9 @@ enum AppLogger: Sendable {
                 
                 if let usage = response.usage, event.type == "response.completed" {
                     logMessage += "\n🔄 TOKENS: in=\(usage.inputTokens), out=\(usage.outputTokens), total=\(usage.totalTokens)"
+                    if let cache = usage.inputTokenDetails {
+                        logMessage += ", cache_read=\(cache.cachedTokens ?? 0), cache_write=\(cache.cacheWriteTokens ?? 0)"
+                    }
                 }
             }
             

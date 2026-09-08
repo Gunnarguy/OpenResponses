@@ -1,57 +1,44 @@
-# App Review Notes – OpenResponses 2.0
+# App Review notes — OpenResponses 2.6
 
-**Last updated:** 2026-04-23
+**Prepared:** September 8, 2026. These are local reviewer instructions for the completed 2.6 source. [ASC status](releases/v2.6/ASCStatus.md) currently shows Prepare for Submission with no build selected. Apply these notes to the correct candidate after its build is uploaded and verified.
 
-## Reviewer access
+## Access and data sharing
 
-- No reviewer account is needed. On first launch you can either start **Explore Demo** (offline, no API calls) or paste an OpenAI API key (from the App Store Connect review note, if provided, or your own key).
-- Once entered, the key is stored only in the iOS Keychain and never leaves the device.
-- Usage is billed directly to the API key used for testing.
-- The onboarding flow and chat composer both display an AI accuracy disclaimer reminding reviewers to double-check generated output.
-- Before the first live AI request, the app shows an **OpenAI Data Sharing Notice**. The request is not sent until the reviewer taps **Allow & Send**.
+OpenResponses is a developer client using a user-provided OpenAI API key; it does not require a separate OpenResponses login. **Explore Demo** runs offline without live API requests. Live testing requires an eligible key and bills usage to that API account. Supply any dedicated reviewer credential through the appropriate private App Store Connect review field, not a repository file, screenshot or public release note. The September 8 ASC inspection found no demo-account requirement and existing review notes; it did not establish that a working reviewer API key is currently provided.
 
-### Reviewer key details
+The OpenAI key is stored in the iOS Keychain and sent to OpenAI to authenticate requests. Before the first live send, the app presents its data-sharing notice and requires **Allow & Send**. Selected prompts, attachments and tool results are transmitted for processing. Local conversation history and optional remote response/conversation storage are separate. Model/tool access depends on the API account.
 
-- Reviewer-key staging notes live in `AppStoreAssets/ReviewKeyInstructions.md`. If providing a reviewer key, copy it into the secure App Review note in App Store Connect.
-- During QA, paste the reviewer key into Settings → General and confirm you can remove it anytime by clearing the API key field.
+## Core walkthrough
 
-## Primary review scenario (10 minutes)
+1. Launch and use Explore Demo to inspect the interface without a key.
+2. For live review, add the privately supplied reviewer key or an authorized test key. Select a model available to that account; the current recommended catalog includes Astra and GPT-5.6 Sol/Terra/Luna.
+3. Send a short greeting, verify the first-send disclosure, then allow the request. Observe streaming text, activity and usage. API-provided reasoning summaries appear only when the model/configuration returns them.
+4. Send a follow-up, switch conversations and return. Existing chat history and presets should remain available.
+5. Inspect the request/response details and export a test conversation that contains no private information.
+6. Enable hosted Web Search and make a simple public-information request. Inspect the returned source/citation links.
+7. Attach a small document. In a vector-store workflow, observe indexing until ready; upload success alone is not search readiness.
+8. Open **Settings → Model → API Workbench**. Inspect a template and raw JSON response. The Workbench also exposes token counting, compaction, known-conversation inspection and background-response management.
 
-1. Launch the app.
-2. On the Welcome sheet, tap **Add API Key** and paste an OpenAI API key (from the App Review note if provided, or your own OpenAI API key).
-3. In Settings → Model, select **GPT-5.4** or **GPT-4.1**.
-4. Send "Hello! Can you help me test this app?" and verify that the **OpenAI Data Sharing Notice** appears before the request is sent.
-5. Tap **Allow & Send**. Verify the response streams, the activity feed updates, and the Assistant Thinking surface appears.
-6. Send a second message and confirm the consent sheet does not reappear.
-7. Open Settings → Tools and enable **Code Interpreter**.
-8. Ask "Calculate the first 10 Fibonacci numbers." The assistant will execute the code tool and stream back the result.
-9. Enable **Web Search** and ask "What happened in tech news today?"
-10. Attach a PDF from the Files picker, or use **Take Photo** from the composer, to verify document and camera attachments.
-11. Open the Request Inspector from the message menu to review the outbound request and tool trace.
-12. (Optional) Enable Apple integrations and ask what is on today's calendar, what reminders are due today, or search for a contact.
-13. (Optional) Toggle **Computer Use** back on in Settings → Tools. You will see a disclosure explaining the local network bridge requirement before the iOS prompt appears.
+## Voice
 
-## Computer Use safety summary
+Open voice mode and grant microphone access when prompted. Speak, wait for the answer and speak again. The session supports continuing listening, mute and interruption. Test return to listening after output ends; actual acoustic behavior can depend on the audio route. Audio is sent to OpenAI's Realtime service. The app does request microphone access for this feature; old notes claiming otherwise are obsolete.
 
-- Computer Use is **off by default**. Enable it under Settings → Tools when you want to test it.
-- Every action (navigate, click, type, screenshot) shows a confirmation sheet. Rejecting an action cancels the chain immediately.
-- The app connects only to the user-approved local computer-use bridge (no background scanning).
-- Enabling computer use shows a rationale dialog before iOS asks for local network access so reviewers know why the permission is requested.
+## Tools and browser behavior
 
-## Data handling highlights
+Computer Use is opt-in. The current browser runs in an on-device WKWebView; it does not require a separate local-network browser bridge. DOM and screenshot actions share a serialized lane with deadlines and action/navigation limits. Stop or changing chats cancels pending work. API-provided safety checks pause the initiating turn and may be denied. The app does not display an independent confirmation for every navigate/click/type operation, and cancellation cannot reverse a website mutation already received by the server.
 
-- API keys (OpenAI, Notion) are user-supplied and saved only in the iOS Keychain.
-- Conversations and attachments remain on device unless the user explicitly approves and sends them to OpenAI or an optional connected tool.
-- The app may request camera, photo/file, calendar, reminders, contacts, and local network permissions only when related features are used. It does not request microphone, speech recognition, or precise location permissions.
-- Optional analytics are disabled by default and contain no conversation content.
+Remote MCP configuration and discovery are available. This path uses OpenAI-hosted MCP: the configured endpoint and authentication material may be sent to OpenAI so it can connect. It is separate from the local WebKit browser. Private OAuth servers may require their own account setup; the public discovery test does not validate every connector.
 
-## App Review focus for this submission
+Apple Calendar, Reminders and Contacts, and Notion tools are optional. Related permissions and credentials are needed for those integrations. Avoid writing to real personal data unless the reviewer intends that action. Camera/photos/files access is used for the corresponding attachment flows; voice uses the microphone.
 
-- This version adds an explicit in-app disclosure and permission step before the first OpenAI request and updates the privacy policy to match, addressing App Review Guidelines 5.1.1(i), 5.1.1(ii), and 5.1.2(i).
-- Optional third-party connector configuration is not part of this shipping build, keeping the review flow focused on core AI chat, Apple integrations, and computer use.
+## Developer labs and legacy migration
 
-## Support contact
+Batch output/error exports save complete available files through the system share sheet. Fine-tuning imports reviewed text-chat JSONL and validates examples and parameters. It explains restricted/winding-down service availability; a valid dataset does not guarantee account admission. Exporting a conversation creates a draft, not an automatically trainable dataset. Paid jobs are not necessary to inspect those validation/export screens.
 
-- Email: [support@gunnarguy.com](mailto:support@gunnarguy.com) (monitored daily)
-- Issues: <https://github.com/Gunnarguy/OpenResponses/issues>
-- Computer-use bridge: Local computer-use bridge instructions live in `docs/computerusepreview/Documentation/computeruse.md`.
+Legacy Migration retains local Assistant JSON import into Responses presets. Live retired Assistants/Threads/Runs operations are disabled. Workbench templates for arbitrary tools do not execute arbitrary shell or patch commands on the iPhone; client-tool calls require an implemented handler or explicit real results supplied in the Workbench.
+
+## Submission notes
+
+Use the [release checklist](AppStoreReleasePlan.md) and [validation ledger](releases/v2.6/Validation.md). Local tests and device launch do not establish that the selected ASC binary contains these changes. Current uploaded build 38 maps to the earlier committed source and reports missing export compliance. Verify the replacement candidate, reviewer API access, current screenshots and privacy disclosures before submission.
+
+Support: [repository issues](https://github.com/Gunnarguy/OpenResponses/issues). Preserve the existing App Store Connect contact fields; this documentation task does not change reviewer contacts or publish metadata.

@@ -1,5 +1,8 @@
 # Production Checklist
 
+> For v2.6, use the [current release plan](AppStoreReleasePlan.md), [294-test validation ledger](releases/v2.6/Validation.md) and [live ASC reconciliation](releases/v2.6/ASCStatus.md). This is a reusable manual checklist, not a record that every item passed.
+
+
 This checklist keeps release candidates honest. Run it before tagging a build or shipping a TestFlight so regression-prone areas surface early. All steps assume the current OpenAI key is valid and rate limits are healthy.
 
 ## 1. Environment & Configuration
@@ -19,7 +22,7 @@ This checklist keeps release candidates honest. Run it before tagging a build or
 
 ### 3.1 Computer Use
 
-- [ ] Enable Computer Use with a GA computer-capable GPT-5.x model (for example `gpt-5.5` or `gpt-5.4`) and confirm the request uses the `computer` tool. Run one legacy smoke test with `computer-use-preview` only if maintaining backwards compatibility.
+- [ ] Enable Computer Use with a GA computer-capable GPT-5.x model (for example `gpt-5.5` or `gpt-5.4`) and confirm the request uses the `computer` tool. Retired preview identifiers are not current release recommendations.
 - [ ] Issue a navigation request ("Open [openai.com](https://openai.com)") and confirm:
   - [ ] Navigate-first helper avoids blank screenshots.
   - [ ] Screenshots attach to the assistant message and render in chat.
