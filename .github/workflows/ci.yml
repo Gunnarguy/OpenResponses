@@ -13,7 +13,12 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & Test
-    runs-on: macos-15
+    # macos-26 is the only GitHub image that carries Xcode 26.6 (17F113), the
+    # toolchain used for the App Store archive. macos-15 tops out at Xcode 26.3
+    # with the iOS 26.2 simulator, where releasing a @MainActor class from a
+    # synchronous XCTest aborts in swift_task_deinitOnExecutor
+    # (swiftlang/swift#87316); that crashed 29 tests on every push.
+    runs-on: macos-26
 
     steps:
       - name: Checkout
@@ -22,7 +27,8 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest-stable'
+          # Pinned to the release toolchain; bump together with the archive Xcode.
+          xcode-version: '26.6'
 
       - name: Select an available iPhone simulator
         run: |
@@ -62,7 +68,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - run: brew list swiftlint || brew install swiftlint
