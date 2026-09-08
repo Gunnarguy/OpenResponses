@@ -29,7 +29,6 @@ FILES AND DEVELOPER LABS
 YOUR KEY, VISIBLE DATA FLOW
 • Explore Demo Mode without sending live API requests.
 • Store API credentials in the iOS Keychain and review the first-live-send data-sharing notice.
-• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
 • No separate OpenResponses account is required. OpenAI usage is billed to your own API account.
 
 Requires iOS 17 or later. Live features need an OpenAI API key with appropriate billing and model/tool access; third-party tools may need their own accounts and permissions. Feature availability and service limits vary. AI output can be inaccurate; verify important information before acting.
