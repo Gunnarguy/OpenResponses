@@ -40,6 +40,8 @@ Live ASC on September 8 reports **v2.5/build 4 released**, **v2.6 Prepare for Su
 
 **Delivery update:** version 2.6/build 39 uploaded successfully using stable Xcode, and ASC metadata was updated. Apple processing was pending at the receipt. See [delivery evidence](Delivery.md); the ASC figures above remain the pre-delivery snapshot.
 
+**Released:** App Store Connect on September 8 (evening Pacific) reports 2.6 `READY_FOR_SALE` with build **41**, the Xcode Cloud run 41 archive of `5b270d8` uploaded at 12:14 Pacific; the public store lookup shows the release at 2026-09-09T01:59:47Z. Build 41 supersedes the build 39 candidate described above with the same app source.
+
 ## Scope at a glance
 
 | Area | Position in 2.5 → 2.6 |

@@ -21,7 +21,7 @@
 
 The [complete v2.5 → v2.6 release dossier](docs/releases/v2.6/README.md) covers the full source comparison, [What’s New](docs/ReleaseNotes_2.6.0.md), [changelog](CHANGELOG.md), technical behavior, upgrade steps, validation, and store/reviewer copy. Its [129-file inventory](docs/releases/v2.6/SourceInventory.md) includes committed work and the September implementation changes.
 
-**ASC checked September 8:** v2.5/build 4 is released; v2.6 is Prepare for Submission with no build selected. Uploaded build 38 predates the completed working-tree update and reports missing export compliance. See the [ASC reconciliation](docs/releases/v2.6/ASCStatus.md).
+**App Store, checked September 8 (evening Pacific):** version 2.6 is live. App Store Connect reports 2.6 `READY_FOR_SALE` with build **41**, the Xcode Cloud run 41 archive of commit `5b270d8`, uploaded 12:14 Pacific; the public store lookup carries a release timestamp of 2026-09-09T01:59:47Z (18:59 Pacific). Build 41 is the completed 2.6 source plus the CI-only change in `5b270d8`; local build 39 was the same app source. The ASC snapshot below/linked predates the release.
 
 ## Overview
 

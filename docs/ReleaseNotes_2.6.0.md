@@ -1,8 +1,8 @@
 # What's new in OpenResponses 2.6
 
-**Documentation updated September 8, 2026.** Covers the full change from the last v2.5/build 7 source state to the current v2.6/build 39 implementation. This is the locally verified release candidate, not an announcement of App Store availability. [Complete release dossier](releases/v2.6/README.md).
+**Documentation updated September 8, 2026.** Covers the full change from the last v2.5/build 7 source state to the shipped v2.6 implementation. [Complete release dossier](releases/v2.6/README.md).
 
-**ASC checked September 8:** v2.5/build 4 is released. v2.6 remains Prepare for Submission with no build selected; uploaded build 38 predates the completed working-tree changes. [Distribution details](releases/v2.6/ASCStatus.md).
+**App Store, checked September 8 (evening Pacific):** version 2.6 is live. App Store Connect reports 2.6 `READY_FOR_SALE` with build **41**, the Xcode Cloud run 41 archive of commit `5b270d8`, uploaded 12:14 Pacific; the public store lookup carries a release timestamp of 2026-09-09T01:59:47Z (18:59 Pacific). Build 41 is the completed 2.6 source plus the CI-only change in `5b270d8`; local build 39 was the same app source. The ASC snapshot below/linked predates the release.
 
 OpenResponses 2.6 expands the app into a more capable OpenAI API playground and improves the reliability of everyday chat, voice, browsing, connected tools, and file workflows. The update includes the earlier June/July additions as well as the September refresh.
 

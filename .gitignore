@@ -136,3 +136,7 @@ test-*.sh
 setup-*.sh
 deploy-*.sh
 .gemini/
+
+# Claude Code hook checkpoints and machine-local settings (kit, 2026-09-08)
+**/.claude/.state/
+.claude/settings.local.json

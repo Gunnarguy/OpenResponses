@@ -2,11 +2,11 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
-## 2.6 — documented September 8, 2026
+## 2.6 — released September 8, 2026
 
 **Marketing version/build:** 2.6 (8). **Baseline:** `855ab3b` / 2.5 (7). [Baseline and release status](docs/releases/v2.6/README.md) · [Full release notes](docs/ReleaseNotes_2.6.0.md).
 
-ASC checked September 8: released 2.5/build 4; draft 2.6 has no selected build. Uploaded 2.6/build 38 maps to committed `bf5a783`, excludes the later working-tree fixes and reports missing export compliance. [ASC evidence](docs/releases/v2.6/ASCStatus.md).
+Released on the App Store September 8, 2026 (evening Pacific): 2.6 `READY_FOR_SALE`, build 41 from Xcode Cloud run 41 of commit `5b270d8`, uploaded 12:14 Pacific. Earlier the same day ASC still showed 2.5/build 4 released and draft 2.6 with no selected build; uploaded build 38 (`bf5a783`) excluded the later fixes and reported missing export compliance. [ASC evidence](docs/releases/v2.6/ASCStatus.md), [delivery](docs/releases/v2.6/Delivery.md).
 
 ### Added
 
