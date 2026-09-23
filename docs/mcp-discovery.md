@@ -3,7 +3,7 @@
 > The September 8 account sign-in redesign supersedes the setup/migration UI described in this earlier milestone. See [MCP connections](mcp-connections.md) for the current OAuth flow, account library, catalog and provider limitations. The headless discovery transport and historical probes below remain relevant.
 
 
-> Part of the [complete v2.6 release dossier](releases/v2.6/README.md). Test counts below describe this milestone; the final implementation total is **265**, recorded in the [validation ledger](releases/v2.6/Validation.md). [Live ASC status](releases/v2.6/ASCStatus.md) is tracked separately.
+> Part of the [complete v2.6 release dossier](releases/v2.6/README.md). Test counts below describe this milestone; the final implementation total is **294**, recorded in the [validation ledger](releases/v2.6/Validation.md). [Live ASC status](releases/v2.6/ASCStatus.md) is tracked separately.
 
 
 The app uses OpenAI-hosted MCP through the Responses API. It does not run a local MCP process, launch a browser for discovery, or implement a second MCP transport client. Provider OAuth registration, consent and token refresh remain separate from tool discovery.

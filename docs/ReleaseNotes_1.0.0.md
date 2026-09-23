@@ -20,6 +20,7 @@ OpenResponses is a native iOS client for interacting with OpenAI's language mode
 - **File Search:** Upload documents to vector stores for AI-powered document search and retrieval
 - **Code Interpreter:** Execute Python code with matplotlib support for data analysis and visualization
 - **Image Generation:** Create images using DALL-E 3 directly from the chat interface
+  (Correction, 2026-09-23: 1.0 used gpt-image-1, not DALL-E 3.)
 - **Web Search:** Enable AI to search the web for current information (requires configuration)
 - **Computer Use:** Experimental support for AI-controlled computer interactions (preview)
 
@@ -42,6 +43,7 @@ OpenResponses is a native iOS client for interacting with OpenAI's language mode
 - **Local Storage:** Conversation history and app configuration are stored on your device
 - **Keychain Security:** API keys secured in iOS Keychain with device encryption
 - **No Analytics by Default:** Optional analytics can be enabled in settings
+  (Correction, 2026-09-23: there are no third-party analytics; app events are logged on device only.)
 - **Open Source:** Full source code available for transparency
 
 ### ♿ Accessibility
@@ -71,12 +73,14 @@ OpenResponses respects your privacy:
 - API keys stored securely in iOS Keychain
 - Conversations and files leave your device only when you explicitly send them to OpenAI or an enabled tool integration
 - Optional analytics disabled by default
+  (Correction, 2026-09-23: there are no third-party analytics; app events are logged on device only.)
 
 For full details, see the Privacy Policy.
 
 ## Known Limitations
 
 - **No Cross-Device Sync:** Conversations are stored locally only
+  (Correction, 2026-09-23: history stays on the device, but requests default to `store: true`, so OpenAI also keeps responses.)
 - **Single User:** No multi-user or profile support
 - **File Search Limits:** Vector store size limits apply per OpenAI pricing
 - **Internet Required:** Active internet connection needed for all AI features

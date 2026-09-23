@@ -1,6 +1,6 @@
 # App Review notes — OpenResponses 2.6
 
-**Prepared:** September 8, 2026. These are local reviewer instructions for the completed 2.6 source. [ASC status](releases/v2.6/ASCStatus.md) currently shows Prepare for Submission with no build selected. Apply these notes to the correct candidate after its build is uploaded and verified.
+**Prepared:** September 8, 2026. These are local reviewer instructions for the completed 2.6 source. 2.6 went live on 2026-09-09 with build 41.
 
 ## Access and data sharing
 

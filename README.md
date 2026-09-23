@@ -204,10 +204,7 @@ Current API contracts and verification details are recorded in [API refresh note
    * iOS 17.0+ deployment target.
    * Active OpenAI API key.
 
-4. **Xcode Scheme Variables:**
-   Under Xcode `Product > Scheme > Edit Scheme... > Arguments`, add:
-   - `OPENAI_API_KEY`: API credential.
-   - `NOTION_API_KEY`: Notion token (optional).
+4. **API keys:** Enter your OpenAI API key (and optional Notion token) in Settings; they are stored in the Keychain.
 
 ---
 

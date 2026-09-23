@@ -25,7 +25,7 @@ OpenResponses was built to bridge this gap: providing an observable developer wo
 Building a fully featured AI playground within the iOS sandboxed environment introduced several major constraints:
 1. **Zero Intermediate Servers:** To guarantee privacy and key security, all network transactions must connect directly to destination endpoints (OpenAI, Notion API) from the device. This excludes the use of intermediary backend proxy servers to handle API formatting, token parsing, or automation routing.
 2. **High-Velocity Concurrency:** OpenAI’s Responses API streams Server-Sent Events (SSE) at rates exceeding 100 completion or reasoning tokens per second. The application must process and render these deltas without freezing the SwiftUI main thread.
-3. **Local Automation Boundaries:** Enabling "Computer Use" browser automation on iOS requires managing active `WKWebView` viewports inside a sandboxed environment, preventing layout reload loops while enforcing strict step-by-step user security approvals.
+3. **Local Automation Boundaries:** Enabling "Computer Use" browser automation on iOS requires managing active `WKWebView` viewports inside a sandboxed environment, preventing layout reload loops while pausing for approval when the API flags a safety check.
 4. **Platform Permission Gating:** Accessing calendars, contacts, reminders, and local documents requires compliant handling of security-scoped bookmarks and native iOS permission dialogs without causing crash conditions.
 
 ---
@@ -92,7 +92,7 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
   ```swift
   KeychainService.shared.migrateApiKeyFromUserDefaults()
   ```
-  On launch, if a key is detected in `UserDefaults`, `KeychainService` writes it securely to the Keychain generic password descriptor and deletes the legacy `UserDefaults` keys immediately. This migrated existing beta installations to secure Enclave storage without losing active session keys.
+  On launch, if a key is detected in `UserDefaults`, `KeychainService` writes it securely to the Keychain generic password descriptor and deletes the legacy `UserDefaults` keys immediately. This migrated existing beta installations to device-only Keychain storage without losing active session keys.
 
 ### D. File Conversion Pipeline for 43 Document & Image Types
 - **Challenge:** To feed documents and media to the OpenAI API payload, the app must parse diverse file formats (PDFs, plain texts, RTF, Microsoft Office docs, images) directly on-device without using remote parsing APIs.
@@ -114,17 +114,17 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 ## 5. Architectural Tradeoffs
 
 - **Direct Connections vs. Server-Side Middleware:** Bypassing proxy middleware ensures maximum privacy and absolute credential ownership. However, it means the client must handle all response formatting and tool execution locally, which increases on-device battery consumption and request payload sizes.
-- **Device-only Keychain vs. Cloud Synchronization:** Keys are stored in the Keychain with a this-device-only accessibility class (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), so credentials never sync or leave the device. The tradeoff is that users must enter their API keys manually on every new device they set up, as keys are not synced via standard iCloud key-value stores.
-- **Local WKWebView Automation:** Running the browser automation loop inside a local `WKWebView` allows users to see and approve automation actions step-by-step. However, this restricts browser automation to websites that render correctly inside the iOS WebKit container, lacking support for heavy desktop-only plugins.
+- **Device-only Keychain vs. Cloud Synchronization:** Keys are stored in the Keychain with a this-device-only accessibility class (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), so credentials never sync to other devices; each is sent with the requests that use it, and MCP tokens go to OpenAI. The tradeoff is that users must enter their API keys manually on every new device they set up, as keys are not synced via standard iCloud key-value stores.
+- **Local WKWebView Automation:** Running the browser automation loop inside a local `WKWebView` allows users to see automation actions step-by-step, pausing for approval when the API flags a safety check. However, this restricts browser automation to websites that render correctly inside the iOS WebKit container, lacking support for heavy desktop-only plugins.
 
 ---
 
 ## 6. Engineering Metrics
 
 The application incorporates the following integrations and components:
-- **APIs Integrated:** 5 (OpenAI Responses, OpenAI Embeddings, Notion, Apple Calendar, Apple Contacts/Reminders).
-- **Core Architecture Layers:** 5 (Views, ViewModels, Services, Keychain Security Enclave, Sandboxed Local Storage).
-- **File Modalities Supported:** 43 distinct file extensions converted locally.
+- **APIs Integrated:** 5 (OpenAI Responses, Notion, Apple Calendar, Apple Contacts/Reminders).
+- **Core Architecture Layers:** 5 (Views, ViewModels, Services, Device-only Keychain, Sandboxed Local Storage).
+- **File Modalities Supported:** 30 extensions uploaded as-is; other types converted locally.
 - **Preflight & QA Scripts:** 2 (`secret_scan.py` and `preflight_check.sh` verifying credential safety and Info.plist compliance).
 - **Zero-Data Leak Guard:** 100% of credentials stored in Secure Keychain; zero external analytics tracking libraries.
 

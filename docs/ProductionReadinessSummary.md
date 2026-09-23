@@ -54,12 +54,12 @@ OpenResponses is now production-ready for App Store submission. All critical tas
 **Coverage:** Core API service, data persistence, models
 
 ### 4. ✅ CI/CD Pipeline (Task 10 - Part 2)
-- **GitHub Actions workflows** configured
-- **4 automated workflows:**
-  1. **ios-ci.yml** - Build, test, lint, security scan on every push
-  2. **release-check.yml** - App Store readiness validation on release branches
-  3. Security scanning for exposed secrets
-  4. Markdown documentation linting
+- **GitHub Actions workflow** configured
+- **1 automated workflow, `ci.yml`, with 4 jobs:**
+  1. **Build & Test** - Build and run the tests
+  2. **Lint** - SwiftLint
+  3. **Security Scan** - Security scanning for exposed secrets
+  4. **Docs Check** - Confirms README.md, LICENSE and PRIVACY.md exist
 
 **Features:**
 - Automated unit test execution
@@ -70,8 +70,7 @@ OpenResponses is now production-ready for App Store submission. All critical tas
 - App Store requirement checks (privacy strings, icons, bundle ID)
 
 **Files:**
-- `.github/workflows/ios-ci.yml`
-- `.github/workflows/release-check.yml`
+- `.github/workflows/ci.yml`
 - `docs/CI_CD_Pipeline.md` (comprehensive guide)
 
 ### 5. ✅ Accessibility Audit (Task 8)

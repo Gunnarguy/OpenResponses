@@ -70,7 +70,7 @@ Existing [support URL](../fastlane/metadata/en-US/support_url.txt), [marketing U
 
 ## Support answers
 
-- **Is 2.6 released?** Not at the September 8 check: v2.5 is released, and v2.6 is Prepare for Submission.
+- **Is 2.6 released?** Yes, on 2026-09-09 (build 41).
 - **Does uploaded build 38 include all of these changes?** No. It maps to committed HEAD before the later working-tree fixes.
 - **Does every account get every model/tool?** No. The app exposes supported request controls; account and service access remains authoritative.
 - **Is MCP headless?** Discovery is hosted through OpenAI and needs no local MCP process/browser. The browser tool is a separate on-device WebKit execution path.

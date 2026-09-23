@@ -3,7 +3,7 @@
 ---
 
 **[2025-09-13] Beta Pause Note:**
-This project is paused in a "super beta" state. Major recent work includes:
+Version 2.6 is live on the App Store; this note is kept for history. Major recent work includes:
 
 - Ultra-strict computer-use mode (toggle disables all app-side helpers; see below)
 - Full production-ready computer-use tool (all official actions, robust error handling, native iOS WebView)
@@ -56,7 +56,7 @@ Available connectors include:
 - Google Calendar: `connector_googlecalendar`
 - And more.
 
-In the app, go to **Settings → MCP** to manage these integrations. The new **Enable MCP Tools** switch lets you temporarily suspend MCP tool calls without deleting stored credentials or configuration. Re-enable the toggle when you want the model to resume calling the connector or remote server.
+In the app, go to **Settings → MCP** to manage these integrations. Each account's **Use in this chat** switch lets you temporarily suspend MCP tool calls without deleting stored credentials or configuration. Re-enable the toggle when you want the model to resume calling the connector or remote server.
 
 ---
 

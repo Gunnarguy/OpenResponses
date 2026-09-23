@@ -1,6 +1,6 @@
 # Browser execution
 
-> Part of the [complete v2.6 release dossier](releases/v2.6/README.md). Test counts below describe this milestone; the final implementation total is **265**, recorded in the [validation ledger](releases/v2.6/Validation.md). [Live ASC status](releases/v2.6/ASCStatus.md) is tracked separately.
+> Part of the [complete v2.6 release dossier](releases/v2.6/README.md). Test counts below describe this milestone; the final implementation total is **294**, recorded in the [validation ledger](releases/v2.6/Validation.md). [Live ASC status](releases/v2.6/ASCStatus.md) is tracked separately.
 
 
 The app has two distinct browsing paths. OpenAI hosts `web_search`, including citations, source URLs, domain filters, search context size, and approximate location. `ComputerService` runs a persistent WKWebView on the iPhone for actual page navigation and interaction. It attaches outside the visible window and uses the app's WebKit website store; it is not a remote browser or a Safari session.

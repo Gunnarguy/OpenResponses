@@ -206,7 +206,7 @@ All operations include comprehensive error handling:
 ### Recommended Testing
 1. Build and run on physical iOS device (Simulator has limited EventKit support)
 2. Test on iOS 17+ device to verify full access flow
-3. Test on iOS 16 device to verify fallback flow
+3. Test on an iOS 17.0 device, the minimum supported version
 4. Have AI create calendar event via natural language
 5. Have AI query events and create reminders based on results
 
@@ -223,7 +223,7 @@ All operations include comprehensive error handling:
 
 ### Data Handling
 - All EventKit data stays on-device
-- No calendar/reminder data sent to OpenAI API (only function parameters)
+- Tool results, including event and reminder details and notes, are sent to OpenAI
 - Permissions requested only when user initiates connection
 - User can revoke permissions via iOS Settings at any time
 
@@ -231,7 +231,7 @@ All operations include comprehensive error handling:
 - Minimal data exposure (only requested fields)
 - ISO8601 format ensures timezone clarity
 - Error messages don't leak sensitive data
-- Logging respects user privacy
+- Logs include event and reminder titles
 
 ## Conclusion
 
