@@ -1,5 +1,7 @@
 # OpenResponses 2.6: App Store metadata
 
+> **Update 2026-09-23:** 2.6 is live on the App Store (released 2026-09-09, per Apple's public lookup). The status below predates the release.
+
 **Prepared:** September 8, 2026. This document indexes the proposed local copy for the completed v2.6 update. The [live ASC reconciliation](releases/v2.6/ASCStatus.md) records what Apple currently stores. Preparing these files does not upload or publish them.
 
 ## Version and delivery status

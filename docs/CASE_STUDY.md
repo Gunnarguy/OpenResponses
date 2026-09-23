@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-27
 
-OpenResponses is a native iOS and macOS (Catalyst) developer playground for the OpenAI Responses API. This case study details the core engineering decisions, architecture patterns, and technical challenges solved during its implementation.
+OpenResponses is a native iPhone and iPad developer playground for the OpenAI Responses API. This case study details the core engineering decisions, architecture patterns, and technical challenges solved during its implementation.
 
 It is also the active successor to Gunnar Hostetler's older OpenAssistant Assistants API client, shifting the product line away from thread-and-run polling and toward direct Responses API execution.
 
@@ -114,7 +114,7 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
 ## 5. Architectural Tradeoffs
 
 - **Direct Connections vs. Server-Side Middleware:** Bypassing proxy middleware ensures maximum privacy and absolute credential ownership. However, it means the client must handle all response formatting and tool execution locally, which increases on-device battery consumption and request payload sizes.
-- **Keychain Enclave vs. Cloud Synchronization:** Storing keys in the Secure Enclave ensures that credentials never leave the device. The tradeoff is that users must enter their API keys manually on every new device they set up, as keys are not synced via standard iCloud key-value stores.
+- **Device-only Keychain vs. Cloud Synchronization:** Keys are stored in the Keychain with a this-device-only accessibility class (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), so credentials never sync or leave the device. The tradeoff is that users must enter their API keys manually on every new device they set up, as keys are not synced via standard iCloud key-value stores.
 - **Local WKWebView Automation:** Running the browser automation loop inside a local `WKWebView` allows users to see and approve automation actions step-by-step. However, this restricts browser automation to websites that render correctly inside the iOS WebKit container, lacking support for heavy desktop-only plugins.
 
 ---

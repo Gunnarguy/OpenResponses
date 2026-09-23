@@ -1,5 +1,7 @@
 # OpenResponses App Store package
 
+> **Update 2026-09-23:** 2.6 is live on the App Store (released 2026-09-09, per Apple's public lookup). The status below predates the release.
+
 The current package is for **v2.6** and was reconciled with live ASC on September 8, 2026. Start with the [complete release dossier](docs/releases/v2.6/README.md).
 
 - [Full What's New](docs/ReleaseNotes_2.6.0.md) and [detailed changelog](CHANGELOG.md).

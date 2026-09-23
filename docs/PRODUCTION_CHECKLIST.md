@@ -7,7 +7,7 @@ This checklist keeps release candidates honest. Run it before tagging a build or
 
 ## 1. Environment & Configuration
 
-- [ ] Launch the app on both iOS (simulator or device) and macOS Catalyst to ensure platform parity.
+- [ ] Launch the app on both iPhone and iPad (simulator or device) to ensure platform parity.
 - [ ] Verify the OpenAI API key is stored in Keychain (`Settings → General`). Toggle the key off/on to confirm persistence.
 - [ ] Load at least one saved prompt preset from the Prompt Library and confirm reasoning defaults, tool toggles, and truncation strategy survive reload.
 

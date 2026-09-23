@@ -42,7 +42,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 
 | Dimension | Detail |
 |---|---|
-| Platform | iOS / iPadOS / macOS Catalyst |
+| Platform | iOS 17.0+ and iPadOS 17.0+ (iPhone and iPad) |
 | Language | Swift |
 | UI | SwiftUI |
 | Architecture | MVVM-S |
