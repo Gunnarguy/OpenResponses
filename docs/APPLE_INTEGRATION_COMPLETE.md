@@ -176,7 +176,7 @@ All operations include comprehensive error handling:
 - [ ] Error messages are user-friendly
 
 ### Edge Cases
-- [ ] iOS 17 vs iOS 16 permission APIs work correctly
+- [ ] iOS 17 full-access permission APIs work correctly
 - [ ] Default calendar is used when identifier not specified
 - [ ] Multiple calendars can be filtered
 - [ ] All-day events are handled correctly

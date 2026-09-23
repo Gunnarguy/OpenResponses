@@ -204,7 +204,7 @@ Current API contracts and verification details are recorded in [API refresh note
    * iOS 17.0+ deployment target.
    * Active OpenAI API key.
 
-4. **API keys:** Enter your OpenAI API key (and optional Notion token) in Settings; they are stored in the Keychain.
+4. **API keys:** Enter your OpenAI API key in Settings. To use Notion, a new user connects it by signing in under Settings → MCP; an existing integration token can be managed under Settings → Tools. Keys and tokens are stored in the Keychain.
 
 ---
 

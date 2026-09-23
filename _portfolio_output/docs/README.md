@@ -2,9 +2,10 @@
 
 SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use, code interpreter, file search, image generation, and privacy-first Apple integrations—all wrapped in a production-ready iOS experience with deep observability and safety rails.
 
-[![iOS CI](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ios-ci.yml)
-[![Release Checks](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/release-check.yml)
+[![CI](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ci.yml/badge.svg)](https://github.com/Gunnarguy/OpenResponses/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+(Correction, 2026-09-23: the ios-ci.yml and release-check.yml workflows never existed; the CI badge now points at ci.yml, and the Release Checks badge is removed.)
 
 > **Status — November 2025:** Phase 1 is complete. OpenResponses ships with local conversation storage, full Responses tool support, and the Minimal Viable App-Store Submission (MVAS) checklist. Phase 2 focuses on Conversations API migration and cross-device sync.
 
