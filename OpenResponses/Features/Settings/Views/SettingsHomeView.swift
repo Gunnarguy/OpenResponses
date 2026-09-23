@@ -1257,7 +1257,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Computer Use can control apps when you approve each action. Only allow actions you trust.")
+                Text("Computer Use can control apps, and asks for your approval when OpenAI flags a safety check. Only allow actions you trust.")
             }
 
         if !isComputerUseSupported {
