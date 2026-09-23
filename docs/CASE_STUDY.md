@@ -94,12 +94,12 @@ To resolve these constraints, OpenResponses implements the **MVVM-S (Model-View-
   ```
   On launch, if a key is detected in `UserDefaults`, `KeychainService` writes it securely to the Keychain generic password descriptor and deletes the legacy `UserDefaults` keys immediately. This migrated existing beta installations to device-only Keychain storage without losing active session keys.
 
-### D. File Conversion Pipeline for 43 Document & Image Types
+### D. File Conversion Pipeline: 30 Extensions Uploaded As-Is, Others Converted
 - **Challenge:** To feed documents and media to the OpenAI API payload, the app must parse diverse file formats (PDFs, plain texts, RTF, Microsoft Office docs, images) directly on-device without using remote parsing APIs.
 - **Solution:** `FileConverterService` integrates native iOS framework decoders:
   - `PDFKit` to extract text layouts from multi-page PDFs.
   - Apple's `Vision` framework (OCR text recognition) to extract text content from images.
-  - Data mapping to convert 43 specific file extensions into normalized plaintext segments or compressed PNG payloads, packing them into the API request structure.
+  - Data mapping that uploads 30 extensions as-is and converts other types locally into plain text, packing them into the API request structure.
 
 ### E. Scalable Settings via ResponseSettingsRegistry
 - **Challenge:** As OpenAI frequently adds parameters to the Responses API, manually hand-coding new settings rows and validation checks led to massive UI churn, incomplete payload coverage, and configuration drift.

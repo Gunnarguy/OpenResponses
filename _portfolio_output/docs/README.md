@@ -33,6 +33,8 @@ SwiftUI-powered AI assistant for the OpenAI Responses API featuring computer use
 
 OpenResponses is an end-to-end iOS, iPadOS, and macOS (Catalyst) client for the OpenAI Responses API. It targets developers and advanced users who need:
 
+(Correction, 2026-09-23: when this was generated the project built for iPhone and iPad only; it has never enabled Mac Catalyst.)
+
 - Full coverage of the current tool surface (computer use, code interpreter, file/vector search, image generation, and Apple system tools).
 - Rich observability—streaming analytics, reasoning trace playback, and API inspectors that make debugging and demos effortless.
 - Enterprise-ready safeguards—Keychain credential storage, explicit approval flows for automation, and a minimal privacy footprint.
@@ -84,6 +86,7 @@ open OpenResponses.xcodeproj
 
 - **OpenResponses (iOS/iPadOS):** Run on simulator or device.
 - **OpenResponses (macOS Catalyst):** Build/run via “My Mac (Designed for iPad)” scheme.
+  (Correction, 2026-09-23: this is not Mac Catalyst; the project has never enabled it.)
 
 ---
 

@@ -23,7 +23,7 @@ OpenResponses requires several API keys and secrets to function. These credentia
 
 - **Purpose:** Authenticate with Notion MCP server for document access
 - **Keychain Key:** `notionApiKey`
-- **Setup:** Optional; configured in Settings → MCP if Notion integration is needed
+- **Setup:** Optional; an existing token is managed in Settings → Tools. New Notion connections use account sign-in in Settings → MCP.
 - **Format:** `ntn_...` or `secret_...`
 
 ### 3. MCP Server Authentication (Optional)
@@ -141,7 +141,7 @@ Before committing code that handles credentials:
 
 ### "Notion Integration Token Required"
 
-- **Solution:** If using Notion tools, add a Notion integration token in Settings → MCP Connectors → Notion
+- **Solution:** If using Notion tools, connect Notion with account sign-in in Settings → MCP; an existing integration token is managed in Settings → Tools.
 
 ### Accidental Secret Commit
 

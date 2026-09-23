@@ -64,10 +64,8 @@ OpenResponses is now production-ready for App Store submission. All critical tas
 **Features:**
 - Automated unit test execution
 - SwiftLint code quality checks
-- Secret scanning (prevents API key commits)
-- Version consistency validation
-- Documentation completeness verification
-- App Store requirement checks (privacy strings, icons, bundle ID)
+- Secret scanning (fails the run when an API key pattern is found)
+- Required documentation files present (README.md, LICENSE, PRIVACY.md)
 
 **Files:**
 - `.github/workflows/ci.yml`

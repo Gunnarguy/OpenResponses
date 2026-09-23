@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-08 (v2.6 implementation clarification)
 
-OpenResponses is designed with security and credential privacy as first-class architectural constraints. As a native iOS and macOS playground designed for prompt engineers and software developers, OpenResponses implements direct API connections without proxy servers. This threat model details our local storage boundaries, API key handling protocols, release safeguards, and incident reporting.
+OpenResponses is designed with security and credential privacy as first-class architectural constraints. As a native iPhone and iPad playground designed for prompt engineers and software developers, OpenResponses implements direct API connections without proxy servers. This threat model details our local storage boundaries, API key handling protocols, release safeguards, and incident reporting.
 
 ---
 

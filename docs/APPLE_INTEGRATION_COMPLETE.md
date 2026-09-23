@@ -222,7 +222,7 @@ All operations include comprehensive error handling:
 ## Security & Privacy
 
 ### Data Handling
-- All EventKit data stays on-device
+- EventKit data leaves the device only as tool results
 - Tool results, including event and reminder details and notes, are sent to OpenAI
 - Permissions requested only when user initiates connection
 - User can revoke permissions via iOS Settings at any time

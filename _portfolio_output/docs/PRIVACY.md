@@ -7,7 +7,9 @@ OpenResponses runs entirely on your device until you decide to contact an extern
 ## What stays on your device
 
 - **API credentials:** Your OpenAI key and any optional integration tokens are saved in the iOS Keychain and never leave your device unless they are used to contact the service you configured.
+  (Correction, 2026-09-23: MCP tokens are sent to OpenAI, which connects to the configured server.)
 - **Conversations:** Message history, prompts, and tool results are stored locally. You can delete any thread or remove the app to erase the data.
+  (Correction, 2026-09-23: requests default to `store: true`, so OpenAI also keeps responses.)
 - **File handling:** Attachments are processed in memory, optionally converted on device, then sent only to the selected service. The app does not persist extra copies.
 
 ## In-app permission before data is sent

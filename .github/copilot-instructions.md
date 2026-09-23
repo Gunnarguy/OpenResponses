@@ -2,14 +2,14 @@
 
 ## 1. Project Identity
 
-OpenResponses is a native iOS and macOS (Catalyst) AI assistant client and developer playground designed to interface directly with the OpenAI Responses API (`/v1/responses`). Written in Swift and SwiftUI, the application implements a local-first, low-latency execution pipeline with zero intermediate server proxies. It features direct integration with OpenAI system tools (Web Search, Code Interpreter, Computer Use), custom Model Context Protocol (MCP) server discovery, Notion workspace integration, and native Apple device permissions (Calendar, Reminders, Contacts). It secures all user-provided API credentials inside the secure iOS Keychain.
+OpenResponses is a native iPhone and iPad AI assistant client and developer playground designed to interface directly with the OpenAI Responses API (`/v1/responses`). Written in Swift and SwiftUI, the application implements a low-latency execution pipeline with zero intermediate server proxies. It features direct integration with OpenAI system tools (Web Search, Code Interpreter, Computer Use), custom Model Context Protocol (MCP) server discovery, Notion workspace integration, and native Apple device permissions (Calendar, Reminders, Contacts). It secures all user-provided API credentials inside the secure iOS Keychain.
 
 ---
 
 ## 2. Prime Directives
 
 - **Direct Connections Only:** All external operations must go directly from the client to destination endpoints (e.g. `api.openai.com` or Notion workspace) over secure HTTPS. Do not introduce proxy servers.
-- **Keychain Enclave Safety:** All user secrets, API keys, and access tokens must reside strictly in the iOS Keychain. Never write secrets to standard `UserDefaults` or plaintext log outputs.
+- **Keychain Safety:** All user secrets, API keys, and access tokens must reside strictly in the iOS Keychain. Never write secrets to standard `UserDefaults` or plaintext log outputs.
 - **Strict Verification:** **Do not invent files, APIs, or completed features.** If a model capability, setting parameter, or script is not present in the current codebase, mark it as "Needs verification" or state the gap explicitly.
 - **Observability Focus:** Maintain granular, real-time telemetry rendering (such as active token counters, activity feeds, request inspector JSONs, and expandable reasoning logs).
 
