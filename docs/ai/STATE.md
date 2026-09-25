@@ -1,36 +1,38 @@
 # Current State
 
 Updated: 2026-09-24
-Branch/worktree: main in the repo root. HEAD 3c3f04c (one commit ahead of origin 9dd8e1d). The API coverage pass below is UNCOMMITTED in the working tree.
-Last verified commit: 3c3f04c
+Branch/worktree: main in the repo root; origin at 32ca9d0. This file is committed locally after it and not pushed (a push starts another Xcode Cloud build).
+Last verified commit: 32ca9d0 2.7: remove shut-down and deprecated OpenAI features; cover the current API
 
 ## Objective
-OpenResponses 2.7 as a long-lived release. Gunnar asked (2026-09-24) to remove everything OpenAI has shut down or deprecated and to include every current API endpoint and parameter. Earlier today 9dd8e1d added GPT-6 Sol/Luna and GPT Image 2.5; Xcode Cloud build 46 of that commit is VALID and selected on ASC version 2.7.
+OpenResponses 2.7 as a long-lived release: current OpenAI models (GPT-6 Sol/Astra/Luna, GPT Image 2.5, GPT-Live 1), every current endpoint and Responses parameter in scope, and nothing OpenAI has shut down or deprecated.
 
 ## Status
-In progress: code complete and tested locally; an adversarial reviewer subagent was reviewing the uncommitted diff when this was written. Not yet committed or pushed. Pushing main starts Xcode Cloud build 47, which must then replace build 46 on version 2.7.
+Ready for Gunnar to submit. ASC version 2.7 is PREPARE_FOR_SUBMISSION with build 47 selected (Xcode Cloud run 47 of 32ca9d0, VALID, usesNonExemptEncryption false, internal READY_FOR_BETA_TESTING). What's New, description, promotional text, keywords and review notes in ASC match fastlane/metadata (read back 2026-09-24). Build 47 TestFlight "What to Test" matches docs/releases/v2.7/TestFlightNotes.txt. Nothing was submitted for review.
 
-## Completed (uncommitted)
-- Removed: Assistants service/models/protocol, CreateAssistantSheet, LegacyMigrationLabView; FineTuningService/Models/View and JSONLDocument (9 files, git rm). Published prompts, user, promptCacheRetention, streamIncludeUsage, audio modalities, includeComputerCallOutput (Prompt fields, registry descriptors, request code). web_search_preview and computer_use_preview tools and the computer-use-preview path (old saved configs decode to web_search/computer). Registry entries for o3, o3-mini, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1-nano, gpt-4.1-2025-04-14, computer-use-preview, gpt-5.5-mini/nano. Realtime beta event aliases. Dead tool-config helpers in OpenAIService.
-- Added: GPT-Live 1 in RealtimeService (wss /v1/live/sessions, session.start, session.input_audio.append, mute/unmute, output audio/transcript deltas, session.close). Voice settings sheet now reachable from Settings → Model → Voice. ModernResponseOptions fields (tolerant decoder): moderation, webSearchExternalAccess, codeInterpreterMemoryLimit, imageInputFidelity, imageOutputCompression, hybrid search weights. Service tiers fast/ultrafast. Workbench endpoints for responses, conversations, models, moderations, embeddings, files, vector stores, containers, batches, realtime client secrets, voice consents, with DELETE confirmation. Batch endpoint picker defaulting to /v1/responses.
-- Fixed: capability inheritance only for dated snapshots; getCapabilities nil for retired models; presets on retired models move to OpenAI's documented replacement (CurrentModelCatalog.replacement, applied in ChatViewModel.enforceResponsesAPIConstraints); web_search filters send allowed_domains only; ranker default-2024-11-15; moderation names omni-moderation-latest; registry apiField names.
-- Store copy updated in fastlane/metadata (description, What's New, review notes), CHANGELOG, docs/ReleaseNotes_2.7.0.md, TestFlight notes, paste sheet.
+## Completed
+- 9dd8e1d: GPT-6 Sol/Luna, GPT Image 2.5, version-aware model recognition, MARKETING_VERSION 2.7, four Xcode 27 warnings.
+- 32ca9d0: removed Assistants, fine-tuning, published prompts, preview tools, the computer-use-preview path, invalid/deprecated request fields (user, prompt_cache_retention, modalities/audio, include_usage, computer_call_output.output, input_audio) and retired-model capability entries; added GPT-Live 1 (wss /v1/live/sessions), Responses moderation and new tool options, Workbench endpoints with DELETE confirmation, voice-note transcription with gpt-transcribe; fixed snapshot-only capability inheritance, gpt-4o-mini, blocked domains with custom instructions, retired-model migration order. Full list in CHANGELOG.md 2.7.
+- An adversarial review of the pass found 17 items; all defects were fixed or answered from the downloaded Live reference before commit.
 
 ## Active Constraints
-- Saved presets decode with synthesized Codable via try? ([Prompt]); never add a non-optional Prompt property. New options go in ModernResponseOptions.
-- Every push to main starts an Xcode Cloud archive (build number = run number). No attribution trailers. Wrap git in gtimeout 60. DerivedData outside iCloud.
-- API facts come from OpenAI's Markdown reference exports downloaded 2026-09-24 to the session scratchpad (oaidocs/); re-download from https://developers.openai.com/api/reference/llms.txt. No OpenAI key on this Mac; Live voice is verified by unit tests of the protocol payloads only, not a live session.
-- Before PATCHing ASC copy, compare live fields with the last committed copy (script asc_27_update.py in the scratchpad did this; hand edits are skipped).
+- Saved presets decode with synthesized Codable via try?; never add a non-optional Prompt property. New options go in ModernResponseOptions (tolerant decoder).
+- Every push to main starts an Xcode Cloud archive; bump MARKETING_VERSION after each release. No attribution trailers. Wrap git in gtimeout 60. DerivedData outside iCloud.
+- API facts come from OpenAI's Markdown reference (https://developers.openai.com/api/reference/llms.txt, resource pages as .md), fetched 2026-09-24. No OpenAI key on this Mac.
+- Compare live ASC fields with the last committed copy before PATCHing (skip hand edits).
+- Use the dedicated simulator "OpenResponses tests" (CC71613C-046E-4386-B24E-9512FD114884, iPhone 18 Pro, iOS 27.0); simulators are shared across sessions.
 
 ## Verification
-- `xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination "platform=iOS Simulator,id=CC71613C-046E-4386-B24E-9512FD114884" -only-testing:OpenResponsesTests -parallel-testing-enabled NO -derivedDataPath <scratchpad>/DD27 CODE_SIGNING_ALLOWED=NO` (Xcode 27.0 27A266a, simulator "OpenResponses tests", iOS 27.0) on the uncommitted tree -> `Executed 296 tests, with 0 failures`, `** TEST SUCCEEDED **`; no warnings in app sources.
-- ASC dry run of the copy update: description/whatsNew/reviewNotes "matches 9dd8e1d copy", keywords/promo "already new"; no hand edits.
-- 9dd8e1d: GitHub CI run 36079930935 green (297 tests); Xcode Cloud run 46 SUCCEEDED, build 46 VALID.
+- `xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination "platform=iOS Simulator,id=CC71613C-046E-4386-B24E-9512FD114884" -only-testing:OpenResponsesTests -parallel-testing-enabled NO -derivedDataPath <scratchpad>/DD27 CODE_SIGNING_ALLOWED=NO` (Xcode 27.0 27A266a) on 32ca9d0 -> `Executed 297 tests, with 0 failures`, `** TEST SUCCEEDED **`; no warnings in app sources.
+- Xcode Cloud run 47 (32ca9d0): SUCCEEDED; build 47 VALID, uploaded 2026-09-24 19:15 PDT.
+- GitHub CI run 36085257026 (32ca9d0): see git log / gh run view; recorded in the final session message.
+- `python3 scripts/secret_scan.py` passed; `git diff --check` clean.
 
 ## Blockers / Unknowns
-- Reviewer findings pending at time of writing; address any verified defects before committing.
-- GPT-Live 1 has never been exercised against the live service.
-- Notion token in test.env was printed into the session log earlier; Gunnar should rotate it.
+- GPT-Live 1, voice-note transcription and the new Responses fields are verified against the reference and unit tests only; no live request was possible without a key.
+- Live has no speech-started event, so locally buffered assistant audio keeps playing briefly when the user interrupts; transcripts are split into turns when the speaker changes.
+- `OpenResponses/Resources/Localization/Localizable 2.xcstrings` is an old tracked iCloud conflict copy (since f679fa5); it builds as an unused table. Remove in a later commit if wanted.
+- The Notion token in test.env was printed into this session's log; Gunnar should rotate it.
 
 ## Exact Next Action
-Address reviewer findings, rerun the test command above, then commit and `gtimeout 120 git push origin main`; when Xcode Cloud build 47 is VALID, attach it to ASC version 2.7 and run `zsh -ic "python3 <scratchpad>/asc_27_update.py <scratchpad> $PWD write"`.
+Gunnar: in App Store Connect, open OpenResponses 2.7 (build 47 selected), optionally add a reviewer OpenAI API key to App Review notes, then Submit for Review.
