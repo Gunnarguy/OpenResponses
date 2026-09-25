@@ -1,43 +1,38 @@
 # Current State
 
-Updated: 2026-09-08
-Branch/worktree: main in the repo root. The diagnostic branch `ci/toolchain-matrix` and its worktree were deleted after the matrix run finished.
-Last verified commit: 5b270d8 ci: run tests on macos-26 with Xcode 26.6
+Updated: 2026-09-24
+Branch/worktree: main in the repo root, level with origin at 9dd8e1d when written; this file is committed locally after it.
+Last verified commit: 9dd8e1d 2.7: GPT-6 Sol and Luna, GPT Image 2.5, and version-aware model recognition
 
 ## Objective
-Make the GitHub CI workflow green for the v2.6 App Store submission (runs 34261694919 and 34262928247 on main failed), and establish whether the crash behind those failures can reach the shipped build (2.6, archived with Xcode 26.6, deployment target iOS 17).
+Ship OpenResponses 2.7 as a long-lived release: support GPT-6 Sol and Luna and GPT Image 2.5, recognize later general-purpose GPT releases without an app update, account for announced OpenAI retirements, and get a valid 2.7 build into App Store Connect.
 
 ## Status
-Complete. CI run 34267148194 on commit 5b270d8 passed all 294 tests (macOS 26 runner, Xcode 26.6, iPhone 17 Pro simulator on iOS 26.5). The docs commit that records this (docs/CI_CD_Pipeline.md, docs/releases/v2.6/Validation.md, this file) is committed locally and NOT pushed: every push to main starts an Xcode Cloud archive (Gunnar received a "build 41 completed" ASC notification minutes after the 19:07 UTC push of 5b270d8), and he had not asked for another build.
+Ready for Gunnar to submit. ASC version 2.7 is PREPARE_FOR_SUBMISSION with build 46 selected (Xcode Cloud run 46 of 9dd8e1d, VALID, usesNonExemptEncryption false). What's New, description, promotional text, keywords and review notes in ASC match `fastlane/metadata` (read back 2026-09-24). TestFlight "What to Test" for build 46 matches `docs/releases/v2.7/TestFlightNotes.txt`. Nothing was submitted for review.
 
 ## Completed
-- Root cause: on the `macos-15` image (Xcode 26.3, iOS 26.2 simulator) 29 tests crashed with `malloc: pointer being freed was not allocated`, stack `<Class>.__deallocating_deinit -> swift_task_deinitOnExecutorMainActorBackDeploy -> libswift_Concurrency swift_task_deinitOnExecutorImpl -> TaskLocal::StopLookupScope::~StopLookupScope -> abort` (swiftlang/swift#87316). Trigger: a `@MainActor` class released from a synchronous XCTest method while XCTest has a task-local bound outside any task.
-- Fix (5b270d8): `.github/workflows/ci.yml` Build & Test and Lint jobs run on `macos-26`; Xcode pinned to `26.6` instead of `latest-stable`.
-- Matrix run 34267002652 (macOS 26 image): Xcode 26.3 / iOS 26.5 passed 294; Xcode 26.6 / iOS 26.5 passed 294; Xcode 26.6 / iOS 26.4 executed 294 with one unrelated failure (`BrowserLiveSiteTests.testExampleAndIANAWithHistory`, WebKit `InvalidTransition`, live network); Xcode 26.6 / iOS 26.2 aborted with the same crash (eight restarts). The defect is in the iOS 26.2 simulator runtime, reachable from the shipping toolchain.
+- Catalog (`OpenResponses/Core/Models/CurrentModelCatalog.swift`): version parsing of `gpt-<major>[.<minor>][-variant]`; GPT-5.6+ general models are modern, specialized variants are not; default `gpt-6-sol`; image default `gpt-image-2.5-flare`; `xhigh`/`max` quality only for Image 2.5 and normalized per request; realtime migration to `gpt-realtime-2.1`; MCP discovery on `gpt-6-luna`; offline list drops models shutting down 2026-12-11.
+- Four Xcode Cloud warnings fixed (three ineffective `[weak self]`, one main-actor formatter). MARKETING_VERSION 2.7.
+- CI skips `BrowserLiveSiteTests` (network flake). Store copy and docs: CHANGELOG 2.7, `docs/ReleaseNotes_2.7.0.md`, README, APP_STORE.md, paste sheet.
+- iCloud conflict refs `.git/refs/heads/main 2` and `.git/refs/tags/v2.6.0 2` (both redundant) were moved to the session scratchpad; they had broken `git fetch`.
 
 ## Active Constraints
-- No attribution trailers in commits. Commits go straight to main. Pushing main triggers an Xcode Cloud archive; say so before pushing and do not push docs-only changes without Gunnar's go-ahead.
-- `.claude/` in the repo root is untracked user-local settings; do not commit it.
-- Build and test with DerivedData outside iCloud-synced `~/Documents`; wrap git in `gtimeout 60`.
-- Never report a run as green without reading its output (`gh run view <id>`).
-- 2026-09-08 decision (no decisions log exists in this repo yet; move it when one does): CI pins the archive toolchain rather than tracking `latest-stable`, because runner-image toolchain drift produced a spurious red run. Bump the pin together with the Xcode used for the archive.
-
-## Working Set
-- `.github/workflows/ci.yml`: the committed fix; the comment above `runs-on` explains why.
-- `docs/CI_CD_Pipeline.md` and `docs/releases/v2.6/Validation.md`: record the failed runs, the green run, and the matrix; Validation.md's "Remaining release checks" carries the isolated-deinit exposure item.
-- Session-only artifacts (may be gone): `/private/tmp/claude-501/-Users-gunnarhostetler-Documents-GitHub-OpenResponses/fc8868b2-038d-4296-a7b7-db1c465206ae/scratchpad/` with the downloaded `TestResults.xcresult` from run 34262928247 (crash reports under `attach/*.ips`), `LocalTest26.xcresult`, `local_test_26.log`, matrix cell logs `cell_*_clean.txt`, `DerivedData`.
+- Every push to main starts an Xcode Cloud archive (build number = run number). Do not push docs-only commits without Gunnar's go-ahead.
+- Bump MARKETING_VERSION after each release before the next push; a released version's train rejects uploads ("Preparing build for App Store Connect failed").
+- GitHub CI stays on macos-26 + Xcode 26.6 (no Xcode 27 on hosted runners as of image 20260907); Xcode Cloud archives with "Latest Release" = Xcode 27.
+- `.claude/` is untracked local settings. No attribution trailers. DerivedData outside iCloud; wrap git in `gtimeout 60`.
+- Model facts come from developers.openai.com (fetched 2026-09-24). No OpenAI key exists on this Mac; `test.env` holds a Notion token only.
 
 ## Verification
-- `gh run view 34267148194 --json conclusion,status` -> `conclusion=success status=completed`; job log: `Executed 294 tests, with 0 failures (0 unexpected)`, `** TEST SUCCEEDED **`, no "Restarting after unexpected exit".
-- `gh run view 34262928247 --log` -> `** TEST FAILED **`; xcresult summary 96 attempted, 67 passed, 29 failed, "Exceeded max restart count of 2"; 25 `.ips` reports, all `EXC_CRASH SIGABRT` with the stack above.
-- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination "platform=iOS Simulator,id=DA9536BA-F048-4352-92AA-66A7E1A464BA" -only-testing:OpenResponsesTests -parallel-testing-enabled NO -derivedDataPath <scratchpad>/DerivedData -resultBundlePath <scratchpad>/LocalTest26.xcresult CODE_SIGNING_ALLOWED=NO` (Xcode 26.6 17F113, iPhone 17 Pro, iOS 26.5) -> `Executed 294 tests, with 0 failures`, `** TEST SUCCEEDED **`.
-- Matrix job logs via `gh api repos/Gunnarguy/OpenResponses/actions/jobs/<id>/logs`: 102198762271 (26.3/26.5) `Executed 294 tests, with 0 failures`; 102198762373 (26.6/26.5) same; 102198762264 (26.6/26.4) `Executed 294 tests, with 1 failure`; 102198762418 (26.6/26.2) `** TEST FAILED **`, 8 "Restarting after unexpected exit", 9 malloc errors.
-- `nm OpenResponses.debug.dylib | xcrun swift-demangle | grep -c __isolated_deallocating_deinit` (local Xcode 26.6 build) -> 52; `otool -tv` of `_swift_task_deinitOnExecutorMainActorBackDeploy` -> `_stdlib_isOSVersionAtLeast(18, 4, 0)` then `bl _swift_task_deinitOnExecutor`.
-- `grep -rn "@TaskLocal" OpenResponses/` -> 0 uses.
+- Local: `xcodebuild test -project OpenResponses.xcodeproj -scheme OpenResponses -destination "platform=iOS Simulator,id=CC71613C-046E-4386-B24E-9512FD114884" -only-testing:OpenResponsesTests -parallel-testing-enabled NO -derivedDataPath <scratchpad>/DD27 -resultBundlePath <scratchpad>/Test27.xcresult CODE_SIGNING_ALLOWED=NO` (Xcode 27.0 27A266a, dedicated simulator "OpenResponses tests", iPhone 18 Pro, iOS 27.0) -> `Executed 298 tests, with 0 failures`, `** TEST SUCCEEDED **`; zero warnings in app sources.
+- Xcode Cloud run 46 (commit 9dd8e1d): COMPLETE SUCCEEDED; build 46 VALID, uploaded 2026-09-24 18:01 PDT, internal READY_FOR_BETA_TESTING.
+- GitHub CI run 36079930935 (commit 9dd8e1d, macos-26, Xcode 26.6): all four jobs green; `Executed 297 tests, with 0 failures`, `** TEST SUCCEEDED **` (298 minus the skipped BrowserLiveSiteTests case).
+- `python3 scripts/secret_scan.py` -> passed; `git diff --check` clean.
 
 ## Blockers / Unknowns
-- Production exposure of the isolated-deinit abort on device runtimes between iOS 18.4 and 26.3 is unmeasured. Condition: a `@MainActor` object released outside a Swift task while a task-local is bound on that thread. Only XCTest has been observed to create that state. Mitigation, if Gunnar wants it: explicit `nonisolated deinit {}` in the `@MainActor` classes (the crash reports named OpenAIService, APIWorkbenchDraftStore, ResponsesAPIClient, MCPAuthorizationClient, MCPConnectionStore, APIWorkbenchSession), then rerun the local command above.
-- `BrowserLiveSiteTests.testExampleAndIANAWithHistory` needs the real network and WebKit; it failed once on the iOS 26.4 simulator and passed on 26.5. CI uses 26.5 today.
+- Xcode 27 still emits 52 isolated deinits under default MainActor isolation. The iOS 26.2 simulator runtime aborted on them only under synchronous XCTest (swiftlang/swift#87316); no production crash has been observed. Mitigation if ever needed: explicit `nonisolated deinit {}` on the affected classes.
+- Published prompts (`v1/prompts`) shut down 2026-11-30; presets with that toggle on will get an API error after that date until it is turned off.
+- The Notion token in `test.env` was printed into the 2026-09-24 session log; Gunnar should rotate it.
 
 ## Exact Next Action
-`gtimeout 120 git push origin main` once Gunnar confirms that one more Xcode Cloud archive is acceptable; the local commit ahead of origin contains only docs/CI_CD_Pipeline.md, docs/releases/v2.6/Validation.md and docs/ai/STATE.md. If he declines, leave the commit local; nothing else is pending.
+Gunnar: in App Store Connect, open OpenResponses 2.7, optionally add a reviewer OpenAI API key to App Review notes, then Submit for Review.
