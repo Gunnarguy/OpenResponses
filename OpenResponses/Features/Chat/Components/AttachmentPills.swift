@@ -6,7 +6,7 @@ struct AttachmentPills: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     
     var body: some View {
-        if !viewModel.pendingFileData.isEmpty || !viewModel.pendingImageAttachments.isEmpty || !viewModel.pendingAudioAttachments.isEmpty {
+        if !viewModel.pendingFileData.isEmpty || !viewModel.pendingImageAttachments.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     // File pills
@@ -28,15 +28,7 @@ struct AttachmentPills: View {
                             }
                         )
                     }
-                    
-                    // Audio pills
-                    ForEach(viewModel.pendingAudioAttachments.indices, id: \.self) { index in
-                        AudioPill(
-                            onRemove: {
-                                removeAudio(at: index)
-                            }
-                        )
-                    }
+
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -59,12 +51,7 @@ struct AttachmentPills: View {
             viewModel.pendingImageAttachments.remove(at: index)
         }
     }
-    
-    private func removeAudio(at index: Int) {
-        _ = withAnimation(.easeInOut(duration: 0.2)) {
-            viewModel.pendingAudioAttachments.remove(at: index)
-        }
-    }
+
 }
 
 // MARK: - Audio Pill

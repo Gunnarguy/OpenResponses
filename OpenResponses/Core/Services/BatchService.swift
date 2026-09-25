@@ -40,7 +40,7 @@ class BatchService {
         return Data(jsonlString.utf8)
     }
     
-    func submitBatch(inputFileId: String, endpoint: String = "/v1/chat/completions") async throws -> BatchJob {
+    func submitBatch(inputFileId: String, endpoint: String = "/v1/responses") async throws -> BatchJob {
         let headers = try createHeaders()
         let url = URL(string: "\(baseURL)/batches")!
         

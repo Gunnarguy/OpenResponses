@@ -37,7 +37,7 @@ struct BatchRequestCounts: Codable, Hashable {
 struct BatchInputLine: Codable {
     let customId: String
     let method: String // "POST"
-    let url: String // "/v1/chat/completions" or "/v1/responses"
+    let url: String // e.g. "/v1/responses"; see BatchJobsView.endpoints
     let body: [String: AnyCodable]
     
     enum CodingKeys: String, CodingKey {

@@ -36,8 +36,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 * **Technical Characteristics:** Direct client-to-endpoint connections, local document parsing (with Vision OCR), and sandboxed browser automation loops.
 * **Feature Tiers:** 
   * **Core Playground**: Responses API (Chat, Tool Calling, Vision, Models)
-  * **Developer Lab**: Batch API, Fine-Tuning
-  * **Legacy Migration**: retained Assistant JSON imports
+  * **Developer Lab**: Batch API
 * **Product Lineage:** OpenResponses is the active evolution of Gunnar Hostetler's API-tooling work and supersedes the older OpenAssistant Assistants API client.
 
 ---
@@ -63,8 +62,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 * **Direct API Connections:** Outbound HTTPS traffic routes directly from the iOS client to OpenAI and Notion endpoints without intermediate proxy servers.
 * **Asynchronous SSE Streaming:** Uses Swift Concurrency (`AsyncThrowingStream`) to parse Server-Sent Events line-by-line, dispatching UI updates to the `@MainActor` to avoid layout race conditions.
 * **Realtime Voice WebSockets:** Includes Voice Mode using `wss://` for bi-directional 24kHz PCM16 audio streaming (Direct BYOK WebSocket mode).
-* **Retained Assistant Exports:** Import saved Assistant JSON and convert it to Responses presets. The Assistants API shut down on August 26, 2026.
-* **Developer Labs:** Batch job management with complete output/error exports, plus reviewed text-chat JSONL import and validation for eligible fine-tuning accounts. Current-chat export produces a draft dataset example.
+* **Developer Labs:** Batch job management with complete output/error exports, defaulting to the Responses endpoint. Assistants, fine-tuning and published prompts were removed in 2.7 after OpenAI shut them down or deprecated them.
 * **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the secure iOS Keychain. Request inspection/logging includes targeted credential redaction; keys are transmitted to the relevant service when needed for authentication.
 * **On-device Browser Automation:** Persistent WKWebView with serialized DOM and screenshot actions, precise element references, cancellation, deadlines, and per-turn limits. Pending computer safety checks pause both tool paths. See [browser execution](docs/browser-execution.md).
 * **Local Ingestion & OCR:** Extracts text from PDFs using `PDFKit` and recognizes text in image attachments using the native `Vision` OCR framework locally on-device.
@@ -175,7 +173,7 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 
 ## September 2026 API refresh
 
-The playground now includes a shared current-model catalog, Astra-compatible reasoning controls, GPT Image 2, current Realtime transcription and voices, opt-in automatic compaction, persisted reasoning, pro reasoning, hosted shell, and deferred function/MCP loading through tool search. Saved presets and earlier supported models remain usable.
+The playground now includes a shared current-model catalog, Astra-compatible reasoning controls, GPT Image 2, current Realtime transcription and voices, opt-in automatic compaction, persisted reasoning, pro reasoning, hosted shell, and deferred function/MCP loading through tool search. Saved presets keep working; a preset on a retired model moves to OpenAI's documented replacement (2.7).
 
 Native chat now executes configured function/custom tools, Astra async lookups, programmatic tool calls, and multi-agent responses. Multi-agent uses WebSocket result injection so waiting agents can resume immediately. Read-only calls can overlap; writes run sequentially. Root answers, subagent activity, tool results, and image previews appear in the chat. Interrupted turns preserve known results and mark uncertain outcomes without automatically retrying writes. MCP configuration is available again. These orchestration features apply to current-model foreground requests with Computer Use disabled.
 

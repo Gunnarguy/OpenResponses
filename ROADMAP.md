@@ -12,7 +12,7 @@
 - [x] Shared on-device browser execution lane, real screenshots, DOM refs, history, deadlines and per-turn budgets; corrected hosted-search payloads.
 - [x] Complete compaction context, richer artifacts/activity, safe chat switching/deletion and coalesced background persistence.
 - [x] Honest file-indexing status, full Batch output/error export, reviewed text-chat JSONL import and complete supported resource pagination.
-- [x] Existing Apple/Notion integration improvements; retained Assistant JSON migration with retired live operations disabled.
+- [x] Existing Apple/Notion integration improvements. The Assistant JSON migration lab was removed in 2.7 after the Assistants API shut down.
 - [x] Latest 294-test local run, native OAuth/registry coverage, and signed iPhone candidate.
 - [x] Unified multi-account Connections page, PKCE sign-in and secure refresh.
 - [ ] Complete the provider registrations/callback arrangements listed in [MCP connections](docs/mcp-connections.md) before claiming every catalog entry supports sign-in.
@@ -42,4 +42,4 @@ Remote conversation views hydrate known IDs rather than listing the entire OpenA
 
 ## OpenAssistant lineage
 
-OpenAssistant is the archived predecessor based on Assistants threads/runs. Its historical features are not current live API support in OpenResponses. The migration path retained here imports saved Assistant JSON into Responses presets. This roadmap does not reopen the archived project or promise restoration of retired endpoints.
+OpenAssistant is the archived predecessor based on Assistants threads/runs. Its historical features are not current live API support in OpenResponses. The Assistant JSON migration path was removed in 2.7. This roadmap does not reopen the archived project or promise restoration of retired endpoints.

@@ -14,7 +14,7 @@ class ChatViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var pendingFileAttachments: [String] = []
     @Published var pendingImageAttachments: [UIImage] = []
-    @Published var pendingAudioAttachments: [Data] = []
+    @Published var isTranscribingVoiceNote = false
     @Published var pendingFileData: [Data] = []
     @Published var pendingFileNames: [String] = []
     @Published var isShowingDocumentPicker = false
@@ -42,11 +42,6 @@ class ChatViewModel: ObservableObject {
     /// When non-nil, the user must approve first-send OpenAI data sharing before a live request is sent.
     @Published var pendingAIDataSharingConsent: AIDataSharingConsentRequest?
     
-    // Assistants API Properties
-    @Published var useAssistantsAPI: Bool = false
-    @Published var selectedAssistantId: String? = nil
-    @Published var assistants: [Assistant] = []
-
 
     /// Prevents multiple concurrent computer_call resolution tasks
     private var isResolvingComputerCalls: Bool = false
@@ -386,7 +381,6 @@ class ChatViewModel: ObservableObject {
             setupBindings()
         }
         updateModelCompatibility()
-        loadAssistants()
     }
 
     // MARK: - Explore Demo
@@ -447,6 +441,28 @@ class ChatViewModel: ObservableObject {
         let hasFileAttachments: Bool
         let hasImageAttachments: Bool
         let usesEnabledTools: Bool
+    }
+
+    /// Turns a recorded voice note into text for the composer with gpt-transcribe. Audio goes to OpenAI only
+    /// after the data-sharing notice has been accepted, and never in Explore Demo.
+    func transcribeVoiceNote(_ audio: Data) async -> String? {
+        guard !exploreModeEnabled, !isMissingOpenAIKey() else {
+            messages.append(ChatMessage(role: .system, text: "Voice notes are transcribed by OpenAI and need your API key. Explore Demo sends nothing."))
+            return nil
+        }
+        guard hasApprovedAIDataSharingConsent else {
+            messages.append(ChatMessage(role: .system, text: "Voice notes are sent to OpenAI for transcription. Send a text message first to review the data-sharing notice, then record again. No audio was sent."))
+            return nil
+        }
+        guard let service = api as? OpenAIService else { return nil }
+        isTranscribingVoiceNote = true
+        defer { isTranscribingVoiceNote = false }
+        do {
+            return try await service.transcribeVoiceNote(audio)
+        } catch {
+            messages.append(ChatMessage(role: .system, text: "Voice note transcription failed: \(error.localizedDescription)"))
+            return nil
+        }
     }
 
     func resetAIDataSharingConsent() {
@@ -1180,7 +1196,6 @@ class ChatViewModel: ObservableObject {
                 pendingFileData.removeAll()
                 pendingFileNames.removeAll()
                 pendingImageAttachments.removeAll()
-                pendingAudioAttachments.removeAll()
                 let sys = ChatMessage(role: .system, text: "ℹ️ Explore Demo is offline and won’t upload files/images. Add an API key to use attachments.")
                 messages.append(sys)
             }
@@ -1285,9 +1300,7 @@ class ChatViewModel: ObservableObject {
             return InputImage(image: image, detail: selectedImageDetailLevel)
         }
         
-        let audioAttachments: [InputAudio]? = pendingAudioAttachments.isEmpty ? nil : pendingAudioAttachments.map { data in
-            return InputAudio(data: data, format: "wav")
-        }
+        let audioAttachments: [InputAudio]? = nil
 
     // Audio integrated
 
@@ -1297,9 +1310,6 @@ class ChatViewModel: ObservableObject {
         }
         if imageAttachments != nil {
             pendingImageAttachments.removeAll()
-        }
-        if audioAttachments != nil {
-            pendingAudioAttachments.removeAll()
         }
         // NOTE: Don't clear pendingFileData/pendingFileNames here - they're still needed for the API call
         // They will be cleared after successful API call completion
@@ -1458,9 +1468,7 @@ class ChatViewModel: ObservableObject {
                         imageAttachments: imageAttachments
                     )
                 }
-                if self.useAssistantsAPI {
-                    throw OpenAIServiceError.invalidRequest("The Assistants API has shut down. Use a Responses preset to continue.")
-                } else if CurrentModelCatalog.isModern(activePrompt.openAIModel), !activePrompt.enableComputerUse, !activePrompt.backgroundMode {
+                if CurrentModelCatalog.isModern(activePrompt.openAIModel), !activePrompt.enableComputerUse, !activePrompt.backgroundMode {
                     managedStarted = true
                     let promptSnapshot = activePrompt
                     let conversationID = activeConversation?.id
@@ -3466,22 +3474,22 @@ class ChatViewModel: ObservableObject {
     }
 
     /// Normalizes prompt fields that have stricter Responses API contracts or legacy migrations.
+    /// A preset saved with a model OpenAI has shut down or scheduled for shutdown moves to its documented replacement.
+    /// Runs before any capability check so computer use and reasoning settings are judged against the new model.
+    @discardableResult
+    private func migrateRetiredModel(in prompt: inout Prompt) -> Bool {
+        guard CurrentModelCatalog.isRetired(prompt.openAIModel) else { return false }
+        let replacement = CurrentModelCatalog.replacement(for: prompt.openAIModel)
+        AppLogger.log("Moving retired model \(prompt.openAIModel) to \(replacement)", category: .openAI, level: .info)
+        prompt.openAIModel = replacement
+        return true
+    }
+
     @discardableResult
     private func enforceResponsesAPIConstraints(for prompt: inout Prompt) -> Bool {
         var didChange = false
 
-        let trimmedSafetyIdentifier = prompt.safetyIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedLegacyUserIdentifier = prompt.userIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmedSafetyIdentifier.isEmpty, !trimmedLegacyUserIdentifier.isEmpty {
-            prompt.safetyIdentifier = trimmedLegacyUserIdentifier
-            didChange = true
-        }
-
-        if !trimmedLegacyUserIdentifier.isEmpty {
-            prompt.userIdentifier = ""
-            didChange = true
-        }
+        if migrateRetiredModel(in: &prompt) { didChange = true }
 
         if prompt.backgroundMode && !prompt.storeResponses {
             prompt.backgroundMode = false
@@ -3506,6 +3514,7 @@ class ChatViewModel: ObservableObject {
     @discardableResult
     func replaceActivePrompt(with prompt: Prompt, previousModelId: String? = nil) -> Bool {
         var updatedPrompt = prompt
+        migrateRetiredModel(in: &updatedPrompt)
         let baselineModel = previousModelId ?? activePrompt.openAIModel
         let reasoningChanged = enforceReasoningDefaults(for: &updatedPrompt, previousModelId: baselineModel)
         let responsesAPIChanged = enforceResponsesAPIConstraints(for: &updatedPrompt)
@@ -3533,7 +3542,7 @@ class ChatViewModel: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: "activePrompt"),
            let decoded = try? JSONDecoder().decode(Prompt.self, from: data) {
             var prompt = decoded
-            var needsSave = false
+            var needsSave = migrateRetiredModel(in: &prompt)
 
             // Ensure computer use stays aligned with model capabilities
             let compatibilityService = ModelCompatibilityService.shared
@@ -6509,118 +6518,6 @@ extension ChatViewModel {
                 streamingStatus = .idle
                 AppLogger.log("Non-streaming response completed - cleaning up stream state", category: .openAI, level: .info)
             }
-        }
-    }
-
-    // MARK: - Assistants API Methods
-
-    func loadAssistants() {
-        // The retired endpoint is never called. Retained exports can be imported in the migration lab.
-        useAssistantsAPI = false
-    }
-
-    func createNewAssistant(name: String, model: String, instructions: String, tools: [AssistantTool]? = nil) async throws {
-        let assistant = try await AssistantsService.shared.createAssistant(
-            name: name,
-            model: model,
-            instructions: instructions,
-            tools: tools
-        )
-        await MainActor.run {
-            self.assistants.append(assistant)
-            self.selectedAssistantId = assistant.id
-        }
-    }
-
-    private func sendAssistantsMessageFlow(
-        finalUserText: String,
-        uploadedFileIds: [String],
-        assistantMsgId: UUID
-    ) async throws {
-        var threadId = activeConversation?.metadata?["assistants_thread_id"]
-        if threadId == nil || threadId!.isEmpty {
-            await MainActor.run { self.logActivity("Creating thread...") }
-            let thread = try await AssistantsService.shared.createThread()
-            threadId = thread.id
-            await MainActor.run {
-                if var conversation = self.activeConversation {
-                    var meta = conversation.metadata ?? [:]
-                    meta["assistants_thread_id"] = thread.id
-                    conversation.metadata = meta
-                    self.updateActiveConversation(conversation)
-                }
-            }
-        }
-        
-        guard let activeThreadId = threadId, !activeThreadId.isEmpty else {
-            throw OpenAIServiceError.invalidResponseData
-        }
-        
-        await MainActor.run { self.logActivity("Adding message to thread...") }
-        _ = try await AssistantsService.shared.createMessage(
-            threadId: activeThreadId,
-            role: "user",
-            content: finalUserText
-        )
-        
-        guard let assistantId = selectedAssistantId else {
-            throw OpenAIServiceError.invalidRequest("No assistant selected. Please select or create an assistant in settings.")
-        }
-        
-        await MainActor.run {
-            self.logActivity("Running assistant...")
-            self.streamingStatus = .thinking
-        }
-        
-        let stream = AssistantsService.shared.createRun(
-            threadId: activeThreadId,
-            assistantId: assistantId
-        )
-        
-        var accumulatedText = ""
-        for try await event in stream {
-            if Task.isCancelled { break }
-            switch event {
-            case .threadRunCreated:
-                break
-            case .threadRunInProgress:
-                await MainActor.run { self.streamingStatus = .thinking }
-            case .threadMessageDelta(let delta):
-                if let contentList = delta.delta.content {
-                    for content in contentList {
-                        if let textVal = content.text?.value {
-                            accumulatedText += textVal
-                            let textToUpdate = accumulatedText
-                            await MainActor.run {
-                                self.updateAssistantMessageText(textToUpdate, for: assistantMsgId)
-                            }
-                        }
-                    }
-                }
-            case .threadRunCompleted:
-                await MainActor.run {
-                    self.streamingStatus = .done
-                    self.isStreaming = false
-                }
-            case .threadRunFailed(let run):
-                let errMsg = run.lastError?.message ?? "Run failed."
-                throw OpenAIServiceError.requestFailed(500, errMsg)
-            case .error(let errorDetail):
-                throw OpenAIServiceError.requestFailed(500, errorDetail.message)
-            default:
-                break
-            }
-        }
-    }
-
-    func updateAssistantMessageText(_ text: String, for messageId: UUID) {
-        if let index = messages.firstIndex(where: { $0.id == messageId }) {
-            var updated = messages
-            updated[index].text = text
-            var usage = updated[index].tokenUsage ?? TokenUsage()
-            usage.estimatedOutput = ChatViewModel.estimateTokens(for: text)
-            updated[index].tokenUsage = usage
-            messages = updated
         }
     }
 

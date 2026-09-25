@@ -21,8 +21,21 @@ Source: OpenAI model pages and changelog, fetched September 24, 2026. Prices are
 | `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `o3` snapshots | December 11, 2026 | Left out of the offline list |
 | `gpt-realtime`, `gpt-realtime-mini` | January 20, 2027 | Saved voice setting moves to `gpt-realtime-2.1` |
 | `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` | February 26, 2027 | Not used; voice transcription already uses `gpt-live-transcribe` |
-| Reusable prompts API (`v1/prompts`) | November 30, 2026 | Published-prompt fields remain; requests using them will fail after shutdown |
-| Fine-tuning job creation for most organizations | January 6, 2027 | The fine-tuning lab already explains restricted availability |
+| Reusable prompts API (`v1/prompts`) | November 30, 2026 | Removed: published-prompt fields and the `prompt` request object |
+| Fine-tuning job creation for most organizations | January 6, 2027 | Removed: fine-tuning screen, service and dataset tools |
+| Assistants API | August 26, 2026 (shut down) | Removed: service, models and the migration lab |
+| `web_search_preview`, `computer_use_preview`, `computer-use-preview` | Retired | Removed; saved configurations decode to `web_search` and `computer` |
+| o1, o1-pro, o3-mini, o4-mini, gpt-4, gpt-4-turbo, gpt-4.1-nano, gpt-3.5-turbo | October 23, 2026 | Hidden; presets move to the documented replacement |
+
+## Current API coverage
+
+| Area | Now in the app |
+| --- | --- |
+| Voice | GPT Realtime 2.1 (Realtime API) and GPT-Live 1 (Live API), chosen in Settings → Model → Voice |
+| Responses parameters | `moderation`, `external_web_access`, container `memory_limit`, `input_fidelity`, `output_compression`, `hybrid_search`, service tiers through `ultrafast` |
+| API Workbench | Responses, conversations, models, moderations, embeddings, files, vector stores, containers, batches, Realtime client secrets, voice consents |
+
+Sources: OpenAI API reference Markdown exports (`/api/reference/llms.txt` and resource pages), downloaded September 24, 2026.
 
 ## Forward compatibility
 

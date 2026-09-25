@@ -37,6 +37,10 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     private var activeResponseID: String?
     private var audioReady = false
     private var hasInputTap = false
+    /// True when the session uses the Live API (`wss://…/v1/live/sessions`) instead of Realtime.
+    private var isLive = false
+    private var liveUserTranscript = ""
+    private var liveAssistantTranscript = ""
     private var currentBargeIn = false
     private var audioInterrupted = false
     private var isRestoringAudio = false
@@ -45,6 +49,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     private var restartAudioTask: Task<Void, Never>?
 
     private var currentVoice = "alloy"
+    private var currentModel = "gpt-realtime-2.1"
     private var currentInstructions = "You are a helpful assistant speaking in a friendly, conversational voice. Keep responses brief."
     private var textOnly = false
     private var isConnected = false
@@ -76,14 +81,45 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         ]
     }
 
+    /// Live models (`gpt-live-1`, GA September 10, 2026) use their own session protocol.
+    nonisolated static func isLiveModel(_ model: String) -> Bool {
+        model.lowercased().hasPrefix("gpt-live-")
+    }
+
+    /// First client event on a Live socket. The session is audio-only; Live manages turn-taking itself.
+    nonisolated static func liveStartEvent(model: String, voice: String, instructions: String) -> [String: Any] {
+        ["type": "session.start",
+         "session": ["model": model, "instructions": instructions,
+                     "audio": ["format": ["type": "audio/pcm", "rate": 24000],
+                               "output": ["voice": supportedVoices.contains(voice) ? voice : "marin"]]]]
+    }
+
+    /// Maps Live server events onto the Realtime events this service already handles.
+    nonisolated static func normalizedLiveEvent(_ event: [String: Any]) -> [String: Any] {
+        var mapped = event
+        switch event["type"] as? String {
+        case "session.started": mapped["type"] = "session.updated"
+        case "session.output_audio.delta": mapped["type"] = "response.output_audio.delta"
+        case "session.output_transcript.delta": mapped["type"] = "live.output_transcript.delta"
+        case "session.input_transcript.delta": mapped["type"] = "live.input_transcript.delta"
+        default: break
+        }
+        return mapped
+    }
+
     func connect(model: String = "gpt-realtime-2.1", voice: String = "alloy", instructions: String? = nil, modalities: String = "audio,text") {
         guard webSocketTask == nil, currentState != "Connecting..." else { return }
         guard let key = KeychainService.shared.load(forKey: "openAIKey"), !key.isEmpty else {
             reportError("API Key is missing in Keychain."); return
         }
-        guard var url = URLComponents(string: "wss://api.openai.com/v1/realtime") else { return }
-        url.queryItems = [URLQueryItem(name: "model", value: model)]
+        let live = Self.isLiveModel(model)
+        guard var url = URLComponents(string: live ? "wss://api.openai.com/v1/live/sessions" : "wss://api.openai.com/v1/realtime") else { return }
+        if !live { url.queryItems = [URLQueryItem(name: "model", value: model)] }
         guard let endpoint = url.url else { return }
+        isLive = live
+        currentModel = model
+        liveUserTranscript = ""
+        liveAssistantTranscript = ""
         connectionGeneration = UUID()
         let generation = connectionGeneration
         currentState = "Connecting..."
@@ -123,12 +159,17 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         isMicrophoneMuted = muted
         audioAccumulator.removeAll()
         inputLevel = 0
-        if muted { send(["type": "input_audio_buffer.clear"]) }
+        if isLive {
+            send(["type": muted ? "session.input_audio.mute" : "session.input_audio.unmute"])
+        } else if muted {
+            send(["type": "input_audio_buffer.clear"])
+        }
         refreshAudioState()
     }
 
     func setBargeInEnabled(_ enabled: Bool) {
         currentBargeIn = enabled
+        guard !isLive else { return }
         let configuration = Self.sessionConfiguration(voice: currentVoice, instructions: currentInstructions, textOnly: textOnly, bargeIn: enabled)
         guard let audio = configuration["audio"] as? [String: Any], let input = audio["input"] as? [String: Any], let detection = input["turn_detection"] else { return }
         send(["type": "session.update", "session": ["type": "realtime", "audio": ["input": ["turn_detection": detection]]]])
@@ -137,6 +178,10 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     func disconnect() {
         connectionGeneration = UUID() // Also cancels a pending microphone permission/connect callback.
         let wasActive = isConnected || webSocketTask != nil || currentState == "Connecting..."
+        if isLive {
+            if isConnected { send(["type": "session.close"]) }
+            flushLiveTranscripts()
+        }
         isConnected = false
         audioReady = false
         isRestoringAudio = false
@@ -193,6 +238,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     }
 
     private func handleEvent(_ event: [String: Any]) {
+        let event = isLive ? Self.normalizedLiveEvent(event) : event
         let type = event["type"] as? String ?? ""
         if !type.hasSuffix(".delta") { AppLogger.log("Voice event: \(type)", category: .openAI, level: .debug) }
         switch type {
@@ -220,17 +266,32 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         case "response.created":
             activeResponseID = (event["response"] as? [String: Any])?["id"] as? String
             responseActive = true
-        case "response.audio.delta", "response.output_audio.delta":
+        case "response.output_audio.delta":
             guard event["response_id"] as? String != interruptedResponseID || interruptedResponseID == nil,
                   let encoded = event["delta"] as? String, let data = Data(base64Encoded: encoded) else { return }
             playAudioChunk(data, itemID: event["item_id"] as? String, contentIndex: event["content_index"] as? Int ?? 0)
-        case "response.audio_transcript.delta", "response.output_audio_transcript.delta", "response.output_text.delta", "response.text.delta":
+        case "response.output_audio_transcript.delta", "response.output_text.delta":
             if let text = event["delta"] as? String { delegate?.realtimeServiceDidReceiveTranscript(text) }
+        case "live.output_transcript.delta":
+            guard let text = event["delta"] as? String else { break }
+            if !liveUserTranscript.isEmpty { flushLiveTranscripts() }
+            liveAssistantTranscript += text
+            delegate?.realtimeServiceDidReceiveTranscript(text)
+        case "live.input_transcript.delta":
+            guard let text = event["delta"] as? String else { break }
+            if !liveAssistantTranscript.isEmpty { flushLiveTranscripts() }
+            liveUserTranscript += text
+        case "session.closed":
+            let reason = event["reason"] as? String ?? ""
+            if reason != "close_requested" { reportError(reason == "expired" ? "The Live session reached its time limit." : "The Live session ended (\(reason)).") }
+            flushLiveTranscripts()
+            isConnected = false // The server already closed the session; do not send session.close again.
+            disconnect()
         case "conversation.item.input_audio_transcription.completed":
             if let text = event["transcript"] as? String { delegate?.realtimeServiceDidCompleteUserMessage(text) }
-        case "response.audio_transcript.done", "response.output_audio_transcript.done":
+        case "response.output_audio_transcript.done":
             if let text = event["transcript"] as? String { delegate?.realtimeServiceDidCompleteAssistantMessage(text) }
-        case "response.output_text.done", "response.text.done":
+        case "response.output_text.done":
             if let text = event["text"] as? String { delegate?.realtimeServiceDidCompleteAssistantMessage(text) }
         case "response.done":
             let response = event["response"] as? [String: Any] ?? [:]
@@ -310,7 +371,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         audioAccumulator.append(data)
         while audioAccumulator.count >= 4_800 {
             let chunk = audioAccumulator.prefix(4_800)
-            send(["type": "input_audio_buffer.append", "audio": chunk.base64EncodedString()])
+            send(["type": isLive ? "session.input_audio.append" : "input_audio_buffer.append", "audio": chunk.base64EncodedString()])
             audioAccumulator.removeFirst(4_800)
         }
     }
@@ -413,7 +474,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
                 try AVAudioSession.sharedInstance().setActive(true)
                 try self.startAudioEngines()
                 self.audioAccumulator.removeAll()
-                self.send(["type": "input_audio_buffer.clear"])
+                if !self.isLive { self.send(["type": "input_audio_buffer.clear"]) }
                 self.restartAudioTask = nil
                 self.isRestoringAudio = false
                 self.refreshAudioState()
@@ -421,6 +482,16 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
                 self?.reportError("Audio could not resume: \(error.localizedDescription)"); self?.disconnect()
             }
         }
+    }
+
+    /// Live streams transcripts without per-turn completion events, so a turn ends when the other speaker starts.
+    private func flushLiveTranscripts() {
+        let user = liveUserTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let assistant = liveAssistantTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        liveUserTranscript = ""
+        liveAssistantTranscript = ""
+        if !user.isEmpty { delegate?.realtimeServiceDidCompleteUserMessage(user) }
+        if !assistant.isEmpty { delegate?.realtimeServiceDidCompleteAssistantMessage(assistant) }
     }
 
     private func reportError(_ message: String) {
@@ -434,9 +505,13 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
             guard webSocketTask === socket else { return }
             isConnected = true
             startListening(socket)
-            let configuration = Self.sessionConfiguration(voice: currentVoice, instructions: currentInstructions, textOnly: textOnly,
-                                                          bargeIn: currentBargeIn)
-            send(["type": "session.update", "session": configuration])
+            if isLive {
+                send(Self.liveStartEvent(model: currentModel, voice: currentVoice, instructions: currentInstructions))
+            } else {
+                let configuration = Self.sessionConfiguration(voice: currentVoice, instructions: currentInstructions, textOnly: textOnly,
+                                                              bargeIn: currentBargeIn)
+                send(["type": "session.update", "session": configuration])
+            }
         }
     }
 

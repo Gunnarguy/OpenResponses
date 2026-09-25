@@ -8,13 +8,13 @@ Suggested review:
 3. Send a follow-up and switch chats; existing history should remain available.
 4. Try Web Search and inspect sources. Attach a small file and observe vector-store indexing if using file search.
 5. Open Settings → Model → API Workbench to inspect raw requests, events, exports, token counting and compaction.
-6. Open voice mode, grant microphone access and speak for multiple turns. Test mute and return to listening after the answer.
+6. Open voice mode, grant microphone access and speak for multiple turns. Test mute and return to listening after the answer. Settings → Model → Voice switches between GPT Realtime 2.1 and GPT-Live 1.
 
 Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. DOM/screenshot actions share cancellation, deadlines and action limits. API-provided safety prompts may be denied; not every action has a separate approval. Stopping cannot reverse a website mutation already received.
 
 MCP setup/discovery uses OpenAI-hosted MCP. The endpoint and server authentication may be sent to OpenAI so it can connect. Private OAuth services may need separate account setup. Apple Calendar/Reminders/Contacts and Notion are optional and require their own permissions or credentials.
 
-Batch exports save complete available output/error files. Fine-tuning imports reviewed text-chat JSONL and explains restricted service availability; exporting one chat is only a draft. Paid jobs are not necessary to inspect these screens. Retained Assistant JSON can be imported into Responses presets; retired live Assistants operations are disabled. Arbitrary Workbench tool schemas do not execute arbitrary shell commands on the iPhone.
+Batch exports save complete available output/error files. Paid jobs are not necessary to inspect this screen. Features for OpenAI services that are shut down or deprecated (Assistants, fine-tuning, published prompts) were removed in 2.7. Arbitrary Workbench tool schemas do not execute arbitrary shell commands on the iPhone.
 
 
 MCP Connections: Settings → MCP opens the new account library. Supported providers use the iOS system browser for account sign-in; tool discovery is separate and uses the reviewer’s OpenAI API account after consent. Public entries need no provider account. The catalog explicitly identifies providers requiring developer registration or different callback setup; those entries do not claim working sign-in. Existing direct Notion integration keys remain under legacy management.

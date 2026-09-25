@@ -255,12 +255,6 @@ final class AppCompletionTests: XCTestCase {
         } catch { XCTAssertTrue(error.localizedDescription.contains("still running")) }
     }
 
-    func testTrainingRequiresTenValidExamples() throws {
-        let line = "{\"messages\":[{\"role\":\"user\",\"content\":\"Question\"},{\"role\":\"assistant\",\"content\":\"Answer\"}]}\n"
-        XCTAssertThrowsError(try FineTuningDataset.validate(Data(line.utf8)))
-        XCTAssertEqual(try FineTuningDataset.validate(Data(String(repeating: line, count: 10).utf8)).exampleCount, 10)
-        XCTAssertThrowsError(try FineTuningDataset.validate(Data(String(repeating: "{}\n", count: 10).utf8)))
-    }
 
     func testNotionCompactionKeepsWholeServerPageAndCursor() {
         let items = (0..<30).map { ["object": "page", "id": "page-\($0)"] }

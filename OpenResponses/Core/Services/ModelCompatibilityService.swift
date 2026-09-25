@@ -15,10 +15,6 @@ class ModelCompatibilityService {
             return "gpt-5.5"
         case "gpt-5.5-thinking-pro":
             return "gpt-5.5-pro"
-        case "gpt-5.5-thinking-mini":
-            return "gpt-5.5-mini"
-        case "gpt-5.5-thinking-nano":
-            return "gpt-5.5-nano"
         case "gpt-5.4-thinking":
             return "gpt-5.4"
         case "gpt-5.4-thinking-pro":
@@ -27,12 +23,6 @@ class ModelCompatibilityService {
             return "gpt-5.4-mini"
         case "gpt-5.4-thinking-nano":
             return "gpt-5.4-nano"
-        case "gpt-5-thinking":
-            return "gpt-5"
-        case "gpt-5-thinking-mini":
-            return "gpt-5-mini"
-        case "gpt-5-thinking-nano":
-            return "gpt-5-nano"
         default:
             return trimmed
         }
@@ -154,50 +144,22 @@ class ModelCompatibilityService {
             supportsReasoningEffort: false,
             supportsTemperature: true
         ),
-
-        "computer-use-preview": ModelCapabilities(
+    "gpt-4o-mini": ModelCapabilities(
             streaming: true,
-            tools: [.computer],
-            parameters: [
-                // Required/Recommended params for CUA
-                "truncation", "parallel_tool_calls", "max_output_tokens", "service_tier",
-                // Optional metadata/user controls
-                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"
-            ],
-            toolOverrides: ToolOverrides(
-                webSearch: .disabled,
-                codeInterpreter: .disabled,
-                imageGeneration: .disabled,
-                fileSearch: .disabled,
-                computer: .enabled
-            ),
-            category: .preview,
-            supportsReasoningEffort: false,
-            supportsTemperature: false
-        ),
-    "o3": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .fileSearch, .function, .computer],
-            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
+            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp], // Added .mcp support
+            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
             toolOverrides: ToolOverrides(
                 webSearch: .enabled,
                 codeInterpreter: .enabled,
-                imageGeneration: .disabled,
+                imageGeneration: .enabled,
                 fileSearch: .enabled,
-        computer: .disabled // Not supported for o3
+        computer: .disabled // Hosted computer use is not supported for gpt-4o-mini
             ),
-            category: .reasoning,
-            supportsReasoningEffort: true,
-            supportsTemperature: false
+            category: .latest,
+            supportsReasoningEffort: false,
+            supportsTemperature: true
         ),
-        "o3-mini": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .fileSearch, .function],
-            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-            category: .reasoning,
-            supportsReasoningEffort: true,
-            supportsTemperature: false
-        ),
+
         // GPT-5.6 Family (Sol, Terra, Luna)
         "gpt-5.6-sol": ModelCapabilities(
             streaming: true,
@@ -302,46 +264,6 @@ class ModelCompatibilityService {
             supportsTemperature: true
         ),
         "gpt-5.5-pro": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
-            parameters: [
-                "reasoning_effort",
-
-                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
-                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
-            ],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .disabled
-            ),
-            category: .latest,
-            supportsReasoningEffort: true,
-            supportsTemperature: true
-        ),
-        "gpt-5.5-mini": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .computer, .mcp],
-            parameters: [
-                "reasoning_effort",
-
-                "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier",
-                "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice",
-            ],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .enabled
-            ),
-            category: .latest,
-            supportsReasoningEffort: true,
-            supportsTemperature: true
-        ),
-        "gpt-5.5-nano": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
             parameters: [
@@ -502,36 +424,6 @@ class ModelCompatibilityService {
             supportsReasoningEffort: true,
             supportsTemperature: true
         ),
-        "gpt-5-mini": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
-            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .disabled
-            ),
-            category: .latest,
-            supportsReasoningEffort: true,
-            supportsTemperature: false
-        ),
-        "gpt-5-nano": ModelCapabilities(
-                streaming: true,
-                tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
-                parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-                toolOverrides: ToolOverrides(
-                    webSearch: .enabled,
-                    codeInterpreter: .enabled,
-                    imageGeneration: .enabled,
-                    fileSearch: .enabled,
-                    computer: .disabled
-                ),
-                category: .latest,
-                supportsReasoningEffort: true,
-                supportsTemperature: false
-            ),
         "gpt-4.1": ModelCapabilities(
             streaming: true,
             tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
@@ -562,57 +454,7 @@ class ModelCompatibilityService {
             supportsReasoningEffort: false,
             supportsTemperature: true
         ),
-        "gpt-4.1-nano": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
-            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1-nano
-            ),
-            category: .latest,
-            supportsReasoningEffort: false,
-            supportsTemperature: true
-        ),
-        "gpt-4.1-2025-04-14": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function], // Removed .computer - not yet supported by OpenAI API
-            parameters: ["temperature", "top_p", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .disabled // Disabled until OpenAI supports computer use with gpt-4.1-2025-04-14
-            ),
-            category: .latest,
-            supportsReasoningEffort: false,
-            supportsTemperature: true
-        ),
-        "gpt-5": ModelCapabilities(
-            streaming: true,
-            tools: [.webSearch, .codeInterpreter, .imageGeneration, .fileSearch, .function, .mcp],
-            // Note: temperature and top_p are not supported for gpt-5 per API; use reasoning_effort instead
-            parameters: ["reasoning_effort", "parallel_tool_calls", "max_output_tokens", "truncation", "service_tier", "top_logprobs", "safety_identifier", "prompt_cache_key", "max_tool_calls", "metadata", "tool_choice"],
-            toolOverrides: ToolOverrides(
-                webSearch: .enabled,
-                codeInterpreter: .enabled,
-                imageGeneration: .enabled,
-                fileSearch: .enabled,
-                computer: .disabled // Computer use NOT supported by gpt-5 (per API error)
-            ),
-            category: .latest,
-            supportsReasoningEffort: true,
-            supportsTemperature: false
-        )
     ]
-
-    private func isDeepResearchModel(_ modelId: String) -> Bool {
-        return modelId.contains("deep-research")
-    }
 
     /// Returns the registry key to use for a concrete model ID.
     ///
@@ -627,17 +469,19 @@ class ModelCompatibilityService {
 
         let familyPrefixes = [
             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6",
-            "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.5",
+            "gpt-5.5-pro", "gpt-5.5",
             "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4",
             "gpt-5.2-pro", "gpt-5.2",
             "gpt-5.1",
-            "gpt-5-mini", "gpt-5-nano", "gpt-5",
-            "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1",
+            "gpt-4.1-mini", "gpt-4.1",
             "gpt-4o-mini", "gpt-4o",
-            "o3-mini", "o3",
         ]
 
-        if let fallback = familyPrefixes.first(where: { normalized.hasPrefix("\($0)-") }) {
+        // Only a dated snapshot of a known family inherits its capabilities; other suffixes
+        // (-codex, -realtime-preview, -nano) are different models.
+        if let fallback = familyPrefixes.first(where: {
+            normalized.range(of: "^" + NSRegularExpression.escapedPattern(for: $0) + "-\\d{4}-\\d{2}-\\d{2}$", options: .regularExpression) != nil
+        }) {
             return fallback
         }
 
@@ -650,6 +494,7 @@ class ModelCompatibilityService {
     /// - Parameter modelId: The model identifier.
     /// - Returns: The model capabilities, or nil if the model is not supported.
     public func getCapabilities(for modelId: String) -> ModelCapabilities? {
+        guard !CurrentModelCatalog.isRetired(modelId) else { return nil }
         if CurrentModelCatalog.isModern(modelId) {
             return ModelCapabilities(
                 streaming: true,
@@ -726,7 +571,7 @@ class ModelCompatibilityService {
         // Verified with live Responses requests: earlier GPT models still accept sampling with effort=none.
         let key = capabilityKey(for: modelId)
         if ["temperature", "top_p"].contains(parameter),
-           ["gpt-5.5", "gpt-5.5-mini", "gpt-5.5-nano", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.1"].contains(key) {
+           ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.1"].contains(key) {
             return reasoningEffort == "none"
         }
 
@@ -746,9 +591,7 @@ class ModelCompatibilityService {
         let normalizedModelId = capabilityKey(for: modelId).lowercased()
 
         if normalizedModelId == "gpt-5.5" ||
-            normalizedModelId == "gpt-5.5-pro" ||
-            normalizedModelId == "gpt-5.5-mini" ||
-            normalizedModelId == "gpt-5.5-nano"
+            normalizedModelId == "gpt-5.5-pro"
         {
             return "none"
         }

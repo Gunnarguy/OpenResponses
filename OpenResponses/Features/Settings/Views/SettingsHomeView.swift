@@ -1431,8 +1431,9 @@ Toggle(isOn: backgroundModeBinding) {
                     Text("Standard").tag("default")
                     Text("Flex").tag("flex")
                     Text("Fast").tag("fast")
+                    Text("Ultrafast").tag("ultrafast")
                 }
-.pickerStyle(.segmented)
+.pickerStyle(.menu)
             } header: {
                 Label("Request Options", systemImage: "slider.horizontal.3")
             }
@@ -1492,16 +1493,8 @@ Toggle(isOn: backgroundModeBinding) {
 
             // MARK: Developer Operations
             Section {
-                NavigationLink(destination: LegacyMigrationLabView()) {
-                    Label("Legacy Migration Lab", systemImage: "archivebox")
-                }
-                
                 NavigationLink(destination: BatchJobsView()) {
                     Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
-                }
-                
-                NavigationLink(destination: FineTuningView()) {
-                    Label("Fine-Tuning Jobs", systemImage: "cpu")
                 }
             } header: {
                 Label("Developer Operations", systemImage: "terminal")

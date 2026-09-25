@@ -254,7 +254,7 @@ struct ToolStatusCard: View {
 
     private var toolIcon: String {
         switch tool.name {
-        case "web_search_preview":
+        case "web_search":
             return "globe"
         case "code_interpreter":
             return "terminal"
@@ -262,7 +262,7 @@ struct ToolStatusCard: View {
             return "photo"
         case "file_search":
             return "doc.text.magnifyingglass"
-        case "computer_use_preview", "computer":
+        case "computer":
             return "display"
     // calculator removed
         default:
@@ -272,7 +272,7 @@ struct ToolStatusCard: View {
 
     private var displayName: String {
         switch tool.name {
-        case "web_search_preview":
+        case "web_search":
             return "Web Search"
         case "code_interpreter":
             return "Code Interpreter"
@@ -280,7 +280,7 @@ struct ToolStatusCard: View {
             return "Image Generation"
         case "file_search":
             return "File Search"
-        case "computer_use_preview", "computer":
+        case "computer":
             return "Computer Use"
     // calculator removed
         default:
@@ -473,7 +473,6 @@ struct CompactToolIndicator: View {
 
     private func toolIcon(for toolName: String) -> String {
         switch toolName {
-        case "web_search_preview": return "globe"
         case "web_search": return "globe"
         case "code_interpreter": return "terminal"
         case "image_generation": return "photo"

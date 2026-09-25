@@ -5,6 +5,10 @@ Please test:
 • Settings → Image generation: choose GPT Image 2.5 Flare or Sunburst and try X-High or Max quality. Switch to GPT Image 2 and confirm the quality falls back to High instead of the request failing.
 • Start a voice session. A Realtime model saved by an earlier version should connect as GPT Realtime 2.1.
 • Refresh tool discovery for a configured MCP server.
-• Upgrade over 2.6 with existing chats and presets; saved chats, presets and model choices should be unchanged.
+• Settings → Model → Voice: choose GPT-Live 1, start a voice session and speak for a few turns; then switch back to GPT Realtime 2.1.
+• Settings → Model: turn on Response moderation and send a normal message; try the API Workbench model list and a vector store search.
+• A preset that used o3, o4-mini or GPT-5 should open on its replacement model.
+• Upgrade over 2.6 with existing chats and presets; chats and presets should be unchanged, except that a preset on a retired model opens on its replacement.
+• Record a voice note with the microphone button; its transcript should appear in the message field for editing before you send.
 
 Report the build number, device and OS, steps, expected result and actual result. Remove credentials and private conversation content before sharing diagnostics.

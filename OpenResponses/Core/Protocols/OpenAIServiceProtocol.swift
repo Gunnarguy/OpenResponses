@@ -87,7 +87,7 @@ protocol OpenAIServiceProtocol {
     /// - Parameters:
     ///   - call: The streaming item representing the computer tool call.
     ///   - output: The output result - can be a string (for errors) or a dictionary (for successful results).
-    ///   - model: The active model name (for example, "gpt-5.5", "gpt-5.5-mini", or "computer-use-preview").
+    ///   - model: The active model name (for example, "gpt-6-sol" or "gpt-6-luna").
     ///   - previousResponseId: The ID of the response that contained the computer call.
     ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
     ///   - currentUrl: Current URL for safety checks, if available.
@@ -106,7 +106,7 @@ protocol OpenAIServiceProtocol {
     /// - Parameters:
     ///   - callId: The call_id for the computer tool call.
     ///   - output: The output result – typically a screenshot content object.
-    ///   - model: The active model name (e.g., "gpt-5.5", "gpt-5.5-mini", or "computer-use-preview").
+    ///   - model: The active model name (e.g., "gpt-6-sol" or "gpt-6-luna").
     ///   - previousResponseId: The ID of the response that contained the computer call.
     ///   - acknowledgedSafetyChecks: Safety checks to acknowledge, if any.
     ///   - currentUrl: Current URL for safety checks, if available.

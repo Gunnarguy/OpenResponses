@@ -22,8 +22,35 @@ This changelog records implemented application behavior. Version 2.6 includes co
 - API Workbench templates "Astra response" and "GPT Image 2" are now "Basic response" and "Image generation"; saved drafts using the old names restore to the same template. The async-tool and reasoning-update templates pin `gpt-6-astra`, where those features were introduced.
 - GitHub CI skips `BrowserLiveSiteTests`, which needs example.com and iana.org, after it failed two unrelated runs on hosted-runner network loss. It still runs locally.
 
+### Added (API coverage pass)
+
+- GPT-Live 1 (`gpt-live-1`) voice sessions over the Live API (`wss://api.openai.com/v1/live/sessions`): `session.start`, `session.input_audio.append`, mute/unmute, `session.output_audio.delta`, input/output transcript deltas, `session.close` and `session.closed`. Transcripts are saved per turn. GPT Realtime 2.1 stays the default. The voice settings screen, previously unreachable, opens from Settings → Model → Voice.
+- Responses `moderation` (model plus score/block policy for input and output), `web_search.external_web_access`, `code_interpreter` container `memory_limit`, `image_generation.input_fidelity` and `output_compression`, `file_search.ranking_options.hybrid_search`, and the `fast` and `ultrafast` service tiers. New options live in the optional `modernOptions` container, so presets saved by earlier versions still decode.
+- API Workbench endpoints for deleting responses; updating, extending and deleting conversations; models; moderations; embeddings; files; vector stores (including search); containers; batches; Realtime client secrets; and voice consents. DELETE requests require confirmation.
+
+### Removed (shut down or deprecated by OpenAI, checked September 24, 2026)
+
+- Assistants API service, models, the unreachable create-assistant sheet and the Legacy Migration Lab (API shut down August 26, 2026).
+- Fine-tuning jobs screen, service, dataset validation and chat-to-dataset export (job creation deprecated; halted for existing customers January 6, 2027).
+- Published prompts and the `prompt` request object (`/v1/prompts` shuts down November 30, 2026).
+- `user` (replaced by `safety_identifier`), `prompt_cache_retention` (deprecated), Chat Completions-style `modalities`/`audio`, stream `include_usage`, and the include value `computer_call_output.output`, none of which the current Responses reference accepts.
+- `web_search_preview` and `computer_use_preview` tools, the `computer-use-preview` model path and deep-research branches. Older saved tool configurations naming the preview types decode to `web_search` and `computer`.
+- Capability entries for retired models (o3, o3-mini, gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1-nano, computer-use-preview) and for `gpt-5.5-mini`/`gpt-5.5-nano`, which are not API models. Retired models are hidden from the model list, and a preset that names one moves to OpenAI's documented replacement when loaded.
+- Realtime beta event aliases (`response.audio.delta`, `response.text.delta` and related); the app uses the GA event names.
+- Batch endpoint choices limited to endpoints with live models; the default is `/v1/responses`.
+- The `input_audio` content part, which the Responses API does not accept. Voice notes recorded with the microphone button are now transcribed with `gpt-transcribe` (`POST /v1/audio/transcriptions`) into the message field for editing; this runs only after the data-sharing notice is accepted and never in Explore Demo.
+
 ### Fixed
 
+- `gpt-4o-mini` has its own capability entry; it had relied on the loose prefix rule below.
+- Blocked web-search domains reach the model as instructions even when a preset has custom system instructions.
+- A preset on a retired model is migrated before computer-use and reasoning settings are checked, so those settings are judged against the replacement model.
+- Fine-tuned model IDs (`ft:`) are not treated as retired.
+- Only dated snapshots (`-YYYY-MM-DD`) inherit a known family's capabilities. Before, any suffix did, so `gpt-4o-realtime-preview` was treated as `gpt-4o` and `gpt-5.2-codex` as `gpt-5.2`.
+- `web_search` filters send only `allowed_domains`; `blocked_domains` is not an API field and is now expressed as instructions only.
+- The file-search ranker sends `default-2024-11-15`; earlier builds saved a malformed older ranker ID.
+- Moderation checks name `omni-moderation-latest` explicitly.
+- Settings registry fields are labeled with their Responses names (`instructions`, `max_output_tokens`, `truncation`, `safety_identifier`, `text.format`).
 - Three closures whose `[weak self]` had no effect because an enclosing closure already held `self` strongly (API Workbench socket reader, conversation save completion, voice recorder timer). Xcode 27 reported them.
 - `AppleDateUtilities.formatISO8601` is nonisolated, so the Contacts tool can format birthdays off the main actor, which Swift 6 language mode would reject.
 - Xcode Cloud runs 42 through 45 archived successfully, then failed at "Preparing build for App Store Connect" because the project still declared 2.6 after 2.6 was released.

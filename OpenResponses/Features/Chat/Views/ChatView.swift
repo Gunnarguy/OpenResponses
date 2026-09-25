@@ -261,7 +261,11 @@ struct ChatView: View {
                 onSelectFiles: { showFilePicker = true },
                 onTakePhoto: { showCameraPicker = true },
                 onAudioRecorded: { audioData in
-                    viewModel.pendingAudioAttachments.append(audioData)
+                    Task {
+                        guard let text = await viewModel.transcribeVoiceNote(audioData), !text.isEmpty else { return }
+                        userInput = userInput.isEmpty ? text : userInput + " " + text
+                        inputFocused = true
+                    }
                 },
                 onStartVoiceMode: { showingVoiceMode = true },
                 currentModel: viewModel.currentModel()

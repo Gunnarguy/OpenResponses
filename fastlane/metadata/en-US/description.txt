@@ -9,22 +9,22 @@ CHAT WITH CONTROL
 API WORKBENCH
 • Edit JSON requests using HTTP, streaming or WebSocket transports, with secure draft recovery and local schema validation.
 • Inspect raw events and export complete final response payloads.
-• Count input tokens, compact context, retrieve or cancel background responses and inspect known conversations.
+• Count input tokens, compact context, retrieve, cancel or delete responses, and manage conversations, files, vector stores, containers and batches.
+• Call models, moderation, embeddings and Realtime client-secret endpoints directly, with confirmation before any delete.
 • Explore templates for hosted shell, tool search, custom tools, async/programmatic calling, multi-agent responses and images. Supply real client tool results when a request needs them.
 
 VOICE, IMAGES AND TOOLS
-• Have continuing Realtime voice conversations with microphone mute and interruption handling.
+• Have continuing voice conversations with GPT Realtime 2.1 or GPT-Live 1, with microphone mute and interruption handling.
 • Generate and edit images with GPT Image 2.5 Flare or Sunburst, up to Max quality, with partial previews.
 • Use hosted web search with sources, Code Interpreter and file search when enabled.
 • Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
 • Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
 • Enable Calendar, Reminders, Contacts or Notion tools for the tasks that need them.
 
-FILES AND DEVELOPER LABS
+FILES, BATCH AND CONTROLS
 • Manage files and vector stores with clear indexing status.
 • Monitor Batch jobs and save full available output/error files.
-• Import reviewed text-chat JSONL datasets for fine-tuning where your account remains eligible. Exported chats are drafts for dataset preparation.
-• Import retained Assistant JSON into Responses presets. Retired live Assistants operations are disabled.
+• Add response moderation, hybrid file-search ranking, larger Code Interpreter containers and image fidelity controls.
 
 YOUR KEY, VISIBLE DATA FLOW
 • Explore Demo Mode without sending live API requests.

@@ -133,14 +133,11 @@ final class OpenAIServiceTests: XCTestCase {
     func testModelAliasNormalizationForAPI() {
         var prompt = Prompt.defaultPrompt()
 
-        prompt.openAIModel = "gpt-5-thinking"
-        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5")
+        prompt.openAIModel = "gpt-5.5-thinking"
+        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5.5")
 
-        prompt.openAIModel = "gpt-5-thinking-mini"
-        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5-mini")
-
-        prompt.openAIModel = "gpt-5-thinking-nano"
-        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5-nano")
+        prompt.openAIModel = "gpt-5.4-thinking-mini"
+        XCTAssertEqual(buildRequest(prompt: prompt)["model"] as? String, "gpt-5.4-mini")
     }
 
     func testModelAliasNormalizationAlsoDrivesCapabilityChecks() {
@@ -294,7 +291,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testReasoningPayloadForReasoningModel() {
         var prompt = Prompt.defaultPrompt()
-        prompt.openAIModel = "o3-mini"
+        prompt.openAIModel = "gpt-5.4-mini"
         prompt.reasoningEffort = "high"
         prompt.reasoningSummary = "concise"
 
@@ -445,30 +442,6 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertTrue(tools.contains { $0["type"] as? String == "computer" })
     }
 
-    func testLegacyComputerUsePreviewModelUsesPreviewShape() {
-        var prompt = Prompt.defaultPrompt()
-        prompt.openAIModel = "computer-use-preview"
-        prompt.enableComputerUse = true
-        prompt.enableCodeInterpreter = false
-        prompt.enableWebSearch = false
-        prompt.enableImageGeneration = false
-        prompt.enableFileSearch = false
-        prompt.enableAppleIntegrations = false
-        prompt.enableNotionIntegration = false
-        prompt.enableMCPTool = false
-
-        let request = buildRequest(prompt: prompt, message: "Use the computer", stream: true)
-
-        guard let tools = request["tools"] as? [[String: Any]],
-              let computerTool = tools.first(where: { $0["type"] as? String == "computer_use_preview" })
-        else {
-            return XCTFail("Expected legacy preview computer tool payload")
-        }
-
-        XCTAssertNotNil(computerTool["display_width"] as? Int)
-        XCTAssertNotNil(computerTool["display_height"] as? Int)
-        XCTAssertNotNil(computerTool["environment"] as? String)
-    }
 
     func testGPT54ComputerCallOutputOmitsCurrentURLAndUsesOriginalDetail() throws {
         let request = try buildComputerCallOutputRequest(model: "gpt-5.4")
@@ -503,24 +476,6 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(tools.first?["type"] as? String, "computer")
     }
 
-    func testLegacyPreviewComputerCallOutputRetainsCurrentURL() throws {
-        let request = try buildComputerCallOutputRequest(model: "computer-use-preview")
-
-        guard let input = request["input"] as? [[String: Any]],
-              let computerOutput = input.first,
-              let output = computerOutput["output"] as? [String: Any] else {
-            return XCTFail("Expected preview computer_call_output request payload")
-        }
-
-        XCTAssertEqual(computerOutput["current_url"] as? String, "https://example.com/path")
-        XCTAssertNil(output["detail"])
-        XCTAssertEqual(request["truncation"] as? String, "auto")
-
-        guard let tools = request["tools"] as? [[String: Any]] else {
-            return XCTFail("Expected tools payload")
-        }
-        XCTAssertEqual(tools.first?["type"] as? String, "computer_use_preview")
-    }
 
     func testMCPConnectorToolNotIncludedWhenAuthorizationMissing() {
         // Regression test: OpenAI requires `authorization` whenever `connector_id` is specified.
@@ -661,7 +616,7 @@ final class OpenAIServiceTests: XCTestCase {
             return XCTFail("Expected tools payload")
         }
 
-        XCTAssertTrue(tools.contains { $0["type"] as? String == "web_search" || $0["type"] as? String == "web_search_preview" })
+        XCTAssertTrue(tools.contains { $0["type"] as? String == "web_search" })
         XCTAssertFalse(tools.contains { $0["profile"] != nil }, "The live API rejects the legacy profile parameter")
     }
 
@@ -918,6 +873,111 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime"), "gpt-realtime-2.1")
         XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime-mini"), "gpt-realtime-2.1")
         XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime-2.1-mini"), "gpt-realtime-2.1-mini")
+    }
+
+    func testLiveSessionsStartWithSessionStartAndMapOntoVoiceEvents() {
+        XCTAssertTrue(RealtimeService.isLiveModel("gpt-live-1"))
+        XCTAssertFalse(RealtimeService.isLiveModel("gpt-realtime-2.1"))
+        XCTAssertTrue(CurrentModelCatalog.realtimeModels.contains("gpt-live-1"))
+        XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-live-1"), "gpt-live-1")
+        let start = RealtimeService.liveStartEvent(model: "gpt-live-1", voice: "not-a-voice", instructions: "Be brief")
+        XCTAssertEqual(start["type"] as? String, "session.start")
+        let session = start["session"] as? [String: Any]
+        XCTAssertEqual(session?["model"] as? String, "gpt-live-1")
+        XCTAssertEqual(session?["instructions"] as? String, "Be brief")
+        let audio = session?["audio"] as? [String: Any]
+        XCTAssertEqual((audio?["format"] as? [String: Any])?["rate"] as? Int, 24000)
+        XCTAssertEqual((audio?["output"] as? [String: Any])?["voice"] as? String, "marin")
+        XCTAssertNil(session?["type"], "Live sessions have no Realtime session type")
+        XCTAssertEqual(RealtimeService.normalizedLiveEvent(["type": "session.started"])["type"] as? String, "session.updated")
+        XCTAssertEqual(RealtimeService.normalizedLiveEvent(["type": "session.output_audio.delta", "delta": "AAA="])["type"] as? String, "response.output_audio.delta")
+        XCTAssertEqual(RealtimeService.normalizedLiveEvent(["type": "session.output_transcript.delta"])["type"] as? String, "live.output_transcript.delta")
+        XCTAssertEqual(RealtimeService.normalizedLiveEvent(["type": "error"])["type"] as? String, "error")
+    }
+
+    func testCurrentResponsesOptionsReachTheRequest() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableAppleIntegrations = false
+        prompt.enableNotionIntegration = false
+        prompt.enableMCPTool = false
+        prompt.enableWebSearch = true
+        prompt.enableCodeInterpreter = true
+        prompt.enableImageGeneration = true
+        prompt.imageGenerationOutputFormat = "webp"
+        prompt.enableFileSearch = true
+        prompt.selectedVectorStoreIds = "vs_one"
+        prompt.fileSearchRanker = "default_2024_08_21"
+        prompt.fileSearchScoreThreshold = 0.4
+        prompt.currentOptions.moderationModel = "omni-moderation-latest"
+        prompt.currentOptions.moderationOutputMode = "block"
+        prompt.currentOptions.webSearchExternalAccess = false
+        prompt.currentOptions.codeInterpreterMemoryLimit = "4g"
+        prompt.currentOptions.imageInputFidelity = "high"
+        prompt.currentOptions.imageOutputCompression = 80
+        prompt.currentOptions.hybridEmbeddingWeight = 0.7
+        prompt.currentOptions.hybridTextWeight = 0.3
+        prompt.webSearchAllowedDomains = "example.com"
+        prompt.webSearchBlockedDomains = "blocked.example"
+        let request = buildRequest(prompt: prompt)
+        let moderation = request["moderation"] as? [String: Any]
+        XCTAssertEqual(moderation?["model"] as? String, "omni-moderation-latest")
+        XCTAssertEqual(((moderation?["policy"] as? [String: Any])?["input"] as? [String: Any])?["mode"] as? String, "score")
+        XCTAssertEqual(((moderation?["policy"] as? [String: Any])?["output"] as? [String: Any])?["mode"] as? String, "block")
+        let tools = request["tools"] as? [[String: Any]] ?? []
+        func tool(_ type: String) -> [String: Any]? { tools.first { $0["type"] as? String == type } }
+        XCTAssertEqual(tool("web_search")?["external_web_access"] as? Bool, false)
+        let filters = tool("web_search")?["filters"] as? [String: Any]
+        XCTAssertEqual(filters?["allowed_domains"] as? [String], ["example.com"])
+        XCTAssertNil(filters?["blocked_domains"], "web_search filters accept allowed_domains only")
+        XCTAssertEqual((tool("code_interpreter")?["container"] as? [String: Any])?["memory_limit"] as? String, "4g")
+        XCTAssertEqual(tool("image_generation")?["input_fidelity"] as? String, "high")
+        XCTAssertEqual(tool("image_generation")?["output_compression"] as? Int, 80)
+        let ranking = tool("file_search")?["ranking_options"] as? [String: Any]
+        XCTAssertEqual(ranking?["ranker"] as? String, "default-2024-11-15")
+        XCTAssertEqual((ranking?["hybrid_search"] as? [String: Any])?["embedding_weight"] as? Double, 0.7)
+        XCTAssertFalse(tools.contains { ($0["type"] as? String)?.hasSuffix("_preview") == true })
+
+        let defaults = buildRequest(prompt: Prompt.defaultPrompt())
+        XCTAssertNil(defaults["moderation"])
+        XCTAssertNil(((defaults["tools"] as? [[String: Any]]) ?? []).first { $0["type"] as? String == "web_search" }?["external_web_access"])
+    }
+
+    func testWorkbenchCoversCurrentEndpointsAndExcludesDeprecatedAPIs() throws {
+        let paths = try APIWorkbenchView.Endpoint.allCases.map { try $0.path(id: "id_1") }
+        for expected in ["/responses", "/responses/input_tokens", "/responses/compact", "/responses/id_1", "/conversations/id_1/items",
+                         "/models", "/moderations", "/embeddings", "/vector_stores/id_1/search", "/containers", "/batches/id_1/cancel",
+                         "/realtime/client_secrets", "/audio/voice_consents"] {
+            XCTAssertTrue(paths.contains(expected), expected)
+        }
+        for retired in ["/assistants", "/threads", "/prompts", "/evals", "/fine_tuning", "/images/variations", "/videos", "/chat/completions"] {
+            XCTAssertFalse(paths.contains { $0.hasPrefix(retired) }, retired)
+        }
+        XCTAssertEqual(APIWorkbenchView.Endpoint.deleteFile.method, "DELETE")
+        XCTAssertEqual(try APIWorkbenchView.Endpoint.retrieveModel.path(id: "gpt-5.6-sol"), "/models/gpt-5.6-sol")
+        XCTAssertThrowsError(try APIWorkbenchView.Endpoint.retrieveFile.path(id: "../x"))
+        XCTAssertEqual(APIWorkbenchView.Endpoint(rawValue: "Create response"), .responses, "Saved drafts keep their endpoint")
+    }
+
+    func testReviewFindingsGPT4oMiniFineTunesBlockedDomainsAndVoiceNotes() throws {
+        XCTAssertNotNil(ModelCompatibilityService.shared.getCapabilities(for: "gpt-4o-mini"))
+        XCTAssertNotNil(ModelCompatibilityService.shared.getCapabilities(for: "gpt-4o-mini-2024-07-18"))
+        XCTAssertFalse(CurrentModelCatalog.isRetired("ft:gpt-4.1-mini-2025-04-14:org::abc123"), "Fine-tuned inference continues until its base model retires")
+        XCTAssertNil(ModelCompatibilityService.shared.getCapabilities(for: "gpt-5.2-codex"), "Only dated snapshots inherit a family")
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.systemInstructions = "Answer as a travel agent."
+        prompt.enableWebSearch = true
+        prompt.webSearchBlockedDomains = "reddit.com, example.org"
+        let instructions = buildRequest(prompt: prompt)["instructions"] as? String ?? ""
+        XCTAssertTrue(instructions.hasPrefix("Answer as a travel agent."))
+        XCTAssertTrue(instructions.contains("avoid citing: reddit.com, example.org"))
+
+        let request = OpenAIService.transcriptionRequest(audio: Data([1, 2, 3]), fileName: "voice-note.wav", apiKey: "test")
+        XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/audio/transcriptions")
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+        let body = String(decoding: try XCTUnwrap(request.httpBody), as: UTF8.self)
+        XCTAssertTrue(body.contains("name=\"model\"\r\n\r\ngpt-transcribe"))
+        XCTAssertTrue(body.contains("filename=\"voice-note.wav\""))
     }
 
     func testTokenCountExcludesGenerationAndTransportFields() {

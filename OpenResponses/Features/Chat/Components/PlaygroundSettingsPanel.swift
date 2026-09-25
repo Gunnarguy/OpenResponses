@@ -12,7 +12,6 @@ struct PlaygroundSettingsPanel: View {
     @EnvironmentObject var viewModel: ChatViewModel
     @Environment(\.dismiss) var dismiss
     @State private var showingExportView = false
-    @State private var showingCreateAssistant = false
     
     private var activeVectorStoreIds: [String] {
         guard let ids = viewModel.activePrompt.selectedVectorStoreIds, !ids.isEmpty else { return [] }
@@ -297,10 +296,6 @@ struct PlaygroundSettingsPanel: View {
         }
         .sheet(isPresented: $showingExportView) {
             ConversationExportView()
-                .environmentObject(viewModel)
-        }
-        .sheet(isPresented: $showingCreateAssistant) {
-            CreateAssistantSheet()
                 .environmentObject(viewModel)
         }
     }

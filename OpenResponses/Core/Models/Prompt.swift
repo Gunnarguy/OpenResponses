@@ -153,12 +153,9 @@ struct Prompt: Codable, Identifiable, Equatable {
     var topLogprobs: Int
     var topP: Double
     var truncationStrategy: String
-    var userIdentifier: String
     var storeResponses: Bool = true
-    var streamIncludeUsage: Bool = false
     var streamIncludeObfuscation: Bool = false
     var promptCacheKey: String = ""
-    var promptCacheRetention: String?
     var safetyIdentifier: String = ""
     var verbosity: String = "medium"
 
@@ -171,7 +168,6 @@ struct Prompt: Codable, Identifiable, Equatable {
 
     // Advanced Includes
     var includeCodeInterpreterOutputs: Bool
-    var includeComputerCallOutput: Bool
     var includeFileSearchResults: Bool
     var includeWebSearchResults: Bool
     var includeWebSearchSources: Bool = false
@@ -186,22 +182,13 @@ struct Prompt: Codable, Identifiable, Equatable {
     /// The agent will execute exactly the model's actions. Useful for purists and debugging.
     var ultraStrictComputerUse: Bool = false
 
-    // Streaming and Published Prompts
+    // Streaming
     var enableStreaming: Bool
-    var enablePublishedPrompt: Bool
-    var publishedPromptId: String
-    var publishedPromptVersion: String
 
     // Misc
     var toolChoice: String
     var metadata: String?
     var searchContextSize: String?
-
-    // Audio Modalities
-    var enableAudioInput: Bool
-    var enableAudioOutput: Bool
-    var audioVoice: String
-    var audioFormat: String
 
     var enableInputModeration: Bool = false
 
@@ -237,12 +224,11 @@ struct Prompt: Codable, Identifiable, Equatable {
     case mcpConnectorId, mcpIsConnector
     case enableCustomTool, customToolName, customToolDescription, customToolParametersJSON, customToolExecutionType, customToolWebhookURL
         case userLocationCity, userLocationCountry, userLocationRegion, userLocationTimezone
-        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, userIdentifier, storeResponses, streamIncludeUsage, streamIncludeObfuscation, promptCacheKey, promptCacheRetention, safetyIdentifier, verbosity
+        case backgroundMode, maxOutputTokens, maxToolCalls, parallelToolCalls, serviceTier, topLogprobs, topP, truncationStrategy, storeResponses, streamIncludeObfuscation, promptCacheKey, safetyIdentifier, verbosity
         case textFormatType, jsonSchemaName, jsonSchemaDescription, jsonSchemaStrict, jsonSchemaContent
-        case enableAudioInput, enableAudioOutput, audioVoice, audioFormat
-    case includeCodeInterpreterOutputs, includeComputerCallOutput, includeFileSearchResults, includeWebSearchResults, includeWebSearchSources, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
+    case includeCodeInterpreterOutputs, includeFileSearchResults, includeWebSearchResults, includeWebSearchSources, includeInputImageUrls, includeOutputLogprobs, includeReasoningContent, includeComputerUseOutput
     case ultraStrictComputerUse
-        case enableStreaming, enablePublishedPrompt, publishedPromptId, publishedPromptVersion
+        case enableStreaming
         case toolChoice, metadata, searchContextSize
         case enableInputModeration
         case id // Make sure 'id' is included
@@ -312,12 +298,9 @@ struct Prompt: Codable, Identifiable, Equatable {
             topLogprobs: 0,
             topP: 1.0,
             truncationStrategy: "auto", // Changed from "disabled" - enables automatic context management
-            userIdentifier: "",
             storeResponses: true,
-            streamIncludeUsage: false,
             streamIncludeObfuscation: false,
             promptCacheKey: "",
-            promptCacheRetention: nil,
             safetyIdentifier: "",
             verbosity: "medium",
             textFormatType: "text",
@@ -326,7 +309,6 @@ struct Prompt: Codable, Identifiable, Equatable {
             jsonSchemaStrict: false,
             jsonSchemaContent: "",
             includeCodeInterpreterOutputs: true,
-            includeComputerCallOutput: false,
             includeFileSearchResults: false,
             includeWebSearchResults: false,
             includeWebSearchSources: false,
@@ -336,16 +318,9 @@ struct Prompt: Codable, Identifiable, Equatable {
             includeComputerUseOutput: false,
             ultraStrictComputerUse: false,
             enableStreaming: true,
-            enablePublishedPrompt: false,
-            publishedPromptId: "",
-            publishedPromptVersion: "1",
             toolChoice: "auto",
             metadata: nil,
             searchContextSize: nil,
-            enableAudioInput: false,
-            enableAudioOutput: false,
-            audioVoice: "alloy",
-            audioFormat: "wav",
             enableInputModeration: false,
             isPreset: false, // Default is not a preset
             id: UUID()

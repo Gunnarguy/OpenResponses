@@ -30,9 +30,6 @@ public enum APICapabilities {
 
         /// Allows the model to access up-to-date information from the internet.
         case webSearch
-        /// Allows deep-research models to access preview web search capability required by API.
-        /// Encodes as type "web_search_preview".
-        case webSearchPreview
 
         /// Allows the model to search the contents of uploaded files within specified vector stores.
         /// - Parameters:
@@ -59,8 +56,6 @@ public enum APICapabilities {
         /// Allows the model to interact with the user's computer via the GA Responses API tool.
         case computer
 
-        /// Allows the model to interact with the user's computer via the legacy preview tool.
-        case computerPreview(environment: String?, displayWidth: Int?, displayHeight: Int?)
 
         /// Allows the model to connect to Model Context Protocol (MCP) servers.
         /// Supports either a remote server_url or a connector_id with authorization.
@@ -124,8 +119,9 @@ public enum APICapabilities {
             switch typeString {
             case "web_search":
                 self = .webSearch
-            case "web_search_preview":
-                self = .webSearchPreview
+            case "web_search_preview", "web_search_preview_2025_03_11":
+                // Retired preview type in older saved configurations; the current tool is web_search.
+                self = .webSearch
             case "file_search":
                 let vectorStoreIds = try container.decodeIfPresent([String].self, forKey: .vectorStoreIds) ?? []
                 let maxNumResults = try container.decodeIfPresent(Int.self, forKey: .maxNumResults)
@@ -161,10 +157,8 @@ public enum APICapabilities {
             case "computer":
                 self = .computer
             case "computer_use_preview", "computer-use-preview":
-                let environment = try container.decodeIfPresent(String.self, forKey: .environment)
-                let displayWidth = try container.decodeIfPresent(Int.self, forKey: .displayWidth)
-                let displayHeight = try container.decodeIfPresent(Int.self, forKey: .displayHeight)
-                self = .computerPreview(environment: environment, displayWidth: displayWidth, displayHeight: displayHeight)
+                // Retired preview type in older saved configurations; the current tool is computer.
+                self = .computer
             case "mcp":
                 let serverLabel = try container.decode(String.self, forKey: .serverLabel)
                 // Either server_url or connector_id may be present
@@ -197,8 +191,6 @@ public enum APICapabilities {
             switch self {
             case .webSearch:
                 try container.encode("web_search", forKey: .type)
-            case .webSearchPreview:
-                try container.encode("web_search_preview", forKey: .type)
             case .fileSearch(let vectorStoreIds, let maxNumResults, let rankingOptions, let filters):
                 try container.encode("file_search", forKey: .type)
                 if !vectorStoreIds.isEmpty {
@@ -245,17 +237,6 @@ public enum APICapabilities {
             case .computer:
                 try container.encode("computer", forKey: .type)
 
-            case .computerPreview(let environment, let displayWidth, let displayHeight):
-                try container.encode("computer_use_preview", forKey: .type)
-                if let environment = environment {
-                    try container.encode(environment, forKey: .environment)
-                }
-                if let displayWidth = displayWidth {
-                    try container.encode(displayWidth, forKey: .displayWidth)
-                }
-                if let displayHeight = displayHeight {
-                    try container.encode(displayHeight, forKey: .displayHeight)
-                }
             case .mcp(let serverLabel, let serverURL, let connectorId, let authorization, let headers, let requireApproval, let allowedTools, let serverDescription):
                 try container.encode("mcp", forKey: .type)
                 try container.encode(serverLabel, forKey: .serverLabel)

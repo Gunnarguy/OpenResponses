@@ -308,7 +308,10 @@ struct FileManagerView: View {
                         set: { viewModel.activePrompt.fileSearchRanker = $0.isEmpty ? nil : $0; viewModel.saveActivePrompt() }
                     )) {
                         Text("Auto").tag("")
-                        Text("Default 2024-08-21").tag("default_2024_08_21")
+                        Text("Default 2024-11-15").tag("default-2024-11-15")
+                        if let saved = viewModel.activePrompt.fileSearchRanker, !["", "default-2024-11-15"].contains(saved) {
+                            Text("Earlier ranker · sent as 2024-11-15").tag(saved)
+                        }
                     }
 .pickerStyle(.menu)
 

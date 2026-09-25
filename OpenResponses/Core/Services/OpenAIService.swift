@@ -417,10 +417,6 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
-    private func isDedicatedComputerUseModel(_ modelId: String) -> Bool {
-        normalizeModelIdForAPI(modelId) == "computer-use-preview"
-    }
-
     private func supportsLiveBrowserHarness(for prompt: Prompt, isStreaming: Bool? = nil) -> Bool {
         guard prompt.enableComputerUse, !prompt.ultraStrictComputerUse else { return false }
         let effectiveStreaming = isStreaming ?? (prompt.enableStreaming && !prompt.backgroundMode)
@@ -466,22 +462,14 @@ class OpenAIService: OpenAIServiceProtocol {
         return (environment, screenSize)
     }
 
-    private func computerToolDefinition(for modelId: String) -> APICapabilities.Tool {
-        if isDedicatedComputerUseModel(modelId) {
-            let computerConfig = defaultComputerToolConfiguration()
-            return .computerPreview(
-                environment: computerConfig.environment,
-                displayWidth: Int(computerConfig.screenSize.width),
-                displayHeight: Int(computerConfig.screenSize.height)
-            )
-        }
-
-        return .computer
+    /// The GA `computer` tool. The `computer-use-preview` model and `computer_use_preview` tool are retired.
+    private func computerToolDefinition(for _: String) -> APICapabilities.Tool {
+        .computer
     }
 
     private func isComputerTool(_ tool: APICapabilities.Tool) -> Bool {
         switch tool {
-        case .computer, .computerPreview:
+        case .computer:
             return true
         default:
             return false
@@ -657,7 +645,9 @@ class OpenAIService: OpenAIServiceProtocol {
         // Preserve existing behavior for non-computer requests: explicit user instructions override
         // the default assistant prompt and the dynamic tool guidance below.
         if !computerUseActive, !userInstructions.isEmpty, userInstructions != "You are a helpful assistant." {
-            return userInstructions
+            // web_search filters accept allowed domains only, so blocked domains always travel as instructions.
+            let blocked = prompt.enableWebSearch ? sanitizedDomainList(from: prompt.webSearchBlockedDomains) : []
+            return blocked.isEmpty ? userInstructions : userInstructions + "\n\nWhen searching the web, avoid citing: \(blocked.joined(separator: ", "))."
         }
 
         // Build dynamic instructions based on enabled tools
@@ -838,10 +828,6 @@ class OpenAIService: OpenAIServiceProtocol {
             requestObject["text"] = textConfiguration
         }
 
-        if let promptObject = buildPromptObject(for: prompt) {
-            requestObject["prompt"] = promptObject
-        }
-
         return requestObject
     }
 
@@ -1006,19 +992,7 @@ class OpenAIService: OpenAIServiceProtocol {
             "model": apiModelId,
             "store": prompt.storeResponses,
         ]
-        
-        var modalities: [String] = ["text"]
-        if prompt.enableAudioOutput {
-            modalities.append("audio")
-            metadata["audio"] = [
-                "voice": prompt.audioVoice,
-                "format": prompt.audioFormat
-            ]
-        }
-        
-        if modalities.count > 1 {
-            metadata["modalities"] = modalities
-        }
+
 
         let instructions = buildInstructions(prompt: prompt)
         if !instructions.isEmpty {
@@ -1042,18 +1016,6 @@ class OpenAIService: OpenAIServiceProtocol {
     private func assembleTools(for prompt: Prompt, userMessage: String, isStreaming: Bool) -> ([APICapabilities.Tool], Bool) {
         var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: isStreaming)
         var forceImageToolChoice = false
-
-        if isDedicatedComputerUseModel(prompt.openAIModel),
-           !tools.contains(where: isComputerTool)
-        {
-            tools.append(computerToolDefinition(for: prompt.openAIModel))
-        }
-
-        if isDedicatedComputerUseModel(prompt.openAIModel) {
-            tools.removeAll { tool in
-                !isComputerTool(tool)
-            }
-        }
 
         if shouldForceImageGeneration(for: prompt, userMessage: userMessage, availableTools: tools) {
             let hasImageTool = tools.contains { if case .imageGeneration = $0 { return true } else { return false } }
@@ -1080,7 +1042,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 for index in json.indices {
                     guard let type = json[index]["type"] as? String else { continue }
                     switch type {
-                    case "web_search", "web_search_preview":
+                    case "web_search":
                         json[index] = applyWebSearchConfiguration(
                             to: json[index],
                             prompt: prompt
@@ -1090,6 +1052,19 @@ class OpenAIService: OpenAIServiceProtocol {
                             to: json[index],
                             prompt: prompt, isStreaming: isStreaming
                         )
+                    case "file_search":
+                        if let embedding = prompt.currentOptions.hybridEmbeddingWeight, let text = prompt.currentOptions.hybridTextWeight {
+                            var ranking = json[index]["ranking_options"] as? [String: Any] ?? [:]
+                            ranking["hybrid_search"] = ["embedding_weight": embedding, "text_weight": text]
+                            json[index]["ranking_options"] = ranking
+                        }
+                    case "code_interpreter":
+                        let limit = prompt.currentOptions.codeInterpreterMemoryLimit
+                        if ["1g", "4g", "16g", "64g"].contains(limit), var container = json[index]["container"] as? [String: Any],
+                           container["type"] as? String == "auto" {
+                            container["memory_limit"] = limit
+                            json[index]["container"] = container
+                        }
                     default:
                         break
                     }
@@ -1139,11 +1114,15 @@ class OpenAIService: OpenAIServiceProtocol {
             configured["search_context_size"] = contextSize.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
+        // web_search filters accept allowed_domains only; blocked domains are expressed as instructions instead.
         let allowedDomains = sanitizedDomainList(from: prompt.webSearchAllowedDomains)
-        let blockedDomains = sanitizedDomainList(from: prompt.webSearchBlockedDomains)
         var filters: [String: Any] = [:]
         if !allowedDomains.isEmpty { filters["allowed_domains"] = allowedDomains }
-        if !blockedDomains.isEmpty { filters["blocked_domains"] = blockedDomains }
+        if prompt.currentOptions.webSearchExternalAccess {
+            configured.removeValue(forKey: "external_web_access")
+        } else {
+            configured["external_web_access"] = false
+        }
         if filters.isEmpty {
             configured.removeValue(forKey: "filters")
         } else {
@@ -1193,11 +1172,15 @@ class OpenAIService: OpenAIServiceProtocol {
         if let quality = configured["quality"] as? String {
             configured["quality"] = CurrentModelCatalog.normalizedImageQuality(quality, model: configured["model"] as? String ?? prompt.imageGenerationModel)
         }
+        if ["high", "low"].contains(options.imageInputFidelity) { configured["input_fidelity"] = options.imageInputFidelity }
         if isStreaming, options.partialImages > 0 { configured["partial_images"] = min(3, options.partialImages) }
         let background = prompt.imageGenerationBackground.trimmingCharacters(in: .whitespacesAndNewlines)
         if !background.isEmpty {
             configured["background"] = background
             if background == "transparent", prompt.imageGenerationOutputFormat == "jpeg" { configured["output_format"] = "png" }
+        }
+        if let compression = options.imageOutputCompression, ["jpeg", "webp"].contains(configured["output_format"] as? String ?? "") {
+            configured["output_compression"] = min(100, max(0, compression))
         }
         return configured
     }
@@ -1225,10 +1208,7 @@ class OpenAIService: OpenAIServiceProtocol {
 
     /// Merges top-level sampling parameters into the request and applies model-specific overrides.
     private func mergeTopLevelParameters(for prompt: Prompt, into request: inout [String: Any]) {
-        var parameters = buildParameters(for: prompt)
-        if isDedicatedComputerUseModel(prompt.openAIModel) {
-            parameters["truncation"] = "auto"
-        }
+        let parameters = buildParameters(for: prompt)
 
         for (key, value) in parameters {
             request[key] = value
@@ -1257,7 +1237,6 @@ class OpenAIService: OpenAIServiceProtocol {
     private func shouldForceImageGeneration(for prompt: Prompt, userMessage: String, availableTools: [APICapabilities.Tool]) -> Bool {
         guard prompt.enableImageGeneration else { return false }
         guard availableTools.contains(where: { if case .imageGeneration = $0 { return true } else { return false } }) else { return false }
-        guard !isDedicatedComputerUseModel(prompt.openAIModel) else { return false }
 
         let text = userMessage.lowercased()
         // Common verbs and nouns indicating image creation
@@ -1365,22 +1344,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 }
             }
             
-            // Add audio attachments
-            if let audioAttachments = audioAttachments, !audioAttachments.isEmpty {
-                let audioContentArray = audioAttachments.map { inputAudio -> [String: Any] in
-                    return [
-                        "type": "input_audio",
-                        "input_audio": [
-                            "data": inputAudio.inputAudio.data,
-                            "format": inputAudio.inputAudio.format
-                        ]
-                    ]
-                }
-                
-                if !audioContentArray.isEmpty {
-                    contentArray.append(contentsOf: audioContentArray)
-                }
-            }
+            // Audio is never sent as input_audio: the Responses API has no audio content part.
 
             userContent = contentArray
         }
@@ -1395,15 +1359,9 @@ class OpenAIService: OpenAIServiceProtocol {
 
         AppLogger.log("Building tools for prompt: enableComputerUse=\(prompt.enableComputerUse), model=\(prompt.openAIModel)", category: .openAI, level: .info)
         let compatibilityService = ModelCompatibilityService.shared
-        let isDeepResearch = prompt.openAIModel.contains("deep-research")
-
-        if prompt.enableWebSearch {
-            if isDeepResearch {
-                // Deep research models require the preview web search tool
-                tools.append(.webSearchPreview)
-            } else if compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
-                tools.append(.webSearch)
-            }
+        if prompt.enableWebSearch,
+           compatibilityService.isToolSupported(APICapabilities.ToolType.webSearch, for: prompt.openAIModel, isStreaming: isStreaming) {
+            tools.append(.webSearch)
         }
 
         if prompt.enableCodeInterpreter, compatibilityService.isToolSupported(APICapabilities.ToolType.codeInterpreter, for: prompt.openAIModel, isStreaming: isStreaming) {
@@ -1444,7 +1402,8 @@ class OpenAIService: OpenAIServiceProtocol {
                 if let ranker = prompt.fileSearchRanker, !ranker.isEmpty,
                    let threshold = prompt.fileSearchScoreThreshold
                 {
-                    rankingOptions = RankingOptions(ranker: ranker, scoreThreshold: threshold)
+                    // The API accepts "auto" or "default-2024-11-15"; earlier builds saved an older ranker ID.
+                    rankingOptions = RankingOptions(ranker: ranker == "auto" ? "auto" : "default-2024-11-15", scoreThreshold: threshold)
                 }
 
                 let filters = parseFileSearchFilters(from: prompt.fileSearchFiltersJSON)
@@ -1468,20 +1427,7 @@ class OpenAIService: OpenAIServiceProtocol {
             let toolDefinition = computerToolDefinition(for: prompt.openAIModel)
             tools.append(toolDefinition)
 
-            if isDedicatedComputerUseModel(prompt.openAIModel) {
-                let computerConfig = defaultComputerToolConfiguration()
-                AppLogger.log(
-                    "Added legacy preview computer tool with environment=\(computerConfig.environment), width=\(Int(computerConfig.screenSize.width)), height=\(Int(computerConfig.screenSize.height))",
-                    category: .openAI,
-                    level: .info
-                )
-            } else {
-                AppLogger.log(
-                    "Added GA computer tool with type=computer for model=\(prompt.openAIModel)",
-                    category: .openAI,
-                    level: .info
-                )
-            }
+            AppLogger.log("Added GA computer tool with type=computer for model=\(prompt.openAIModel)", category: .openAI, level: .info)
         } else {
             AppLogger.log("Computer tool not added: enabled=\(prompt.enableComputerUse), supported=\(compatibilityService.isToolSupported(APICapabilities.ToolType.computer, for: prompt.openAIModel, isStreaming: isStreaming))", category: .openAI, level: .info)
         }
@@ -2010,17 +1956,6 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
-        // Ensure deep-research models always include at least one of the required tools
-        // per API: one of 'web_search_preview' or 'file_search' must be present.
-        if isDeepResearch {
-            let hasPreviewSearch = tools.contains { if case .webSearchPreview = $0 { return true } else { return false } }
-            let hasFileSearch = tools.contains { if case .fileSearch = $0 { return true } else { return false } }
-            if !hasPreviewSearch, !hasFileSearch {
-                tools.append(.webSearchPreview)
-                AppLogger.log("Deep-research model detected — auto-adding web_search_preview tool to satisfy API requirements", category: .openAI, level: .info)
-            }
-        }
-
         return tools
     }
 
@@ -2084,11 +2019,8 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         let trimmedSafetyIdentifier = prompt.safetyIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedLegacyUserIdentifier = prompt.userIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedSafetyIdentifier.isEmpty {
             parameters["safety_identifier"] = trimmedSafetyIdentifier
-        } else if !trimmedLegacyUserIdentifier.isEmpty {
-            parameters["safety_identifier"] = trimmedLegacyUserIdentifier
         }
 
         // Verbosity moved under text.verbosity in latest API. Handled in buildTextConfiguration.
@@ -2132,6 +2064,14 @@ class OpenAIService: OpenAIServiceProtocol {
             parameters["max_tool_calls"] = prompt.maxToolCalls
         }
 
+        let moderationModel = prompt.currentOptions.moderationModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !moderationModel.isEmpty {
+            let mode = { (value: String) in ["score", "block"].contains(value) ? value : "score" }
+            parameters["moderation"] = ["model": moderationModel,
+                                        "policy": ["input": ["mode": mode(prompt.currentOptions.moderationInputMode)],
+                                                   "output": ["mode": mode(prompt.currentOptions.moderationOutputMode)]]]
+        }
+
         // Parse metadata JSON string into a dictionary
         if let metadataString = prompt.metadata, !metadataString.isEmpty {
             do {
@@ -2166,13 +2106,6 @@ class OpenAIService: OpenAIServiceProtocol {
     /// Constructs the `reasoning` object for models that support it.
     private func buildReasoningObject(for prompt: Prompt) -> [String: Any]? {
         let compatibilityService = ModelCompatibilityService.shared
-        // The legacy preview model supports reasoning.summary without exposing effort.
-        if isDedicatedComputerUseModel(prompt.openAIModel) {
-            // Default to concise summary for visibility into actions unless the user overrides.
-            let summary = prompt.reasoningSummary.isEmpty ? "concise" : prompt.reasoningSummary
-            return ["summary": summary]
-        }
-
         guard compatibilityService.isParameterSupported("reasoning_effort", for: prompt.openAIModel), !prompt.reasoningEffort.isEmpty else {
             return nil
         }
@@ -2242,10 +2175,7 @@ class OpenAIService: OpenAIServiceProtocol {
 
         // Include computer tool outputs only when the computer tool is actually added for this request
         // or when using the dedicated computer-use model (which always uses the computer tool).
-        if hasComputerTool || isDedicatedComputerUseModel(prompt.openAIModel) {
-            if prompt.includeComputerCallOutput {
-                includeArray.append("computer_call_output.output")
-            }
+        if hasComputerTool {
             if prompt.enableComputerUse || prompt.includeComputerUseOutput {
                 includeArray.append("computer_call_output.output.image_url")
             }
@@ -2290,23 +2220,6 @@ class OpenAIService: OpenAIServiceProtocol {
         }
 
         return textConfiguration.isEmpty ? nil : textConfiguration
-    }
-
-    /// Constructs the `prompt` object for published prompts if enabled.
-    private func buildPromptObject(for prompt: Prompt) -> [String: Any]? {
-        guard prompt.enablePublishedPrompt, !prompt.publishedPromptId.isEmpty else {
-            return nil
-        }
-
-        var promptObject: [String: Any] = [
-            "id": prompt.publishedPromptId,
-        ]
-
-        if !prompt.publishedPromptVersion.isEmpty {
-            promptObject["version"] = prompt.publishedPromptVersion
-        }
-
-        return promptObject
     }
 
     /// Sends the output of a function call back to the API to get a final response.
@@ -3176,10 +3089,8 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
-        // `current_url` belongs to the legacy preview integration. The GA `computer` tool rejects it.
-        if !isGAComputerTool, let url = currentUrl {
-            computerOutputMessage["current_url"] = url
-        }
+        // `current_url` belonged to the retired preview tool; the GA `computer` tool rejects it.
+        _ = currentUrl
 
         // Always include the computer tool configuration on follow-ups to keep the CUA context.
         // Use the GA tool shape for GPT-5.4+ and retain the preview shape for the legacy model.
@@ -3344,205 +3255,13 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
-    /// Creates a properly formatted tool configuration based on current API requirements
-    /// - Parameters:
-    ///   - toolType: The type of tool ("web_search_preview", "code_interpreter", etc.)
-    ///   - vectorStoreId: Optional vector store ID for file_search tool
-    /// - Returns: A dictionary representing the tool configuration
-    ///
-    /// Note: Tool configurations have been simplified to avoid API parameter errors.
-    /// The OpenAI API is strict about which parameters are accepted for each tool type.
-    private func createToolConfiguration(for toolType: String, vectorStoreId: String? = nil) -> [String: Any] {
-        switch toolType {
-        case "web_search_preview":
-            // Simplified to basic configuration to avoid "unknown parameter" errors
-            return [
-                "type": "web_search_preview",
-            ]
-        case "code_interpreter":
-            // Code interpreter requires specifying a container type
-            return [
-                "type": "code_interpreter",
-                "container": ["type": "auto"],
-            ]
-        case "image_generation":
-            // Image generation parameters for the current default image model
-            return [
-                "type": "image_generation",
-                "model": CurrentModelCatalog.imageModel,
-                "size": "auto",
-                "quality": "high",
-                "output_format": "png",
-                "background": "auto",
-                "moderation": "low",
-                "partial_images": 3,
-            ]
-        case "file_search":
-            var config: [String: Any] = [
-                "type": "file_search",
-            ]
-            // Include vector store configuration directly in the tool
-            if let vectorStoreId = vectorStoreId {
-                config["vector_store_ids"] = [vectorStoreId]
-            }
-            return config
-        default:
-            return [:]
-        }
-    }
 
     // Calculator tool configuration removed
 
-    /// Creates the configuration for the MCP tool
-    /// - Returns: A dictionary representing the MCP tool configuration
-    private func createMCPToolConfiguration(from prompt: Prompt) -> [String: Any] {
-        var headers: [String: String] = [:]
-        if let data = prompt.mcpHeaders.data(using: .utf8),
-           let parsedHeaders = try? JSONDecoder().decode([String: String].self, from: data)
-        {
-            headers = parsedHeaders
-        }
 
-        // Map internal approval values to API-compliant values
-        let requireApprovalValue: String = {
-            switch prompt.mcpRequireApproval {
-            case "allow": return "never"
-            case "deny": return "always"
-            case "prompt": return "always" // prompt -> always require approval (safest)
-            default: return prompt.mcpRequireApproval // pass through in case it's already API-compliant
-            }
-        }()
 
-        // Sanitize server_label: must start with a letter and contain only letters, digits, '-', '_'
-        // Replace spaces with underscores and filter out invalid characters
-        let sanitizedLabel = prompt.mcpServerLabel
-            .replacingOccurrences(of: " ", with: "_")
-            .replacingOccurrences(of: "-", with: "_")
-            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
 
-        // Ensure it starts with a letter (if not, prepend "mcp_")
-        let finalLabel = sanitizedLabel.first?.isLetter == true ? sanitizedLabel : "mcp_\(sanitizedLabel)"
 
-        var config: [String: Any] = [
-            "type": "mcp",
-            "server_label": finalLabel,
-            "server_url": prompt.mcpServerURL,
-            "headers": headers,
-            "require_approval": requireApprovalValue,
-        ]
-
-        // Parse allowed tools from comma-separated string
-        // If empty, omit allowed_tools to enable ALL tools from the server (ubiquitous access)
-        // If specified, restrict to only those tools (security whitelist)
-        let allowedToolsString = prompt.mcpAllowedTools.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !allowedToolsString.isEmpty {
-            let allowed = allowedToolsString
-                .split(separator: ",")
-                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            if !allowed.isEmpty {
-                config["allowed_tools"] = allowed
-                AppLogger.log("MCP: Restricting to \(allowed.count) specific tools", category: .openAI, level: .info)
-            }
-        } else {
-            // Empty = allow ALL tools discovered from server
-            AppLogger.log("MCP: Allowing ALL tools from server (ubiquitous mode)", category: .openAI, level: .info)
-        }
-
-        return config
-    }
-
-    /// Creates the configuration for the custom function tool.
-    /// Responses API expects function tools to have top-level name/parameters.
-    private func createCustomToolConfiguration(from prompt: Prompt) -> [String: Any] {
-        // Try to parse user-provided JSON schema; fall back to permissive object
-        let parsedSchema: [String: Any]
-        if let data = prompt.customToolParametersJSON.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
-            parsedSchema = obj
-        } else {
-            parsedSchema = ["type": "object", "properties": [:], "additionalProperties": true]
-        }
-
-        return [
-            "type": "function",
-            "name": prompt.customToolName,
-            "description": prompt.customToolDescription,
-            "parameters": parsedSchema,
-            "strict": false,
-        ]
-    }
-
-    /// Creates the configuration for the file search tool
-    /// - Parameter vectorStoreIds: Array of vector store IDs to search
-    /// - Returns: A dictionary representing the file search tool configuration
-    private func createFileSearchToolConfiguration(vectorStoreIds: [String]) -> [String: Any] {
-        return [
-            "type": "file_search",
-            "vector_store_ids": vectorStoreIds,
-        ]
-    }
-
-    /// Creates the configuration for the web search tool
-    /// - Returns: A dictionary representing the web search tool configuration
-    private func createWebSearchToolConfiguration(from prompt: Prompt) -> [String: Any] {
-        var config: [String: Any] = ["type": "web_search"]
-
-        if let searchContextSize = prompt.searchContextSize, !searchContextSize.isEmpty {
-            config["search_context_size"] = searchContextSize
-        }
-
-        var userLocation: [String: String] = [:]
-        if let userLocationCity = prompt.userLocationCity, !userLocationCity.isEmpty {
-            userLocation["city"] = userLocationCity
-        }
-        if let userLocationCountry = prompt.userLocationCountry, !userLocationCountry.isEmpty {
-            userLocation["country"] = userLocationCountry
-        }
-        if let userLocationRegion = prompt.userLocationRegion, !userLocationRegion.isEmpty {
-            userLocation["region"] = userLocationRegion
-        }
-        if let userLocationTimezone = prompt.userLocationTimezone, !userLocationTimezone.isEmpty {
-            userLocation["timezone"] = userLocationTimezone
-        }
-
-        if !userLocation.isEmpty {
-            userLocation["type"] = "approximate"
-            config["user_location"] = userLocation
-        }
-
-        return config
-    }
-
-    /// Checks if a tool is supported by the given model
-    /// - Parameters:
-    ///   - toolType: The type of tool to check
-    ///   - model: The model to check compatibility with
-    ///   - isStreaming: Whether the request is using streaming mode
-    /// - Returns: True if the tool is supported by the model and streaming mode
-    private func isToolSupported(_ toolType: String, for model: String, isStreaming: Bool = false) -> Bool {
-        switch toolType {
-        case "code_interpreter":
-            // Code interpreter is supported by GPT-4 models and newer o-series models.
-            return model.starts(with: "gpt-4") || model.starts(with: "o1") || model.starts(with: "o3") || model.starts(with: "gpt-5")
-        case "image_generation":
-            // Image generation is supported by GPT-4 models.
-            // It is disabled in streaming mode as images are sent as a complete block.
-            if isStreaming {
-                return false
-            }
-            return model.starts(with: "gpt-4")
-        case "web_search_preview":
-            // Web search is generally supported across models and works with both streaming and non-streaming
-            return true
-        case "file_search":
-            // File search is supported by most models and works with both streaming and non-streaming
-            return true
-        default:
-            return false
-        }
-    }
 
     // MARK: - File Management Functions
 
@@ -4263,33 +3982,7 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
-    private func createWebSearchConfiguration() -> [String: Any] {
-        // The API seems to have changed and no longer accepts these detailed parameters.
-        // Simplified to basic configuration to avoid "unknown parameter" errors.
-        return [
-            "type": "web_search_preview",
-        ]
-    }
 
-    private func createImageGenerationConfiguration() -> [String: Any] {
-        let defaults = UserDefaults.standard
-        var config: [String: Any] = [
-            "type": "image_generation",
-            "model": CurrentModelCatalog.imageModel,
-            "size": defaults.string(forKey: "imageGenerationSize") ?? "auto",
-            "quality": defaults.string(forKey: "imageGenerationQuality") ?? "auto",
-            "background": defaults.string(forKey: "imageGenerationBackground") ?? "auto",
-            "output_format": defaults.string(forKey: "imageGenerationOutputFormat") ?? "png",
-            "moderation": defaults.string(forKey: "imageGenerationModeration") ?? "auto",
-        ]
-
-        let partialImages = defaults.integer(forKey: "imageGenerationPartialImages")
-        if partialImages > 0 {
-            config["partial_images"] = partialImages
-        }
-
-        return config
-    }
 
     /// Lists available models from the OpenAI API.
     /// - Returns: An array of OpenAIModel objects representing available models.
@@ -4728,6 +4421,40 @@ class OpenAIService: OpenAIServiceProtocol {
         }
     }
 
+    /// Transcribes a recorded voice note. The Responses API has no audio input content part, so voice notes
+    /// become editable text before sending.
+    nonisolated static func transcriptionRequest(audio: Data, fileName: String, apiKey: String) -> URLRequest {
+        let boundary = "OpenResponses-\(UUID().uuidString)"
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/transcriptions")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        field("model", CurrentModelCatalog.fileTranscriptionModel)
+        field("response_format", "json")
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
+        body.append(audio)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        request.timeoutInterval = 120
+        return request
+    }
+
+    func transcribeVoiceNote(_ audio: Data) async throws -> String {
+        guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else { throw OpenAIServiceError.missingAPIKey }
+        let (data, response) = try await URLSession.shared.data(for: Self.transcriptionRequest(audio: audio, fileName: "voice-note.wav", apiKey: apiKey))
+        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let message = ((object?["error"] as? [String: Any])?["message"] as? String) ?? "Transcription failed."
+            throw OpenAIServiceError.invalidRequest(message)
+        }
+        guard let text = object?["text"] as? String else { throw OpenAIServiceError.invalidResponseData }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func checkModeration(input: String) async throws -> ModerationResult {
         guard let apiKey = KeychainService.shared.load(forKey: "openAIKey"), !apiKey.isEmpty else {
             throw OpenAIServiceError.missingAPIKey
@@ -4739,7 +4466,8 @@ class OpenAIService: OpenAIServiceProtocol {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body: [String: Any] = ["input": input]
+        // omni-moderation-latest is the current model; text-moderation models are legacy.
+        let body: [String: Any] = ["model": "omni-moderation-latest", "input": input]
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
         applyResponseBetaHeader(to: &request)
         

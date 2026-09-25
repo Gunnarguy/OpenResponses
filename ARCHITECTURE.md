@@ -53,7 +53,7 @@ The browser is a persistent offscreen WKWebView on the device. DOM and screensho
 
 Realtime voice uses a secure WebSocket and current nested audio/session configuration. Capture is converted to the expected PCM format; playback completion and session generations prevent stale speaking state from blocking continued listening. Mute, VAD interruption and route recovery belong to the active audio session.
 
-Files and vector-store indexing have separate upload/readiness state. Batch exports download complete files to disk. Fine-tuning imports validated reviewed text-chat datasets and remains account-dependent. Resource pagination rejects malformed continuation instead of presenting incomplete data as a complete list.
+Files and vector-store indexing have separate upload/readiness state. Batch exports download complete files to disk. Fine-tuning, Assistants and published-prompt code was removed in 2.7 after OpenAI deprecated or shut down those APIs. Resource pagination rejects malformed continuation instead of presenting incomplete data as a complete list.
 
 ## Data boundaries
 

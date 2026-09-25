@@ -9,6 +9,7 @@ struct APIWorkbenchView: View {
     @State private var restoredDraft = false
     @State private var replacement: APIWorkbenchDraft?
     @State private var showingReplacement = false
+    @State private var showingDeleteConfirmation = false
     @State private var transport = APIWorkbenchSession.Transport.sse
     @State private var template = Template.response
     @State private var endpoint = Endpoint.responses
@@ -26,26 +27,116 @@ struct APIWorkbenchView: View {
 
     private enum NetworkAction { case run, count }
 
+    /// Every current JSON endpoint in the app's scope, checked against OpenAI's API reference on September 24, 2026.
+    /// Raw values are persisted in drafts; keep existing names stable. Deprecated APIs (Assistants, reusable prompts,
+    /// Evals, fine-tuning, image variations, Videos) are intentionally absent.
     enum Endpoint: String, CaseIterable {
         case responses = "Create response", count = "Count input tokens", compact = "Compact input window"
         case retrieve = "Retrieve response", cancel = "Cancel background response", inputItems = "Response input items"
+        case deleteResponse = "Delete stored response"
         case createConversation = "Create conversation", getConversation = "Retrieve conversation", conversationItems = "Conversation items"
-        var method: String { [.retrieve, .inputItems, .getConversation, .conversationItems].contains(self) ? "GET" : "POST" }
-        var needsID: Bool { [.retrieve, .cancel, .inputItems, .getConversation, .conversationItems].contains(self) }
+        case updateConversation = "Update conversation metadata", addConversationItems = "Add conversation items"
+        case deleteConversation = "Delete conversation"
+        case listModels = "List models", retrieveModel = "Retrieve model"
+        case moderation = "Create moderation", embeddings = "Create embeddings"
+        case listFiles = "List files", retrieveFile = "Retrieve file", deleteFile = "Delete file"
+        case listVectorStores = "List vector stores", createVectorStore = "Create vector store", retrieveVectorStore = "Retrieve vector store"
+        case searchVectorStore = "Search vector store", vectorStoreFiles = "Vector store files", deleteVectorStore = "Delete vector store"
+        case listContainers = "List containers", createContainer = "Create container", retrieveContainer = "Retrieve container"
+        case containerFiles = "Container files", deleteContainer = "Delete container"
+        case listBatches = "List batches", retrieveBatch = "Retrieve batch", cancelBatch = "Cancel batch"
+        case realtimeClientSecret = "Create Realtime client secret", voiceConsents = "List voice consents"
+
+        var method: String {
+            switch self {
+            case .retrieve, .inputItems, .getConversation, .conversationItems, .listModels, .retrieveModel, .listFiles, .retrieveFile,
+                 .listVectorStores, .retrieveVectorStore, .vectorStoreFiles, .listContainers, .retrieveContainer, .containerFiles,
+                 .listBatches, .retrieveBatch, .voiceConsents:
+                return "GET"
+            case .deleteResponse, .deleteConversation, .deleteFile, .deleteVectorStore, .deleteContainer:
+                return "DELETE"
+            default:
+                return "POST"
+            }
+        }
+
+        var needsID: Bool {
+            switch self {
+            case .retrieve, .cancel, .inputItems, .deleteResponse, .getConversation, .conversationItems, .updateConversation,
+                 .addConversationItems, .deleteConversation, .retrieveModel, .retrieveFile, .deleteFile, .retrieveVectorStore,
+                 .searchVectorStore, .vectorStoreFiles, .deleteVectorStore, .retrieveContainer, .containerFiles, .deleteContainer,
+                 .retrieveBatch, .cancelBatch:
+                return true
+            default:
+                return false
+            }
+        }
+
+        var idPlaceholder: String {
+            switch self {
+            case .retrieveModel: return "Model ID"
+            case .retrieveFile, .deleteFile: return "File ID"
+            case .retrieveVectorStore, .searchVectorStore, .vectorStoreFiles, .deleteVectorStore: return "Vector store ID"
+            case .retrieveContainer, .containerFiles, .deleteContainer: return "Container ID"
+            case .retrieveBatch, .cancelBatch: return "Batch ID"
+            case .getConversation, .conversationItems, .updateConversation, .addConversationItems, .deleteConversation: return "Conversation ID"
+            default: return "Response ID"
+            }
+        }
+
         func path(id: String) throws -> String {
-            if needsID, id.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) == nil {
+            if needsID, id.range(of: "^[A-Za-z0-9_.:-]+$", options: .regularExpression) == nil {
                 throw OpenAIServiceError.invalidRequest("Enter the resource ID returned by OpenAI.")
             }
             switch self {
             case .responses: return "/responses"
             case .count: return "/responses/input_tokens"
             case .compact: return "/responses/compact"
-            case .retrieve: return "/responses/\(id)"
+            case .retrieve, .deleteResponse: return "/responses/\(id)"
             case .cancel: return "/responses/\(id)/cancel"
             case .inputItems: return "/responses/\(id)/input_items?limit=100&order=asc"
             case .createConversation: return "/conversations"
-            case .getConversation: return "/conversations/\(id)"
+            case .getConversation, .updateConversation, .deleteConversation: return "/conversations/\(id)"
             case .conversationItems: return "/conversations/\(id)/items?limit=100&order=asc"
+            case .addConversationItems: return "/conversations/\(id)/items"
+            case .listModels: return "/models"
+            case .retrieveModel: return "/models/\(id)"
+            case .moderation: return "/moderations"
+            case .embeddings: return "/embeddings"
+            case .listFiles: return "/files?limit=100"
+            case .retrieveFile, .deleteFile: return "/files/\(id)"
+            case .listVectorStores: return "/vector_stores?limit=100"
+            case .createVectorStore: return "/vector_stores"
+            case .retrieveVectorStore, .deleteVectorStore: return "/vector_stores/\(id)"
+            case .searchVectorStore: return "/vector_stores/\(id)/search"
+            case .vectorStoreFiles: return "/vector_stores/\(id)/files?limit=100"
+            case .listContainers: return "/containers?limit=100"
+            case .createContainer: return "/containers"
+            case .retrieveContainer, .deleteContainer: return "/containers/\(id)"
+            case .containerFiles: return "/containers/\(id)/files?limit=100"
+            case .listBatches: return "/batches?limit=100"
+            case .retrieveBatch: return "/batches/\(id)"
+            case .cancelBatch: return "/batches/\(id)/cancel"
+            case .realtimeClientSecret: return "/realtime/client_secrets"
+            case .voiceConsents: return "/audio/voice_consents"
+            }
+        }
+
+        /// Example request body for endpoints that do not derive their body from the current Responses request.
+        var exampleBody: [String: Any]? {
+            switch self {
+            case .createConversation: return ["items": [] as [String], "metadata": ["source": "workbench"]]
+            case .updateConversation: return ["metadata": ["topic": "workbench"]]
+            case .addConversationItems: return ["items": [["type": "message", "role": "user", "content": "Hello from the Workbench."]]]
+            case .moderation: return ["model": "omni-moderation-latest", "input": "Text to classify."]
+            case .embeddings: return ["model": "text-embedding-3-small", "input": "Text to embed."]
+            case .createVectorStore: return ["name": "Workbench store", "expires_after": ["anchor": "last_active_at", "days": 7]]
+            case .searchVectorStore: return ["query": "What does this document say about pricing?", "max_num_results": 5, "rewrite_query": true]
+            case .createContainer: return ["name": "Workbench container", "memory_limit": "1g", "expires_after": ["anchor": "last_active_at", "minutes": 20]]
+            case .cancel, .cancelBatch: return [:]
+            case .realtimeClientSecret: return ["expires_after": ["anchor": "created_at", "seconds": 600],
+                                                "session": ["type": "realtime", "model": CurrentModelCatalog.realtimeModel]]
+            default: return nil
             }
         }
     }
@@ -109,7 +200,7 @@ struct APIWorkbenchView: View {
                 Picker("Endpoint", selection: Binding(get: { endpoint }, set: selectEndpoint)) {
                     ForEach(Endpoint.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.disabled(session.isRunning)
-                if endpoint.needsID { TextField("Response or conversation ID", text: $resourceID).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                if endpoint.needsID { TextField(endpoint.idPlaceholder, text: $resourceID).textInputAutocapitalization(.never).autocorrectionDisabled() }
                 if endpoint == .responses {
                     Picker("Transport", selection: $transport) {
                         ForEach(APIWorkbenchSession.Transport.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -120,7 +211,7 @@ struct APIWorkbenchView: View {
                         .disabled(session.isRunning)
                 }
                 HStack {
-                    Button("Run request", systemImage: "play.fill", action: run).disabled(session.isRunning)
+                    Button("Run request", systemImage: "play.fill", action: requestRun).disabled(session.isRunning)
                     Spacer()
                     Button("Stop connection", systemImage: "stop.fill") { session.stop() }.disabled(!session.isRunning)
                 }
@@ -195,6 +286,12 @@ struct APIWorkbenchView: View {
         } message: {
             Text("Changing the example or endpoint replaces the request JSON. Export your draft first if you want to keep a separate copy.")
         }
+        .confirmationDialog("Delete this resource?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button(endpoint.rawValue, role: .destructive) { run() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("OpenAI permanently deletes \(resourceID.isEmpty ? "the resource" : resourceID) from your API project. This cannot be undone.")
+        }
         .onChange(of: selectedCallID) { _, id in toolOutput = toolResultDrafts[id] ?? "" }
         .onDisappear { draftStore.schedule(currentDraft); draftStore.flush(); session.stop() }
         .alert("Before You Send", isPresented: $showingConsent) {
@@ -252,10 +349,9 @@ struct APIWorkbenchView: View {
                 draft.requestText = ResponsesAPIClient.pretty(ResponsesAPIClient.tokenCountBody(from: try parsedRequest()))
             case .compact:
                 draft.requestText = ResponsesAPIClient.pretty(try parsedRequest().filter { ["model", "input", "instructions"].contains($0.key) })
-            case .createConversation: draft.requestText = ResponsesAPIClient.pretty(["items": [] as [String]])
-            case .cancel: draft.requestText = "{}"
             case .responses: draft.requestText = ResponsesAPIClient.pretty(template.body)
-            default: break
+            default:
+                if let example = value.exampleBody { draft.requestText = ResponsesAPIClient.pretty(example) }
             }
             proposeReplacement(draft)
         } catch { utilityStatus = error.localizedDescription }
@@ -267,10 +363,15 @@ struct APIWorkbenchView: View {
         return body
     }
 
+    /// Deletions ask first; every other request runs immediately.
+    private func requestRun() {
+        if endpoint.method == "DELETE" { showingDeleteConfirmation = true } else { run() }
+    }
+
     private func run() {
         do {
             utilityStatus = ""
-            let body = endpoint.method == "GET" ? [:] : try parsedRequest()
+            let body = ["GET", "DELETE"].contains(endpoint.method) ? [:] : try parsedRequest()
             let path = try endpoint.path(id: resourceID)
             guard authorizeNetwork(.run) else { return }
             toolResultDrafts = [:]

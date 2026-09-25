@@ -44,10 +44,7 @@ struct ModelConfigurationView: View {
                     isStreaming: activePrompt.enableStreaming
                 )
 
-                if newModel == "computer-use-preview" {
-                    // Dedicated model – flip computer use on automatically
-                    activePrompt.enableComputerUse = true
-                } else if !supportsComputer && activePrompt.enableComputerUse {
+                if !supportsComputer && activePrompt.enableComputerUse {
                     // Selecting a non-computer model should immediately disable the toggle
                     activePrompt.enableComputerUse = false
                     activePrompt.ultraStrictComputerUse = false
@@ -311,7 +308,6 @@ struct ModelConfigurationView: View {
                 Text("Concise").tag("concise")
                 Text("Detailed").tag("detailed")
             }
-                .disabled(activePrompt.enablePublishedPrompt)
                 .onChange(of: activePrompt.reasoningSummary) { _, _ in
                     onSave()
                 }

@@ -12,16 +12,20 @@ enum CurrentModelCatalog {
     /// Image models offered in settings, newest first. Earlier saved values stay selectable.
     nonisolated static let imageModels = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"]
     static let realtimeModel = "gpt-realtime-2.1"
-    /// Realtime models offered for voice. `gpt-realtime` and `gpt-realtime-mini` retire January 20, 2027,
+    /// Voice models: Realtime 2.1 (default), its mini variant, and GPT-Live 1, which uses the Live API
+    /// (`wss://api.openai.com/v1/live/sessions`). `gpt-realtime` and `gpt-realtime-mini` retire January 20, 2027,
     /// so a value saved by an earlier version moves to the current default.
-    static let realtimeModels = ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"]
+    static let realtimeModels = ["gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-live-1"]
     nonisolated static let transcriptionModel = "gpt-live-transcribe"
+    /// Model for recorded voice notes (POST /v1/audio/transcriptions). whisper-1 and the gpt-4o transcribe models
+    /// retire February 26, 2027.
+    nonisolated static let fileTranscriptionModel = "gpt-transcribe"
     /// Small, inexpensive model for background probes such as MCP tool discovery.
     nonisolated static let utilityModel = "gpt-6-luna"
     static let recommended = ["gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
     /// Earlier models shown when the account's model list is unavailable. Models whose shutdown OpenAI has
-    /// announced (gpt-5, gpt-5-mini, gpt-5-nano and o3 on December 11, 2026) are left out; the model list
-    /// and the model ID field still reach anything the account can use.
+    /// announced (gpt-5, gpt-5-mini, gpt-5-nano and o3 on December 11, 2026) are left out; the account's model
+    /// list and the model ID field reach every other model the account can use.
     static let legacy = ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"]
 
     /// Variant words that mark a model as something other than a general text-and-tools model.
@@ -81,9 +85,39 @@ enum CurrentModelCatalog {
         family(id) == "gpt-6-astra"
     }
 
-    static func isRetired(_ id: String) -> Bool {
-        ["computer-use-preview", "o3-deep-research", "o4-mini-deep-research", "chatgpt-4o-latest", "gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex"].contains { id == $0 || id.hasPrefix($0 + "-") }
-            || id.contains("chat-latest")
+    /// Models OpenAI has shut down or scheduled for shutdown (deprecations page, September 24, 2026).
+    /// They are hidden from the model list, and a preset that names one moves to `replacement(for:)` when loaded.
+    /// Fine-tuned models (`ft:`) are not listed: their inference continues until the base model retires.
+    nonisolated static let retiredModels: [String] = [
+        "computer-use-preview", "o1", "o1-pro", "o1-mini", "o3", "o3-pro", "o3-mini", "o4-mini", "o3-deep-research", "o4-mini-deep-research",
+        "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4-1106-preview", "gpt-4-0613", "gpt-4.1-nano", "gpt-4o-2024-05-13",
+        "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "gpt-5.4-cyber", "chatgpt-4o-latest",
+        "gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex", "codex-mini-latest", "babbage-002", "davinci-002",
+        "gpt-4o-realtime", "gpt-4o-mini-realtime", "gpt-4o-audio", "gpt-4o-mini-audio",
+    ]
+
+    /// OpenAI's documented replacement for a retired model (deprecations page, September 24, 2026).
+    /// Models without a listed replacement move to the app default.
+    nonisolated static func replacement(for id: String) -> String {
+        let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let table: [(String, String)] = [
+            ("gpt-5-mini", "gpt-5.6-terra"), ("gpt-5-nano", "gpt-5.6-luna"), ("gpt-4.1-nano", "gpt-5.6-luna"),
+            ("o4-mini", "gpt-5.6-terra"), ("gpt-3.5-turbo", "gpt-5.6-terra"), ("babbage-002", "gpt-5.6-terra"), ("davinci-002", "gpt-5.6-terra"),
+            ("gpt-5", "gpt-5.6-sol"), ("o1", "gpt-5.6-sol"), ("o3", "gpt-5.6-sol"), ("gpt-4", "gpt-5.6-sol"), ("gpt-4o-2024-05-13", "gpt-5.6-sol"),
+            ("gpt-5.4-cyber", "gpt-5.6-cyber"),
+        ]
+        for (retired, current) in table where full == retired || full.hasPrefix(retired + "-") {
+            return current
+        }
+        return "gpt-6-sol"
+    }
+
+    nonisolated static func isRetired(_ id: String) -> Bool {
+        let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let base = baseID(id)
+        return retiredModels.contains { name in
+            [full, base].contains { $0 == name || ($0.hasPrefix(name + "-") && !isModern($0)) }
+        } || full.contains("chat-latest")
     }
 
     static func reasoningEfforts(for id: String) -> [String] {
@@ -175,12 +209,31 @@ struct ModernResponseOptions: Codable, Equatable {
     var maxToolRounds: Int = 12
     var customToolFormat: String = "function"
     var mcpConnectionIDs: [UUID]? = nil
+    // Added in 2.7 from the September 2026 Responses reference. Empty or nil means "not sent".
+    /// `moderation.model`, e.g. `omni-moderation-latest`. Empty turns built-in response moderation off.
+    var moderationModel: String = ""
+    /// `moderation.policy.input.mode` / `output.mode`: `score` reports categories, `block` stops the response.
+    var moderationInputMode: String = "score"
+    var moderationOutputMode: String = "score"
+    /// `web_search.external_web_access`. False limits web search to cached results.
+    var webSearchExternalAccess: Bool = true
+    /// `code_interpreter.container.memory_limit` for automatic containers: 1g, 4g, 16g or 64g.
+    var codeInterpreterMemoryLimit: String = ""
+    /// `image_generation.input_fidelity`: high or low. Empty uses the model default.
+    var imageInputFidelity: String = ""
+    /// `image_generation.output_compression` (0–100) for JPEG and WebP output.
+    var imageOutputCompression: Int? = nil
+    /// `file_search.ranking_options.hybrid_search` weights. Both must be set to send hybrid search.
+    var hybridEmbeddingWeight: Double? = nil
+    var hybridTextWeight: Double? = nil
 }
 
 extension ModernResponseOptions {
     enum CodingKeys: String, CodingKey {
         case automaticCompaction, compactThreshold, toolSearch, hostedShell, reasoningMode, reasoningContext
         case imageAction, partialImages, asyncTools, programmaticTools, multiAgent, maxSubagents, maxToolRounds, customToolFormat, mcpConnectionIDs
+        case moderationModel, moderationInputMode, moderationOutputMode, webSearchExternalAccess, codeInterpreterMemoryLimit
+        case imageInputFidelity, imageOutputCompression, hybridEmbeddingWeight, hybridTextWeight
     }
 
     init(from decoder: Decoder) throws {
@@ -201,5 +254,14 @@ extension ModernResponseOptions {
         maxToolRounds = try c.decodeIfPresent(Int.self, forKey: .maxToolRounds) ?? 12
         mcpConnectionIDs = try c.decodeIfPresent([UUID].self, forKey: .mcpConnectionIDs)
         customToolFormat = try c.decodeIfPresent(String.self, forKey: .customToolFormat) ?? "function"
+        moderationModel = try c.decodeIfPresent(String.self, forKey: .moderationModel) ?? ""
+        moderationInputMode = try c.decodeIfPresent(String.self, forKey: .moderationInputMode) ?? "score"
+        moderationOutputMode = try c.decodeIfPresent(String.self, forKey: .moderationOutputMode) ?? "score"
+        webSearchExternalAccess = try c.decodeIfPresent(Bool.self, forKey: .webSearchExternalAccess) ?? true
+        codeInterpreterMemoryLimit = try c.decodeIfPresent(String.self, forKey: .codeInterpreterMemoryLimit) ?? ""
+        imageInputFidelity = try c.decodeIfPresent(String.self, forKey: .imageInputFidelity) ?? ""
+        imageOutputCompression = try c.decodeIfPresent(Int.self, forKey: .imageOutputCompression)
+        hybridEmbeddingWeight = try c.decodeIfPresent(Double.self, forKey: .hybridEmbeddingWeight)
+        hybridTextWeight = try c.decodeIfPresent(Double.self, forKey: .hybridTextWeight)
     }
 }

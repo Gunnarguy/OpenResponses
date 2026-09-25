@@ -62,7 +62,7 @@ struct ResponseSettingsRegistry {
         // MARK: - Instructions
         ResponseSettingDescriptor(
             promptKeyPathName: "systemInstructions",
-            apiField: "messages",
+            apiField: "instructions",
             group: .instructions,
             exposure: .primary,
             title: "System Instructions",
@@ -71,7 +71,7 @@ struct ResponseSettingsRegistry {
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "developerInstructions",
-            apiField: "messages",
+            apiField: "instructions",
             group: .instructions,
             exposure: .advanced,
             title: "Developer Instructions",
@@ -511,7 +511,7 @@ struct ResponseSettingsRegistry {
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "maxOutputTokens",
-            apiField: "max_completion_tokens",
+            apiField: "max_output_tokens",
             group: .model,
             exposure: .primary,
             title: "Max Output Tokens",
@@ -544,7 +544,7 @@ struct ResponseSettingsRegistry {
             title: "Service Tier",
             description: "Routing tier for the request.",
             defaultValueDescription: "auto",
-            validValues: ["auto", "default", "flex", "scale", "priority"]
+            validValues: ["auto", "default", "flex", "scale", "priority", "fast", "ultrafast"]
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "topLogprobs",
@@ -570,22 +570,13 @@ struct ResponseSettingsRegistry {
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "truncationStrategy",
-            apiField: "truncation_strategy",
+            apiField: "truncation",
             group: .state,
             exposure: .advanced,
             title: "Truncation Strategy",
             description: "How to manage long context windows.",
             defaultValueDescription: "auto",
             validValues: ["auto", "disabled"]
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "userIdentifier",
-            apiField: "user",
-            group: .state,
-            exposure: .advanced,
-            title: "User Identifier",
-            description: "A unique identifier representing your end-user.",
-            defaultValueDescription: ""
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "storeResponses",
@@ -595,15 +586,6 @@ struct ResponseSettingsRegistry {
             title: "Store Responses",
             description: "Whether the response should be stored in the OpenAI dashboard.",
             defaultValueDescription: "true"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "streamIncludeUsage",
-            apiField: "stream_options",
-            group: .streaming,
-            exposure: .intentionallyHidden(reason: "Currently not directly supported via stream_options in Responses API."),
-            title: "Include Usage",
-            description: "Include usage data in stream chunks.",
-            defaultValueDescription: "false"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "streamIncludeObfuscation",
@@ -624,18 +606,8 @@ struct ResponseSettingsRegistry {
             defaultValueDescription: ""
         ),
         ResponseSettingDescriptor(
-            promptKeyPathName: "promptCacheRetention",
-            apiField: "prompt_cache_retention",
-            group: .cache,
-            exposure: .advanced,
-            title: "Prompt Cache Retention",
-            description: "How long to retain the cached prompt.",
-            defaultValueDescription: "auto",
-            validValues: ["auto", "in_memory", "24h"]
-        ),
-        ResponseSettingDescriptor(
             promptKeyPathName: "safetyIdentifier",
-            apiField: "OpenAI-Safety-Identifier",
+            apiField: "safety_identifier",
             group: .safety,
             exposure: .advanced,
             title: "Safety Identifier",
@@ -655,7 +627,7 @@ struct ResponseSettingsRegistry {
         // MARK: - Text Formatting & Structured Output
         ResponseSettingDescriptor(
             promptKeyPathName: "textFormatType",
-            apiField: "response_format",
+            apiField: "text.format",
             group: .output,
             exposure: .primary,
             title: "Format Type",
@@ -698,42 +670,6 @@ struct ResponseSettingsRegistry {
 
         // MARK: - Audio
         ResponseSettingDescriptor(
-            promptKeyPathName: "enableAudioInput",
-            apiField: "modalities",
-            group: .model,
-            exposure: .primary,
-            title: "Audio Input",
-            description: "Allow audio modalities in input.",
-            defaultValueDescription: "false"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "enableAudioOutput",
-            apiField: "modalities",
-            group: .model,
-            exposure: .primary,
-            title: "Audio Output",
-            description: "Request the response in audio format.",
-            defaultValueDescription: "false"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "audioVoice",
-            apiField: "audio",
-            group: .model,
-            exposure: .advanced,
-            title: "Audio Voice",
-            description: "Voice to use for generated audio.",
-            defaultValueDescription: "alloy"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "audioFormat",
-            apiField: "audio",
-            group: .model,
-            exposure: .advanced,
-            title: "Audio Format",
-            description: "Format for audio output (wav, mp3, etc).",
-            defaultValueDescription: "wav"
-        ),
-        ResponseSettingDescriptor(
             promptKeyPathName: "enableInputModeration",
             group: .safety,
             exposure: .advanced,
@@ -750,14 +686,6 @@ struct ResponseSettingsRegistry {
             title: "Include Code Interpreter Outputs",
             description: "Log Code Interpreter results to the conversation.",
             defaultValueDescription: "true"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "includeComputerCallOutput",
-            group: .debug,
-            exposure: .debug,
-            title: "Include Computer Call Output",
-            description: "Log Computer Use screenshots and actions.",
-            defaultValueDescription: "false"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "includeFileSearchResults",
@@ -812,7 +740,7 @@ struct ResponseSettingsRegistry {
             group: .debug,
             exposure: .debug,
             title: "Include Computer Use Output",
-            description: "Duplicate of includeComputerCallOutput for backwards compatibility.",
+            description: "Include screenshot URLs from computer call outputs (computer_call_output.output.image_url).",
             defaultValueDescription: "false"
         ),
 
@@ -824,30 +752,6 @@ struct ResponseSettingsRegistry {
             title: "Streaming",
             description: "Stream the response token-by-token.",
             defaultValueDescription: "true"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "enablePublishedPrompt",
-            group: .legacy,
-            exposure: .advanced,
-            title: "Use Published Prompt",
-            description: "Legacy remote prompts retire November 30, 2026. Move instructions into your local prompt before then.",
-            defaultValueDescription: "false"
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "publishedPromptId",
-            group: .legacy,
-            exposure: .advanced,
-            title: "Published Prompt ID",
-            description: "The remote prompt ID.",
-            defaultValueDescription: ""
-        ),
-        ResponseSettingDescriptor(
-            promptKeyPathName: "publishedPromptVersion",
-            group: .legacy,
-            exposure: .advanced,
-            title: "Published Prompt Version",
-            description: "The specific version of the prompt.",
-            defaultValueDescription: "1"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "toolChoice",

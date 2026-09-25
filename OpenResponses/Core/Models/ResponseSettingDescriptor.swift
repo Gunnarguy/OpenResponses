@@ -13,7 +13,6 @@ struct ResponseSettingDescriptor: Identifiable {
         case safety = "Safety & Moderation"
         case cache = "Caching"
         case debug = "Debug & Telemetry"
-        case legacy = "Legacy"
         case hidden = "Hidden"
     }
 
@@ -21,7 +20,6 @@ struct ResponseSettingDescriptor: Identifiable {
         case primary
         case advanced
         case debug
-        case legacy
         case intentionallyHidden(reason: String)
     }
 

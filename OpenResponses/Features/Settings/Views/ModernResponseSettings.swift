@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ModernResponseSettings: View {
     @EnvironmentObject private var viewModel: ChatViewModel
+    @AppStorage("realtime_model") private var voiceModel: String = CurrentModelCatalog.realtimeModel
+    @State private var showingVoiceSettings = false
 
     private var modern: Bool { CurrentModelCatalog.isModern(viewModel.activePrompt.openAIModel) }
 
@@ -70,6 +72,63 @@ struct ModernResponseSettings: View {
             viewModel.activePrompt.imageGenerationQuality = CurrentModelCatalog.normalizedImageQuality(viewModel.activePrompt.imageGenerationQuality, model: model)
             viewModel.saveActivePrompt()
         }
+        Section {
+            Picker("Moderation", selection: $viewModel.activePrompt.currentOptions.moderationModel) {
+                Text("Off").tag("")
+                Text("omni-moderation-latest").tag("omni-moderation-latest")
+            }
+            if !viewModel.activePrompt.currentOptions.moderationModel.isEmpty {
+                Picker("Input policy", selection: $viewModel.activePrompt.currentOptions.moderationInputMode) {
+                    Text("Score").tag("score")
+                    Text("Block").tag("block")
+                }
+                Picker("Output policy", selection: $viewModel.activePrompt.currentOptions.moderationOutputMode) {
+                    Text("Score").tag("score")
+                    Text("Block").tag("block")
+                }
+            }
+        } header: { Text("Response moderation") } footer: {
+            Text("OpenAI moderates this response's input and output. Score reports flagged categories; Block stops a flagged response.")
+        }
+        Section("Hosted tool options") {
+            Toggle("Web search: live web access", isOn: $viewModel.activePrompt.currentOptions.webSearchExternalAccess)
+            Picker("Code Interpreter memory", selection: $viewModel.activePrompt.currentOptions.codeInterpreterMemoryLimit) {
+                Text("Default").tag("")
+                ForEach(["1g", "4g", "16g", "64g"], id: \.self) { Text($0.uppercased().replacingOccurrences(of: "G", with: " GB")).tag($0) }
+            }
+            Toggle("File search: hybrid ranking", isOn: Binding(
+                get: { viewModel.activePrompt.currentOptions.hybridEmbeddingWeight != nil },
+                set: { enabled in
+                    viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = enabled ? 0.5 : nil
+                    viewModel.activePrompt.currentOptions.hybridTextWeight = enabled ? 0.5 : nil
+                }))
+            if let embedding = viewModel.activePrompt.currentOptions.hybridEmbeddingWeight {
+                Slider(value: Binding(get: { embedding }, set: {
+                    viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = $0
+                    viewModel.activePrompt.currentOptions.hybridTextWeight = 1 - $0
+                }), in: 0...1, step: 0.1) { Text("Semantic weight") }
+                Text("Semantic \(Int(embedding * 100))% · keyword \(100 - Int(embedding * 100))%").font(.caption).foregroundStyle(.secondary)
+            }
+            Picker("Image input fidelity", selection: $viewModel.activePrompt.currentOptions.imageInputFidelity) {
+                Text("Model default").tag("")
+                Text("High").tag("high")
+                Text("Low").tag("low")
+            }
+            Stepper("JPEG/WebP compression: \(viewModel.activePrompt.currentOptions.imageOutputCompression.map { "\($0)" } ?? "default")",
+                    value: Binding(get: { viewModel.activePrompt.currentOptions.imageOutputCompression ?? 100 },
+                                   set: { viewModel.activePrompt.currentOptions.imageOutputCompression = $0 == 100 ? nil : $0 }),
+                    in: 0...100, step: 5)
+        }
+        Section {
+            Button {
+                showingVoiceSettings = true
+            } label: {
+                LabeledContent("Voice model, voice and instructions", value: CurrentModelCatalog.supportedRealtimeModel(voiceModel))
+            }
+        } header: { Text("Voice") } footer: {
+            Text("GPT Realtime 2.1 and its mini variant use the Realtime API; GPT-Live 1 uses the Live API. Changes apply to the next voice session.")
+        }
+        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
         Section("Custom tool") {
             Toggle("Enable custom tool", isOn: $viewModel.activePrompt.enableCustomTool)
             if viewModel.activePrompt.enableCustomTool {

@@ -16,18 +16,19 @@ struct BatchJobsView: View {
         let url: URL
     }
     
-    @AppStorage("batch_endpoint") private var endpoint: String = "/v1/chat/completions"
+    @AppStorage("batch_endpoint") private var endpoint: String = "/v1/responses"
+
+    /// Batch endpoints with live models (Batch API reference, September 24, 2026). `/v1/videos` shut down
+    /// September 24, 2026, and `/v1/completions` loses its last models on September 28, 2026.
+    static let endpoints = ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "/v1/moderations", "/v1/images/generations", "/v1/images/edits"]
     
     var body: some View {
         List {
             Section("Submit New Batch Job") {
-                HStack {
-                    Text("Endpoint")
-                    Spacer()
-                    TextField("/v1/chat/completions", text: $endpoint)
-                        .multilineTextAlignment(.trailing)
-                        .autocapitalization(.none)
+                Picker("Endpoint", selection: $endpoint) {
+                    ForEach(Self.endpoints, id: \.self) { Text($0).tag($0) }
                 }
+                .onAppear { if !Self.endpoints.contains(endpoint) { endpoint = "/v1/responses" } }
                 
                 Button {
                     isFileImporterPresented = true

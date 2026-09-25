@@ -7,8 +7,18 @@ NEW MODELS
 
 STAYING CURRENT AS OLDER MODELS RETIRE
 • Voice sessions saved with a Realtime model OpenAI is retiring switch to GPT Realtime 2.1.
-• The offline model list leaves out models with announced shutdowns. Your account's live model list and the model ID field still reach anything your API project can use.
+• The offline model list leaves out models with announced shutdowns. Your account's live model list and the model ID field reach every current model your API project can use.
 • Image quality adjusts automatically when you switch to an image model that does not accept the chosen setting.
+
+CURRENT API COVERAGE
+• GPT-Live 1 voice sessions through OpenAI's new Live API, selectable in Settings → Model → Voice. GPT Realtime 2.1 remains the default.
+• Response moderation, live-web-access control for web search, hybrid file-search ranking, Code Interpreter memory limits, image input fidelity and compression, and the Fast and Ultrafast service tiers.
+• The API Workbench now reaches every current endpoint the app works with: responses, conversations, models, moderation, embeddings, files, vector stores, containers, batches and Realtime client secrets. Deletions ask first.
+• Batch jobs default to the Responses endpoint.
+• Voice notes recorded with the microphone button are transcribed with GPT Transcribe into the message field, so you can edit them before sending.
+
+REMOVED BECAUSE OPENAI SHUT THEM DOWN OR DEPRECATED THEM
+• Assistants API tools and the Assistant import lab, fine-tuning jobs, published prompts, preview web search and preview computer-use tools, and retired models such as o1, o3, o4-mini and GPT-5. Saved chats keep working, and presets that used a retired model switch to OpenAI's recommended replacement, such as o3 to GPT-5.6 Sol.
 
 RELIABILITY
 • MCP tool discovery uses GPT-6 Luna, the lowest-cost current model.
