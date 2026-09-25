@@ -1,14 +1,14 @@
 # Current State
 
-Updated: 2026-09-24
+Updated: 2026-09-25
 Branch/worktree: main in the repo root; origin at 32ca9d0. This file is committed locally after it and not pushed (a push starts another Xcode Cloud build).
-Last verified commit: 32ca9d0 2.7: remove shut-down and deprecated OpenAI features; cover the current API
+Last verified commit: ebdadaa docs: 2.7 submitted for review
 
 ## Objective
 OpenResponses 2.7 as a long-lived release: current OpenAI models (GPT-6 Sol/Astra/Luna, GPT Image 2.5, GPT-Live 1), every current endpoint and Responses parameter in scope, and nothing OpenAI has shut down or deprecated.
 
 ## Status
-Submitted for review 2026-09-25 03:16 UTC at Gunnar's request: review submission WAITING_FOR_REVIEW, version 2.7 WAITING_FOR_REVIEW, release type AFTER_APPROVAL (goes live automatically when approved). Build 47 is selected (Xcode Cloud run 47 of 32ca9d0, VALID, usesNonExemptEncryption false, internal READY_FOR_BETA_TESTING). What's New, description, promotional text, keywords and review notes in ASC match fastlane/metadata (read back 2026-09-24). Build 47 TestFlight "What to Test" matches docs/releases/v2.7/TestFlightNotes.txt. 
+Released 2026-09-25.  App Store Connect reported version 2.7 appStoreState READY_FOR_SALE / appVersionState READY_FOR_DISTRIBUTION at 11:11 PDT (its API had still said IN_REVIEW at 11:06, after Gunnar already saw the approval), build 47.  The public lookup (itunes.apple.com/lookup?id=6757338355) still returned 2.6 at 11:11; storefront propagation follows.  Post Desk: the `sw:after27` flag was set to 2026-09-25 in the artifact db, which unlocks the six OpenResponses 2.7 posts.
 
 ## Completed
 - 9dd8e1d: GPT-6 Sol/Luna, GPT Image 2.5, version-aware model recognition, MARKETING_VERSION 2.7, four Xcode 27 warnings.
@@ -35,4 +35,4 @@ Submitted for review 2026-09-25 03:16 UTC at Gunnar's request: review submission
 - The Notion token in test.env was printed into this session's log; Gunnar should rotate it.
 
 ## Exact Next Action
-Wait for App Review. If Apple asks for a demo credential, Gunnar supplies a reviewer OpenAI API key in App Review notes and replies in Resolution Center. After release, bump MARKETING_VERSION before any further push to main.
+Before any further push to main, set MARKETING_VERSION to 2.8 in OpenResponses.xcodeproj/project.pbxproj (two lines): a push still declaring 2.7 fails in Xcode Cloud at "Preparing build for App Store Connect", as runs 42 to 45 did for 2.6.  The local commits after ebdadaa (this file and the CHANGELOG approval line) are unpushed for that reason.

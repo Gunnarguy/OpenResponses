@@ -2,7 +2,9 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
-## 2.7 — prepared September 24, 2026
+## 2.7 — released September 25, 2026
+
+Released on the App Store September 25, 2026: 2.7 `READY_FOR_DISTRIBUTION` in App Store Connect (read 11:11 Pacific), build 47 from Xcode Cloud run 47 of `32ca9d0`, submitted September 24 at 20:16 Pacific and released automatically after approval.
 
 **Marketing version:** 2.7. Xcode Cloud assigns the build number. Models, deprecations and endpoints were checked against OpenAI's model catalog, changelog and deprecations pages on September 24, 2026.
 
