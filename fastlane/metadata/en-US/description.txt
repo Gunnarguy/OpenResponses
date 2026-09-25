@@ -1,7 +1,7 @@
 OpenResponses is a native iPhone and iPad playground for the OpenAI Responses API. Bring your own API key, control your requests, inspect tool activity and explore current models in SwiftUI.
 
 CHAT WITH CONTROL
-• Choose from a shared catalog including GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, alongside earlier supported models.
+• Choose GPT-6 Sol, Astra or Luna, the GPT-5.6 family or earlier supported models. Newer general-purpose releases in your account's model list are recognized automatically.
 • Adjust compatible reasoning, context, verbosity, image and tool settings.
 • Stream replies, inspect API-provided reasoning summaries, follow token usage and review request/response details.
 • Save prompt presets, attach photos and documents, export conversations and keep local history.
@@ -14,7 +14,7 @@ API WORKBENCH
 
 VOICE, IMAGES AND TOOLS
 • Have continuing Realtime voice conversations with microphone mute and interruption handling.
-• Generate images with GPT Image 2 and supported partial previews.
+• Generate and edit images with GPT Image 2.5 Flare or Sunburst, up to Max quality, with partial previews.
 • Use hosted web search with sources, Code Interpreter and file search when enabled.
 • Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
 • Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.

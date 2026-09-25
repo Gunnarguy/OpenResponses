@@ -1219,13 +1219,20 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
         }
         .pickerStyle(.segmented)
 
-        Picker("Quality", selection: $viewModel.activePrompt.imageGenerationQuality) {
-            Text("Auto").tag("auto")
-            Text("Low").tag("low")
-            Text("Medium").tag("medium")
-            Text("High").tag("high")
+        let qualities = CurrentModelCatalog.imageQualities(for: viewModel.activePrompt.imageGenerationModel)
+        let qualityPicker = Picker("Quality", selection: $viewModel.activePrompt.imageGenerationQuality) {
+            ForEach(qualities, id: \.self) { quality in
+                Text(quality == "xhigh" ? "X-High" : quality.capitalized).tag(quality)
+            }
+            if !qualities.contains(viewModel.activePrompt.imageGenerationQuality) {
+                Text(viewModel.activePrompt.imageGenerationQuality).tag(viewModel.activePrompt.imageGenerationQuality)
+            }
         }
-        .pickerStyle(.segmented)
+        if qualities.count > 4 {
+            qualityPicker.pickerStyle(.menu)
+        } else {
+            qualityPicker.pickerStyle(.segmented)
+        }
     }
 
     // MARK: Computer Use Toggle
@@ -1261,7 +1268,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
             }
 
         if !isComputerUseSupported {
-            Text("Requires a computer-capable model such as Astra or GPT-5.6.")
+            Text("Requires a computer-capable model such as GPT-6 Sol, Astra or Luna.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         } else if viewModel.activePrompt.enableComputerUse {

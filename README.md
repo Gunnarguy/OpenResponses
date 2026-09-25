@@ -17,6 +17,10 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
+## Version 2.7
+
+Version 2.7 adds GPT-6 Sol and GPT-6 Luna, GPT Image 2.5 Flare and Sunburst with X-High and Max quality, and version-aware recognition of later general-purpose GPT releases. See the [2.7 release notes](docs/ReleaseNotes_2.7.0.md) and the [changelog](CHANGELOG.md).
+
 ## Version 2.6 documentation
 
 The [complete v2.5 → v2.6 release dossier](docs/releases/v2.6/README.md) covers the full source comparison, [What’s New](docs/ReleaseNotes_2.6.0.md), [changelog](CHANGELOG.md), technical behavior, upgrade steps, validation, and store/reviewer copy. Its [129-file inventory](docs/releases/v2.6/SourceInventory.md) includes committed work and the September implementation changes.
@@ -159,7 +163,7 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 | :--- | :--- | :--- | :--- | :--- |
 | **OpenAI API Key** | Keychain (`openAIKey`) | None | **Yes** | Authenticates all OpenAI network requests. |
 | **Notion Token** | Keychain (`notionApiKey`) | None | No | Authenticates Notion integration requests. |
-| **Model Selection** | `UserDefaults` | `gpt-6-astra` | **Yes** | Responses model; Astra, Sol, Terra, and Luna are available in the current catalog. |
+| **Model Selection** | `UserDefaults` | `gpt-6-sol` | **Yes** | Responses model; GPT-6 Sol, Astra and Luna and the GPT-5.6 family are in the current catalog, and later general-purpose releases are recognized by version. |
 | **Reasoning Effort** | `UserDefaults` | `medium` | No | Configures model-aware effort choices; current models also expose higher efforts where supported. |
 | **Web Search** | `UserDefaults` | `true` | No | Toggles OpenAI web search capabilities. |
 | **Code Interpreter** | `UserDefaults` | `true` | No | Toggles OpenAI sandboxed Python containers. |

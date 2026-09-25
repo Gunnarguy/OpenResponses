@@ -75,26 +75,7 @@ final class APIWorkbenchSession: ObservableObject {
                         socket = connection
                         socketBeta = beta
                         connection.resume()
-                        socketTask = Task { [weak self] in
-                            do {
-                                while !Task.isCancelled {
-                                    let message = try await connection.receive()
-                                    let data: Data
-                                    switch message {
-                                    case .string(let text): data = Data(text.utf8)
-                                    case .data(let bytes): data = bytes
-                                    @unknown default: continue
-                                    }
-                                    guard let self, self.socket === connection else { return }
-                                    if let event = try JSONSerialization.jsonObject(with: data) as? [String: Any] { self.receive(event) }
-                                }
-                            } catch {
-                                guard let self, self.socket === connection, !Task.isCancelled else { return }
-                                self.status = "Connection closed: \(error.localizedDescription)"
-                                self.isRunning = false
-                                self.disconnectSocket()
-                            }
-                        }
+                        startReceiving(on: connection)
                     }
                     try await sendSocket(payload)
                     status = "Streaming"
@@ -217,6 +198,31 @@ final class APIWorkbenchSession: ObservableObject {
                 if result["id"] as? String == responseID { isRunning = false }
                 steeredResponseID = nil
                 status = error.localizedDescription
+            }
+        }
+    }
+
+    /// Reads socket events until the connection closes or is replaced. Holds the session weakly so a
+    /// dismissed Workbench is released even while the socket stays open.
+    private func startReceiving(on connection: URLSessionWebSocketTask) {
+        socketTask = Task { [weak self] in
+            do {
+                while !Task.isCancelled {
+                    let message = try await connection.receive()
+                    let data: Data
+                    switch message {
+                    case .string(let text): data = Data(text.utf8)
+                    case .data(let bytes): data = bytes
+                    @unknown default: continue
+                    }
+                    guard let self, self.socket === connection else { return }
+                    if let event = try JSONSerialization.jsonObject(with: data) as? [String: Any] { self.receive(event) }
+                }
+            } catch {
+                guard let self, self.socket === connection, !Task.isCancelled else { return }
+                self.status = "Connection closed: \(error.localizedDescription)"
+                self.isRunning = false
+                self.disconnectSocket()
             }
         }
     }

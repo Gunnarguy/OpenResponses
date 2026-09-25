@@ -1,1 +1,1 @@
-OpenAI,Responses,API,AI,voice,MCP,developer,playground,prompts,chat,tools,JSON,images
+AI,MCP,playground,prompts,chat,JSON,images,gpt,reasoning,assistant,llm,agent,realtime,browser

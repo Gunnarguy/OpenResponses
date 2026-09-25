@@ -57,7 +57,8 @@ class VoiceRecorderService: NSObject, ObservableObject, AVAudioRecorderDelegate 
             audioRecorder?.delegate = self
             audioRecorder?.record()
             
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
                 self.isRecording = true
                 self.recordingDuration = 0
                 self.timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in

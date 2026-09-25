@@ -1,5 +1,7 @@
 # OpenResponses App Store package
 
+> **Update 2026-09-24:** version 2.7 is being prepared: [release notes](docs/ReleaseNotes_2.7.0.md), store copy in `fastlane/metadata`, [TestFlight guide](docs/releases/v2.7/TestFlightNotes.txt). The project declares 2.7 and ASC has 2.7 in Prepare for Submission.
+
 > **Update 2026-09-23:** 2.6 is live on the App Store (released 2026-09-09, per Apple's public lookup). The status below predates the release.
 
 The current package is for **v2.6** and was reconciled with live ASC on September 8, 2026. Start with the [complete release dossier](docs/releases/v2.6/README.md).

@@ -1,0 +1,10 @@
+OpenResponses 2.7 test guide
+
+Please test:
+• Open the model list and choose GPT-6 Sol, GPT-6 Astra and GPT-6 Luna where your API project has access. Try None through Max reasoning where offered, and confirm web search, file search and function tools return results.
+• Settings → Image generation: choose GPT Image 2.5 Flare or Sunburst and try X-High or Max quality. Switch to GPT Image 2 and confirm the quality falls back to High instead of the request failing.
+• Start a voice session. A Realtime model saved by an earlier version should connect as GPT Realtime 2.1.
+• Refresh tool discovery for a configured MCP server.
+• Upgrade over 2.6 with existing chats and presets; saved chats, presets and model choices should be unchanged.
+
+Report the build number, device and OS, steps, expected result and actual result. Remove credentials and private conversation content before sharing diagnostics.

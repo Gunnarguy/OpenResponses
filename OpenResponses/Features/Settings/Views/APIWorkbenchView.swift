@@ -51,9 +51,9 @@ struct APIWorkbenchView: View {
     }
 
     enum Template: String, CaseIterable {
-        case response = "Astra response", shell = "Hosted shell", toolSearch = "Tool search"
+        case response = "Basic response", shell = "Hosted shell", toolSearch = "Tool search"
         case asyncTools = "Async function tool", programmatic = "Programmatic tool calling"
-        case multiAgent = "Multi-agent beta", images = "GPT Image 2", compaction = "Automatic compaction"
+        case multiAgent = "Multi-agent beta", images = "Image generation", compaction = "Automatic compaction"
         case reasoningUpdate = "Reasoning update", custom = "Custom text tool", patch = "Apply patch"
 
         var body: [String: Any] {
@@ -69,6 +69,7 @@ struct APIWorkbenchView: View {
                 body["tools"] = [["type": "tool_search"], function]
                 body["input"] = "Look up inventory for SKU demo-123."
             case .asyncTools:
+                body["model"] = "gpt-6-astra"
                 function["async"] = true
                 body["tools"] = [function]
                 body["input"] = "Start looking up inventory for demo-123. While the lookup runs, explain why inventory accuracy matters."
@@ -86,6 +87,7 @@ struct APIWorkbenchView: View {
             case .compaction:
                 body["context_management"] = [["type": "compaction", "compact_threshold": 100_000]]
             case .reasoningUpdate:
+                body["model"] = "gpt-6-astra"
                 body["input"] = [["type": "configuration_update", "reasoning": ["effort": "high"]], ["role": "user", "content": "Explain one subtle tradeoff in database transaction isolation."]]
             case .custom:
                 body["tools"] = [["type": "custom", "name": "run_query", "description": "Submit a SQL query for the client to execute and return results.", "format": ["type": "text"]]]
@@ -218,7 +220,7 @@ struct APIWorkbenchView: View {
     }
 
     private func applyDraft(_ draft: APIWorkbenchDraft) {
-        template = Template(rawValue: draft.template) ?? .response
+        template = Template(rawValue: draft.template) ?? ["Astra response": .response, "GPT Image 2": .images][draft.template] ?? .response
         endpoint = Endpoint(rawValue: draft.endpoint) ?? .responses
         transport = APIWorkbenchSession.Transport(rawValue: draft.transport) ?? .sse
         resourceID = draft.resourceID

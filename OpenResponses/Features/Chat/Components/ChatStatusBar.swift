@@ -122,7 +122,7 @@ struct ChatStatusBar: View {
     
     private var modelColor: Color {
         let model = viewModel.activePrompt.openAIModel
-        if model.contains("gpt-5.6") {
+        if CurrentModelCatalog.isModern(model) {
             return .teal
         } else if model.contains("gpt-5") {
             return .indigo

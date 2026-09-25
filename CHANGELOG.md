@@ -2,6 +2,32 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
+## 2.7 — prepared September 24, 2026
+
+**Marketing version:** 2.7. Xcode Cloud assigns the build number. Models, deprecations and endpoints were checked against OpenAI's model catalog, changelog and deprecations pages on September 24, 2026.
+
+### Added
+
+- GPT-6 Sol (`gpt-6-sol`) and GPT-6 Luna (`gpt-6-luna`), released September 22. Both accept reasoning effort `none` through `max`, with `medium` as the default. Before this change the model list hid them, because only catalogued models passed its capability filter.
+- GPT Image 2.5 Flare and Sunburst (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`), with the `xhigh` and `max` quality levels only these models accept. GPT Image 2 stays selectable.
+- Version-aware model recognition: a general-purpose ID of GPT-5.6 or later, such as `gpt-6.1-sol` or `gpt-7-luna`, is treated as a current model, including dated snapshots. Specialized variants (audio, realtime, transcription, image, search, codex, cyber and similar) are excluded, and later releases sort above the current list.
+
+### Changed
+
+- New presets, the API Workbench and onboarding default to GPT-6 Sol ($2 input / $10 output per million tokens) instead of GPT-6 Astra ($10 / $50). Existing presets keep their model.
+- New presets generate images with GPT Image 2.5 Flare. Quality is normalized to what the chosen image model accepts, in settings and in every request, so `max` never reaches GPT Image 2.
+- MCP tool discovery probes with GPT-6 Luna, the lowest-cost current model.
+- The offline model list omits `gpt-5`, `gpt-5-mini`, `gpt-5-nano` and `o3`, whose snapshots shut down December 11, 2026. The account's live model list and the model ID field still reach them.
+- A voice model saved by an earlier version that is no longer offered, such as `gpt-realtime` or `gpt-realtime-mini` (shutdown January 20, 2027), connects as `gpt-realtime-2.1`.
+- API Workbench templates "Astra response" and "GPT Image 2" are now "Basic response" and "Image generation"; saved drafts using the old names restore to the same template. The async-tool and reasoning-update templates pin `gpt-6-astra`, where those features were introduced.
+- GitHub CI skips `BrowserLiveSiteTests`, which needs example.com and iana.org, after it failed two unrelated runs on hosted-runner network loss. It still runs locally.
+
+### Fixed
+
+- Three closures whose `[weak self]` had no effect because an enclosing closure already held `self` strongly (API Workbench socket reader, conversation save completion, voice recorder timer). Xcode 27 reported them.
+- `AppleDateUtilities.formatISO8601` is nonisolated, so the Contacts tool can format birthdays off the main actor, which Swift 6 language mode would reject.
+- Xcode Cloud runs 42 through 45 archived successfully, then failed at "Preparing build for App Store Connect" because the project still declared 2.6 after 2.6 was released.
+
 ## 2.6 — released September 8, 2026
 
 **Marketing version/build:** 2.6 (8). **Baseline:** `855ab3b` / 2.5 (7). [Baseline and release status](docs/releases/v2.6/README.md) · [Full release notes](docs/ReleaseNotes_2.6.0.md).

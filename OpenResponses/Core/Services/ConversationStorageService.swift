@@ -133,9 +133,9 @@ class ConversationStorageService {
         saveErrors.removeAll()
         for (id, conversation) in snapshots {
             let fileURL = storageURL.appendingPathComponent("\(id.uuidString).json")
-            writer.async {
+            writer.async { [weak self] in
                 let result = Result { try Self.write(conversation, to: fileURL) }
-                Task { @MainActor [weak self] in
+                Task { @MainActor in
                     switch result {
                     case .success: self?.completedWriteCount += 1
                     case .failure(let error): callbacks[id]?(error)

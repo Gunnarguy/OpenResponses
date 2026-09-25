@@ -1,4 +1,4 @@
-OpenResponses 2.6 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
+OpenResponses 2.7 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
 
 The key is stored in iOS Keychain and sent to OpenAI for authentication. Before the first live request, the app presents its data-sharing notice and requires Allow & Send. Selected prompts, attachments and tool results are transmitted for processing; local history and optional remote storage are separate.
 

@@ -1,5 +1,5 @@
-OPENRESPONSES 2.6 — LOCAL APP STORE COPY
-Updated September 8, 2026. Prepared locally; not uploaded to App Store Connect.
+OPENRESPONSES 2.7 — LOCAL APP STORE COPY
+Updated September 24, 2026. Generated from fastlane/metadata and docs/releases/v2.7/TestFlightNotes.txt; headings are not field content.
 
 NAME
 OpenResponses
@@ -8,13 +8,13 @@ SUBTITLE
 Responses API & Voice Tools
 
 PROMOTIONAL TEXT
-Explore current OpenAI models, continuing voice, MCP tools and browser automation, with an API Workbench for raw requests, streaming and complete response exports.
+Try GPT-6 Sol, Astra and Luna and GPT Image 2.5 in a native Responses API playground with voice, MCP tools, browser automation and a raw-request Workbench.
 
 DESCRIPTION
 OpenResponses is a native iPhone and iPad playground for the OpenAI Responses API. Bring your own API key, control your requests, inspect tool activity and explore current models in SwiftUI.
 
 CHAT WITH CONTROL
-• Choose from a shared catalog including GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, alongside earlier supported models.
+• Choose GPT-6 Sol, Astra or Luna, the GPT-5.6 family or earlier supported models. Newer general-purpose releases in your account's model list are recognized automatically.
 • Adjust compatible reasoning, context, verbosity, image and tool settings.
 • Stream replies, inspect API-provided reasoning summaries, follow token usage and review request/response details.
 • Save prompt presets, attach photos and documents, export conversations and keep local history.
@@ -27,7 +27,7 @@ API WORKBENCH
 
 VOICE, IMAGES AND TOOLS
 • Have continuing Realtime voice conversations with microphone mute and interruption handling.
-• Generate images with GPT Image 2 and supported partial previews.
+• Generate and edit images with GPT Image 2.5 Flare or Sunburst, up to Max quality, with partial previews.
 • Use hosted web search with sources, Code Interpreter and file search when enabled.
 • Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
 • Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
@@ -47,69 +47,37 @@ YOUR KEY, VISIBLE DATA FLOW
 Requires iOS 17 or later. Live features need an OpenAI API key with appropriate billing and model/tool access; third-party tools may need their own accounts and permissions. Feature availability and service limits vary. AI output can be inaccurate; verify important information before acting.
 
 WHAT'S NEW
-OpenResponses 2.6 expands the playground with current models, a new API Workbench, continuing voice conversations, and a more dependable tool and storage engine.
+OpenResponses 2.7 adds OpenAI's newest models and prepares the app for the releases that follow.
 
-CURRENT MODELS AND CONTROLS
-• Shared model catalog for GPT-6 Astra and GPT-5.6 Sol, Terra and Luna, with model-aware reasoning and request settings.
-• GPT Image 2 controls and partial image previews; current Realtime and transcription models.
-• Optional automatic compaction, hosted shell, tool search, async/programmatic calling and multi-agent responses for supported configurations. Model and tool availability depends on your API account.
+NEW MODELS
+• GPT-6 Sol, the new default for new presets, alongside GPT-6 Astra and GPT-6 Luna, with every reasoning level each model supports, from None to Max.
+• GPT Image 2.5 Flare and Sunburst, with the new X-High and Max quality settings and partial previews. GPT Image 2 remains available.
+• Later general-purpose GPT releases that appear in your account's model list are recognized automatically, with current reasoning and tool controls.
 
-NEW API WORKBENCH
-• Edit literal JSON without smart quotes; recover request drafts after relaunch and confirm replacement before discarding edits.
-• Explore HTTP, streaming and WebSocket responses, with invalid schemas rejected before sending.
-• Inspect raw events, export complete responses, count input tokens and compact context.
-• Retrieve or cancel background responses, inspect known conversations, continue client tool calls with real results, and try steering and current tool templates.
+STAYING CURRENT AS OLDER MODELS RETIRE
+• Voice sessions saved with a Realtime model OpenAI is retiring switch to GPT Realtime 2.1.
+• The offline model list leaves out models with announced shutdowns. Your account's live model list and the model ID field still reach anything your API project can use.
+• Image quality adjusts automatically when you switch to an image model that does not accept the chosen setting.
 
-VOICE THAT KEEPS GOING
-• More reliable listening after the assistant answers, interruption handling, mute and audio-route recovery.
-• Corrected microphone format conversion and playback completion so the voice bars do not remain stuck in a speaking state.
-
-MCP, WEB SEARCH AND BROWSER TOOLS
-• New Connections page with provider browser sign-in, several accounts per chat, account naming, reconnect and permissions.
-• 44 catalog entries plus live MCP Registry search. Providers requiring app registration or callback setup are clearly labeled.
-• Secure OAuth refresh and hosted tool discovery with schema inspection, cancellation and bounded retries.
-• More reliable on-device browser navigation, precise page-element actions, back/forward controls and correctly sized screenshots.
-• Shared browser action limits, deadlines and cancellation; safer recovery from stale callbacks and duplicate tool calls.
-• Corrected hosted web-search settings and clearer source/citation handling.
-
-CONVERSATIONS AND ACTIVITY
-• Richer response artifacts, tool results, image previews and multi-agent activity.
-• Complete compacted context and better hydration of known remote conversation items.
-• Safer chat switching and deletion during streaming, background save checkpoints and clearer storage errors. Existing conversations and presets remain compatible.
-
-FILES AND DEVELOPER LABS
-• File upload progress now distinguishes uploading, indexing, failure and search readiness. Check indexing again without uploading duplicates.
-• Save complete Batch output and error files through the system share sheet, including available partial results.
-• Import and validate reviewed text-chat JSONL datasets for eligible fine-tuning accounts. Chat export is clearly a draft, and restricted service availability is explained.
-• Complete cursor pagination for supported file/job lists and improved Notion search pagination.
-
-Retained Assistant JSON can still be imported into Responses presets; retired live Assistants operations are disabled. Demo Mode, Keychain credentials, first-send consent and existing Apple/Notion integrations remain available.
+RELIABILITY
+• MCP tool discovery uses GPT-6 Luna, the lowest-cost current model.
+• Concurrency and memory-handling fixes in the API Workbench, conversation saving and voice recording.
+• The Computer Use notice now explains that approval is requested when OpenAI flags a safety check.
 
 KEYWORDS
-OpenAI,Responses,API,AI,voice,MCP,developer,playground,prompts,chat,tools,JSON,images
+AI,MCP,playground,prompts,chat,JSON,images,gpt,reasoning,assistant,llm,agent,realtime,browser
 
 TESTFLIGHT WHAT TO TEST CANDIDATE
-OpenResponses 2.6 release-candidate test guide
-
-Use the candidate containing the completed September source changes. The previously uploaded build 38 predates those working-tree changes.
+OpenResponses 2.7 test guide
 
 Please test:
-• Upgrade with existing chats and presets; switch chats during streaming, stop a response, delete an active chat, background and reopen the app.
-• Speak for several turns in voice mode. Interrupt an answer, mute/unmute, change audio routes and recover from an interruption. Check that the visualizer returns to listening.
-• Try Astra/Sol/Terra/Luna settings appropriate to your account. Verify reasoning controls and actual tool results, including cancellation.
-• Open Settings → Model → API Workbench. Inspect/export a response, count input tokens, try compaction, and continue a client tool call with its actual call ID.
-• Discover a configured MCP server, inspect its tools, refresh, cancel and check an authentication failure. Private OAuth servers may need separate setup.
-• Navigate public pages with browser tools, use back/forward, type into a harmless form and stop a run. Check source links from hosted web search.
-• Upload a searchable file and observe indexing, partial failure and Check Indexing Again.
-• Save complete available Batch output/error files. Import a reviewed JSONL dataset and inspect validation errors without starting a paid training job unless you intend to.
+• Open the model list and choose GPT-6 Sol, GPT-6 Astra and GPT-6 Luna where your API project has access. Try None through Max reasoning where offered, and confirm web search, file search and function tools return results.
+• Settings → Image generation: choose GPT Image 2.5 Flare or Sunburst and try X-High or Max quality. Switch to GPT Image 2 and confirm the quality falls back to High instead of the request failing.
+• Start a voice session. A Realtime model saved by an earlier version should connect as GPT Realtime 2.1.
+• Refresh tool discovery for a configured MCP server.
+• Upgrade over 2.6 with existing chats and presets; saved chats, presets and model choices should be unchanged.
 
-Report the build number, device/OS, steps, expected result and actual result. Remove credentials and private conversation content from diagnostic material before sharing.
-
-Known boundaries: remote history retrieves known IDs rather than enumerating the whole account; browser automation cannot handle every CAPTCHA/frame/native-input flow; model, MCP and fine-tuning access depends on your accounts. Retired Assistants live operations are disabled; local JSON migration remains.
-
-MCP account pass: connect Notion through its browser login; cancel/retry, rename accounts, select several per chat, discover and restrict tools, and reconnect after expiry. Check registry search and provider-setup labels.
-
-Workbench recovery: type an unfinished request, relaunch, and verify the draft and selectors survive. Cancel template replacement and try an invalid schema; no network request should start.
+Report the build number, device and OS, steps, expected result and actual result. Remove credentials and private conversation content before sharing diagnostics.
 
 SUPPORT URL
 https://github.com/Gunnarguy/OpenResponses/issues

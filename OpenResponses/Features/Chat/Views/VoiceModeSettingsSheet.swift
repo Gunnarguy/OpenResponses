@@ -21,10 +21,12 @@ struct VoiceModeSettingsSheet: View {
 
                 Section(header: Text("Model Selection")) {
                     Picker("Model", selection: $realtimeModel) {
-                        Text("gpt-realtime-2.1").tag("gpt-realtime-2.1")
-                        Text("gpt-realtime-2.1-mini").tag("gpt-realtime-2.1-mini")
+                        ForEach(CurrentModelCatalog.realtimeModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
                     }
                     .pickerStyle(.segmented)
+                    .onAppear { realtimeModel = CurrentModelCatalog.supportedRealtimeModel(realtimeModel) }
                 }
                 
                 Section(header: Text("Voice configuration")) {

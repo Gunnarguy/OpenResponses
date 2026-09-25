@@ -46,6 +46,9 @@ jobs:
           PYTHON
 
       - name: Run unit and integration tests
+        # BrowserLiveSiteTests loads example.com and iana.org in WebKit. Hosted runners lose that
+        # network path often enough to fail unrelated pushes (runs 34267002652 and 35919359539),
+        # so it runs locally instead of here.
         run: |
           set -o pipefail
           xcodebuild test \
@@ -53,6 +56,7 @@ jobs:
             -scheme OpenResponses \
             -destination "platform=iOS Simulator,id=$TEST_SIMULATOR_ID" \
             -only-testing:OpenResponsesTests \
+            -skip-testing:OpenResponsesTests/BrowserLiveSiteTests \
             -parallel-testing-enabled NO \
             -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult \

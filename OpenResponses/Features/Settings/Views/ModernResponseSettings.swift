@@ -28,7 +28,7 @@ struct ModernResponseSettings: View {
                 Toggle("Hosted shell", isOn: $viewModel.activePrompt.currentOptions.hostedShell)
                 Group {
                     Toggle("Async lookups", isOn: $viewModel.activePrompt.currentOptions.asyncTools)
-                        .disabled(CurrentModelCatalog.family(viewModel.activePrompt.openAIModel) != "gpt-6-astra")
+                        .disabled(!CurrentModelCatalog.supportsAsyncTools(viewModel.activePrompt.openAIModel))
                     Toggle("Programmatic tool calling", isOn: $viewModel.activePrompt.currentOptions.programmaticTools)
                     Toggle("Multi-agent beta", isOn: $viewModel.activePrompt.currentOptions.multiAgent)
                     if viewModel.activePrompt.currentOptions.multiAgent {
@@ -42,15 +42,17 @@ struct ModernResponseSettings: View {
                 Text("Tool search defers function and MCP schemas until needed. Shell commands run in an OpenAI container. Pro mode uses more tokens; all-turn reasoning reuses compatible prior reasoning.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Text("Choose Astra or a GPT-5.6 model for these capabilities.").foregroundStyle(.secondary)
+                Text("Choose a GPT-6 or GPT-5.6 model for these capabilities.").foregroundStyle(.secondary)
             }
             NavigationLink("API Workbench") { APIWorkbenchView() }
         }
         Section("Image generation") {
             Picker("Image model", selection: $viewModel.activePrompt.imageGenerationModel) {
-                Text("GPT Image 2").tag("gpt-image-2")
-                if viewModel.activePrompt.imageGenerationModel != "gpt-image-2" {
-                    Text("\(viewModel.activePrompt.imageGenerationModel) · older model").tag(viewModel.activePrompt.imageGenerationModel)
+                ForEach(CurrentModelCatalog.imageModels, id: \.self) { model in
+                    Text(CurrentModelCatalog.imageModelName(model)).tag(model)
+                }
+                if !CurrentModelCatalog.imageModels.contains(viewModel.activePrompt.imageGenerationModel) {
+                    Text(CurrentModelCatalog.imageModelName(viewModel.activePrompt.imageGenerationModel)).tag(viewModel.activePrompt.imageGenerationModel)
                 }
             }
             Picker("Action", selection: $viewModel.activePrompt.currentOptions.imageAction) {
@@ -64,7 +66,10 @@ struct ModernResponseSettings: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
-        .onChange(of: viewModel.activePrompt.imageGenerationModel) { _, _ in viewModel.saveActivePrompt() }
+        .onChange(of: viewModel.activePrompt.imageGenerationModel) { _, model in
+            viewModel.activePrompt.imageGenerationQuality = CurrentModelCatalog.normalizedImageQuality(viewModel.activePrompt.imageGenerationQuality, model: model)
+            viewModel.saveActivePrompt()
+        }
         Section("Custom tool") {
             Toggle("Enable custom tool", isOn: $viewModel.activePrompt.enableCustomTool)
             if viewModel.activePrompt.enableCustomTool {

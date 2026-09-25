@@ -237,7 +237,7 @@ struct VoiceModeView: View {
             }
             service.delegate = delegateWrapper
             service.connect(
-                model: realtimeModel,
+                model: CurrentModelCatalog.supportedRealtimeModel(realtimeModel),
                 voice: voice,
                 instructions: instructions,
                 modalities: modalities

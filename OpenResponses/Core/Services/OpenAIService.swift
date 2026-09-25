@@ -1104,7 +1104,7 @@ class OpenAIService: OpenAIServiceProtocol {
                             }
                             let isLocalRead = prompt.enableCustomTool && name == prompt.customToolName && ["echo", "calculator"].contains(prompt.customToolExecutionType)
                             guard ResponseTurnRunner.concurrentFunctions.contains(name) || isLocalRead else { continue }
-                            if prompt.currentOptions.asyncTools, !prompt.currentOptions.programmaticTools, CurrentModelCatalog.family(prompt.openAIModel) == "gpt-6-astra" { json[index]["async"] = true }
+                            if prompt.currentOptions.asyncTools, !prompt.currentOptions.programmaticTools, CurrentModelCatalog.supportsAsyncTools(prompt.openAIModel) { json[index]["async"] = true }
                             if prompt.currentOptions.programmaticTools { json[index]["allowed_callers"] = ["direct", "programmatic"] }
                         }
                         if prompt.currentOptions.programmaticTools { json.append(["type": "programmatic_tool_calling"]) }
@@ -1190,6 +1190,9 @@ class OpenAIService: OpenAIServiceProtocol {
         var configured = tool
         let options = prompt.currentOptions
         configured["action"] = ["auto", "generate", "edit"].contains(options.imageAction) ? options.imageAction : "auto"
+        if let quality = configured["quality"] as? String {
+            configured["quality"] = CurrentModelCatalog.normalizedImageQuality(quality, model: configured["model"] as? String ?? prompt.imageGenerationModel)
+        }
         if isStreaming, options.partialImages > 0 { configured["partial_images"] = min(3, options.partialImages) }
         let background = prompt.imageGenerationBackground.trimmingCharacters(in: .whitespacesAndNewlines)
         if !background.isEmpty {
@@ -3363,7 +3366,7 @@ class OpenAIService: OpenAIServiceProtocol {
                 "container": ["type": "auto"],
             ]
         case "image_generation":
-            // Image generation parameters for gpt-image-1 with enhanced capabilities
+            // Image generation parameters for the current default image model
             return [
                 "type": "image_generation",
                 "model": CurrentModelCatalog.imageModel,

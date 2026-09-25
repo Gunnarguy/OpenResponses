@@ -150,7 +150,7 @@ public enum APICapabilities {
                 let fileIds = containerInfo?.fileIds ?? legacyTopLevelFileIds
                 self = .codeInterpreter(containerType: containerType, fileIds: fileIds)
             case "image_generation":
-                let model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-image-1"
+                let model = try container.decodeIfPresent(String.self, forKey: .model) ?? CurrentModelCatalog.imageModel
                 let size = try container.decodeIfPresent(String.self, forKey: .size) ?? "auto"
                 let quality = try container.decodeIfPresent(String.self, forKey: .quality) ?? "high"
                 let outputFormat = try container.decodeIfPresent(String.self, forKey: .outputFormat) ?? "png"

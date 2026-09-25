@@ -143,7 +143,7 @@ struct MCPDiscoveryConfiguration {
 
     var body: [String: Any] {
         // Independent of chat history, instructions, tools, background mode and experimental options.
-        ["model": "gpt-5.6-luna", "input": "Discover the configured MCP tools. Do not call tools.",
+        ["model": CurrentModelCatalog.utilityModel, "input": "Discover the configured MCP tools. Do not call tools.",
          "tools": [tool], "tool_choice": "none", "store": false, "stream": true, "max_output_tokens": 32]
     }
 

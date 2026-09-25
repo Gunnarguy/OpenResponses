@@ -765,6 +765,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testModernControlsApplyToInitialAndToolContinuationRequests() throws {
         var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-6-astra"
         prompt.currentOptions.automaticCompaction = true
         prompt.currentOptions.compactThreshold = 120_000
         prompt.currentOptions.reasoningContext = "all_turns"
@@ -821,7 +822,7 @@ final class OpenAIServiceTests: XCTestCase {
         prompt.currentOptions.partialImages = 9
         prompt.currentOptions.imageAction = "edit"
         let tool = (buildRequest(prompt: prompt, stream: true)["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "image_generation" }
-        XCTAssertEqual(tool?["model"] as? String, "gpt-image-2")
+        XCTAssertEqual(tool?["model"] as? String, CurrentModelCatalog.imageModel)
         XCTAssertEqual(tool?["output_format"] as? String, "png")
         XCTAssertEqual(tool?["partial_images"] as? Int, 3)
         XCTAssertEqual(tool?["action"] as? String, "edit")
@@ -847,6 +848,76 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertFalse(CurrentModelCatalog.isModern("gpt-6-astra-audio"))
         XCTAssertTrue(CurrentModelCatalog.isRetired("computer-use-preview"))
         XCTAssertFalse(CurrentModelCatalog.recommended.contains("computer-use-preview"))
+    }
+
+    func testGPT6SolAndLunaAreCurrentModelsWithTheFullReasoningRange() {
+        for model in ["gpt-6-sol", "gpt-6-luna"] {
+            XCTAssertTrue(CurrentModelCatalog.isModern(model), model)
+            XCTAssertTrue(CurrentModelCatalog.recommended.contains(model), model)
+            XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: model), ["none", "low", "medium", "high", "xhigh", "max"])
+            let capabilities = ModelCompatibilityService.shared.getCapabilities(for: model)
+            XCTAssertNotNil(capabilities, "\(model) must appear in the model picker")
+            XCTAssertTrue(ModelCompatibilityService.shared.isToolSupported(.computer, for: model))
+            XCTAssertEqual(ModelCompatibilityService.shared.defaultReasoningEffort(for: model), "medium")
+
+            var prompt = Prompt.defaultPrompt()
+            prompt.openAIModel = model
+            prompt.reasoningEffort = "none"
+            prompt.temperature = 0.7
+            let request = buildRequest(prompt: prompt)
+            XCTAssertEqual(request["model"] as? String, model)
+            XCTAssertEqual((request["reasoning"] as? [String: Any])?["effort"] as? String, "none")
+            XCTAssertNil(request["temperature"])
+            XCTAssertTrue(((request["tools"] as? [[String: Any]]) ?? []).contains { $0["type"] as? String == "web_search" })
+        }
+        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6-sol")
+        XCTAssertEqual(Prompt.defaultPrompt().openAIModel, "gpt-6-sol")
+        XCTAssertFalse(CurrentModelCatalog.supportsAsyncTools("gpt-6-sol"))
+        XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools("gpt-6-astra-2026-09-03"))
+    }
+
+    func testLaterGeneralReleasesAreRecognizedButSpecializedModelsAreNot() {
+        for model in ["gpt-6.1-sol", "gpt-7", "gpt-7-luna-2027-03-01", "GPT-6-SOL", "gpt-5.6", "gpt-5.6-terra-2026-06-01"] {
+            XCTAssertTrue(CurrentModelCatalog.isModern(model), model)
+        }
+        for model in ["gpt-5.6-cyber", "gpt-realtime-2.1", "gpt-image-2.5-flare", "gpt-6-sol-transcribe", "gpt-live-1",
+                      "gpt-5.5", "gpt-oss-120b", "gpt-6-astra-audio", "gpt-4o", "o3", "gpt-6-sol-mini-preview", "gpt-daybreak-red-latest"] {
+            XCTAssertFalse(CurrentModelCatalog.isModern(model), model)
+        }
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.1-sol").first, "none")
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-7-astra").first, "low")
+        XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-7-sol"), CurrentModelCatalog.priority("gpt-6-sol"))
+        XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-6-sol"), CurrentModelCatalog.priority("gpt-5.6-sol"))
+        XCTAssertEqual(CurrentModelCatalog.family("gpt-6-luna-2026-09-22"), "gpt-6-luna")
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.1-sol"), "Current generation model")
+        for retiring in ["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3"] {
+            XCTAssertFalse(CurrentModelCatalog.legacy.contains(retiring), retiring)
+        }
+    }
+
+    func testImageQualityFollowsTheChosenImageModel() {
+        XCTAssertTrue(CurrentModelCatalog.supportsExtendedImageQuality("gpt-image-2.5-sunburst-2026-09-08"))
+        XCTAssertFalse(CurrentModelCatalog.supportsExtendedImageQuality("gpt-image-2"))
+        XCTAssertEqual(CurrentModelCatalog.normalizedImageQuality("max", model: "gpt-image-2"), "high")
+        XCTAssertEqual(CurrentModelCatalog.normalizedImageQuality("max", model: "gpt-image-2.5-flare"), "max")
+        XCTAssertEqual(CurrentModelCatalog.normalizedImageQuality("hd", model: "gpt-image-2.5-flare"), "auto")
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableImageGeneration = true
+        prompt.imageGenerationQuality = "max"
+        func imageTool() -> [String: Any]? {
+            (buildRequest(prompt: prompt)["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "image_generation" }
+        }
+        prompt.imageGenerationModel = "gpt-image-2.5-sunburst"
+        XCTAssertEqual(imageTool()?["quality"] as? String, "max")
+        prompt.imageGenerationModel = "gpt-image-2"
+        XCTAssertEqual(imageTool()?["quality"] as? String, "high", "gpt-image-2 rejects max; send the nearest accepted value")
+    }
+
+    func testRetiringRealtimeModelsMoveToTheCurrentDefault() {
+        XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime"), "gpt-realtime-2.1")
+        XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime-mini"), "gpt-realtime-2.1")
+        XCTAssertEqual(CurrentModelCatalog.supportedRealtimeModel("gpt-realtime-2.1-mini"), "gpt-realtime-2.1-mini")
     }
 
     func testTokenCountExcludesGenerationAndTransportFields() {

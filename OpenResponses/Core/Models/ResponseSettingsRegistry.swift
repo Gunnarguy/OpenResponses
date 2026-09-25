@@ -26,7 +26,7 @@ struct ResponseSettingsRegistry {
             exposure: .primary,
             title: "Model",
             description: "The OpenAI model to use for this request.",
-            defaultValueDescription: "gpt-6-astra"
+            defaultValueDescription: "gpt-6-sol"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "reasoningEffort",
@@ -188,7 +188,7 @@ struct ResponseSettingsRegistry {
             exposure: .advanced,
             title: "Image Model",
             description: "Model used for generation.",
-            defaultValueDescription: "dall-e-3",
+            defaultValueDescription: "gpt-image-2.5-flare",
             requiresTool: "image_generation"
         ),
         ResponseSettingDescriptor(
@@ -206,8 +206,8 @@ struct ResponseSettingsRegistry {
             exposure: .advanced,
             title: "Image Quality",
             description: "Quality level.",
-            defaultValueDescription: "standard",
-            validValues: ["standard", "hd"],
+            defaultValueDescription: "high",
+            validValues: ["auto", "low", "medium", "high", "xhigh", "max"],
             requiresTool: "image_generation"
         ),
         ResponseSettingDescriptor(

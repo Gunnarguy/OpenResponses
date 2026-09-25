@@ -1,1 +1,1 @@
-Explore current OpenAI models, continuing voice, MCP tools and browser automation, with an API Workbench for raw requests, streaming and complete response exports.
+Try GPT-6 Sol, Astra and Luna and GPT Image 2.5 in a native Responses API playground with voice, MCP tools, browser automation and a raw-request Workbench.

@@ -44,7 +44,7 @@ enum AppleDateUtilities {
         pattern: #"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$"#
     )
 
-    static func formatISO8601(_ date: Date) -> String {
+    nonisolated static func formatISO8601(_ date: Date) -> String {
         return date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
     }
 
