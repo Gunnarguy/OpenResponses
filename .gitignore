@@ -130,6 +130,8 @@ AuthKey_*.p8
 !LICENSE.md
 !PRIVACY.md
 !docs/**/*.md
+!/AGENTS.md
+!/CLAUDE.md
 
 # Test and utility scripts
 test-*.sh
@@ -140,3 +142,6 @@ deploy-*.sh
 # Claude Code hook checkpoints and machine-local settings (kit, 2026-09-08)
 **/.claude/.state/
 .claude/settings.local.json
+
+# Python bytecode (scripts/codemap.py imported as a module)
+__pycache__/

@@ -1,0 +1,88 @@
+{
+  "schema": "codemap-config/1",
+  "project": "OpenResponses",
+  "script": "scripts/codemap.py",
+  "source_roots": [
+    "OpenResponses"
+  ],
+  "test_roots": [
+    "OpenResponsesTests",
+    "OpenResponsesUITests"
+  ],
+  "source_extensions": [
+    ".swift"
+  ],
+  "resource_extensions": [
+    ".plist",
+    ".xcstrings",
+    ".storyboard",
+    ".entitlements",
+    ".xcassets",
+    ".json",
+    ".strings",
+    ".backup"
+  ],
+  "ignore": [
+    ".DS_Store"
+  ],
+  "xcodeproj": "OpenResponses.xcodeproj",
+  "unmapped_notes": {
+    "OpenResponses/Features/Settings/Views/SettingsHomeView.swift.backup": "Stray backup copy inside the synchronized app folder, so Xcode copies it into the app bundle as a resource. No code reads it. Candidate for removal; not removed.",
+    "OpenResponses/Resources/Localization/Localizable 2.xcstrings": "iCloud conflict copy of Localizable.xcstrings, tracked since f679fa5; compiles as an unused string table. Notion roadmap row tracks removal.",
+    "OpenResponsesUITests/Info.plist": "UI test bundle plist; no target lists it as a resource (checked in project.pbxproj). Build configuration, not code."
+  },
+  "features": [
+    "app-shell",
+    "chat-turn",
+    "native-runner",
+    "hosted-tools",
+    "chat-ui",
+    "models",
+    "request-settings",
+    "mcp-connections",
+    "mcp-tools",
+    "browser",
+    "voice",
+    "voice-notes",
+    "attachments",
+    "files-vector-stores",
+    "batch",
+    "api-workbench",
+    "conversations",
+    "apple-integrations",
+    "notion",
+    "tool-providers",
+    "onboarding-keys",
+    "diagnostics",
+    "accessibility-localization",
+    "repository"
+  ],
+  "orphan_notes": {
+    "VoiceModeView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration; voice starts from InlineVoiceView in ChatView instead.",
+    "ImageSuggestionView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration and previews.",
+    "MCPDiscoverySection": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration. Discovery runs from MCPConnectionDetailView; MCPToolCatalogView and MCPDiscoveryViewModel are reachable only through this view. docs/mcp-discovery.md still describes it (DRIFT.md).",
+    "MCPDiscoveryViewModel": "Used only by MCPDiscoverySection, which nothing instantiates.",
+    "MCPToolCatalogView": "Used only by MCPDiscoverySection, which nothing instantiates.",
+    "ToolConnectionsView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration and its PreviewProvider. Its body only renders MCPConnectionsView.",
+    "ToolConnectionsViewModel": "Referenced by no type, including ToolConnectionsView in the same file. It holds the #if DEBUG loadNotionTokenFromDevFile reader (test.env from the developer's home path) and is the only user of ToolHub and NotionAuthService.",
+    "ToolHub": "Reachable only from ToolConnectionsViewModel, which nothing references, so the Notion and Google tool providers it registers are unreachable too.",
+    "NotionAuthService": "Used only by ToolConnectionsViewModel, which nothing references.",
+    "DebugConsoleView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration; ConsoleLogger in the same file is live (AppLogger, AppLoggerTests).",
+    "APIInspectorView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "WebContentTestView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "ModelCompatibilityView": "Named only by its PreviewProvider; MessageToolIndicator in the same file is live (MessageBubbleView line 62).",
+    "AudioPill": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration; likely left from the input_audio path 2.7 removed.",
+    "MCPApprovalUtils": "Named only by its declaration and tests (MCPApprovalUtilsTests, StreamingEventDecodingTests).",
+    "ResponseSettingsRegistry": "Named only by its declaration and ResponseSettingsRegistryTests; ARCHITECTURE.md says it shares configuration with the UI (DRIFT.md).",
+    "ResponseSettingDescriptor": "Used only by ResponseSettingsRegistry, which only tests use.",
+    "ImageProcessingUtils": "Named only by its declaration and tests; the UIImage extension in the same file may still be live.",
+    "MCPConfiguration": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration; with MCPConnectorConfig, RemoteMCPServer and MCPApprovalSetting it forms an older connector model the 2.6 account store (MCPConnectionStore) replaced.",
+    "TokenUsageCaption": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "FileRow": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "VectorStoreRow": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "VectorStoreSelectorView": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "OpenAINetworkClientProtocol": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration; HTTPMethod and OpenAIEndpoint are used only by it.",
+    "ConversationUpdatePayload": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration.",
+    "VectorStoreFileListResponse": "Checked 2026-09-28 with `refs`: no app file names it outside its declaration."
+  }
+}

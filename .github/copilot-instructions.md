@@ -1,5 +1,7 @@
 # OpenResponses AI Agent Coding Instructions
 
+> Feature tasks: start at `docs/ai/codemap/INDEX.md`, open only the matching slice in `docs/ai/codemap/features/`, and confirm its cited lines in the live code before editing. Where a path in this file disagrees with the code, `docs/ai/codemap/DRIFT.md` records it.
+
 ## 1. Project Identity
 
 OpenResponses is a native iPhone and iPad AI assistant client and developer playground designed to interface directly with the OpenAI Responses API (`/v1/responses`). Written in Swift and SwiftUI, the application implements a low-latency execution pipeline with zero intermediate server proxies. It features direct integration with OpenAI system tools (Web Search, Code Interpreter, Computer Use), custom Model Context Protocol (MCP) server discovery, Notion workspace integration, and native Apple device permissions (Calendar, Reminders, Contacts). It secures all user-provided API credentials inside the secure iOS Keychain.

@@ -1,0 +1,17 @@
+{
+  "description": "Codemap upkeep: at the end of a turn, name the feature-map slices (docs/ai/codemap) that the turn made stale.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && PYTHONDONTWRITEBYTECODE=1 python3 scripts/codemap.py hook stop --agent codex",
+            "timeout": 30,
+            "statusMessage": "Checking the feature map"
+          }
+        ]
+      }
+    ]
+  }
+}

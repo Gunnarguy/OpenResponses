@@ -1,0 +1,76 @@
+[
+ {
+  "id": "q1-voice",
+  "question": "How does a voice session choose between GPT-Live 1 and GPT Realtime, and which WebSocket URL does each use?",
+  "must": [
+   [
+    "OpenResponses/Core/Services/RealtimeService.swift",
+    85,
+    "isLiveModel: a model id starting with gpt-live- is a Live model"
+   ],
+   [
+    "OpenResponses/Core/Services/RealtimeService.swift",
+    116,
+    "connect(model:) picks wss://api.openai.com/v1/live/sessions or wss://api.openai.com/v1/realtime"
+   ],
+   [
+    "OpenResponses/Features/Chat/Components/InlineVoiceView.swift",
+    130,
+    "the model comes from @AppStorage(realtime_model) via CurrentModelCatalog.supportedRealtimeModel"
+   ]
+  ]
+ },
+ {
+  "id": "q2-conversation-saves",
+  "question": "Where are chat conversations saved on the device, and what decides when a save is actually written to disk?",
+  "must": [
+   [
+    "OpenResponses/Core/Services/ConversationStorageService.swift",
+    107,
+    "one JSON file per conversation, <uuid>.json, in Application Support (Documents fallback), written atomically on a serial queue"
+   ],
+   [
+    "OpenResponses/Core/Services/ConversationStorageService.swift",
+    114,
+    "scheduleSave coalesces for saveDelayNanoseconds = 750 ms (line 23) before flushScheduledSaves"
+   ],
+   [
+    "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift",
+    3652,
+    "ChatViewModel.saveConversation calls scheduleSave; flushScheduledSaves at response completion (1662)"
+   ],
+   [
+    "OpenResponses/App/OpenResponsesApp.swift",
+    25,
+    "scenePhase leaving .active starts a background task and flushes pending saves (flushConversationStorage, ChatViewModel 3658)"
+   ]
+  ]
+ },
+ {
+  "id": "q3-mcp-tokens",
+  "question": "Where are MCP OAuth access and refresh tokens stored on the device, and what refreshes an expired token before a request is sent?",
+  "must": [
+   [
+    "OpenResponses/Core/Services/MCPConnectionStore.swift",
+    260,
+    "one Keychain generic-password item, service OpenResponses, account mcpConnections.v1 (read 267, write 274)"
+   ],
+   [
+    "OpenResponses/Core/Services/MCPConnectionStore.swift",
+    175,
+    "prepare(id:) refreshes a credential that needsRefresh() through oauthClient.refresh and commits it"
+   ],
+   [
+    "OpenResponses/Core/Services/MCPAuthorization.swift",
+    257,
+    "refresh(_:) performs the refresh_token grant"
+   ],
+   [
+    "OpenResponses/Core/Services/OpenAIService.swift|OpenResponses/Core/Services/ResponsesAPIClient.swift",
+    "71|68|130",
+    "a pre-send caller: OpenAIService prepare(prompt:) at 71, or ResponsesAPIClient refreshCredentials at 68 and 130 (either counts)"
+   ]
+  ],
+  "note": "Refined 2026-09-28 before any test run, after reading MCPConnectionStore.prepare(id:)."
+ }
+]

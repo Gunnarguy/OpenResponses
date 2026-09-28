@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run by the Context OS post-edit hook (~/.claude/hooks/post-edit-check.sh) after every Edit or Write,
+# from the repository root with FILE set to the edited path. Silent unless the edit broke the feature
+# map in docs/ai/codemap: a cited line removed or changed, or a slice that no longer validates.
+[ -n "${FILE:-}" ] || exit 0
+exec env PYTHONDONTWRITEBYTECODE=1 python3 scripts/codemap.py hook edit "$FILE"
