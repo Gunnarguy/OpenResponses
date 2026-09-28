@@ -1,8 +1,8 @@
 # Current State
 
 Updated: 2026-09-28
-Branch/worktree: main in the repo root. Written before the 2.8 feature commit; local main then carries three unpushed commits on top of origin/main 2d7fedd (docs and CI, the GPT-Live interrupt fix, the 2.8 features), pushed together in the same session.
-Last verified commit: 343c3d4
+Branch/worktree: main in the repo root. origin/main is dfc028f (the three 2.8 commits, pushed 2026-09-28 16:51 PDT); this handoff is one local docs-only commit on top, left unpushed so it rides with the next push instead of starting its own Xcode Cloud build.
+Last verified commit: dfc028f
 
 ## Objective
 Ship 2.8 with everything on the Notion roadmap that Gunnar picked on 2026-09-28 ("Everything, features too"), minus Gmail and Drive, which he skipped. Code items are done; what remains is his device pass with the "2.8 phone checklist" page under the Notion roadmap, then submission.
@@ -30,6 +30,7 @@ Ship 2.8 with everything on the Notion roadmap that Gunnar picked on 2026-09-28 
 - `OpenResponsesUITests/OpenResponsesUITests.swift`, `scripts/ui_tests.sh`, `.github/workflows/ci.yml`.
 
 ## Verification
+- Push of dfc028f -> GitHub CI run 36500130939 success (Lint, Docs Check, Security Scan, Build & Test on the xcode-27 image); Xcode Cloud run 50 COMPLETE SUCCEEDED; App Store Connect lists build 50 for version 2.8 as VALID (uploaded 16:54 PDT).
 - Full unit suite, the set CI runs (`-only-testing:OpenResponsesTests -skip-testing:OpenResponsesTests/BrowserLiveSiteTests`), Xcode 27.0 and the iOS 27.0 simulator -> 314 passed, 0 failed, no test-host restart. That run followed a fix for a real crash the previous run found: `ConversationSearchIndex.update` hit Swift's exclusivity check (`store?.entries = store?.entries.filter`).
 - UI suite from a fresh install (`scripts/ui_tests.sh` does the same) -> 5 of 5: audits of chat, settings, conversations and the largest text size, and a demo-mode message round trip. Recorded but not failed: "nearly passed" contrast warnings, navigation-bar chrome, and a SwiftUI Label frame quirk on Settings → Start Demo / Exit Demo (a screenshot shows both rows whole).
 - LocalPythonRunnerTests 6 of 6 (network refused in 0.06 s; a runaway loop stopped and replaced in 7.9 s). ConversationSearchIndexTests 5 of 5 once the simulator had downloaded the English sentence-embedding asset (the first request logs "Unable to locate Asset"; the index then waits instead of caching empty vectors).
@@ -43,4 +44,4 @@ Ship 2.8 with everything on the Notion roadmap that Gunnar picked on 2026-09-28 
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Read the GitHub CI run and the Xcode Cloud run for the 2.8 push. If both pass, Gunnar installs the new build from TestFlight and works through the Notion page "2.8 phone checklist"; close each roadmap row on a pass.
+Gunnar installs 2.8 build 50 from TestFlight and works through the Notion page "2.8 phone checklist" (child of the OpenResponses roadmap page). For each item he reports, close the matching roadmap row on a pass or fix it on a fail; when the list is clear, 2.8 is ready for him to submit.
