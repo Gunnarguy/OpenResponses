@@ -168,6 +168,15 @@ enum CurrentModelCatalog {
         realtimeModels.contains(stored) ? stored : realtimeModel
     }
 
+    /// A model ID as VoiceOver should read it: "gpt-6-sol" becomes "GPT 6 Sol".
+    nonisolated static func spokenName(for id: String) -> String {
+        id.split(separator: "-").map { part -> String in
+            if part.lowercased() == "gpt" { return "GPT" }
+            guard let first = part.first, first.isLetter else { return String(part) }
+            return first.uppercased() + part.dropFirst()
+        }.joined(separator: " ")
+    }
+
     static func description(for id: String) -> String {
         switch family(id) {
         case "gpt-6-sol": return "Complex coding and agentic work · recommended"
@@ -226,6 +235,9 @@ struct ModernResponseOptions: Codable, Equatable {
     /// `file_search.ranking_options.hybrid_search` weights. Both must be set to send hybrid search.
     var hybridEmbeddingWeight: Double? = nil
     var hybridTextWeight: Double? = nil
+    /// Added in 2.8: offers the `run_python` function tool, which runs Python on this device (standard library
+    /// only, no network) after the user approves each run.
+    var localPython: Bool = false
 }
 
 extension ModernResponseOptions {
@@ -233,7 +245,7 @@ extension ModernResponseOptions {
         case automaticCompaction, compactThreshold, toolSearch, hostedShell, reasoningMode, reasoningContext
         case imageAction, partialImages, asyncTools, programmaticTools, multiAgent, maxSubagents, maxToolRounds, customToolFormat, mcpConnectionIDs
         case moderationModel, moderationInputMode, moderationOutputMode, webSearchExternalAccess, codeInterpreterMemoryLimit
-        case imageInputFidelity, imageOutputCompression, hybridEmbeddingWeight, hybridTextWeight
+        case imageInputFidelity, imageOutputCompression, hybridEmbeddingWeight, hybridTextWeight, localPython
     }
 
     init(from decoder: Decoder) throws {
@@ -263,5 +275,6 @@ extension ModernResponseOptions {
         imageOutputCompression = try c.decodeIfPresent(Int.self, forKey: .imageOutputCompression)
         hybridEmbeddingWeight = try c.decodeIfPresent(Double.self, forKey: .hybridEmbeddingWeight)
         hybridTextWeight = try c.decodeIfPresent(Double.self, forKey: .hybridTextWeight)
+        localPython = try c.decodeIfPresent(Bool.self, forKey: .localPython) ?? false
     }
 }

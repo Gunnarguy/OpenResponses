@@ -4,11 +4,11 @@
   "name": "API Workbench",
   "aliases": ["API Workbench", "Run request", "Stop connection", "Export request draft", "Count input tokens", "Delete this resource?", "Replace the current request?"],
   "purpose": "Provides a developer workbench to construct and send raw API requests over HTTP, SSE, and WebSockets with Keychain draft persistence and DELETE confirmation.",
-  "revision": "d915a2f",
+  "revision": "343c3d4",
   "verified_on": "2026-09-28",
   "entry_points": ["ModernResponseSettings.workbenchLink", "APIWorkbenchView"],
   "files": [
-    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "150134c19de1b8d42c530f6d0ed21746d22be9cf"},
+    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "3744379b4f024147119d1330a1d5286158f850cc"},
     {"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "role": "primary", "blob": "e7640b98c1ba9e811af3c0141bbe9b1a76102a97"},
     {"path": "OpenResponses/Core/Services/APIWorkbenchSession.swift", "role": "primary", "blob": "89163beb2e17be1128065569ab0700848fd819a0"},
     {"path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift", "role": "primary", "blob": "69daf996f314a9859f63af8ebb1fcf4cacd9868f"},
@@ -17,7 +17,7 @@
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f2e5cfe37b6a17e3673ba1f78c919a29d6ca39b0"}
   ],
   "nodes": [
-    {"id": "ModernResponseSettings.workbenchLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 49, "match": "            NavigationLink(\"API Workbench\") { APIWorkbenchView() }", "status": "VERIFIED"},
+    {"id": "ModernResponseSettings.workbenchLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 57, "match": "            NavigationLink(\"API Workbench\") { APIWorkbenchView() }", "status": "VERIFIED"},
     {"id": "APIWorkbenchView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 3, "match": "struct APIWorkbenchView: View {", "status": "VERIFIED"},
     {"id": "JSONCodeEditor", "kind": "view", "path": "OpenResponses/Features/Chat/Components/JSONCodeEditor.swift", "line": 4, "match": "struct JSONCodeEditor: UIViewRepresentable {", "status": "VERIFIED"},
     {"id": "APIWorkbenchSession", "kind": "service", "path": "OpenResponses/Core/Services/APIWorkbenchSession.swift", "line": 6, "match": "final class APIWorkbenchSession: ObservableObject {", "status": "VERIFIED"},
@@ -36,7 +36,7 @@
     {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "ModernResponseSettings.workbenchLink", "to": "APIWorkbenchView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 49, "match": "            NavigationLink(\"API Workbench\") { APIWorkbenchView() }"}]},
+    {"from": "ModernResponseSettings.workbenchLink", "to": "APIWorkbenchView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 57, "match": "            NavigationLink(\"API Workbench\") { APIWorkbenchView() }"}]},
     {"from": "APIWorkbenchView", "to": "JSONCodeEditor", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 210, "match": "                    JSONCodeEditor(text: $requestText, label: \"Request JSON\").font(.system(.caption, design: .monospaced)).frame(minHeight: 240).autocorrectionDisabled().textInputAutocapitalization(.never)"}]},
     {"from": "APIWorkbenchView", "to": "APIWorkbenchSession.run", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 380, "match": "            session.run(body: endpoint == .count ? ResponsesAPIClient.tokenCountBody(from: body) : body,"}]},
     {"from": "APIWorkbenchView", "to": "APIWorkbenchDraftStore.schedule", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 276, "match": "        .onChange(of: currentDraft) { _, draft in draftStore.schedule(draft) }"}]},

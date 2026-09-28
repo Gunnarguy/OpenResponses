@@ -41,6 +41,9 @@ class ChatViewModel: ObservableObject {
     }
     /// When non-nil, the user must approve first-send OpenAI data sharing before a live request is sent.
     @Published var pendingAIDataSharingConsent: AIDataSharingConsentRequest?
+    /// A `run_python` call waiting for the user to approve or decline it (ChatViewModel+LocalPython.swift).
+    @Published var pendingPythonRun: PythonRunRequest?
+    var pythonRunDecision: CheckedContinuation<Bool, Never>?
     
 
     /// Prevents multiple concurrent computer_call resolution tasks
@@ -486,7 +489,8 @@ class ChatViewModel: ObservableObject {
                 activePrompt.enableComputerUse ||
                 activePrompt.enableNotionIntegration ||
                 activePrompt.enableAppleIntegrations || activePrompt.enableCustomTool ||
-                activePrompt.enableMCPTool || activePrompt.currentOptions.hostedShell || activePrompt.currentOptions.programmaticTools
+                activePrompt.enableMCPTool || activePrompt.currentOptions.hostedShell || activePrompt.currentOptions.programmaticTools ||
+                activePrompt.currentOptions.localPython
         )
     }
 
@@ -2692,6 +2696,9 @@ class ChatViewModel: ObservableObject {
                 output = errorMsg
                 logActivity("❌ Calendar fetch failed")
             }
+
+        case "run_python":
+            output = await runPythonTool(call)
 
         case "fetchAppleReminders":
             struct FetchRemindersArgs: Decodable {
@@ -5258,6 +5265,7 @@ class ChatViewModel: ObservableObject {
 
     /// Cancels the ongoing streaming request.
     func cancelStreaming() {
+        resolvePythonRun(approved: false) // a cancelled turn must not leave a Python approval waiting
         let backgroundResponseId = activeBackgroundResponseId
         let cancellingConversationId = activeConversation?.id
         let cancellingMessageId = streamingMessageId

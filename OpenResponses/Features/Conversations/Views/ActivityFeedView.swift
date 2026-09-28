@@ -93,6 +93,8 @@ struct ActivityToggleButton: View {
                 Text("Details")
             }
             .font(.caption)
+            .frame(minHeight: 44) // Apple's minimum tap target
+            .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(visibility.isVisible ? "Hide details" : "Show details")

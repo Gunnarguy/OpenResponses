@@ -14,6 +14,7 @@ struct ChatView: View {
     @State private var uploadSuccessMessage: String? = nil // Success message after upload
     @State private var showingVoiceMode: Bool = false // To present Voice Mode
     @FocusState private var inputFocused: Bool  // Focus state for the input field
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,6 +87,10 @@ struct ChatView: View {
         .sheet(item: $viewModel.pendingAIDataSharingConsent) { _ in
             AIDataSharingConsentSheet()
                 .environmentObject(viewModel)
+        }
+        // Local Python: dismissing the sheet counts as "Don't Run".
+        .sheet(item: $viewModel.pendingPythonRun, onDismiss: { viewModel.resolvePythonRun(approved: false) }) { request in
+            PythonRunApprovalSheet(request: request) { approved in viewModel.resolvePythonRun(approved: approved) }
         }
         // Safety approval sheet for computer-use actions
         .sheet(
@@ -178,6 +183,11 @@ struct ChatView: View {
         } else {
             messagesList
         }
+        // At accessibility text sizes the notice runs to six lines; it scrolls with the chat instead of covering it.
+        if dynamicTypeSize.isAccessibilitySize {
+            aiSafetyNotice
+                .padding(.bottom, 8)
+        }
     }
 
     @ViewBuilder
@@ -212,7 +222,9 @@ struct ChatView: View {
     @ViewBuilder
     private var inputArea: some View {
         VStack(spacing: 0) {
-            aiSafetyNotice
+            if !dynamicTypeSize.isAccessibilitySize {
+                aiSafetyNotice
+            }
             // Playground-style attachment pills (replaces old SelectedImagesView/SelectedFilesView)
             AttachmentPills()
                 .environmentObject(viewModel)
@@ -280,8 +292,9 @@ struct ChatView: View {
     @ViewBuilder
     private var aiSafetyNotice: some View {
         Text("AI responses can be inaccurate or outdated. Verify critical details and keep sensitive data out of prompts.")
-            .font(.caption2)
-            .foregroundColor(.secondary)
+            .font(.footnote)
+            .foregroundStyle(Color.accessibleSecondaryText)
+            .fixedSize(horizontal: false, vertical: true)
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)

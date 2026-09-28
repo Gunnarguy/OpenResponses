@@ -1,54 +1,46 @@
 # Current State
 
 Updated: 2026-09-28
-Branch/worktree: main in the repo root. This handoff is written before two commits on top of bd8027e: (1) the codemap with its automatic upkeep, (2) the 2.8 bump; both are pushed to origin/main together, which starts an Xcode Cloud 2.8 archive.
-Last verified commit: bd8027e
+Branch/worktree: main in the repo root. Written before the 2.8 feature commit; local main then carries three unpushed commits on top of origin/main 2d7fedd (docs and CI, the GPT-Live interrupt fix, the 2.8 features), pushed together in the same session.
+Last verified commit: 343c3d4
 
 ## Objective
-Get 2.8 building: the push of the codemap and the `MARKETING_VERSION = 2.8` bump must produce a green Xcode Cloud archive that reaches App Store Connect. The codemap objective (feature index plus knowledge graph in docs/ai/codemap/, kept current by hooks) is complete with these commits; the Notion row "Feature index and relationship graph for fresh agent sessions" closes when they are on origin/main.
+Ship 2.8 with everything on the Notion roadmap that Gunnar picked on 2026-09-28 ("Everything, features too"), minus Gmail and Drive, which he skipped. Code items are done; what remains is his device pass with the "2.8 phone checklist" page under the Notion roadmap, then submission.
 
 ## Status
-- Codemap: 24 slices (23 features plus `repository`), stamped at bd8027e, `check` clean; INDEX.md, DRIFT.md (14 rows), UNMAPPED.md (3 files, 79 unreachable types) generated. Fresh-session test in docs/ai/codemap/eval/RESULTS.md: 11 of 11 answers complete with the map against 10 of 11 without, but 29% more cumulative input; no token saving is claimed.
-- Automatic upkeep (nobody runs the scripts by hand): `.claude/fast-check` after each Claude edit, a Stop hook in `.claude/settings.json` for Claude Code, a Stop hook in `.codex/hooks.json` for Codex, and `.githooks/pre-commit` (warns only; `core.hooksPath` is set to `.githooks` in this clone's .git/config). All call `python3 scripts/codemap.py hook <event>`; table in docs/ai/codemap/README.md "Automatic upkeep".
-- 2.8: Gunnar created 2.8 in App Store Connect on 2026-09-28; both `MARKETING_VERSION` lines in project.pbxproj read 2.8.
-
-## Completed (2026-09-28)
-- Notion roadmap database: https://app.notion.com/p/3e949a74d54f81a89c34d9d9fc4e420e; IDs in `.claude/skills/notion-roadmap/SKILL.md` (gitignored).
-- `scripts/codemap.py` 1.1.0, standard library, runs on Python 3.9 and 3.12: find, owner, refs, check, affected, derive, review, orphans, refresh, hook, stamp, index, unmapped, inventory. `affected` and `refresh` judge staleness by content (blob hash recorded by `stamp`, or a citation that no longer matches), so a commit alone never marks a slice stale.
-- Pointer: root `AGENTS.md`, `CLAUDE.md` (`@AGENTS.md`), `.gitignore` allowlists both and ignores `__pycache__/`, one line atop `.github/copilot-instructions.md`.
-- Skill `~/.claude/skills/codemap/` (outside the repo): SKILL.md, scripts/codemap.py (identical to the repo copy), scripts/measure_fresh.py, templates/ including the four hook files.
+- Done in code, tested in the simulator: GPT-Live interrupt fix (LiveInterruptionGate), Local Python (Pyodide 314.0.7, run_python tool with per-run approval), search conversations by meaning (ConversationSearchIndex), MCP sign-in through an HTTPS callback (page live at https://gunzino.me/openresponses/oauth/callback.html, Gunzino commit pushed and deployed), accessibility fixes plus UI audit tests, docs corrected (DRIFT.md 0 rows), GitHub CI moved to the xcode-27 image, duplicate string catalog removed. CHANGELOG.md has the 2.8 entry.
+- Needs Gunnar on a device (Notion page "2.8 phone checklist"): GPT-Live session and interrupt feel, audio routes, voice notes, 2.7 Responses options, private MCP sign-in and refresh, HTTPS sign-in with monday.com/Airtable/Intercom/Vercel, Local Python end to end, search by meaning (the iOS simulator has no sentence-embedding model), VoiceOver, largest text, iPad.
+- Skipped for 2.8: Gmail and Drive (Notion row moved to Future Backlog with the reasons: connector_id deprecated for models after September 1, 2026; Google's Workspace MCP servers are preview-only and need a confidential client; Gmail read scopes are restricted).
 
 ## Active Constraints
-- Saved presets decode with synthesized Codable via try?; never add a non-optional Prompt property. New options go in ModernResponseOptions (tolerant decoder).
-- Every push to main starts an Xcode Cloud archive; bump MARKETING_VERSION after each release. No attribution trailers. Wrap git in gtimeout 60. DerivedData outside iCloud.
+- Saved presets decode with synthesized Codable via try?; never add a non-optional Prompt property. New options go in ModernResponseOptions (tolerant decoder); `localPython` was added there.
+- Every push to main starts an Xcode Cloud archive and GitHub CI (now on the xcode-27 preview image, which can queue). Bump MARKETING_VERSION after each release. No attribution trailers. Wrap git in gtimeout 60. DerivedData outside iCloud.
 - API facts come from OpenAI's Markdown reference (https://developers.openai.com/api/reference/llms.txt), with a fetch date. No OpenAI key on this Mac.
-- Compare live ASC fields with the last committed copy before PATCHing (skip hand edits).
-- Use the dedicated simulator "OpenResponses tests" (CC71613C-046E-4386-B24E-9512FD114884, iPhone 18 Pro, iOS 27.0); simulators are shared across sessions.
-- Plans, decisions and traps live in the Notion roadmap (skill `notion-roadmap`); CHANGELOG.md stays the record of what shipped.
-- Feature tasks start at `docs/ai/codemap/INDEX.md`. When the codemap Stop hook lists stale slices, update them and run `python3 scripts/codemap.py refresh <ids>`; its reminder is not a request to commit.
-- 2026-09-28 (move to a decisions log when the repo has one): bulk delegated work runs on Antigravity `gemini-3.8-flash-high`; live `claude -p` tests run on a current model (`claude-sonnet-5-5`), not Haiku. Codex runs `.codex/hooks.json` only after Gunnar trusts it once with `/hooks` in Codex.
+- Simulator for this repo: "OpenResponses tests" 02DCAC26-B0FB-4AD4-B39A-9F48BFCEF277 (iPhone 18 Pro, iOS 27.0, created 2026-09-28; `xcrun simctl delete` it to remove). Simulators are shared across sessions. UI tests: `bash scripts/ui_tests.sh` (uninstalls the app first, so earlier chats do not change the audits).
+- An xcodebuild test run in this session twice finished its tests and then hung; the tests' own output was complete. If a run stops printing after "Executed N tests", kill that xcodebuild.
+- Local Python must never download code (App Store guideline 2.5.2): packages stay out, python-runner.html refuses network APIs, and the content rule list blocks every load but the runtime scheme.
+- Feature tasks start at `docs/ai/codemap/INDEX.md`; the codemap Stop hook names stale slices after code changes.
+- Plans live in the Notion roadmap (skill `notion-roadmap`); CHANGELOG.md records what shipped.
 
 ## Working Set
-- `scripts/codemap.py`: the tool; the automation is the section after `# ---- automation`.
-- `docs/ai/codemap/`: README.md (contract and the upkeep table), config.json, features/*.json, INDEX.md, DRIFT.md, UNMAPPED.md, eval/ (questions with ground truth, RESULTS.md).
-- `.claude/settings.json`, `.claude/fast-check`, `.codex/hooks.json`, `.githooks/pre-commit`: the hooks.
-- `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.github/copilot-instructions.md`: the pointer.
-- `OpenResponses.xcodeproj/project.pbxproj`: MARKETING_VERSION 2.8 (its own commit).
+- `OpenResponses/Core/Services/LocalPythonRunner.swift`, `OpenResponses/Resources/Pyodide/` (runtime, SHA-256 of the release tarball checked against GitHub's digest), `ChatViewModel+LocalPython.swift`, `PythonRunApprovalSheet.swift`.
+- `OpenResponses/Core/Services/ConversationSearchIndex.swift`, `ConversationListView.swift`.
+- `OpenResponses/Core/Services/MCPAuthorization.swift` (webRedirectURI fallback); the page is `public/openresponses/oauth/callback.html` in the Gunzino repository.
+- `OpenResponses/Core/Services/RealtimeService.swift`, `RealtimeAudioPipeline.swift` (LiveInterruptionGate).
+- `OpenResponsesUITests/OpenResponsesUITests.swift`, `scripts/ui_tests.sh`, `.github/workflows/ci.yml`.
 
 ## Verification
-- `python3 scripts/codemap.py check` -> "codemap check at bd8027e: 24 slices, 0 errors, 0 warnings, 0 notes"; `affected` -> "no slice is affected" (both under /usr/bin/python3 3.9.6 as well).
-- `xcodebuild -project OpenResponses.xcodeproj -scheme OpenResponses -showBuildSettings` -> "MARKETING_VERSION = 2.8".
-- Hooks, in a scratch clone: a harmless edit -> fast-check silent, exit 0; an edit to a cited line -> exit 1 naming the voice slice, relayed by `~/.claude/hooks/post-edit-check.sh` as "Fast check FAILED"; Stop hook -> additionalContext naming voice, silent on the same state and when `stop_hook_active`; `--agent codex` -> `{"decision":"block","reason":...}`; a committed change is still found from the session baseline; a new unclaimed file is listed; pre-commit printed the warning and the commit went ahead; `refresh` with no ids re-stamped only voice; no map -> exit 0.
-- Live Claude Code 2.1.284 runs in the clone (`--setting-sources project`): Haiku 4.5 and Sonnet 5.5 each answered DONE, were continued by the Stop hook, re-cited voice.json and ran `refresh voice`; `check` 0 errors afterwards; $0.18 and $0.20.
-- `claude -p` and `codex exec` each quoted the AGENTS.md instruction from a clone (CLI 2.1.263, codex-cli 0.153.4).
-- No app build or test run: no Swift source changed.
+- Full unit suite, the set CI runs (`-only-testing:OpenResponsesTests -skip-testing:OpenResponsesTests/BrowserLiveSiteTests`), Xcode 27.0 and the iOS 27.0 simulator -> 314 passed, 0 failed, no test-host restart. That run followed a fix for a real crash the previous run found: `ConversationSearchIndex.update` hit Swift's exclusivity check (`store?.entries = store?.entries.filter`).
+- UI suite from a fresh install (`scripts/ui_tests.sh` does the same) -> 5 of 5: audits of chat, settings, conversations and the largest text size, and a demo-mode message round trip. Recorded but not failed: "nearly passed" contrast warnings, navigation-bar chrome, and a SwiftUI Label frame quirk on Settings → Start Demo / Exit Demo (a screenshot shows both rows whole).
+- LocalPythonRunnerTests 6 of 6 (network refused in 0.06 s; a runaway loop stopped and replaced in 7.9 s). ConversationSearchIndexTests 5 of 5 once the simulator had downloaded the English sentence-embedding asset (the first request logs "Unable to locate Asset"; the index then waits instead of caching empty vectors).
+- Meaning-based similarity on macOS 27, English sentence embedding revision 1: related passages 0.21 to 0.28, unrelated 0.02 to 0.18; the cut-off is 0.15.
+- `https://gunzino.me/openresponses/oauth/callback.html` -> HTTP 200, forwards to openresponses://mcp/oauth/callback, no analytics, not in the sitemap; Gunzino deploy run 36495560317 succeeded.
+- Codemap: `check` 0 errors, 0 warnings; DRIFT.md 0 rows; 25 slices with the new `local-python`.
 
 ## Blockers / Unknowns
-- The Codex Stop hook is verified with simulated input only, not in a live Codex session; Codex skips it until `/hooks` trusts it.
-- Hooks keep citations true but do not rename graph nodes: both live runs kept the node id `defaults:realtime_barge_in` after renaming that key.
-- The ground-truth answers in eval/questions.json must never be copied into a test clone.
-- GPT-Live 1, voice-note transcription and the 2.7 Responses fields are verified against the reference and unit tests only (no key on this Mac).
+- Everything on the phone checklist is unverified on a device, including whether the Live interruption gate's thresholds (speech 0.35, onset 0.18 s, hold 0.6 s) feel right.
+- Bundling Pyodide adds about 13.5 MB before compression; App Review has not seen Local Python yet.
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Open App Store Connect > Xcode Cloud for OpenResponses and read the run started by the push of the two commits after bd8027e. If it passes "Preparing build for App Store Connect", set the Notion roadmap row for the 2.8 bump (page 3e949a74-d54f-8179-bee1-d85eb85e5c62) to Completed with today's date. If it fails, read the failing step's log in that run before changing anything, and report it to Gunnar with the fix.
+Read the GitHub CI run and the Xcode Cloud run for the 2.8 push. If both pass, Gunnar installs the new build from TestFlight and works through the Notion page "2.8 phone checklist"; close each roadmap row on a pass.

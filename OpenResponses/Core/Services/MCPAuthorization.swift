@@ -24,6 +24,10 @@ nonisolated enum MCPAuthorizationError: LocalizedError, Equatable {
 
 nonisolated enum MCPOAuthSecurity {
     static let redirectURI = "openresponses://mcp/oauth/callback"
+    /// For providers that register only HTTPS redirect URIs (monday.com, Airtable, Intercom and Vercel rejected
+    /// `redirectURI` on September 8, 2026). This static page, from the Gunzino site repository, passes the query
+    /// (code, state, iss or error) on to `redirectURI` unchanged, where the sign-in session is waiting.
+    static let webRedirectURI = "https://gunzino.me/openresponses/oauth/callback.html"
 
     static func publicHTTPS(_ text: String) throws -> URL {
         guard let c = URLComponents(string: text), c.scheme?.lowercased() == "https",
@@ -93,6 +97,9 @@ nonisolated struct MCPOAuthClient: Codable, Equatable, Sendable {
     let id: String
     let secret: String?
     let authMethod: String
+    /// The redirect URI this client registered; nil for clients saved before 2.8, which all used the native one.
+    var redirectURI: String? = nil
+    var callbackURI: String { redirectURI ?? MCPOAuthSecurity.redirectURI }
 }
 
 nonisolated struct MCPOAuthCredential: Codable, Equatable, Sendable {
@@ -222,9 +229,18 @@ final class MCPAuthorizationClient {
 
     func register(metadata: MCPOAuthMetadata) async throws -> MCPOAuthClient {
         guard let endpoint = metadata.registrationEndpoint else { throw MCPAuthorizationError.providerRegistrationRequired }
+        do {
+            return try await register(metadata: metadata, endpoint: endpoint, redirectURI: MCPOAuthSecurity.redirectURI, applicationType: "native")
+        } catch MCPAuthorizationError.providerRegistrationRequired {
+            // A provider that refuses the app's own scheme may still accept an HTTPS redirect.
+            return try await register(metadata: metadata, endpoint: endpoint, redirectURI: MCPOAuthSecurity.webRedirectURI, applicationType: "web")
+        }
+    }
+
+    private func register(metadata: MCPOAuthMetadata, endpoint: String, redirectURI: String, applicationType: String) async throws -> MCPOAuthClient {
         let body: [String: Any] = ["client_name": "OpenResponses", "client_uri": "https://github.com/Gunnarguy/OpenResponses",
-            "redirect_uris": [MCPOAuthSecurity.redirectURI], "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"], "token_endpoint_auth_method": metadata.authMethod, "application_type": "native"]
+            "redirect_uris": [redirectURI], "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"], "token_endpoint_auth_method": metadata.authMethod, "application_type": applicationType]
         let reply = try await send(request(endpoint, method: "POST", data: JSONSerialization.data(withJSONObject: body)))
         guard [200, 201].contains(reply.status) else {
             if [400, 401, 403].contains(reply.status) { throw MCPAuthorizationError.providerRegistrationRequired }
@@ -232,17 +248,18 @@ final class MCPAuthorizationClient {
         }
         let response = try json(reply)
         guard let id = response["client_id"] as? String, !id.isEmpty,
-              let redirects = response["redirect_uris"] as? [String], redirects.contains(MCPOAuthSecurity.redirectURI) else { throw MCPAuthorizationError.invalidMetadata }
+              let redirects = response["redirect_uris"] as? [String], redirects.contains(redirectURI) else { throw MCPAuthorizationError.invalidMetadata }
         let method = response["token_endpoint_auth_method"] as? String ?? metadata.authMethod
         guard method == metadata.authMethod else { throw MCPAuthorizationError.invalidMetadata }
         let secret = response["client_secret"] as? String
         guard method == "none" || secret?.isEmpty == false else { throw MCPAuthorizationError.invalidMetadata }
-        return MCPOAuthClient(id: id, secret: secret, authMethod: method)
+        return MCPOAuthClient(id: id, secret: secret, authMethod: method,
+                              redirectURI: redirectURI == MCPOAuthSecurity.redirectURI ? nil : redirectURI)
     }
 
     func authorizationURL(metadata: MCPOAuthMetadata, client: MCPOAuthClient, state: String, verifier: String) throws -> URL {
         var components = URLComponents(url: try MCPOAuthSecurity.publicHTTPS(metadata.authorizationEndpoint), resolvingAgainstBaseURL: false)!
-        let parameters = ["response_type": "code", "client_id": client.id, "redirect_uri": MCPOAuthSecurity.redirectURI,
+        let parameters = ["response_type": "code", "client_id": client.id, "redirect_uri": client.callbackURI,
             "state": state, "code_challenge": MCPOAuthSecurity.challenge(verifier), "code_challenge_method": "S256",
             "resource": metadata.resource, "scope": metadata.scopes.joined(separator: " ")]
         components.queryItems = (components.queryItems ?? []).filter { parameters[$0.name] == nil } + parameters.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -251,7 +268,7 @@ final class MCPAuthorizationClient {
     }
 
     func exchange(code: String, verifier: String, metadata: MCPOAuthMetadata, client: MCPOAuthClient) async throws -> MCPOAuthCredential {
-        try await tokens(["grant_type": "authorization_code", "code": code, "code_verifier": verifier, "redirect_uri": MCPOAuthSecurity.redirectURI], metadata: metadata, client: client, oldRefresh: nil)
+        try await tokens(["grant_type": "authorization_code", "code": code, "code_verifier": verifier, "redirect_uri": client.callbackURI], metadata: metadata, client: client, oldRefresh: nil)
     }
 
     func refresh(_ credential: MCPOAuthCredential) async throws -> MCPOAuthCredential {

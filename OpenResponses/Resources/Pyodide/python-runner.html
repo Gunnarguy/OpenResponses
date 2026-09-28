@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OpenResponses Python</title>
+<script type="module">
+  // Loaded by LocalPythonRunner from the openresponses-python scheme, which serves only the bundled Pyodide
+  // files. A content rule list in the web view blocks every other load, so packages and the network are out
+  // of reach. Each run gets a fresh globals dict.
+  import { loadPyodide } from "./pyodide.mjs";
+
+  const ready = loadPyodide({ indexURL: new URL("./", location.href).href, packages: [] });
+
+  // Once the interpreter has loaded its own files, network APIs refuse at once. The content rule list would
+  // block the request anyway, but a blocked fetch never settles and would hold the run until its time limit.
+  function refuseNetwork() {
+    const message = "Local Python has no network access.";
+    window.fetch = () => Promise.reject(new TypeError(message));
+    for (const name of ["XMLHttpRequest", "WebSocket", "EventSource"]) {
+      window[name] = function () { throw new TypeError(message); };
+    }
+  }
+  window.openResponsesReady = ready.then(() => { refuseNetwork(); return true; },
+                                         (error) => String(error && error.message || error));
+
+  window.openResponsesRun = async (code) => {
+    const pyodide = await ready;
+    const out = [], err = [];
+    pyodide.setStdout({ batched: (line) => out.push(line) });
+    pyodide.setStderr({ batched: (line) => err.push(line) });
+    const globals = pyodide.globals.get("dict")();
+    try {
+      const result = await pyodide.runPythonAsync(code, { globals });
+      let value = null;
+      if (result !== undefined && result !== null) {
+        value = String(result);
+        if (typeof result.destroy === "function") result.destroy();
+      }
+      return { stdout: out.join("\n"), stderr: err.join("\n"), value, error: null };
+    } catch (error) {
+      return { stdout: out.join("\n"), stderr: err.join("\n"), value: null, error: String(error && error.message || error) };
+    } finally {
+      globals.destroy();
+    }
+  };
+</script>
+</head>
+<body></body>
+</html>

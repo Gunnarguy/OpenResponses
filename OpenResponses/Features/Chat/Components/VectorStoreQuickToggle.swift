@@ -47,6 +47,8 @@ struct VectorStoreQuickToggle: View {
                     if !activeVectorStoreIds.isEmpty {
                         Text("\(activeVectorStoreIds.count)/2")
                             .font(.caption2)
+                            .fixedSize()
+                            .accessibilityLabel("\(activeVectorStoreIds.count) of 2 on")
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -55,7 +57,9 @@ struct VectorStoreQuickToggle: View {
                     } else {
                         Text("0/2")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(Color.accessibleSecondaryText)
+                            .fixedSize() // short; never squeezed or clipped by the row
+                            .accessibilityLabel("None of 2 on")
                     }
                     
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")

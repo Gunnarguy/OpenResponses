@@ -4,7 +4,7 @@
   "name": "Apple system integrations",
   "aliases": ["Apple Calendar/Reminders/Contacts", "Grant Access", "Calendar", "Reminders", "Contacts"],
   "purpose": "Provides tools and repositories to read and write Apple Calendar, Reminders, and Contacts data using EventKit and Contacts frameworks.",
-  "revision": "bd8027e",
+  "revision": "343c3d4",
   "verified_on": "2026-09-28",
   "entry_points": ["ChatViewModel.appleFunctions", "AppleIntegrationsCard"],
   "files": [
@@ -16,16 +16,16 @@
     {"path": "OpenResponses/Core/Services/EventKitPermissionManager.swift", "role": "primary", "blob": "3008403974a764d899634b9f116038912abf3798"},
     {"path": "OpenResponses/Core/Models/AppleDataModels.swift", "role": "primary", "blob": "48f7ce85fe04d49cbbd54d32c85793bee76fd5fc"},
     {"path": "OpenResponses/Core/Models/AppleContactModels.swift", "role": "primary", "blob": "e5413881be01dae35ee1f0442f5f0358885712ed"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "abee315a4285400234c47f0e49ca95c09cc52bc0"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "16a041327e4438849d71cf6becd4c9f5c671c761"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "4362f585f198955c7c949c4f450e16abbe9ed654"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "39bb288c418f3dac1e37e7d098e6abec0000e2de"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "8bbc7b87d5c7b1cb57d0390471d87ededa557f0c"},
+    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "cbfa44aa449880e2a3af82518a57326262ffdcef"},
     {"path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "role": "test", "blob": "7fe34d5dc8f2f7489c8eafa115cb2016b90c2326"},
     {"path": "OpenResponsesTests/DateFormattingTests.swift", "role": "test", "blob": "6dc9f6c15af1c71dd6cbadfd6891d302a195cbd0"}
   ],
   "nodes": [
-    {"id": "ChatViewModel.appleFunctions", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2660, "match": "case \"fetchAppleCalendarEvents\":", "status": "VERIFIED"},
+    {"id": "ChatViewModel.appleFunctions", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2664, "match": "case \"fetchAppleCalendarEvents\":", "status": "VERIFIED"},
     {"id": "AppleIntegrationsCard", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1586, "match": "private struct AppleIntegrationsCard: View {", "status": "VERIFIED"},
     {"id": "AppleProvider", "kind": "service", "path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "line": 42, "match": "public final class AppleProvider: ToolProvider {", "status": "VERIFIED"},
     {"id": "AppleCalendarRepository", "kind": "service", "path": "OpenResponses/Core/Services/AppleCalendarRepository.swift", "line": 7, "match": "public final class AppleCalendarRepository {", "status": "VERIFIED"},
@@ -41,15 +41,15 @@
     {"id": "OpenAIService.buildTools", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1611, "match": "if prompt.enableAppleIntegrations {", "status": "VERIFIED"},
     {"id": "eventkit:EKEventStore", "kind": "integration", "path": "OpenResponses/Core/Services/EventKitPermissionManager.swift", "line": 10, "match": "public let store = EKEventStore()", "status": "VERIFIED"},
     {"id": "contacts:CNContactStore", "kind": "integration", "path": "OpenResponses/Core/Services/ContactsPermissionManager.swift", "line": 20, "match": "self.store = CNContactStore()", "status": "VERIFIED"},
-    {"id": "project.pbxproj:NSCalendarsFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 579, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";", "status": "VERIFIED"},
-    {"id": "project.pbxproj:NSRemindersFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 588, "match": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";", "status": "VERIFIED"},
-    {"id": "project.pbxproj:NSContactsUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 582, "match": "INFOPLIST_KEY_NSContactsUsageDescription = \"Used to look up contacts only when you ask for it.\";", "status": "VERIFIED"},
+    {"id": "project.pbxproj:NSCalendarsFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 587, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";", "status": "VERIFIED"},
+    {"id": "project.pbxproj:NSRemindersFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 596, "match": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";", "status": "VERIFIED"},
+    {"id": "project.pbxproj:NSContactsUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 590, "match": "INFOPLIST_KEY_NSContactsUsageDescription = \"Used to look up contacts only when you ask for it.\";", "status": "VERIFIED"},
     {"id": "test:AppleDateUtilitiesTests", "kind": "test", "path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "line": 4, "match": "final class AppleDateUtilitiesTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "test:DateFormattingTests", "kind": "test", "path": "OpenResponsesTests/DateFormattingTests.swift", "line": 4, "match": "final class DateFormattingTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "ChatViewModel.appleFunctions", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2675, "match": "let provider = AppContainer.shared.appleProvider"}]},
-    {"from": "ChatViewModel.appleFunctions", "type": "reads", "to": "Prompt.enableAppleIntegrations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2002, "match": "} else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {"}]},
+    {"from": "ChatViewModel.appleFunctions", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2679, "match": "let provider = AppContainer.shared.appleProvider"}]},
+    {"from": "ChatViewModel.appleFunctions", "type": "reads", "to": "Prompt.enableAppleIntegrations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2006, "match": "} else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {"}]},
     {"from": "AppleIntegrationsCard", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1680, "match": "try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)"}]},
     {"from": "AppleIntegrationsCard", "type": "reads", "to": "eventkit:EKEventStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1671, "match": "calendarAccess = EKEventStore.authorizationStatus(for: .event)"}]},
     {"from": "AppleIntegrationsCard", "type": "reads", "to": "contacts:CNContactStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1673, "match": "contactsAccess = CNContactStore.authorizationStatus(for: .contacts)"}]},
@@ -70,20 +70,20 @@
     {"from": "EventKitPermissionManager", "type": "calls", "to": "eventkit:EKEventStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/EventKitPermissionManager.swift", "line": 50, "match": "store.requestFullAccessToEvents(completion: completionHandler)"}]},
     {"from": "ContactsPermissionManager", "type": "calls", "to": "contacts:CNContactStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/ContactsPermissionManager.swift", "line": 32, "match": "let granted = try await store.requestAccess(for: .contacts)"}]},
     {"from": "Prompt.enableAppleIntegrations", "type": "configures", "to": "OpenAIService.buildTools", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1611, "match": "if prompt.enableAppleIntegrations {"}]},
-    {"from": "project.pbxproj:NSCalendarsFullAccessUsageDescription", "type": "configures", "to": "EventKitPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 579, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";"}]},
-    {"from": "project.pbxproj:NSRemindersFullAccessUsageDescription", "type": "configures", "to": "EventKitPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 588, "match": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";"}]},
-    {"from": "project.pbxproj:NSContactsUsageDescription", "type": "configures", "to": "ContactsPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 582, "match": "INFOPLIST_KEY_NSContactsUsageDescription = \"Used to look up contacts only when you ask for it.\";"}]},
+    {"from": "project.pbxproj:NSCalendarsFullAccessUsageDescription", "type": "configures", "to": "EventKitPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 587, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";"}]},
+    {"from": "project.pbxproj:NSRemindersFullAccessUsageDescription", "type": "configures", "to": "EventKitPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 596, "match": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";"}]},
+    {"from": "project.pbxproj:NSContactsUsageDescription", "type": "configures", "to": "ContactsPermissionManager", "status": "VERIFIED", "evidence": [{"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 590, "match": "INFOPLIST_KEY_NSContactsUsageDescription = \"Used to look up contacts only when you ask for it.\";"}]},
     {"from": "AppleCalendarItemSummary", "type": "tested_by", "to": "test:AppleDateUtilitiesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "line": 4, "match": "final class AppleDateUtilitiesTests: XCTestCase {"}]},
     {"from": "AppleDateUtilities", "type": "tested_by", "to": "test:AppleDateUtilitiesTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "line": 7, "match": "XCTAssertNil(AppleDateUtilities.parseQueryDate(nil))"}]},
     {"from": "AppleDateUtilities", "type": "tested_by", "to": "test:DateFormattingTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/DateFormattingTests.swift", "line": 8, "match": "let date = AppleDateUtilities.parseISO8601(isoStr)"}]}
   ],
   "docs": [
-    {"path": "docs/APPLE_INTEGRATION_COMPLETE.md", "section": "Info.plist Keys", "quote": "- `NSCalendarsFullAccessUsageDescription` - Required on iOS 17+ for reading calendar events.", "claim": "The app declares NSCalendarsFullAccessUsageDescription for calendar access on iOS 17 and later.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 579, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";"}, "note": "Declared as an INFOPLIST_KEY_ build setting; GENERATE_INFOPLIST_FILE = YES merges it into the built Info.plist, so OpenResponses/Info.plist itself has no usage keys."}
+    {"path": "docs/APPLE_INTEGRATION_COMPLETE.md", "section": "Info.plist Keys", "quote": "- `NSCalendarsFullAccessUsageDescription` - Required on iOS 17+ for reading calendar events.", "claim": "The app declares NSCalendarsFullAccessUsageDescription for calendar access on iOS 17 and later.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses.xcodeproj/project.pbxproj", "line": 587, "match": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";"}, "note": "Declared as an INFOPLIST_KEY_ build setting; GENERATE_INFOPLIST_FILE = YES merges it into the built Info.plist, so OpenResponses/Info.plist itself has no usage keys."}
   ],
   "unknowns": ["All eleven privacy usage descriptions (calendars, reminders, contacts, camera, microphone, photos and others) are INFOPLIST_KEY_ build settings in project.pbxproj, not keys in OpenResponses/Info.plist; edit them in the build settings."],
   "related": ["tool-providers"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "AppleContactsReadable", "kind": "model", "path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "line": 393, "match": "public protocol AppleContactsReadable {", "status": "VERIFIED"},
       {"id": "AppleDataAccessError", "kind": "model", "path": "OpenResponses/Core/Models/AppleDataModels.swift", "line": 4, "match": "public enum AppleDataAccessError: LocalizedError {", "status": "VERIFIED"},

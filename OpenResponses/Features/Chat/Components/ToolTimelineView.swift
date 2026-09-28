@@ -72,7 +72,8 @@ struct ToolExecutionCard: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     
                     Spacer()
                     
@@ -80,9 +81,10 @@ struct ToolExecutionCard: View {
                         ProgressView()
                             .controlSize(.mini)
                     } else {
+                        // The icon carries the status color; the word stays readable on the fill.
                         Text(statusText)
                             .font(.caption2)
-                            .foregroundColor(statusColor)
+                            .foregroundStyle(Color.accessibleSecondaryText)
                     }
                     
                     Image(systemName: "chevron.down")

@@ -7,35 +7,86 @@
 
 import XCTest
 
+/// Screen-level UI and accessibility checks that need no API key: each test starts past onboarding in
+/// Explore Demo mode, which answers locally. `performAccessibilityAudit` covers contrast, Dynamic Type,
+/// clipped text, hit regions, element descriptions and traits (iOS 17 and later).
 final class OpenResponsesUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    private func launch(_ extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
+        // Launch arguments land in UserDefaults' argument domain, which @AppStorage and UserDefaults.standard read.
+        app.launchArguments += ["-hasCompletedOnboarding", "YES", "-exploreModeEnabled", "YES"] + extraArguments
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        XCTAssertTrue(app.textViews["chatInputTextField"].firstMatch.waitForExistence(timeout: 10)
+                      || app.textFields["chatInputTextField"].firstMatch.waitForExistence(timeout: 1),
+                      "the chat screen did not appear")
+        return app
     }
 
-    func testLaunchPerformance() throws {
-        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
-            // This measures how long it takes to launch your application.
-            measure(metrics: [XCTApplicationLaunchMetric()]) {
-                XCUIApplication().launch()
-            }
+    /// Texts the audit misreads. In Settings → Explore Mode, SwiftUI reports each button Label's title frame
+    /// starting at the icon's x (34 pt) while the title is drawn from about 75 pt, so the audit calls the text
+    /// clipped and partly unscaled. A screenshot on 2026-09-28 (iOS 27.0 simulator) showed both rows whole.
+    private let knownLabelFrameQuirks: Set<String> = ["Start Demo", "Exit Demo"]
+
+    /// Runs the audit and fails once with every issue found, so one run lists all of them. Recorded but not
+    /// failed: "nearly passed" contrast warnings, system navigation-bar chrome the app does not draw, and the
+    /// label-frame quirk above.
+    private func audit(_ app: XCUIApplication, _ types: XCUIAccessibilityAuditType = .all, screen: String) throws {
+        var issues: [String] = []
+        let bars = app.navigationBars.allElementsBoundByIndex.map(\.frame)
+        try app.performAccessibilityAudit(for: types) { issue in
+            let frame = issue.element?.frame ?? .zero
+            let label = issue.element?.label ?? ""
+            let element = issue.element.map { "\($0.elementType.rawValue) label='\($0.label)' id='\($0.identifier)' frame=\($0.frame)" } ?? "no element"
+            let systemChrome = !frame.isEmpty && bars.contains { $0.contains(frame) }
+            let warning = issue.compactDescription.localizedCaseInsensitiveContains("nearly passed")
+            let quirk = self.knownLabelFrameQuirks.contains(label)
+            print("AUDIT [\(screen)]\(systemChrome ? " (navigation bar)" : warning ? " (warning)" : quirk ? " (known quirk)" : "") \(issue.compactDescription): \(element)")
+            if !systemChrome && !warning && !quirk { issues.append("[\(screen)] \(issue.compactDescription): \(element)") }
+            return true
         }
+        XCTAssertTrue(issues.isEmpty, "\(issues.count) accessibility issues:\n" + issues.joined(separator: "\n"))
+    }
+
+    func testChatScreenPassesTheAccessibilityAudit() throws {
+        let app = launch()
+        try audit(app, screen: "chat")
+    }
+
+    func testSettingsPassTheAccessibilityAudit() throws {
+        let app = launch()
+        app.buttons["settingsButton"].tap()
+        // Audit only after the sheet has finished presenting; mid-animation frames read as clipped text.
+        let settled = app.buttons["Start Demo"]
+        XCTAssertTrue(settled.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: settled)
+        waitForExpectations(timeout: 5)
+        sleep(1) // the sheet's transition can still be scaling its content when it first becomes hittable
+        try audit(app, screen: "settings")
+    }
+
+    func testConversationListPassesTheAccessibilityAudit() throws {
+        let app = launch()
+        app.buttons["conversationsButton"].tap()
+        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5))
+        try audit(app, screen: "conversations")
+    }
+
+    func testLargestTextSizeKeepsTheChatScreenReadable() throws {
+        let app = launch(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        try audit(app, [.dynamicType, .textClipped], screen: "chat, largest text")
+    }
+
+    func testExploreModeAnswersAMessage() throws {
+        let app = launch()
+        let input = app.textViews["chatInputTextField"].exists ? app.textViews["chatInputTextField"] : app.textFields["chatInputTextField"]
+        input.tap()
+        input.typeText("Hello from the UI test")
+        app.buttons["sendMessageButton"].tap()
+        XCTAssertTrue(app.staticTexts["Hello from the UI test"].waitForExistence(timeout: 10), "the sent message is not shown")
     }
 }

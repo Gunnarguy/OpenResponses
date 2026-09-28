@@ -17,10 +17,16 @@ struct ChatInputView: View {
     @StateObject private var voiceRecorder = VoiceRecorderService()
     @State private var showingAudioError = false
 
-    @ScaledMetric private var buttonPadding: CGFloat = 8
-    @ScaledMetric private var containerPadding: CGFloat = 10
+    // Scaled, but capped: at the accessibility text sizes the uncapped row was wider than the phone
+    // (measured 2026-09-28: 492 points on a 402-point iPhone 18 Pro), which pushed the whole chat off screen.
+    // The icon buttons show the Large Content Viewer instead; the message field keeps full Dynamic Type.
+    @ScaledMetric private var scaledButtonPadding: CGFloat = 8
+    @ScaledMetric private var scaledContainerPadding: CGFloat = 10
     @ScaledMetric private var inputCornerRadius: CGFloat = 20
-    @ScaledMetric private var sendButtonSize: CGFloat = 32
+    @ScaledMetric private var scaledSendButtonSize: CGFloat = 32
+    private var buttonPadding: CGFloat { min(scaledButtonPadding, 10) }
+    private var containerPadding: CGFloat { min(scaledContainerPadding, 12) }
+    private var sendButtonSize: CGFloat { min(scaledSendButtonSize, 44) }
 
     private var trimmedText: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -54,8 +60,10 @@ struct ChatInputView: View {
             } label: {
                 Image(systemName: "paperclip")
                     .foregroundColor(.secondary)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .padding(buttonPadding)
             }
+            .accessibilityShowsLargeContentViewer()
             .accessibilityConfiguration(
                 label: "Attach files or photos",
                 hint: AccessibilityUtils.Hint.fileAttachButton
@@ -68,6 +76,8 @@ struct ChatInputView: View {
                     vectorStoreCount: vectorStoreCount,
                     fileSearchEnabled: fileSearchEnabled
                 )
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .accessibilityShowsLargeContentViewer()
             }
 
             // Audio recording button
@@ -91,8 +101,10 @@ struct ChatInputView: View {
                 }) {
                     Image(systemName: voiceRecorder.isRecording ? "stop.circle.fill" : "mic")
                         .foregroundColor(voiceRecorder.isRecording ? .red : .secondary)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .padding(buttonPadding)
                 }
+                .accessibilityShowsLargeContentViewer()
                 .alert("Microphone Access Required", isPresented: $showingAudioError) {
                     Button("OK", role: .cancel) { }
                 } message: {
@@ -110,6 +122,7 @@ struct ChatInputView: View {
                         .foregroundColor(.accentColor)
                         .padding(buttonPadding)
                 }
+                .accessibilityShowsLargeContentViewer()
                 .accessibilityConfiguration(
                     label: "Start Voice Mode",
                     hint: "Start real-time voice conversation"

@@ -1492,7 +1492,10 @@ def cmd_refresh(m: Map, args) -> int:
         return 1
     if not ids:
         paths = {f.get("path", "") for _, sl in slices for f in sl.get("files", [])} | set(citations_by_path(slices))
-        ids = sorted(stale_slices_for(m, slices, paths))
+        # A slice never stamped has no blobs to compare, so it is picked up by its missing hashes instead.
+        unstamped = {str(sl.get("id", p.stem)) for p, sl in slices
+                     if any(not f.get("blob") and (m.root / f.get("path", "")).is_file() for f in sl.get("files", []))}
+        ids = sorted(set(stale_slices_for(m, slices, paths)) | unstamped)
         if not ids:
             print("every slice matches the code; nothing to stamp")
             return cmd_index(m, None)

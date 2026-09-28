@@ -1956,8 +1956,29 @@ class OpenAIService: OpenAIServiceProtocol {
             }
         }
 
+        if prompt.currentOptions.localPython {
+            tools.append(.function(function: Self.runPythonFunction))
+        }
+
         return tools
     }
+
+    /// Runs on the user's device through `LocalPythonRunner`, after the user approves each run.
+    static let runPythonFunction = APICapabilities.Function(
+        name: "run_python",
+        description: "Run Python 3 on the user's device and get back what it prints, the value of its last expression, or its error. "
+            + "Standard library only: no network access, no files, no packages to install. Each run starts with an empty namespace, "
+            + "so include every definition the code needs. The user sees the code and approves each run. Stops after 30 seconds.",
+        parameters: APICapabilities.JSONSchema([
+            "type": "object",
+            "properties": [
+                "code": ["type": "string", "description": "Complete Python 3 source to run."],
+            ],
+            "required": ["code"],
+            "additionalProperties": false,
+        ]),
+        strict: true
+    )
 
     private func resolveMCPAuthorization(for prompt: Prompt) -> (authorization: String?, headers: [String: String]?) {
         // OpenAI owns the MCP transport. Session IDs must come from the server's handshake.

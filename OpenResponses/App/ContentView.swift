@@ -20,12 +20,15 @@ struct ContentView: View {
                         Button(action: { showingConversationList = true }) {
                             Image(systemName: "sidebar.left")
                         }
+                        .accessibilityLabel("Conversations")
+                        .accessibilityIdentifier("conversationsButton")
                     }
 
                     ToolbarItem(placement: .principal) {
                         Button(action: { showingShareSheet = true }) {
                             Image(systemName: "square.and.arrow.up")
                         }
+                        .accessibilityLabel("Share conversation")
                         .disabled(viewModel.messages.isEmpty)
                     }
 
@@ -40,6 +43,8 @@ struct ContentView: View {
                             Button(action: { showingSettings = true }) {
                                 Image(systemName: "gear")
                             }
+                            .accessibilityLabel("Settings")
+                            .accessibilityIdentifier(AccessibilityUtils.Identifier.settingsButton)
                         }
                     }
                 }

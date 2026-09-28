@@ -30,7 +30,7 @@
     "OpenResponses/Features/Settings/Views/SettingsHomeView.swift.backup": "Stray backup copy inside the synchronized app folder, so Xcode copies it into the app bundle as a resource. No code reads it. Candidate for removal; not removed.",
     "OpenResponsesUITests/Info.plist": "UI test bundle plist; no target lists it as a resource (checked in project.pbxproj). Build configuration, not code."
   },
-  "features": [
+  "features": ["local-python",
     "app-shell",
     "chat-turn",
     "native-runner",

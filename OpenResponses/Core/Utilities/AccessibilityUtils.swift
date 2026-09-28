@@ -88,6 +88,13 @@ extension Color {
         return self.opacity(1.0)
     }
     
+    /// Secondary text that keeps at least 4.5:1 contrast on the system background in both appearances
+    /// (about 7.8:1 in light mode, 12:1 in dark). `.secondary` measures about 3.5:1 on white, which fails
+    /// the accessibility audit for caption-size text.
+    static let accessibleSecondaryText = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(white: 0.78, alpha: 1) : UIColor(white: 0.32, alpha: 1)
+    })
+
     /// Returns a color that is appropriate for text on top of the given background color.
     /// - Parameter backgroundColor: The background color.
     /// - Returns: A text color with good contrast against the background.

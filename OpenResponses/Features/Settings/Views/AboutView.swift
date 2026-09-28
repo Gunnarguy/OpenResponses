@@ -146,7 +146,7 @@ struct AboutView: View {
             Label("Third-Party Software", systemImage: "square.stack.3d.up.fill")
                 .font(.headline)
 
-            Text("This application uses only native iOS frameworks and APIs. No third-party dependencies are included.")
+            Text("OpenResponses uses Apple's frameworks and one bundled open-source runtime, Pyodide, for Local Python.")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -158,7 +158,17 @@ struct AboutView: View {
 
                 acknowledgementRow(
                     title: "Apple Frameworks",
-                    description: "SwiftUI, Foundation, Security (Keychain), and Contacts"
+                    description: "SwiftUI, Foundation, Security (Keychain), Contacts, WebKit and NaturalLanguage"
+                )
+
+                acknowledgementRow(
+                    title: "Pyodide 314.0.7",
+                    description: "Python compiled to WebAssembly, unmodified, for Local Python. Mozilla Public License 2.0; source at github.com/pyodide/pyodide/tree/314.0.7"
+                )
+
+                acknowledgementRow(
+                    title: "CPython",
+                    description: "The Python interpreter and standard library inside Pyodide. Python Software Foundation License 2.0"
                 )
             }
             .padding(12)

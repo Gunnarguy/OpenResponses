@@ -4,7 +4,7 @@
   "name": "Batch jobs",
   "aliases": ["Batch Jobs", "Batch API Jobs", "Submit New Batch Job", "Upload JSONL Batch", "Active and Historical Batches", "Save Results", "Save Errors"],
   "purpose": "Manages OpenAI Batch jobs: JSONL input upload, job creation, status polling, cancellation, and download of complete result and error files to disk.",
-  "revision": "bd8027e",
+  "revision": "343c3d4",
   "verified_on": "2026-09-28",
   "entry_points": ["SettingsHomeView.batchJobsLink"],
   "files": [
@@ -12,9 +12,9 @@
     {"path": "OpenResponses/Core/Models/BatchModels.swift", "role": "primary", "blob": "186414fa0bf58843e98d7ddcf18282eff3a4062e"},
     {"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "role": "primary", "blob": "cf33edb743abe00c290c4fe3a9fa4edc384a2673"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "4362f585f198955c7c949c4f450e16abbe9ed654"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "39bb288c418f3dac1e37e7d098e6abec0000e2de"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/ResourcePagination.swift", "role": "shared", "blob": "5d478f1f4155dd12568fd28109a3ce3ec71610c2"},
-    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "42e5ed1c92190777d5810011e95f3e71c21b4182"}
+    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 6, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
@@ -30,7 +30,7 @@
     {"id": "BatchService.cancelBatch", "kind": "function", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 104, "match": "    func cancelBatch(batchId: String) async throws -> BatchJob {", "status": "VERIFIED"},
     {"id": "BatchService.listBatches", "kind": "function", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 100, "match": "    func listBatches() async throws -> [BatchJob] {", "status": "VERIFIED"},
     {"id": "BatchService.downloadBatchResult", "kind": "function", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 129, "match": "    func downloadBatchResult(fileId: String, isErrorFile: Bool = false) async throws -> URL {", "status": "VERIFIED"},
-    {"id": "OpenAIService.uploadFile", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3274, "match": "    func uploadFile(fileData: Data, filename: String, purpose: String = \"user_data\") async throws -> OpenAIFile {", "status": "VERIFIED"},
+    {"id": "OpenAIService.uploadFile", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3295, "match": "    func uploadFile(fileData: Data, filename: String, purpose: String = \"user_data\") async throws -> OpenAIFile {", "status": "VERIFIED"},
     {"id": "ResourcePagination", "kind": "service", "path": "OpenResponses/Core/Services/ResourcePagination.swift", "line": 15, "match": "enum ResourcePagination {", "status": "VERIFIED"},
     {"id": "BatchJob", "kind": "model", "path": "OpenResponses/Core/Models/BatchModels.swift", "line": 4, "match": "struct BatchJob: Codable, Identifiable, Hashable {", "status": "VERIFIED"},
     {"id": "BatchRequestCounts", "kind": "model", "path": "OpenResponses/Core/Models/BatchModels.swift", "line": 30, "match": "struct BatchRequestCounts: Codable, Hashable {", "status": "VERIFIED"},
@@ -41,7 +41,7 @@
     {"id": "openai:batches", "kind": "integration", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 45, "match": "        let url = URL(string: \"\\(baseURL)/batches\")!", "status": "VERIFIED"},
     {"id": "openai:batch_cancel", "kind": "integration", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 106, "match": "        let url = URL(string: \"\\(baseURL)/batches/\\(batchId)/cancel\")!", "status": "VERIFIED"},
     {"id": "openai:files_content", "kind": "integration", "path": "OpenResponses/Core/Services/BatchService.swift", "line": 130, "match": "        var request = try ResponsesAPIClient().request(path: \"/files/\\(fileId)/content\", method: \"GET\")", "status": "VERIFIED"},
-    {"id": "openai:files", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3283, "match": "        let url = URL(string: \"https://api.openai.com/v1/files\")!", "status": "VERIFIED"},
+    {"id": "openai:files", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3304, "match": "        let url = URL(string: \"https://api.openai.com/v1/files\")!", "status": "VERIFIED"},
     {"id": "test:BatchServiceTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 267, "match": "    func testBatchDownloadPreservesCompleteErrorFile() async throws {", "status": "VERIFIED"}
   ],
   "edges": [
@@ -58,7 +58,7 @@
     {"from": "BatchJobsView.downloadResults", "type": "calls", "to": "BatchService.downloadBatchResult", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 252, "match": "                let url = try await BatchService.shared.downloadBatchResult(fileId: fileId, isErrorFile: isErrorFile)"}]},
     {"from": "BatchJobsView.loadJobs", "type": "calls", "to": "BatchService.listBatches", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 196, "match": "                let fetchedJobs = try await BatchService.shared.listBatches()"}]},
     {"from": "BatchJobsView.cancelJob", "type": "calls", "to": "BatchService.cancelBatch", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 231, "match": "                let cancelled = try await BatchService.shared.cancelBatch(batchId: id)"}]},
-    {"from": "OpenAIService.uploadFile", "type": "calls", "to": "openai:files", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3283, "match": "        let url = URL(string: \"https://api.openai.com/v1/files\")!"}]},
+    {"from": "OpenAIService.uploadFile", "type": "calls", "to": "openai:files", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 3304, "match": "        let url = URL(string: \"https://api.openai.com/v1/files\")!"}]},
     {"from": "BatchService.submitBatch", "type": "calls", "to": "openai:batches", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/BatchService.swift", "line": 45, "match": "        let url = URL(string: \"\\(baseURL)/batches\")!"}]},
     {"from": "BatchService", "type": "reads", "to": "keychain:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/BatchService.swift", "line": 17, "match": "        KeychainService.shared.load(forKey: \"openAIKey\")"}]},
     {"from": "BatchService.cancelBatch", "type": "calls", "to": "openai:batch_cancel", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/BatchService.swift", "line": 106, "match": "        let url = URL(string: \"\\(baseURL)/batches/\\(batchId)/cancel\")!"}]},
@@ -73,7 +73,7 @@
   "unknowns": [],
   "related": ["files-vector-stores", "request-settings"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "test:AppCompletionTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 6, "match": "final class AppCompletionTests: XCTestCase {", "status": "VERIFIED"}
     ],

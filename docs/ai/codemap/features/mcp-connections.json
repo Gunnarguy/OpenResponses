@@ -4,13 +4,13 @@
   "name": "MCP connections",
   "aliases": ["Connections", "Connect Apps & Accounts", "Add Custom Server", "Connected Accounts", "Available Apps", "Account sign-in", "catalog", "OAuth sign-in", "Keychain storage"],
   "purpose": "Manages MCP provider connections, OAuth account sign-in via ASWebAuthenticationSession, and securely stores credentials in the Keychain.",
-  "revision": "bd8027e",
+  "revision": "343c3d4",
   "verified_on": "2026-09-28",
   "entry_points": ["MCPConnectionsView", "MCPConnectorGalleryView", "RemoteMCPSetupSheet"],
   "files": [
     {"path": "OpenResponses/Core/Models/MCPConnector.swift", "role": "primary", "blob": "7b0be66509c566134bdda452a95dddf782a34014"},
     {"path": "OpenResponses/Core/Models/MCPProvider.swift", "role": "primary", "blob": "88a3fcbf92a32d85518fe41eb1245bdb44f003b8"},
-    {"path": "OpenResponses/Core/Services/MCPAuthorization.swift", "role": "primary", "blob": "890e95c76e837887f16ff307879fd9c049632df3"},
+    {"path": "OpenResponses/Core/Services/MCPAuthorization.swift", "role": "primary", "blob": "f3447f7390ad6b5f9548387be8a57e9555f6eb17"},
     {"path": "OpenResponses/Core/Services/MCPConnectionStore.swift", "role": "primary", "blob": "ab48d54f4731ff554e77c31a3837db91f21c61fd"},
     {"path": "OpenResponses/Core/Services/MCPWebAuthentication.swift", "role": "primary", "blob": "c96ccf88a0345c8c97e063f6bd105d2ceb0a8bd1"},
     {"path": "OpenResponses/Core/Services/MCPConfigurationService.swift", "role": "primary", "blob": "d4e7fe7511c8f5b95d8863c8500491fd2d772d08"},
@@ -20,11 +20,11 @@
     {"path": "OpenResponses/Features/Settings/Views/RemoteMCPSetupSheet.swift", "role": "primary", "blob": "6e7edc9ff05757c336cbb39ca967080da338aa20"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "39bb288c418f3dac1e37e7d098e6abec0000e2de"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "role": "shared", "blob": "977035ea83a3140ae2f6e4ebbdff8f3a04dd35ed"},
     {"path": "OpenResponses/Info.plist", "role": "shared", "blob": "85cc905ce33a62232305f57ea19e8e12345ed66b"},
     {"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "role": "test", "blob": "98df26d042f4476529f98e4433c9dcc2ab1a1ae8"},
-    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "42e5ed1c92190777d5810011e95f3e71c21b4182"}
+    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"}
   ],
   "nodes": [
     {"id": "MCPConnectionsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 5, "match": "struct MCPConnectionsView: View {", "status": "VERIFIED"},
@@ -35,7 +35,7 @@
     {"id": "MCPConnectFlow", "kind": "service", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 195, "match": "final class MCPConnectFlow: ObservableObject {", "status": "VERIFIED"},
     {"id": "MCPConnectionStore", "kind": "service", "path": "OpenResponses/Core/Services/MCPConnectionStore.swift", "line": 24, "match": "final class MCPConnectionStore: ObservableObject {", "status": "VERIFIED"},
     {"id": "MCPConnection", "kind": "model", "path": "OpenResponses/Core/Services/MCPConnectionStore.swift", "line": 5, "match": "struct MCPConnection: Identifiable, Codable, Equatable {", "status": "VERIFIED"},
-    {"id": "MCPAuthorizationClient", "kind": "service", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 138, "match": "final class MCPAuthorizationClient {", "status": "VERIFIED"},
+    {"id": "MCPAuthorizationClient", "kind": "service", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 145, "match": "final class MCPAuthorizationClient {", "status": "VERIFIED"},
     {"id": "MCPWebAuthentication", "kind": "service", "path": "OpenResponses/Core/Services/MCPWebAuthentication.swift", "line": 6, "match": "final class MCPWebAuthentication: NSObject, ASWebAuthenticationPresentationContextProviding {", "status": "VERIFIED"},
     {"id": "MCPOAuthSecurity", "kind": "util", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 25, "match": "nonisolated enum MCPOAuthSecurity {", "status": "VERIFIED"},
     {"id": "MCPRegistryService", "kind": "service", "path": "OpenResponses/Core/Services/MCPRegistryService.swift", "line": 5, "match": "enum MCPRegistryService {", "status": "VERIFIED"},
@@ -52,7 +52,8 @@
     {"id": "openai:wss://api.openai.com/v1/responses", "kind": "integration", "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 105, "match": "request.url = URL(string: \"wss://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
     {"id": "Info.plist:CFBundleURLSchemes", "kind": "config", "path": "OpenResponses/Info.plist", "line": 6, "match": "<key>CFBundleURLSchemes</key><array><string>openresponses</string></array>", "status": "VERIFIED"},
     {"id": "test:MCPSecretPersistenceTests", "kind": "test", "path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "line": 4, "match": "final class MCPSecretPersistenceTests: XCTestCase {", "status": "VERIFIED"},
-    {"id": "test:MCPAuthorizationTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 319, "match": "final class MCPAuthorizationTests: XCTestCase {", "status": "VERIFIED"}
+    {"id": "test:MCPAuthorizationTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 319, "match": "final class MCPAuthorizationTests: XCTestCase {", "status": "VERIFIED"},
+    {"id": "MCPOAuthSecurity.webRedirectURI", "kind": "config", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 30, "match": "static let webRedirectURI = \"https://gunzino.me/openresponses/oauth/callback.html\"", "status": "VERIFIED", "note": "Static page in the Gunzino repository (public/openresponses/oauth/callback.html) that forwards the query to openresponses://mcp/oauth/callback."}
   ],
   "edges": [
     {"from": "MCPConnectorGalleryView", "type": "renders", "to": "MCPConnectionsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/MCPConnectorGalleryView.swift", "line": 9, "match": "MCPConnectionsView(viewModel: viewModel)"}]},
@@ -82,9 +83,11 @@
     {"from": "ResponsesAPIClient.multiAgentConnection", "type": "calls", "to": "MCPConnectionStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 130, "match": "let value = self.managesMCPConnections ? try await MCPConnectionStore.shared.refreshCredentials(in: value) : value"}]},
     {"from": "ResponsesAPIClient.multiAgentConnection", "type": "calls", "to": "openai:wss://api.openai.com/v1/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 105, "match": "request.url = URL(string: \"wss://api.openai.com/v1/responses\")!"}]},
     {"from": "MCPConnectionStore", "type": "tested_by", "to": "test:MCPSecretPersistenceTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "line": 10, "match": "KeychainService.shared.delete(forKey: \"mcp_manual_\\(testPromptId)\")"}]},
-    {"from": "MCPConnectionStore", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 577, "match": "let store = MCPConnectionStore(read: { data }, write: { data = $0 }, oauthClient: auth)"}]},
+    {"from": "MCPConnectionStore", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 613, "match": "let store = MCPConnectionStore(read: { data }, write: { data = $0 }, oauthClient: auth)"}]},
     {"from": "MCPAuthorizationClient", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 382, "match": "let result = try await auth.discover(serverURL: \"https://mcp.example.com/mcp\")"}]},
-    {"from": "MCPOAuthSecurity", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 343, "match": "XCTAssertEqual(MCPOAuthSecurity.challenge(\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"), \"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\")"}]}
+    {"from": "MCPOAuthSecurity", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 343, "match": "XCTAssertEqual(MCPOAuthSecurity.challenge(\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"), \"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\")"}]},
+    {"from": "MCPAuthorizationClient", "type": "reads", "to": "MCPOAuthSecurity.webRedirectURI", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 236, "match": "return try await register(metadata: metadata, endpoint: endpoint, redirectURI: MCPOAuthSecurity.webRedirectURI, applicationType: \"web\")"}], "note": "Registration falls back to the HTTPS callback when a provider refuses the app scheme; the client remembers which one it registered."},
+    {"from": "MCPOAuthSecurity.webRedirectURI", "type": "tested_by", "to": "test:MCPAuthorizationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 445, "match": "func testProviderThatRejectsTheAppSchemeRegistersTheHTTPSCallback() async throws {"}]}
   ],
   "docs": [
     {"path": "docs/mcp-connections.md", "section": "Tokens", "quote": "`MCPConnectionStore.swift` commits account metadata and credentials together as a versioned, device-only Keychain item. Published SwiftUI account records contain names, endpoints, IDs, permissions and status, with **no access token, refresh token or client secret**.", "claim": "Credentials saved to device-only keychain and not in SwiftUI", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Services/MCPConnectionStore.swift", "line": 23, "match": "@MainActor"}, "note": "Verified storage"}
@@ -92,13 +95,13 @@
   "unknowns": [],
   "related": ["mcp-tools", "notion"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "MCPConnector", "kind": "model", "path": "OpenResponses/Core/Models/MCPConnector.swift", "line": 4, "match": "struct MCPConnector: Identifiable, Codable, Hashable {", "status": "VERIFIED"},
       {"id": "MCPAuthorizationError", "kind": "model", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 5, "match": "nonisolated enum MCPAuthorizationError: LocalizedError, Equatable {", "status": "VERIFIED"},
-      {"id": "MCPOAuthClient", "kind": "service", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 92, "match": "nonisolated struct MCPOAuthClient: Codable, Equatable, Sendable {", "status": "VERIFIED"},
-      {"id": "MCPOAuthCredential", "kind": "model", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 98, "match": "nonisolated struct MCPOAuthCredential: Codable, Equatable, Sendable {", "status": "VERIFIED"},
-      {"id": "MCPAuthorizationTransport", "kind": "model", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 109, "match": "nonisolated final class MCPAuthorizationTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendable {", "status": "VERIFIED"},
+      {"id": "MCPOAuthClient", "kind": "service", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 96, "match": "nonisolated struct MCPOAuthClient: Codable, Equatable, Sendable {", "status": "VERIFIED"},
+      {"id": "MCPOAuthCredential", "kind": "model", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 105, "match": "nonisolated struct MCPOAuthCredential: Codable, Equatable, Sendable {", "status": "VERIFIED"},
+      {"id": "MCPAuthorizationTransport", "kind": "model", "path": "OpenResponses/Core/Services/MCPAuthorization.swift", "line": 116, "match": "nonisolated final class MCPAuthorizationTransport: NSObject, URLSessionTaskDelegate, @unchecked Sendable {", "status": "VERIFIED"},
       {"id": "MCPConnectionVault", "kind": "model", "path": "OpenResponses/Core/Services/MCPConnectionStore.swift", "line": 258, "match": "private enum MCPConnectionVault {", "status": "VERIFIED"},
       {"id": "MCPProviderRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 177, "match": "private struct MCPProviderRow: View {", "status": "VERIFIED"},
       {"id": "MCPConnectionToolsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 417, "match": "private struct MCPConnectionToolsView: View {", "status": "VERIFIED"},

@@ -56,8 +56,13 @@ struct ChatStatusBar: View {
                     Image(systemName: "curlybraces")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .frame(minWidth: 44, minHeight: 44) // Apple's minimum tap target
+                        .contentShape(Rectangle())
                 }
                 .fixedSize()
+                .accessibilityLabel("Request inspector")
+                .accessibilityShowsLargeContentViewer()
                 
                 // Settings button (gear icon)
                 Button {
@@ -66,13 +71,18 @@ struct ChatStatusBar: View {
                     Image(systemName: "gearshape")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .fixedSize()
+                .accessibilityLabel("Request settings")
+                .accessibilityShowsLargeContentViewer()
             }
             .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 0) // the 44-point buttons set the bar's height
         .background(Color.secondary.opacity(0.05))
         .font(.caption)
         .sheet(isPresented: $showingRequestInspector) {
@@ -107,6 +117,7 @@ struct ChatStatusBar: View {
             HStack(spacing: 4) {
                 Text(viewModel.activePrompt.openAIModel)
                     .fontWeight(.medium)
+                    .foregroundStyle(Color.primary) // not `.primary`, which resolves inside the badge's model color
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
             }
@@ -118,6 +129,8 @@ struct ChatStatusBar: View {
             .foregroundColor(modelColor)
             .cornerRadius(6)
         }
+        .accessibilityLabel("Model")
+        .accessibilityValue(CurrentModelCatalog.spokenName(for: viewModel.activePrompt.openAIModel))
     }
     
     private var modelColor: Color {

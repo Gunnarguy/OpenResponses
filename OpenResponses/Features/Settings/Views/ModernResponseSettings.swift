@@ -28,6 +28,14 @@ struct ModernResponseSettings: View {
                 }
                 Toggle("Load tools on demand", isOn: $viewModel.activePrompt.currentOptions.toolSearch)
                 Toggle("Hosted shell", isOn: $viewModel.activePrompt.currentOptions.hostedShell)
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Local Python")
+                        Text("Runs on this device after you approve each run. Standard library only, no network.")
+                            .font(.caption)
+                            .foregroundStyle(Color.accessibleSecondaryText)
+                    }
+                }
                 Group {
                     Toggle("Async lookups", isOn: $viewModel.activePrompt.currentOptions.asyncTools)
                         .disabled(!CurrentModelCatalog.supportsAsyncTools(viewModel.activePrompt.openAIModel))

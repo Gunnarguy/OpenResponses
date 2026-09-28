@@ -442,6 +442,42 @@ final class MCPAuthorizationTests: XCTestCase {
         }
     }
 
+    func testProviderThatRejectsTheAppSchemeRegistersTheHTTPSCallback() async throws {
+        var registrations: [[String: Any]] = []
+        var exchanged: URLRequest?
+        let tokenEndpoint = metadata.tokenEndpoint
+        let auth = MCPAuthorizationClient { request in
+            if request.url?.absoluteString == tokenEndpoint {
+                exchanged = request
+                return try self.reply(["access_token": "test-only", "token_type": "Bearer", "expires_in": 3600])
+            }
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            registrations.append(body)
+            guard body["application_type"] as? String == "web" else { return try self.reply(["error": "invalid_redirect_uri"], status: 400) }
+            return try self.reply(["client_id": "web-client", "redirect_uris": [MCPOAuthSecurity.webRedirectURI], "token_endpoint_auth_method": "none"], status: 201)
+        }
+        let client = try await auth.register(metadata: metadata)
+        XCTAssertEqual(registrations.map { $0["application_type"] as? String }, ["native", "web"])
+        XCTAssertEqual(registrations.last?["redirect_uris"] as? [String], [MCPOAuthSecurity.webRedirectURI])
+        XCTAssertEqual(client.callbackURI, MCPOAuthSecurity.webRedirectURI)
+
+        let url = try auth.authorizationURL(metadata: metadata, client: client, state: "test-state", verifier: "test-verifier")
+        let params = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(params["redirect_uri"], MCPOAuthSecurity.webRedirectURI)
+        // The HTTPS page forwards the query to the app's own callback, which is still what gets validated.
+        let returned = try XCTUnwrap(URL(string: MCPOAuthSecurity.redirectURI + "?code=test-code&state=test-state"))
+        let code = try MCPOAuthSecurity.callbackCode(returned, state: "test-state", issuer: metadata.issuer)
+        _ = try await auth.exchange(code: code, verifier: "test-verifier", metadata: metadata, client: client)
+        XCTAssertEqual(form(exchanged?.httpBody)["redirect_uri"], MCPOAuthSecurity.webRedirectURI, "the token request repeats the registered redirect")
+    }
+
+    func testClientsSavedBeforeTheHTTPSCallbackKeepTheAppScheme() throws {
+        let saved = Data(#"{"id":"saved-client","authMethod":"none"}"#.utf8)
+        let client = try JSONDecoder().decode(MCPOAuthClient.self, from: saved)
+        XCTAssertNil(client.redirectURI)
+        XCTAssertEqual(client.callbackURI, MCPOAuthSecurity.redirectURI)
+    }
+
     func testRefreshRotationAndOmittedRefreshToken() async throws {
         for rotated in [true, false] {
             let auth = MCPAuthorizationClient { request in

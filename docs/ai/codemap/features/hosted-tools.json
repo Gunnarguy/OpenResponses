@@ -4,21 +4,21 @@
   "name": "Hosted Tools",
   "aliases": ["OpenAI-hosted tools", "web search", "file search", "code interpreter", "image generation", "hosted shell", "tool search", "Web Search", "File Search", "Code Interpreter", "Image Generation", "Hosted shell", "Load tools on demand"],
   "purpose": "Manages configuration and presentation of OpenAI-hosted tools including web search, file search, code interpreter, image generation, hosted shell, and tool search.",
-  "revision": "bd8027e",
+  "revision": "343c3d4",
   "verified_on": "2026-09-28",
   "entry_points": ["SettingsHomeView", "ModernResponseSettings"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "role": "primary", "blob": "8c22bba45c58f0ea02b6b5421184fc4cc519ae46"},
     {"path": "OpenResponses/Features/Chat/Components/ImageSuggestionView.swift", "role": "primary", "blob": "b40ab5455050e1243050ebc42c8862d5d85ef5c6"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "4362f585f198955c7c949c4f450e16abbe9ed654"},
-    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "150134c19de1b8d42c530f6d0ed21746d22be9cf"},
+    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "3744379b4f024147119d1330a1d5286158f850cc"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "71631e02106e2f5a6387af93bcfed8058861eb20"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "shared", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
-    {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "17064bfe9bdf3c92db64084ed27c881d6dc741f8"},
+    {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "8ceca75b90f127aa9da5438236de4edea5fa0b86"},
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "shared", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "39bb288c418f3dac1e37e7d098e6abec0000e2de"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3bdde929b4c8e83aeb3290eca4f21b385406455b"},
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "9c8261cb5562b986257cf11e52ceb4c2e1422a45"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f2e5cfe37b6a17e3673ba1f78c919a29d6ca39b0"}
   ],
   "nodes": [
@@ -38,10 +38,10 @@
     {"id": "Prompt.enableCodeInterpreter", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 37, "match": "    var enableCodeInterpreter: Bool", "status": "VERIFIED"},
     {"id": "Prompt.enableImageGeneration", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 40, "match": "    var enableImageGeneration: Bool", "status": "VERIFIED"},
     {"id": "Prompt.enableFileSearch", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 46, "match": "    var enableFileSearch: Bool", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions.hostedShell", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 200, "match": "    var hostedShell: Bool = false", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions.toolSearch", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 199, "match": "    var toolSearch: Bool = false", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions.hostedShell", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 209, "match": "    var hostedShell: Bool = false", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions.toolSearch", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 208, "match": "    var toolSearch: Bool = false", "status": "VERIFIED"},
     {"id": "Prompt", "kind": "model", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 5, "match": "struct Prompt: Codable, Identifiable, Equatable {", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 196, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 205, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
     {"id": "CurrentModelCatalog", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 9, "match": "enum CurrentModelCatalog {", "status": "VERIFIED"},
     {"id": "openai:responses", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 31, "match": "    private let apiURL = URL(string: \"https://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
     {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
@@ -74,7 +74,7 @@
   "unknowns": ["ImageSuggestionView (ImageSuggestionView.swift line 4) is not instantiated outside its own file and previews (live scan)."],
   "related": ["chat-turn", "native-runner", "models", "files-vector-stores"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [],
     "edges": [
       {"from": "ArtifactView", "type": "depends_on", "to": "feature:chat-ui", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "line": 54, "match": "EnhancedImageView(image: image)"}], "note": "via EnhancedImageView"}

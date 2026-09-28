@@ -1,0 +1,70 @@
+{
+  "schema": "codemap/1",
+  "id": "local-python",
+  "name": "Local Python",
+  "aliases": ["run_python", "Pyodide", "Python on this device", "Run Python?", "Don't Run", "Local Python toggle"],
+  "purpose": "Runs Python the model writes on the device with bundled Pyodide in a sandboxed web view, after the user approves each run; standard library only, no network or files.",
+  "revision": "343c3d4",
+  "verified_on": "2026-09-28",
+  "entry_points": ["ModernResponseSettings", "PythonRunApprovalSheet"],
+  "files": [
+    {"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "role": "primary", "blob": "84b1a74bf4fa866399b30f6fb0e5cf1077a692a4"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "role": "primary", "blob": "8fb48f5318c44fe68eef7f54ae6cc0a8e9a4c5bd"},
+    {"path": "OpenResponses/Features/Chat/Components/PythonRunApprovalSheet.swift", "role": "primary", "blob": "ac8403e107686875e2240fb948c1a2dc63c4189a"},
+    {"path": "OpenResponses/Resources/Pyodide/python-runner.html", "role": "primary", "blob": "ebc80c7c2f3871b731fccea1f0da9c5f6f15d113"},
+    {"path": "OpenResponses/Resources/Pyodide/pyodide.mjs", "role": "primary", "blob": "1d26ad255121769c94125e365fd228ad16e98702"},
+    {"path": "OpenResponses/Resources/Pyodide/pyodide.asm.mjs", "role": "primary", "blob": "b515679217519dbde38ffd5e35670bc8b563145e"},
+    {"path": "OpenResponses/Resources/Pyodide/pyodide.asm.wasm", "role": "primary", "blob": "f80c007ad964c473bb7a1b980368857bca72bad0"},
+    {"path": "OpenResponses/Resources/Pyodide/python_stdlib.zip", "role": "primary", "blob": "eec76d5ba2d3a90a2f6e37cb9e683aec99e11a75"},
+    {"path": "OpenResponses/Resources/Pyodide/pyodide-lock.json", "role": "primary", "blob": "b439be1d2bfdd91bcbd51d7fc9c38482ea1caaa9"},
+    {"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "role": "test", "blob": "d5deedd4c928721d5c06a0daeb3246a815c1922d"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "16a041327e4438849d71cf6becd4c9f5c671c761"},
+    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
+    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "3744379b4f024147119d1330a1d5286158f850cc"},
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "9c8261cb5562b986257cf11e52ceb4c2e1422a45"}
+  ],
+  "nodes": [
+    {"id": "LocalPythonRunner", "kind": "service", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 10, "match": "final class LocalPythonRunner: NSObject {", "status": "VERIFIED", "note": "Pyodide 314.0.7 in a hidden WKWebView with a non-persistent data store; a run past its time limit tears the web view down."},
+    {"id": "LocalPythonRunner.run", "kind": "function", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 68, "match": "func run(_ code: String, timeout: TimeInterval = 30) async -> Result {", "status": "VERIFIED"},
+    {"id": "PythonRuntimeSchemeHandler", "kind": "service", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 173, "match": "final class PythonRuntimeSchemeHandler: NSObject, WKURLSchemeHandler {", "status": "VERIFIED", "note": "Serves only the six files in runtimeFiles from the app bundle."},
+    {"id": "config:pythonContentRules", "kind": "config", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 56, "match": "nonisolated static let contentRules = \"\"\"", "status": "VERIFIED", "note": "Blocks every load except the runtime scheme, blob: and data:."},
+    {"id": "file:python-runner.html", "kind": "resource", "path": "OpenResponses/Resources/Pyodide/python-runner.html", "line": 10, "match": "import { loadPyodide } from \"./pyodide.mjs\";", "status": "VERIFIED", "note": "Loads Pyodide, then replaces fetch, XMLHttpRequest, WebSocket and EventSource with versions that refuse at once."},
+    {"id": "OpenAIService.runPythonFunction", "kind": "config", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1967, "match": "static let runPythonFunction = APICapabilities.Function(", "status": "VERIFIED", "note": "The run_python function tool, strict schema with one `code` string."},
+    {"id": "options:localPython", "kind": "state", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 240, "match": "var localPython: Bool = false", "status": "VERIFIED", "note": "ModernResponseOptions, decoded tolerantly; off by default."},
+    {"id": "ModernResponseSettings", "kind": "view", "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 31, "match": "Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.executeFunctionSwitch", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2268, "match": "private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.runPythonTool", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 11, "match": "func runPythonTool(_ call: OutputItem) async -> String {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.requestPythonRun", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 30, "match": "func requestPythonRun(_ code: String) async -> Bool {", "status": "VERIFIED", "note": "Suspends the tool call until the sheet, a dismissal or a cancelled turn resolves it."},
+    {"id": "PythonRunApprovalSheet", "kind": "view", "path": "OpenResponses/Features/Chat/Components/PythonRunApprovalSheet.swift", "line": 4, "match": "struct PythonRunApprovalSheet: View {", "status": "VERIFIED"},
+    {"id": "test:LocalPythonRunnerTests", "kind": "test", "path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "line": 6, "match": "final class LocalPythonRunnerTests: XCTestCase {", "status": "VERIFIED"}
+  ],
+  "edges": [
+    {"from": "OpenAIService.runPythonFunction", "type": "depends_on", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1959, "match": "if prompt.currentOptions.localPython {"}], "note": "Offered only when the option is on."},
+    {"from": "ModernResponseSettings", "type": "writes", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 31, "match": "Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {"}]},
+    {"from": "ChatViewModel.executeFunctionSwitch", "type": "calls", "to": "ChatViewModel.runPythonTool", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2701, "match": "output = await runPythonTool(call)"}]},
+    {"from": "ChatViewModel.runPythonTool", "type": "reads", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 13, "match": "guard activePrompt.currentOptions.localPython else { return \"Error: Local Python is turned off in Settings.\" }"}]},
+    {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "ChatViewModel.requestPythonRun", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 19, "match": "guard await requestPythonRun(arguments.code) else {"}]},
+    {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "LocalPythonRunner.run", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 24, "match": "let result = await LocalPythonRunner.shared.run(arguments.code)"}]},
+    {"from": "chat-ui#ChatView", "type": "renders", "to": "PythonRunApprovalSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 93, "match": "PythonRunApprovalSheet(request: request) { approved in viewModel.resolvePythonRun(approved: approved) }"}]},
+    {"from": "LocalPythonRunner", "type": "depends_on", "to": "PythonRuntimeSchemeHandler", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 124, "match": "configuration.setURLSchemeHandler(PythonRuntimeSchemeHandler(), forURLScheme: Self.scheme)"}]},
+    {"from": "LocalPythonRunner", "type": "configures", "to": "config:pythonContentRules", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 127, "match": "if let rules { configuration.userContentController.add(rules) }"}]},
+    {"from": "LocalPythonRunner", "type": "reads", "to": "file:python-runner.html", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 132, "match": "view.load(URLRequest(url: URL(string: \"\\(Self.scheme)://runtime/python-runner.html\")!))"}]},
+    {"from": "LocalPythonRunner", "type": "tested_by", "to": "test:LocalPythonRunnerTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "line": 27, "match": "func testTheNetworkAndPackageInstallsAreOutOfReach() async {"}, {"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "line": 42, "match": "func testARunawayLoopIsStoppedAndTheNextRunStartsFresh() async {"}]}
+  ],
+  "docs": [],
+  "unknowns": ["The approval sheet and a whole chat turn that calls run_python have no UI test; LocalPythonRunnerTests run the interpreter itself in the simulator. The 2.8 phone checklist in Notion covers the full flow.", "The runtime adds 13.5 MB to the app before compression (pyodide.asm.wasm 9.6 MB, python_stdlib.zip 2.5 MB, pyodide.asm.mjs 1.25 MB)."],
+  "related": ["native-runner", "request-settings", "chat-ui"],
+  "derived": {
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "nodes": [
+      {"id": "PythonRunRequest", "kind": "model", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 4, "match": "struct PythonRunRequest: Identifiable, Equatable {", "status": "VERIFIED"}
+    ],
+    "edges": [
+      {"from": "diagnostics#ChatViewModel", "type": "depends_on", "to": "LocalPythonRunner", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 24, "match": "let result = await LocalPythonRunner.shared.run(arguments.code)"}]},
+      {"from": "PythonRunApprovalSheet", "type": "depends_on", "to": "PythonRunRequest", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/PythonRunApprovalSheet.swift", "line": 5, "match": "let request: PythonRunRequest"}]},
+      {"from": "LocalPythonRunner", "type": "tested_by", "to": "test:LocalPythonRunnerTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "line": 7, "match": "private let runner = LocalPythonRunner.shared"}]}
+    ],
+    "edges_omitted": 0
+  }
+}

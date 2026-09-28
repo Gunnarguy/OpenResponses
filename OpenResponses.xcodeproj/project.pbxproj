@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2945D95CC18D4633B8D3D065 /* LocalPythonRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */; };
+		39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */; };
 		0F0CF60C606249759EDA6905 /* ChatViewModelLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE44C8A6C09241A29724C883 /* ChatViewModelLifecycleTests.swift */; };
 		28EF2797151B4B2595A98A0D /* AppleDateUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */; };
 		6123040F55944460857DB121 /* AppCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E087B791B144CAB9EDAC80 /* AppCompletionTests.swift */; };
@@ -51,6 +53,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPythonRunnerTests.swift; sourceTree = "<group>"; };
+		0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSearchIndexTests.swift; sourceTree = "<group>"; };
 		8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLoggerTests.swift; sourceTree = "<group>"; };
 		A3983D3D9C2B4C218E6EE721 /* ResponseSettingsRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseSettingsRegistryTests.swift; sourceTree = "<group>"; };
 		A6E087B791B144CAB9EDAC80 /* AppCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCompletionTests.swift; sourceTree = "<group>"; };
@@ -148,6 +152,8 @@
 		B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */ = {
 			isa = PBXGroup;
 			children = (
+				B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */,
+				0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */,
 				F3B5108BF978E08347A4D7F7 /* URLDetectorTests.swift */,
 				F3619A63E4BC2E52BF107D77 /* ImageProcessingUtilsTests.swift */,
 				F3DC221BD87AC23B78348262 /* UIImageExtensionsTests.swift */,
@@ -404,6 +410,8 @@
 				B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */,
 				B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */,
 				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
+				2945D95CC18D4633B8D3D065 /* LocalPythonRunnerTests.swift in Sources */,
+				39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */,
 				714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */,
 				B0D1A0932F2F5C2C00A1B100 /* PromptPersistenceTests.swift in Sources */,
 				B0D1A0942F2F5C2C00A1B100 /* StreamingEventDecodingTests.swift in Sources */,
