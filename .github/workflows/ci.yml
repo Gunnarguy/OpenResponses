@@ -13,12 +13,12 @@ concurrency:
 jobs:
   build-and-test:
     name: Build & Test
-    # macos-26 is the only GitHub image that carries Xcode 26.6 (17F113), the
-    # toolchain used for the App Store archive. macos-15 tops out at Xcode 26.3
-    # with the iOS 26.2 simulator, where releasing a @MainActor class from a
-    # synchronous XCTest aborts in swift_task_deinitOnExecutor
-    # (swiftlang/swift#87316); that crashed 29 tests on every push.
-    runs-on: macos-26
+    # Same toolchain as the App Store archive: the Xcode Cloud workflow "Default" builds with
+    # "Latest Release", which was Xcode 27.0 (27A266a) on macOS 26A428 on 2026-09-28, and the
+    # xcode-27 image (a GitHub preview, so jobs can queue) carries exactly that pair with iOS 27.0
+    # simulators. Earlier, macos-15's Xcode 26.3 and iOS 26.2 simulator aborted when a synchronous
+    # XCTest released a @MainActor class (swift_task_deinitOnExecutor, swiftlang/swift#87316).
+    runs-on: xcode-27
 
     steps:
       - name: Checkout
@@ -27,8 +27,8 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          # Pinned to the release toolchain; bump together with the archive Xcode.
-          xcode-version: '26.6'
+          # Bump together with the Xcode Cloud workflow's Xcode.
+          xcode-version: '27.0'
 
       - name: Select an available iPhone simulator
         run: |

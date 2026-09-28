@@ -8,7 +8,7 @@ The earlier phase tables on this page are superseded. In particular:
 - Voice and MCP discovery are implemented; they are not out-of-scope future features.
 - Remote conversation hydration is limited to known IDs; there is no account-wide conversation-list operation.
 - Browser automation uses an on-device WKWebView with a shared execution coordinator; a separate local bridge is not required.
-- Live Assistants operations are disabled; retained-export migration remains.
+- Live Assistants operations and the retained-export migration were removed in 2.7.
 - Fine-tuning was removed in 2.7: OpenAI deprecated self-serve job creation, which ends for existing customers January 6, 2027.
 - Local source/test completion does not mean the update is in TestFlight or the App Store. See the [live ASC snapshot](releases/v2.6/ASCStatus.md).
 

@@ -4,7 +4,7 @@
   "name": "Request Settings",
   "aliases": ["Presets", "request options", "Prompt", "settings registry", "playground panel", "Settings screens", "Preset Library", "Add preset", "Reset Prompt Settings"],
   "purpose": "Manages presets and request options including Prompt persistence, preset library, PlaygroundSettingsPanel, Settings screens, and configuration validation.",
-  "revision": "bd8027e",
+  "revision": "2d7fedd",
   "verified_on": "2026-09-28",
   "entry_points": ["SettingsHomeView", "PlaygroundSettingsPanel"],
   "files": [
@@ -56,12 +56,12 @@
   "docs": [
     {"path": "CHANGELOG.md", "section": "2.7", "quote": "New options live in the optional `modernOptions` container, so presets saved by earlier versions still decode.", "claim": "New options live in modernOptions container", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 196, "match": "struct ModernResponseOptions: Codable, Equatable {"}, "note": "Verified"},
     {"path": "PRIVACY.md", "section": "Reset Prompt Settings", "quote": "**Reset Prompt Settings restores the active prompt/settings defaults. It does not erase all Keychain entries, conversation files, remote objects or website data.**", "claim": "Reset Prompt Settings restores defaults without erasing all data", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3411, "match": "    func saveActivePrompt() {"}, "note": "Functionality matches docs"},
-    {"path": "ARCHITECTURE.md", "section": "Models and settings", "quote": "`ResponseSettingsRegistry` and modern options share saved configuration with the UI.", "claim": "The settings UI reads its configuration through ResponseSettingsRegistry.", "status": "CONTRADICTED", "evidence": {"path": "OpenResponses/Core/Models/ResponseSettingsRegistry.swift", "line": 3, "match": "struct ResponseSettingsRegistry {"}, "note": "No app file names ResponseSettingsRegistry; only its declaration and ResponseSettingsRegistryTests do (codemap.py refs ResponseSettingsRegistry, 2026-09-28). Settings screens bind Prompt and ModernResponseOptions directly."}
+    {"path": "ARCHITECTURE.md", "section": "Models and settings", "quote": "`ResponseSettingsRegistry` is used only by its tests.", "claim": "Settings screens bind Prompt and ModernResponseOptions directly; ResponseSettingsRegistry is used only by its tests.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/ResponseSettingsRegistry.swift", "line": 3, "match": "struct ResponseSettingsRegistry {"}, "note": "Corrected in the document on 2026-09-28."}
   ],
   "unknowns": ["OpenResponses/Features/Settings/Views/SettingsHomeView.swift.backup is not used by anything in the codebase."],
   "related": ["models"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "PromptCacheOptions", "kind": "model", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 332, "match": "struct PromptCacheOptions: Codable, Equatable {", "status": "VERIFIED"},
       {"id": "AddEditPromptView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 72, "match": "struct AddEditPromptView: View {", "status": "VERIFIED"},

@@ -4,7 +4,7 @@
   "name": "Model catalog, selection and capability checks",
   "aliases": ["model picker", "model list", "GPT-6 Sol", "Astra", "Luna", "retired models", "replacement model", "capabilities", "reasoning effort", "default model", "version-aware recognition"],
   "purpose": "Which models the app offers, which it treats as current or retired, what each supports, and how a preset naming a retired model is moved to its replacement.",
-  "revision": "bd8027e",
+  "revision": "2d7fedd",
   "verified_on": "2026-09-28",
   "entry_points": ["DynamicModelSelector", "CurrentModelCatalog"],
   "files": [
@@ -71,13 +71,13 @@
     {"path": "ARCHITECTURE.md", "section": "Models and settings", "quote": "Model compatibility shapes the outgoing payload; catalog membership does not confer account access.", "claim": "Capability checks shape each request.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 423, "match": "ModelCompatibilityService.shared.isToolSupported"}},
     {"path": "CHANGELOG.md", "section": "2.7 Added", "quote": "Version-aware model recognition: a general-purpose ID of GPT-5.6 or later", "claim": "IDs of GPT-5.6 or later count as current models.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 64, "match": "nonisolated static func isModern(_ id: String) -> Bool {"}},
     {"path": "CHANGELOG.md", "section": "2.7 Removed", "quote": "a preset that names one moves to OpenAI's documented replacement when loaded", "claim": "Presets on retired models migrate when loaded.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3545, "match": "var needsSave = migrateRetiredModel(in: &prompt)"}},
-    {"path": "CHANGELOG.md", "section": "2.7 Changed", "quote": "The account's live model list and the model ID field still reach them.", "claim": "gpt-5, gpt-5-mini, gpt-5-nano and o3 remain selectable from the account's live model list.", "status": "CONTRADICTED", "evidence": {"path": "OpenResponses/Features/Chat/Components/DynamicModelSelector.swift", "line": 138, "match": "!CurrentModelCatalog.isRetired(model.id)"}, "note": "The live list drops every model isRetired matches, and retiredModels lists all four (CurrentModelCatalog.swift lines 92 to 94); line 40 of the same changelog says retired models are hidden. Whether the free-form model ID field keeps them was not traced: presets pass through migrateRetiredModel when selected and loaded."},
+    {"path": "CHANGELOG.md", "section": "2.7 Changed", "quote": "The account's live model list hides them too, and saving settings that name one moves it to OpenAI's documented replacement", "claim": "The live model list hides gpt-5, gpt-5-mini, gpt-5-nano and o3, and saving settings that name one moves it to its replacement.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/Components/DynamicModelSelector.swift", "line": 138, "match": "!CurrentModelCatalog.isRetired(model.id)"}, "note": "Corrected in the document on 2026-09-28. saveActivePrompt runs migrateRetiredModel through enforceResponsesAPIConstraints (ChatViewModel.swift)."},
     {"path": "README.md", "section": "Settings table", "quote": "| **Model Selection** | `UserDefaults` | `gpt-6-sol` | **Yes** |", "claim": "The default model is gpt-6-sol, stored in UserDefaults.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 10, "match": "static let defaultModel = \"gpt-6-sol\""}}
   ],
   "unknowns": ["ModelCompatibilityView (ModelCompatibilityView.swift line 4) is not instantiated anywhere outside its own file and previews; the same file's MessageToolIndicator is used by MessageBubbleView.swift line 62, so the file is live and the screen is unreachable.", "DynamicModelSelector appears only in ModelConfigurationView (onboarding-keys); the chat status bar and the playground panel use CurrentModelCatalog.selectionModels instead of the live list.", "The capability table for each model lives inside ModelCompatibilityService.swift (751 lines); this slice cites the lookup functions, not every entry."],
   "related": ["request-settings", "chat-turn", "onboarding-keys", "chat-ui", "mcp-tools", "voice"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "CurrentModelCatalog", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 9, "match": "enum CurrentModelCatalog {", "status": "VERIFIED"},
       {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 196, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},

@@ -1,6 +1,6 @@
 # OpenResponses system architecture
 
-**Current source:** September 8, 2026, v2.6/build 39. The [2.6 technical change record](docs/releases/v2.6/TechnicalChanges.md) is the detailed service/contract reference; the [source inventory](docs/releases/v2.6/SourceInventory.md) identifies the exact implementation snapshot.
+**Current source:** September 28, 2026, v2.8 in development; 2.7 shipped September 25 as build 47, and [CHANGELOG.md](CHANGELOG.md) records each release. The [2.6 technical change record](docs/releases/v2.6/TechnicalChanges.md) is the detailed service/contract reference; the [source inventory](docs/releases/v2.6/SourceInventory.md) identifies the 2.6 implementation snapshot.
 
 ## App ownership and execution
 
@@ -45,7 +45,7 @@ Workbench draft text and selector state use their own debounced Keychain store. 
 
 ## Models and settings
 
-`CurrentModelCatalog` provides the recommended Astra/Sol/Terra/Luna group and current image/voice defaults. `ResponseSettingsRegistry` and modern options share saved configuration with the UI. Model compatibility shapes the outgoing payload; catalog membership does not confer account access. Missing modern fields in old presets decode with defaults.
+`CurrentModelCatalog` provides the recommended Astra/Sol/Terra/Luna group and current image/voice defaults. Settings screens bind `Prompt` and `ModernResponseOptions` directly; `ResponseSettingsRegistry` is used only by its tests. Model compatibility shapes the outgoing payload; catalog membership does not confer account access. Missing modern fields in old presets decode with defaults.
 
 ## Browser, voice and files
 
@@ -79,4 +79,4 @@ Demo Mode and first-live-send consent remain. Settings reset restores the active
 
 ## Verification and distribution
 
-The September 8 implementation run passed 294 tests. GitHub CI now selects an available iPhone simulator, executes the unit/integration suite and retains its result bundle; this workflow change has not yet run in GitHub. ASC's retained successful archive belongs to older committed build 38, not the completed working tree. Use the [validation ledger](docs/releases/v2.6/Validation.md) and [ASC reconciliation](docs/releases/v2.6/ASCStatus.md) to distinguish these results.
+The September 8 implementation run passed 294 tests. GitHub CI selects an available iPhone simulator, executes the unit/integration suite and retains its result bundle on every push to main, on the `xcode-27` image with the same Xcode (27A266a) the Xcode Cloud archive uses. Every push to main also starts an Xcode Cloud archive: 2.7 shipped as build 47, and build 49 is the first 2.8 archive. Use the [validation ledger](docs/releases/v2.6/Validation.md) and [ASC reconciliation](docs/releases/v2.6/ASCStatus.md) to distinguish these results.

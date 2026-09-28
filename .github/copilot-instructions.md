@@ -22,7 +22,7 @@ OpenResponses is a native iPhone and iPad AI assistant client and developer play
 The application uses the **MVVM-S (Model-View-ViewModel-Service)** pattern backed by the `AppContainer` dependency injection singleton:
 - **Views (SwiftUI):** Must remain pure, declarative layouts that observe properties published by ViewModels and propagate tap or text-entry actions. Views must contain zero storage, network, or business logic.
 - **ViewModels:** Maintain active conversation states, parameters, and coordination logic. To prevent large file sizes, split ViewModels using extensions (e.g., `ChatViewModel+Streaming.swift`). Schedule all UI modifications to the `@MainActor`.
-- **Services:** Stateless logic blocks performing network requests, SSE stream decoding, local file conversions, or Keychain interactions. Views must never query services directly; access services through ViewModels.
+- **Services:** Stateless logic blocks performing network requests, SSE stream decoding, local file conversions, or Keychain interactions. Views must never query services directly; access services through ViewModels. Existing exceptions: BatchJobsView calls BatchService and OpenAIService, and APIWorkbenchView, NotionConnectionView and MCPConnectionsView read KeychainService.
 - **Storage:** Persist conversation details and prompts to sandboxed local JSON files via the `ConversationStorageService` (local-first).
 
 ---
@@ -34,9 +34,9 @@ The application uses the **MVVM-S (Model-View-ViewModel-Service)** pattern backe
   - [AppContainer.swift](OpenResponses/App/AppContainer.swift) — Service locator and dependency injection container.
 - **Main Interface:**
   - [ContentView.swift](OpenResponses/App/ContentView.swift) — Main tab navigation layout.
-  - [ChatView.swift](OpenResponses/Features/Chat/ChatView.swift) — Chat stream message bubbles, activity monitors, and prompt entry.
+  - [ChatView.swift](OpenResponses/Features/Chat/Views/ChatView.swift) — Chat stream message bubbles, activity monitors, and prompt entry.
 - **ViewModels:**
-  - [ChatViewModel.swift](OpenResponses/Features/Chat/ChatViewModel.swift) — Coordinates state, tool approvals, and configurations.
+  - [ChatViewModel.swift](OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift) — Coordinates state, tool approvals, and configurations.
 - **Services:**
   - [OpenAIService.swift](OpenResponses/Core/Services/OpenAIService.swift) — Payload builder, streaming events emitter.
   - [ComputerService.swift](OpenResponses/Core/Services/ComputerService.swift) — Local browser WKWebView automation loop.

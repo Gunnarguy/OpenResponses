@@ -28,7 +28,6 @@
   "xcodeproj": "OpenResponses.xcodeproj",
   "unmapped_notes": {
     "OpenResponses/Features/Settings/Views/SettingsHomeView.swift.backup": "Stray backup copy inside the synchronized app folder, so Xcode copies it into the app bundle as a resource. No code reads it. Candidate for removal; not removed.",
-    "OpenResponses/Resources/Localization/Localizable 2.xcstrings": "iCloud conflict copy of Localizable.xcstrings, tracked since f679fa5; compiles as an unused string table. Notion roadmap row tracks removal.",
     "OpenResponsesUITests/Info.plist": "UI test bundle plist; no target lists it as a resource (checked in project.pbxproj). Build configuration, not code."
   },
   "features": [

@@ -4,7 +4,7 @@
   "name": "MCP tool discovery and approval",
   "aliases": ["tool discovery", "tool call approval", "MCP approval", "discovery catalog", "Discover Tools", "Refresh Tools", "Browse Tools & Choose Access", "Approve", "Reject"],
   "purpose": "Discovers available MCP tools via MCPDiscoveryService probe stream and handles tool execution approvals during chat.",
-  "revision": "bd8027e",
+  "revision": "2d7fedd",
   "verified_on": "2026-09-28",
   "entry_points": ["MCPApprovalView", "ChatViewModel.respondToMCPApproval"],
   "files": [
@@ -58,13 +58,13 @@
     {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "openai:/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2823, "match": "var request = URLRequest(url: apiURL)"}]}
   ],
   "docs": [
-    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "Settings → MCP → Discover Tools and remote setup sheets share one service and catalog UI.", "claim": "Discovery from Settings and from the remote setup sheet share one service and one catalog UI.", "status": "STALE", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 404, "match": "MCPDiscoveryService.shared.discover("}, "note": "Discovery runs from a connection's detail screen through MCPDiscoveryService. The catalog UI in MCPDiscoverySection.swift (MCPDiscoverySection, MCPToolCatalogView) is not instantiated anywhere, and RemoteMCPSetupSheet only signs in."},
-    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "and a 32-token output cap on `gpt-5.6-luna`", "claim": "The discovery probe runs on gpt-5.6-luna.", "status": "STALE", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 24, "match": "nonisolated static let utilityModel = \"gpt-6-luna\""}, "note": "2.7 moved the probe to CurrentModelCatalog.utilityModel, gpt-6-luna (MCPDiscoveryService.swift line 146)."}
+    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "Discovery runs from a connection's detail screen through `MCPDiscoveryService`; the remote setup sheet only signs in.", "claim": "Discovery runs from a connection's detail screen; the remote setup sheet only signs in.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 404, "match": "MCPDiscoveryService.shared.discover("}, "note": "Corrected in the document on 2026-09-28. MCPDiscoverySection.swift (MCPDiscoverySection, MCPToolCatalogView) is still not instantiated anywhere; UNMAPPED.md lists it."},
+    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "and a 32-token output cap on `gpt-6-luna`", "claim": "The discovery probe runs on gpt-6-luna.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 24, "match": "nonisolated static let utilityModel = \"gpt-6-luna\""}, "note": "Corrected in the document on 2026-09-28."}
   ],
   "unknowns": ["MCPDiscoverySection.swift declares MCPDiscoverySection, MCPToolCatalogView and MCPDiscoveryViewModel; none is instantiated outside that file (live scan, comments and strings excluded). Discovery is reached through MCPConnectionDetailView in MCPConnectionsView.swift instead.", "MCPApprovalUtils (MCPApprovalUtils.swift line 8) is named only by its declaration and tests (MCPApprovalUtilsTests, StreamingEventDecodingTests); the app's approval path does not call it (codemap.py refs MCPApprovalUtils, confirmed 2026-09-28). ChatViewModel implements its own buildMCPApprovalResponsePayload (ChatViewModel.swift line 3389)."],
   "related": ["mcp-connections"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "MCPDiscoveredTool", "kind": "model", "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 4, "match": "nonisolated struct MCPDiscoveredTool: Identifiable, Equatable, Sendable {", "status": "VERIFIED"},
       {"id": "MCPDiscoverySnapshot", "kind": "model", "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 12, "match": "nonisolated struct MCPDiscoverySnapshot: Equatable, Sendable {", "status": "VERIFIED"},
