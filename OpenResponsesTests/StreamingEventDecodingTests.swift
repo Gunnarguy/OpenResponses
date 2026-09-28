@@ -77,6 +77,63 @@ final class RealtimeAudioPipelineTests: XCTestCase {
         XCTAssertEqual(state.level(now: 3), 0)
     }
 
+    func testHeldPlaybackMovesTheQueueLaterWithoutDroppingIt() {
+        var state = RealtimePlaybackState()
+        let first = state.enqueue(frames: 12_000, level: 0.4, itemID: "assistant", contentIndex: 0, now: 5, latency: 0)
+        _ = state.enqueue(frames: 12_000, level: 0.6, itemID: "assistant", contentIndex: 0, now: 5, latency: 0)
+        state.delay(by: 0.6)
+        XCTAssertEqual(state.buffers.count, 2)
+        XCTAssertEqual(state.buffers[0].startsAt, 5.6, accuracy: 0.0001)
+        XCTAssertEqual(state.buffers[1].endsAt, 6.6, accuracy: 0.0001)
+        XCTAssertFalse(state.recoverExpiredPlayback(now: 7.2))
+        state.complete(first, now: 6.1)
+        XCTAssertEqual(state.buffers.count, 1, "a delayed buffer still completes by its original identity")
+    }
+
+    func testLiveGateIgnoresQuietShortOrUnopposedSpeech() {
+        var gate = LiveInterruptionGate()
+        XCTAssertEqual(gate.microphone(level: 0.2, at: 0, assistantAudible: true), .none)
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 0.1, assistantAudible: true), .none)
+        XCTAssertEqual(gate.microphone(level: 0.1, at: 0.2, assistantAudible: true), .none, "a pause resets the onset")
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 0.3, assistantAudible: true), .none)
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 0.4, assistantAudible: true), .none)
+        XCTAssertEqual(gate.microphone(level: 0.9, at: 1, assistantAudible: false), .none, "nothing to interrupt")
+        XCTAssertFalse(gate.isHolding)
+    }
+
+    func testLiveGateResumesWhenLiveKeepsTalkingThroughABackchannel() {
+        var gate = LiveInterruptionGate()
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 10, assistantAudible: true), .none)
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 10.2, assistantAudible: true), .pause)
+        XCTAssertTrue(gate.isHolding)
+        XCTAssertEqual(gate.microphone(level: 0.6, at: 10.3, assistantAudible: true), .none, "one decision per hold")
+        gate.outputAudio(duration: 0.2)
+        gate.outputAudio(duration: 0.2)
+        XCTAssertEqual(gate.tick(at: 10.5), .none)
+        XCTAssertEqual(gate.tick(at: 10.8), .resume)
+        XCTAssertFalse(gate.isHolding)
+    }
+
+    func testLiveGateDiscardsQueuedAudioWhenLiveYields() {
+        var gate = LiveInterruptionGate()
+        _ = gate.microphone(level: 0.7, at: 20, assistantAudible: true)
+        XCTAssertEqual(gate.microphone(level: 0.7, at: 20.2, assistantAudible: true), .pause)
+        gate.outputAudio(duration: 0.1) // a straggler sent before Live stopped
+        XCTAssertEqual(gate.tick(at: 20.8), .discard)
+        gate.outputAudio(duration: 1)
+        XCTAssertEqual(gate.tick(at: 22), .none, "audio after a decision starts no new hold")
+    }
+
+    func testLiveGateOnlyRunsWhereTheMicrophoneCannotHearTheAssistant() {
+        XCTAssertTrue(RealtimeService.isPrivateOutput([.headphones]))
+        XCTAssertTrue(RealtimeService.isPrivateOutput([.bluetoothA2DP]))
+        XCTAssertTrue(RealtimeService.isPrivateOutput([.bluetoothHFP]))
+        XCTAssertFalse(RealtimeService.isPrivateOutput([.builtInSpeaker]))
+        XCTAssertFalse(RealtimeService.isPrivateOutput([.builtInReceiver]))
+        XCTAssertFalse(RealtimeService.isPrivateOutput([.headphones, .builtInSpeaker]))
+        XCTAssertFalse(RealtimeService.isPrivateOutput([]))
+    }
+
     func testVADAutomaticallyCreatesTheNextResponseAndHonorsBargeIn() {
         for bargeIn in [false, true] {
             let config = RealtimeService.sessionConfiguration(voice: "alloy", instructions: "Brief", textOnly: false, bargeIn: bargeIn)

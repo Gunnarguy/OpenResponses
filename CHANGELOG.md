@@ -2,6 +2,23 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
+## 2.8 — in development
+
+**Marketing version:** 2.8. Xcode Cloud assigns the build number; build 49 (September 28) is the first 2.8 archive. GPT-Live behavior was checked against OpenAI's Live reference and guides on September 28, 2026.
+
+### Fixed
+
+- GPT-Live 1 no longer plays on after you talk over it. Live sends no speech-started event and can keep talking while it listens, so with Voice Barge-In on and sound going to headphones or Bluetooth, about 0.2 seconds of your speech pauses the assistant at once. If Live keeps sending audio over the next 0.6 seconds, it was only an "mm-hmm" and playback resumes where it stopped; otherwise the audio still queued on the phone is dropped. On the built-in speaker, where the microphone hears the assistant, playback is unchanged.
+
+### Changed
+
+- GitHub CI builds and tests with the same Xcode as the App Store archive (Xcode 27.0, 27A266a, on GitHub's `xcode-27` image).
+- ARCHITECTURE.md, ROADMAP.md, APP_STORE.md, docs/ROADMAP.md, docs/mcp-discovery.md and the Copilot instructions describe the current code; the 2.7 note on retired models below is corrected.
+
+### Removed
+
+- `Localizable 2.xcstrings`, an iCloud conflict copy whose 9 strings were already in `Localizable.xcstrings`.
+
 ## 2.7 — released September 25, 2026
 
 Released on the App Store September 25, 2026: 2.7 `READY_FOR_DISTRIBUTION` in App Store Connect (read 11:11 Pacific), build 47 from Xcode Cloud run 47 of `32ca9d0`, submitted September 24 at 20:16 Pacific and released automatically after approval.

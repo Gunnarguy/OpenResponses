@@ -28,6 +28,10 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     private var playFormat: AVAudioFormat?
     private var audioAccumulator = Data()
     private var playback = RealtimePlaybackState()
+    private var interruptionGate = LiveInterruptionGate()
+    private var holdStartedAt: TimeInterval = 0
+    /// True when output goes to headphones or Bluetooth, so the microphone does not hear the assistant.
+    private var outputIsPrivate = false
     private var meterTimer: Timer?
     private var inputLevel: Float = 0
     private var lastInputAt: TimeInterval = 0
@@ -86,6 +90,13 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         model.lowercased().hasPrefix("gpt-live-")
     }
 
+    /// Outputs the microphone does not pick up. On the built-in speaker the assistant's own voice would read as
+    /// the caller cutting in, so the Live interruption gate stays off there.
+    nonisolated static func isPrivateOutput(_ ports: [AVAudioSession.Port]) -> Bool {
+        let privatePorts: Set<AVAudioSession.Port> = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE]
+        return !ports.isEmpty && ports.allSatisfy { privatePorts.contains($0) }
+    }
+
     /// First client event on a Live socket. The session is audio-only; Live manages turn-taking itself.
     nonisolated static func liveStartEvent(model: String, voice: String, instructions: String) -> [String: Any] {
         ["type": "session.start",
@@ -131,6 +142,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         audioInterrupted = false
         audioAccumulator.removeAll()
         playback.reset()
+        interruptionGate.reset()
         responseActive = false
         interruptedResponseID = nil
         activeResponseID = nil
@@ -348,6 +360,8 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         output.prepare()
         try output.start()
         player.play()
+        // Route changes restart the engines through AVAudioEngineConfigurationChange, which re-reads this.
+        outputIsPrivate = Self.isPrivateOutput(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType))
         for engine in [inputEngine, output] {
             configurationObservers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
                 Task { @MainActor in
@@ -364,6 +378,9 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         let now = ProcessInfo.processInfo.systemUptime
         lastInputAt = now
         inputLevel = isMicrophoneMuted ? 0 : level
+        if isLive, currentBargeIn, outputIsPrivate, !isMicrophoneMuted {
+            applyInterruption(interruptionGate.microphone(level: level, at: now, assistantAudible: !playback.buffers.isEmpty))
+        }
         // Always meter capture. Only actual buffered speaker audio may suppress upload.
         guard !isMicrophoneMuted, currentBargeIn || !playback.suppressesMicrophone(now: now) else {
             audioAccumulator.removeAll(); return
@@ -384,7 +401,9 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
             if let source = bytes.baseAddress, let destination = buffer.int16ChannelData?[0] { memcpy(destination, source, Int(buffer.frameLength) * 2) }
         }
         if playbackEngine?.isRunning != true { scheduleAudioRestart(); return }
-        if !playerNode.isPlaying { playerNode.play() }
+        // A held player stays paused; audio arriving during the hold is queued behind it.
+        if !playerNode.isPlaying, !interruptionGate.isHolding { playerNode.play() }
+        interruptionGate.outputAudio(duration: Double(buffer.frameLength) / 24_000)
         let now = ProcessInfo.processInfo.systemUptime
         let audio = AVAudioSession.sharedInstance()
         let token = playback.enqueue(frames: Int(buffer.frameLength), level: RealtimePCMEncoder.level(data), itemID: itemID,
@@ -404,6 +423,14 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         if audioInterrupted { currentState = "Audio interrupted"; publishLevel(0); return }
         if isRestoringAudio { currentState = "Restoring audio..."; publishLevel(0); return }
         let now = ProcessInfo.processInfo.systemUptime
+        if interruptionGate.isHolding {
+            applyInterruption(interruptionGate.tick(at: now))
+            if interruptionGate.isHolding {
+                currentState = "Listening..."
+                publishLevel(inputLevel)
+                return
+            }
+        }
         if playback.recoverExpiredPlayback(now: now) {
             playerNode.stop(); playerNode.play()
             AppLogger.log("Voice playback completion recovered after audio duration elapsed", category: .openAI, level: .warning)
@@ -425,9 +452,30 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
 
     private func stopPlayback() {
         playback.reset() // Invalidates callbacks for audio stopped by barge-in, route changes or disconnect.
+        interruptionGate.reset()
         playerNode.stop()
         if playbackEngine?.isRunning == true { playerNode.play() }
         publishLevel(0)
+    }
+
+    /// Carries out a `LiveInterruptionGate` decision on the player.
+    private func applyInterruption(_ action: LiveInterruptionGate.Action) {
+        let now = ProcessInfo.processInfo.systemUptime
+        switch action {
+        case .none:
+            return
+        case .pause:
+            holdStartedAt = now
+            playerNode.pause()
+            AppLogger.log("Live: caller speech over assistant audio, holding playback", category: .openAI, level: .debug)
+        case .resume:
+            playback.delay(by: now - holdStartedAt)
+            playerNode.play()
+            AppLogger.log("Live: assistant kept talking, playback resumed", category: .openAI, level: .debug)
+        case .discard:
+            stopPlayback()
+            AppLogger.log("Live: assistant yielded, discarded queued audio", category: .openAI, level: .debug)
+        }
     }
 
     private func stopAudioEngines() {

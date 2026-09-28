@@ -4,7 +4,7 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "bd8027e",
+  "revision": "d915a2f",
   "verified_on": "2026-09-28",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
@@ -20,7 +20,7 @@
     {"path": "OpenResponses/Core/Models/StreamingEvent.swift", "role": "shared", "blob": "8b137891791fe96927ad78e64b0aad7bded08bdc"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "role": "shared", "blob": "022b27b177ed94e00cde0171eb8644d799bd097f"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "352d985966b8da6bd5aa95705e1713686026c321"},
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "ce0197bddb4594122c007af44f5bd35d82762af2"},
     {"path": "OpenResponsesTests/StreamingTerminationTests.swift", "role": "test", "blob": "24264432f19b9d2547aa6dbca2cfdb8f203e6c81"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f2e5cfe37b6a17e3673ba1f78c919a29d6ca39b0"}
   ],
@@ -48,7 +48,7 @@
     {"id": "state:streamingTask", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 66, "match": "    private var streamingTask: Task<Void, Never>?", "status": "VERIFIED"},
     {"id": "keychain:openAIKey", "kind": "persistence", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 212, "match": "                    guard let apiKey = KeychainService.shared.load(forKey: \"openAIKey\"), !apiKey.isEmpty else {", "status": "VERIFIED"},
     {"id": "openai:responses", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 31, "match": "    private let apiURL = URL(string: \"https://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
-    {"id": "StreamingEventDecodingTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 93, "match": "final class StreamingEventDecodingTests: XCTestCase {", "status": "VERIFIED"},
+    {"id": "StreamingEventDecodingTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 150, "match": "final class StreamingEventDecodingTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "StreamingTerminationTests", "kind": "test", "path": "OpenResponsesTests/StreamingTerminationTests.swift", "line": 4, "match": "final class StreamingTerminationTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
   ],
@@ -77,7 +77,7 @@
     {"from": "ChatViewModel.resetStreamingState", "to": "state:streamingTask", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5172, "match": "        self.streamingTask?.cancel()"}]},
     {"from": "ChatViewModel.resetStreamingState", "to": "ChatViewModel.flushDeltaBufferIfNeeded", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5182, "match": "            flushDeltaBufferIfNeeded(for: messageId)"}]},
     {"from": "ChatViewModel.flushDeltaBufferIfNeeded", "to": "state:deltaBuffers", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3993, "match": "        guard let buffered = deltaBuffers[messageId], !buffered.isEmpty else { return }"}]},
-    {"from": "StreamingEvent", "to": "StreamingEventDecodingTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 116, "match": "        let event = try JSONDecoder().decode(StreamingEvent.self, from: Data(json.utf8))"}]},
+    {"from": "StreamingEvent", "to": "StreamingEventDecodingTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 173, "match": "        let event = try JSONDecoder().decode(StreamingEvent.self, from: Data(json.utf8))"}]},
     {"from": "ChatViewModel.cancelStreaming", "to": "StreamingTerminationTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingTerminationTests.swift", "line": 11, "match": "        viewModel.cancelStreaming()"}]},
     {"from": "OpenAIService.buildRequestObject", "to": "OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 29, "match": "        service.testing_buildRequestObject("}]}
   ],
@@ -90,7 +90,7 @@
   "unknowns": ["StreamingEvent.swift is an empty file declaring nothing. StreamingEvent is actually declared in ChatMessage.swift."],
   "related": ["native-runner", "chat-ui", "models", "request-settings"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "ChatViewModel", "kind": "view_model", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 7, "match": "class ChatViewModel: ObservableObject {", "status": "VERIFIED"},
       {"id": "OpenAIService", "kind": "service", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 20, "match": "class OpenAIService: OpenAIServiceProtocol {", "status": "VERIFIED"},
@@ -111,7 +111,7 @@
       {"from": "OpenAIService", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 10, "match": "private var service: OpenAIService!"}]},
       {"from": "ChatViewModel", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 411, "match": "let viewModel = ChatViewModel("}]},
       {"from": "OpenAIService", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 290, "match": "let service = OpenAIService()"}]},
-      {"from": "ChatViewModel", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 650, "match": "let vm = ChatViewModel()"}]},
+      {"from": "ChatViewModel", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 707, "match": "let vm = ChatViewModel()"}]},
       {"from": "ChatViewModel", "type": "tested_by", "to": "test:StreamingTerminationTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingTerminationTests.swift", "line": 8, "match": "let viewModel = ChatViewModel()"}]},
       {"from": "ChatViewModel", "type": "depends_on", "to": "feature:conversations", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 9, "match": "@Published var conversations: [Conversation] = []"}], "note": "via Conversation, ConversationSummary, ConversationStorageService"},
       {"from": "ChatViewModel", "type": "depends_on", "to": "feature:request-settings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 23, "match": "@Published var activePrompt: Prompt"}], "note": "via Prompt, ResponseConfigurationValidation"},

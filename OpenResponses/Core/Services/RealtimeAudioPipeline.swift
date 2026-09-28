@@ -52,8 +52,8 @@ struct RealtimePlaybackState {
     struct Buffer {
         let id = UUID()
         let generation: UUID
-        let startsAt: TimeInterval
-        let endsAt: TimeInterval
+        var startsAt: TimeInterval
+        var endsAt: TimeInterval
         let frames: Int
         let level: Float
         let itemID: String?
@@ -100,10 +100,70 @@ struct RealtimePlaybackState {
                 "audio_end_ms": (completedFrames[itemID, default: 0] + pendingPlayed) / 24]
     }
 
+    /// Moves every queued buffer later by `interval`, the time the player held them while paused.
+    mutating func delay(by interval: TimeInterval) {
+        guard interval > 0 else { return }
+        for index in buffers.indices {
+            buffers[index].startsAt += interval
+            buffers[index].endsAt += interval
+        }
+    }
+
     mutating func reset() {
         generation = UUID()
         buffers = []
         completedFrames = [:]
         echoTailUntil = 0
+    }
+}
+
+/// GPT-Live listens while it speaks and sends no speech-started event, so the client decides when the caller
+/// has cut in. Sustained microphone speech during assistant playback pauses the player at once. If Live keeps
+/// sending audio through the hold window, the speech was a backchannel ("mm-hmm") and playback resumes;
+/// otherwise Live has yielded to the caller and the queued audio is discarded, so no tail plays.
+struct LiveInterruptionGate {
+    enum Action: Equatable { case none, pause, resume, discard }
+
+    /// `RealtimePCMEncoder.level` of caller speech; 0.35 is about -36 dBFS.
+    var speechLevel: Float = 0.35
+    /// Speech must last this long before the player pauses, so clicks and breaths do not.
+    var speechOnset: TimeInterval = 0.18
+    /// How long playback stays paused while waiting to see whether Live keeps talking.
+    var holdWindow: TimeInterval = 0.6
+    /// Seconds of new Live audio per second of hold that mean Live kept talking.
+    var continueRatio: Double = 0.5
+
+    private(set) var isHolding = false
+    private var speechSince: TimeInterval?
+    private var holdStartedAt: TimeInterval = 0
+    private var audioDuringHold: TimeInterval = 0
+
+    mutating func microphone(level: Float, at now: TimeInterval, assistantAudible: Bool) -> Action {
+        guard !isHolding else { return .none }
+        guard assistantAudible, level >= speechLevel else { speechSince = nil; return .none }
+        let since = speechSince ?? now
+        speechSince = since
+        guard now - since >= speechOnset else { return .none }
+        isHolding = true
+        holdStartedAt = now
+        audioDuringHold = 0
+        speechSince = nil
+        return .pause
+    }
+
+    mutating func outputAudio(duration: TimeInterval) {
+        if isHolding { audioDuringHold += duration }
+    }
+
+    mutating func tick(at now: TimeInterval) -> Action {
+        guard isHolding, now - holdStartedAt >= holdWindow else { return .none }
+        isHolding = false
+        return audioDuringHold >= holdWindow * continueRatio ? .resume : .discard
+    }
+
+    mutating func reset() {
+        isHolding = false
+        speechSince = nil
+        audioDuringHold = 0
     }
 }
