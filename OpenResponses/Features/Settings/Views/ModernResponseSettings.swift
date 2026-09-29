@@ -3,7 +3,9 @@ import SwiftUI
 struct ModernResponseSettings: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @AppStorage("realtime_model") private var voiceModel: String = CurrentModelCatalog.realtimeModel
-    @State private var showingVoiceSettings = false
+    /// Owned and presented by the enclosing Form (ModelTab). A `.sheet` attached to a Section inside a Form is
+    /// torn down whenever the Form redraws, which closed the voice settings within seconds (2026-09-28).
+    @Binding var showingVoiceSettings: Bool
 
     private var modern: Bool { CurrentModelCatalog.isModern(viewModel.activePrompt.openAIModel) }
 
@@ -136,7 +138,6 @@ struct ModernResponseSettings: View {
         } header: { Text("Voice") } footer: {
             Text("GPT Realtime 2.1 and its mini variant use the Realtime API; GPT-Live 1 uses the Live API. Changes apply to the next voice session.")
         }
-        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
         Section("Custom tool") {
             Toggle("Enable custom tool", isOn: $viewModel.activePrompt.enableCustomTool)
             if viewModel.activePrompt.enableCustomTool {

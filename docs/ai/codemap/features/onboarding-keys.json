@@ -4,7 +4,7 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "343c3d4",
+  "revision": "9f20335",
   "verified_on": "2026-09-28",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "role": "primary", "blob": "5c0317a44cdd08aa368e6e0241c2fc232e0adc67"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "primary", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "3df80861e8b9d119a06dabd6e6e21fc1ddefdde2"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "4362f585f198955c7c949c4f450e16abbe9ed654"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "16a041327e4438849d71cf6becd4c9f5c671c761"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "ea9fbc50087027c6df1542f64cdea8e8e19ec8f1"}
@@ -50,7 +50,7 @@
     {"from": "AIDataSharingConsentSheet", "type": "calls", "to": "ChatViewModel.approveAIDataSharingConsent", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "line": 27, "match": "                            viewModel.approveAIDataSharingConsent()"}], "note": "Approve action triggers consent recording."},
     {"from": "ChatViewModel.approveAIDataSharingConsent", "type": "writes", "to": "defaults:aiDataSharingConsentVersion", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 499, "match": "        UserDefaults.standard.set(AppFeatureFlags.aiDataSharingConsentVersion, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)"}], "note": "Persists approved consent version number."},
     {"from": "ChatViewModel.approveAIDataSharingConsent", "type": "reads", "to": "AppFeatureFlags", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 499, "match": "        UserDefaults.standard.set(AppFeatureFlags.aiDataSharingConsentVersion, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)"}], "note": "Reads current required consent version."},
-    {"from": "SettingsHomeView", "type": "renders", "to": "ModelConfigurationView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 370, "match": "                ModelConfigurationView("}], "note": "Embeds model configuration options in Settings."},
+    {"from": "SettingsHomeView", "type": "renders", "to": "ModelConfigurationView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 371, "match": "                ModelConfigurationView("}], "note": "Embeds model configuration options in Settings."},
     {"from": "feature:app-shell", "type": "renders", "to": "OnboardingView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 63, "match": "            OnboardingView(isPresented: $showingOnboarding)"}], "note": "Presented on first launch."},
     {"from": "feature:app-shell", "type": "renders", "to": "ExploreModeWelcomeSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 66, "match": "            ExploreModeWelcomeSheet(openSettings: {"}], "note": "Presented when onboarding completed without API key."},
     {"from": "feature:chat-ui", "type": "renders", "to": "AIDataSharingConsentSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 88, "match": "            AIDataSharingConsentSheet()"}], "note": "Presented before first live chat message."},

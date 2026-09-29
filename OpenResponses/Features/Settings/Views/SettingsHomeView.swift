@@ -363,6 +363,7 @@ private struct GeneralTab: View {
 
 private struct ModelTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
+    @State private var showingVoiceSettings = false
 
     var body: some View {
         Form {
@@ -373,8 +374,9 @@ private struct ModelTab: View {
                     onSave: { viewModel.saveActivePrompt() }
                 )
             }
-            ModernResponseSettings()
+            ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)
         }
+        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
     }
 }
 

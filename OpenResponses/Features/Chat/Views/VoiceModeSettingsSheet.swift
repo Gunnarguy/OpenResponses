@@ -26,7 +26,11 @@ struct VoiceModeSettingsSheet: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .onAppear { realtimeModel = CurrentModelCatalog.supportedRealtimeModel(realtimeModel) }
+                    .onAppear {
+                        // Write only a real change: every write redraws the settings that present this sheet.
+                        let supported = CurrentModelCatalog.supportedRealtimeModel(realtimeModel)
+                        if supported != realtimeModel { realtimeModel = supported }
+                    }
                     if RealtimeService.isLiveModel(realtimeModel) {
                         Text("GPT-Live 1 is voice-only, so the text-only option applies to Realtime models. Barge-in controls whether your microphone is heard while the assistant speaks.")
                             .font(.caption).foregroundStyle(.secondary)

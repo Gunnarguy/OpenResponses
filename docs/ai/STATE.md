@@ -1,7 +1,7 @@
 # Current State
 
 Updated: 2026-09-28
-Branch/worktree: main in the repo root. origin/main is dfc028f (the three 2.8 commits, pushed 2026-09-28 16:51 PDT); this handoff is one local docs-only commit on top, left unpushed so it rides with the next push instead of starting its own Xcode Cloud build.
+Branch/worktree: main in the repo root. origin/main is dfc028f (the three 2.8 commits, pushed 2026-09-28 16:51 PDT). Local main is ahead by this handoff and the commit "2.8: the voice settings stay open from Settings > Model", unpushed on purpose: fixes from Gunnar's phone pass go up together in one Xcode Cloud build. His iPhone runs a direct Debug install that includes the fix; TestFlight build 50 does not.
 Last verified commit: dfc028f
 
 ## Objective
@@ -9,6 +9,7 @@ Ship 2.8 with everything on the Notion roadmap that Gunnar picked on 2026-09-28 
 
 ## Status
 - Done in code, tested in the simulator: GPT-Live interrupt fix (LiveInterruptionGate), Local Python (Pyodide 314.0.7, run_python tool with per-run approval), search conversations by meaning (ConversationSearchIndex), MCP sign-in through an HTTPS callback (page live at https://gunzino.me/openresponses/oauth/callback.html, Gunzino commit pushed and deployed), accessibility fixes plus UI audit tests, docs corrected (DRIFT.md 0 rows), GitHub CI moved to the xcode-27 image, duplicate string catalog removed. CHANGELOG.md has the 2.8 entry.
+- Fixed from the phone pass: Settings → Model → Voice closed its sheet within seconds (the sheet hung off a Section inside the Form); that commit moves it to the Form, with UI test testVoiceSettingsStayOpenFromTheModelTab (failed before, passes after).
 - Needs Gunnar on a device (Notion page "2.8 phone checklist"): GPT-Live session and interrupt feel, audio routes, voice notes, 2.7 Responses options, private MCP sign-in and refresh, HTTPS sign-in with monday.com/Airtable/Intercom/Vercel, Local Python end to end, search by meaning (the iOS simulator has no sentence-embedding model), VoiceOver, largest text, iPad.
 - Skipped for 2.8: Gmail and Drive (Notion row moved to Future Backlog with the reasons: connector_id deprecated for models after September 1, 2026; Google's Workspace MCP servers are preview-only and need a confidential client; Gmail read scopes are restricted).
 

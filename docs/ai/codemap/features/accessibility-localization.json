@@ -4,7 +4,7 @@
   "name": "Accessibility and Localization",
   "aliases": ["Message input", "Send message", "Stop streaming", "Add preset", "Edit mode", "API Key", "Type your message here to chat with the AI assistant"],
   "purpose": "Accessibility helpers, hints, identifiers, UI test hooks, localized string catalog, and Info.plist privacy build descriptions.",
-  "revision": "343c3d4",
+  "revision": "9f20335",
   "verified_on": "2026-09-28",
   "entry_points": ["AccessibilityUtils", "View.accessibilityConfiguration", "LocalizableStrings"],
   "files": [
@@ -13,9 +13,9 @@
     {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "cbfa44aa449880e2a3af82518a57326262ffdcef"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "4362f585f198955c7c949c4f450e16abbe9ed654"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
     {"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "role": "shared", "blob": "227f8db5ee65672addc9af464d50d20610e9f6df"},
-    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "39fa691ff0a09a281ffd65668fcb0dcb806e0371"},
+    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "cff9650ad0772db2c47fe5db794f1dea4705b32c"},
     {"path": "scripts/ui_tests.sh", "role": "shared", "blob": "848190c93e102a52938e9c438f40e205b3c1c63d"}
   ],
   "nodes": [

@@ -14,6 +14,7 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 ### Fixed
 
+- Settings → Model → Voice opens the voice settings and they stay open. The sheet was attached to a section inside the settings form and closed within seconds, whenever the form redrew (reported on a device September 28, 2026).
 - GPT-Live 1 no longer plays on after you talk over it. Live sends no speech-started event and can keep talking while it listens, so with Voice Barge-In on and sound going to headphones or Bluetooth, about 0.2 seconds of your speech pauses the assistant at once. If Live keeps sending audio over the next 0.6 seconds, it was only an "mm-hmm" and playback resumes where it stopped; otherwise the audio still queued on the phone is dropped. On the built-in speaker, where the microphone hears the assistant, playback is unchanged.
 
 ### Changed

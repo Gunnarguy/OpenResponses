@@ -89,4 +89,23 @@ final class OpenResponsesUITests: XCTestCase {
         app.buttons["sendMessageButton"].tap()
         XCTAssertTrue(app.staticTexts["Hello from the UI test"].waitForExistence(timeout: 10), "the sent message is not shown")
     }
+
+    /// Regression (reported on a device 2026-09-28): the Voice row in Settings → Model opened its sheet, and
+    /// within seconds the sheet closed again.
+    func testVoiceSettingsStayOpenFromTheModelTab() throws {
+        let app = launch()
+        app.buttons["settingsButton"].tap()
+        let modelTab = app.segmentedControls.buttons["Model"]
+        XCTAssertTrue(modelTab.waitForExistence(timeout: 5))
+        modelTab.tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Voice model, voice and instructions")).firstMatch
+        for _ in 0..<8 where !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.isHittable, "the Voice row was not reached")
+        row.tap()
+        let voiceSettings = app.navigationBars["Voice Mode Settings"]
+        XCTAssertTrue(voiceSettings.waitForExistence(timeout: 5), "the voice settings did not open")
+        sleep(5)
+        XCTAssertTrue(voiceSettings.exists, "the voice settings closed by themselves")
+        XCTAssertTrue(modelTab.exists, "Settings closed underneath the voice settings")
+    }
 }

@@ -4,7 +4,7 @@
   "name": "App shell",
   "aliases": ["OpenResponses", "About", "Privacy Policy", "Support (GitHub)", "License", "Third-Party Software", "Compact Context", "Done", "Save conversations", "launch", "root navigation"],
   "purpose": "App launch, root navigation, dependency injection, scene lifecycle persistence, URL scheme handling and network monitoring.",
-  "revision": "343c3d4",
+  "revision": "9f20335",
   "verified_on": "2026-09-28",
   "entry_points": ["OpenResponsesApp", "ContentView"],
   "files": [
@@ -23,7 +23,7 @@
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"},
-    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "39fa691ff0a09a281ffd65668fcb0dcb806e0371"},
+    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "cff9650ad0772db2c47fe5db794f1dea4705b32c"},
     {"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "role": "test", "blob": "88410dde98a1fdb36c9a1b9ab0db6aec8c02c627"}
   ],
   "nodes": [
@@ -63,7 +63,7 @@
     {"from": "ContentView", "type": "renders", "to": "feature:onboarding-keys", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 63, "match": "            OnboardingView(isPresented: $showingOnboarding)"}], "note": "Presents OnboardingView as full-screen cover."},
     {"from": "ContentView", "type": "renders", "to": "feature:request-settings", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 71, "match": "            SettingsHomeView()"}], "note": "Presents SettingsHomeView in sheet."},
     {"from": "ContentView", "type": "renders", "to": "feature:conversations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 74, "match": "            ConversationListView(isPresented: $showingConversationList)"}], "note": "Presents ConversationListView in sheet."},
-    {"from": "feature:request-settings", "type": "renders", "to": "AboutView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1516, "match": "    AboutView()"}], "note": "Presents AboutView from Settings."},
+    {"from": "feature:request-settings", "type": "renders", "to": "AboutView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1518, "match": "    AboutView()"}], "note": "Presents AboutView from Settings."},
     {"from": "Info.plist", "type": "configures", "to": "OpenResponsesApp", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Info.plist", "line": 6, "match": "<key>CFBundleURLSchemes</key><array><string>openresponses</string></array>"}], "note": "Configures openresponses URL scheme for the application."},
     {"from": "feature:chat-turn", "type": "depends_on", "to": "NetworkMonitor", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 71, "match": "    private lazy var networkMonitor = NetworkMonitor.shared"}], "note": "ChatViewModel holds NetworkMonitor.shared"},
     {"from": "OpenResponsesApp", "type": "tested_by", "to": "test:OpenResponsesUITestsLaunchTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "line": 22, "match": "        app.launch()"}], "note": "Tests app launch into foreground."},
