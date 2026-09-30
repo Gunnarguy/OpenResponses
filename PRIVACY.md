@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-09-08 (v2.6 implementation clarification)
+Last updated: 2026-09-29 (v2.8: automatic model-list requests and the MCP sign-in page)
 
 OpenResponses is a native iOS client for the OpenAI Responses API, built with a local-first design philosophy. We believe that your data belongs on your device. This Privacy Policy details what information is collected, what data stays local, what data is transmitted over the network, and how you retain complete control over your credentials and chat histories.
 
@@ -35,6 +35,9 @@ To execute live requests and tools, the app uses HTTPS or secure WebSockets. Dem
 | Provider account sign-in | The provider handles login and consent in the system browser. OpenResponses exchanges the authorization code and verifier with the provider and stores the resulting account credentials in Keychain. Refresh contacts that provider again. | Explicit Connect / Sign In Again; provider setup and access requirements apply. |
 | MCP Registry search | The text entered for an explicit live search goes to the public MCP Registry. Account credentials and chat history are not part of this search. | Search the MCP Registry; leaving Demo Mode is explicit. |
 | OpenAI-hosted MCP | Configured endpoint, tool restrictions and server authentication when supplied; server tool results can become response context. | Explicit server configuration and applicable approvals; private OAuth depends on the server/account. |
+| OpenAI model list (automatic, 2.8) | With a saved key, once per launch the app asks OpenAI which models the key can use (GET /models). Only the API key is sent. | Skipped in Explore Demo. |
+| OpenAI docs site (automatic, 2.8) | When the key's model list includes a model the app does not know, the app reads that model's public page on developers.openai.com, at most once a week, for its settings. No personal data, chat content or key is sent. | Skipped in Explore Demo. |
+| gunzino.me sign-in page (2.8) | monday.com, Airtable, Intercom and Vercel return their sign-in result to a static page at gunzino.me/openresponses/oauth/callback.html, which passes it straight to the app. The page loads and sends nothing else. | Only for those providers' sign-in. |
 | Notion and configured third-party handlers | Authentication and the data needed for enabled reads/writes. | User configuration, service permissions and enabled tools. |
 | Apple Calendar, Reminders and Contacts | Authorized local framework access; information returned by enabled tools may be sent to the model for the requested task. | System permissions and integration/tool controls. |
 | Browser websites / OpenAI browser context | On-device WKWebView requests go to visited sites; page content/screenshots and action results may be sent to OpenAI as tool context. | Opt-in tools, Stop, execution limits and API-provided safety decisions. No separate local-network bridge is required. |

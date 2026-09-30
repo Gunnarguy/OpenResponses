@@ -1,26 +1,38 @@
-OpenResponses 2.7 adds OpenAI's newest models and prepares the app for the releases that follow.
+2.8 is a big one. OpenAI released GPT-6.1 Sol while I was finishing it, so that's in, and new models should show up on their own from now on.
+
 
 NEW MODELS
-• GPT-6 Sol, the new default for new presets, alongside GPT-6 Astra and GPT-6 Luna, with every reasoning level each model supports, from None to Max.
-• GPT Image 2.5 Flare and Sunburst, with the new X-High and Max quality settings and partial previews. GPT Image 2 remains available.
-• Later general-purpose GPT releases that appear in your account's model list are recognized automatically, with current reasoning and tool controls.
 
-STAYING CURRENT AS OLDER MODELS RETIRE
-• Voice sessions saved with a Realtime model OpenAI is retiring switch to GPT Realtime 2.1.
-• The offline model list leaves out models with announced shutdowns. Your account's live model list and the model ID field reach every current model your API project can use.
-• Image quality adjusts automatically when you switch to an image model that does not accept the chosen setting.
+• GPT-6.1 Sol is in every model menu, with the reasoning levels OpenAI lists for it, Low through Max. It doesn't take None, so a preset set to None sends Low instead of failing.
 
-CURRENT API COVERAGE
-• GPT-Live 1 voice sessions through OpenAI's new Live API, selectable in Settings → Model → Voice. GPT Realtime 2.1 remains the default.
-• Response moderation, live-web-access control for web search, hybrid file-search ranking, Code Interpreter memory limits, image input fidelity and compression, and the Fast and Ultrafast service tiers.
-• The API Workbench now reaches every current endpoint the app works with: responses, conversations, models, moderation, embeddings, files, vector stores, containers, batches and Realtime client secrets. Deletions ask first.
-• Batch jobs default to the Responses endpoint.
-• Voice notes recorded with the microphone button are transcribed with GPT Transcribe into the message field, so you can edit them before sending.
+• When OpenAI releases a model your key can use, it shows up at the top of the model menu the next time the app starts. The app reads that model's page on OpenAI's docs once to learn its reasoning levels, so you're not waiting on an update from me.
 
-REMOVED BECAUSE OPENAI SHUT THEM DOWN OR DEPRECATED THEM
-• Assistants API tools and the Assistant import lab, fine-tuning jobs, published prompts, preview web search and preview computer-use tools, and retired models such as o1, o3, o4-mini and GPT-5. Saved chats keep working, and presets that used a retired model switch to OpenAI's recommended replacement, such as o3 to GPT-5.6 Sol.
+• Pro reasoning mode works on every GPT-5.6 and GPT-6 model now, not just Astra and 5.6 Sol.
 
-RELIABILITY
-• MCP tool discovery uses GPT-6 Luna, the lowest-cost current model.
-• Concurrency and memory-handling fixes in the API Workbench, conversation saving and voice recording.
-• The Computer Use notice now explains that approval is requested when OpenAI flags a safety check.
+• If OpenAI says a model shuts down within 30 days, it comes off the menus and any preset using it moves to its replacement.
+
+
+NEW
+
+• Local Python. Turn it on in Settings → Model and the assistant can write Python and run it on your phone. You see the code first and nothing runs until you tap Run. Standard library only, no internet, no files, 30 seconds a run.
+
+• Search your conversations by what they're about, not just the exact words. It uses Apple's on-device language model, so the search never leaves your phone.
+
+• monday.com, Airtable, Intercom and Vercel wouldn't accept the app's own sign-in address, so signing in to them now goes through a page on my site that hands you straight back to the app.
+
+
+VOICE
+
+• GPT-Live 1 stops when you talk over it. With headphones or Bluetooth and Voice Barge-In on, about 0.2 seconds of you talking pauses it, and if you only said "mm-hmm" it picks up where it stopped. On the phone's speaker it works like before, because the mic hears it there.
+
+• Settings → Model → Voice opened and then closed itself within seconds. It stays open now.
+
+
+EASIER TO READ AND TAP
+
+• Text on the chat, Settings and Conversations screens has at least 4.5:1 contrast, the chat toolbar buttons have names VoiceOver reads out, and they're all at least 44 points to tap.
+
+• At the largest text sizes the message bar pushed the chat past the edge of the screen. It fits now.
+
+
+Still no account, still your own key, and your chat history stays on your phone.

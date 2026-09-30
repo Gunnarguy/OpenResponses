@@ -1,34 +1,33 @@
-OpenResponses is a native iPhone and iPad playground for the OpenAI Responses API. Bring your own API key, control your requests, inspect tool activity and explore current models in SwiftUI.
+OpenResponses is OpenAI's API on your iPhone and iPad, with nothing hidden. Bring your own API key and it shows you the request before it goes out, the events as they stream back, and every tool call along the way. It's for people who build with OpenAI's models, or who just want to see what the newest ones actually do before writing any code.
 
-CHAT WITH CONTROL
-• Choose GPT-6 Sol, Astra or Luna, the GPT-5.6 family or earlier supported models. Newer general-purpose releases in your account's model list are recognized automatically.
-• Adjust compatible reasoning, context, verbosity, image and tool settings.
-• Stream replies, inspect API-provided reasoning summaries, follow token usage and review request/response details.
-• Save prompt presets, attach photos and documents, export conversations and keep local history.
+It started as the successor to OpenAssistant, my app for OpenAI's older Assistants API, and talks straight to OpenAI's Responses API with no server of mine in between.
+
+PICK A MODEL AND SEE WHAT IT DOES
+
+• GPT-6.1 Sol, GPT-6 Sol, Astra and Luna, the GPT-5.6 family, and older models your key can still use. When OpenAI releases a new one, it shows up in the menu on its own, with its settings read from OpenAI's docs.
+• Reasoning from None to Max where the model takes it, Pro mode, verbosity, context compaction and the rest of the request settings, all in one place.
+• Replies stream in as they're written, with the reasoning summaries the API sends, token use, and the full request and response a tap away.
+• Save setups as presets, attach photos and documents, export conversations, and search your chats by what they're about, not just the exact words.
+
+THE TOOLS THE API HAS
+
+• Web search with sources, Code Interpreter, file search over your own vector stores, and image generation and editing with GPT Image 2.5, up to Max quality.
+• Voice conversations with GPT Realtime 2.1 or GPT-Live 1, with mute, and with headphones and Voice Barge-In on you can talk over it to cut it off.
+• A browser the model can drive, inside the app, with Stop, time limits and action limits.
+• MCP connections. Sign in to supported apps or add a server by address, look through the tools it offers, and approve tool calls unless you turn that off.
+• Calendar, Reminders, Contacts and Notion, only when you turn them on.
+• Local Python. The model writes it, you read it, you tap Run, and it runs on your phone. Standard library, no internet, 30 seconds a run.
 
 API WORKBENCH
-• Edit JSON requests using HTTP, streaming or WebSocket transports, with secure draft recovery and local schema validation.
-• Inspect raw events and export complete final response payloads.
-• Count input tokens, compact context, retrieve, cancel or delete responses, and manage conversations, files, vector stores, containers and batches.
-• Call models, moderation, embeddings and Realtime client-secret endpoints directly, with confirmation before any delete.
-• Explore templates for hosted shell, tool search, custom tools, async/programmatic calling, multi-agent responses and images. Supply real client tool results when a request needs them.
 
-VOICE, IMAGES AND TOOLS
-• Have continuing voice conversations with GPT Realtime 2.1 or GPT-Live 1, with microphone mute and interruption handling.
-• Generate and edit images with GPT Image 2.5 Flare or Sunburst, up to Max quality, with partial previews.
-• Use hosted web search with sources, Code Interpreter and file search when enabled.
-• Navigate and interact with an on-device WebKit browser using page tools or Computer Use. Cancellation, deadlines and action limits help keep runs controlled; some sites and authentication flows require manual interaction.
-• Connect supported apps through provider sign-in, select several accounts per chat and inspect MCP tools. Search 44 catalog entries or the public registry; provider setup requirements are labeled.
-• Enable Calendar, Reminders, Contacts or Notion tools for the tasks that need them.
+For when you'd rather write the request yourself. Edit the raw JSON, send it over HTTP, streaming or WebSocket, watch every event come back, and export the whole response. It also counts tokens, compacts context, and manages conversations, files, vector stores, containers and batch jobs. Anything that deletes asks first.
 
-FILES, BATCH AND CONTROLS
-• Manage files and vector stores with clear indexing status.
-• Monitor Batch jobs and save full available output/error files.
-• Add response moderation, hybrid file-search ranking, larger Code Interpreter containers and image fidelity controls.
+A few things worth knowing before you download it:
 
-YOUR KEY, VISIBLE DATA FLOW
-• Explore Demo Mode without sending live API requests.
-• Store API credentials in the iOS Keychain and review the first-live-send data-sharing notice.
-• No separate OpenResponses account is required. OpenAI usage is billed to your own API account.
+• There's no OpenResponses account. You need your own OpenAI API key, and what you use is billed to your OpenAI account.
+• Your key stays in the iOS Keychain and only ever goes to OpenAI.
+• Explore Demo lets you look around without a key, and it sends nothing.
+• Before your first live request, the app shows what gets sent to OpenAI and waits for you to say yes.
+• It runs on iPhone and iPad with iOS 17 or later.
 
-Requires iOS 17 or later. Live features need an OpenAI API key with appropriate billing and model/tool access; third-party tools may need their own accounts and permissions. Feature availability and service limits vary. AI output can be inaccurate; verify important information before acting.
+One last thing. This shows you what OpenAI's models do, and they can be wrong, sometimes confidently. Check anything that matters before you act on it.

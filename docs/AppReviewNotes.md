@@ -1,6 +1,14 @@
-# App Review notes — OpenResponses 2.6
+# App Review notes: OpenResponses 2.8
 
-**Prepared:** September 8, 2026. These are local reviewer instructions for the completed 2.6 source. 2.6 went live on 2026-09-09 with build 41.
+**Updated:** September 29, 2026, for 2.8. The notes sent to App Review are in App Store Connect under App Review Information; the 2.8 additions are below, and the older sections still apply.
+
+## New in 2.8
+
+- **Local Python** (Settings → Model, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, CPython compiled to WebAssembly, MPL-2.0) ships in the app bundle; no code or packages are downloaded or installed (Guideline 2.5.2). It runs in a WKWebView whose content rules block every load except the bundled runtime: standard library only, no network, no file access, a fresh namespace each run, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
+- **GPT-6.1 Sol** in the model menus. Models OpenAI adds later are listed from the account's GET /models list; their reasoning options are read from the model's public page on developers.openai.com as text data.
+- **Search by meaning** in Conversations, with Apple's on-device sentence embeddings; nothing leaves the device.
+- **MCP sign-in** for monday.com, Airtable, Intercom and Vercel returns through https://gunzino.me/openresponses/oauth/callback.html, a static page that forwards the result to the app's callback.
+- **Voice**: GPT-Live 1 stops when the user talks over it (headphones, Voice Barge-In on); Settings → Model → Voice no longer closes itself.
 
 ## Access and data sharing
 

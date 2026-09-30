@@ -1,1 +1,1 @@
-Try GPT-6 Sol, Astra and Luna and GPT Image 2.5 in a native Responses API playground with voice, MCP tools, browser automation and a raw-request Workbench.
+GPT-6.1 Sol is in, and new OpenAI models now show up on their own. There's also Python that runs on your phone and search that finds chats by what they're about.

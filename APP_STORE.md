@@ -1,5 +1,7 @@
 # OpenResponses App Store package
 
+> **Update 2026-09-29:** 2.8 is prepared for review: [release notes](docs/ReleaseNotes_2.8.0.md), store copy in `fastlane/metadata/en-US` (rewritten to match the OpenIntelligence and OpenManual listings), [App Review notes](docs/AppReviewNotes.md). Marketing, support and privacy links move from GitHub to gunzino.me/openresponses/ with this version.
+
 > **Update 2026-09-28:** 2.7 is live (released September 25, 2026, build 47), and 2.8 is in development with build 49 in App Store Connect. The notes below predate the 2.7 release.
 
 > **Update 2026-09-24:** version 2.7 is being prepared: [release notes](docs/ReleaseNotes_2.7.0.md), store copy in `fastlane/metadata`, [TestFlight guide](docs/releases/v2.7/TestFlightNotes.txt). The project declares 2.7 and ASC has 2.7 in Prepare for Submission.

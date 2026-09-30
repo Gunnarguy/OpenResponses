@@ -1,1 +1,1 @@
-AI,MCP,playground,prompts,chat,JSON,images,gpt,reasoning,assistant,llm,agent,realtime,browser
+AI,MCP,playground,prompts,chat,python,images,gpt,reasoning,assistant,llm,agent,realtime,browser

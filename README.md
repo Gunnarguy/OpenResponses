@@ -17,9 +17,13 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
+## Version 2.8
+
+Version 2.8 adds GPT-6.1 Sol, lists new OpenAI models on its own with settings read from OpenAI's docs pages, runs Python on the device after you approve each run, searches conversations by meaning on the device, signs in to MCP providers that refuse the app's own callback, stops GPT-Live when you talk over it, and holds 4.5:1 text contrast and 44-point tap targets on the chat, Settings and Conversations screens. See the [2.8 release notes](docs/ReleaseNotes_2.8.0.md) and the [changelog](CHANGELOG.md).
+
 ## Version 2.7
 
-Version 2.7 adds GPT-6 Sol and GPT-6 Luna, GPT Image 2.5 Flare and Sunburst with X-High and Max quality, and version-aware recognition of later general-purpose GPT releases. See the [2.7 release notes](docs/ReleaseNotes_2.7.0.md) and the [changelog](CHANGELOG.md).
+Version 2.7 adds GPT-6 Sol and GPT-6 Luna, GPT Image 2.5 Flare and Sunburst with X-High and Max quality, and version-aware recognition of later general-purpose GPT releases. See the [2.7 release notes](docs/ReleaseNotes_2.7.0.md).
 
 ## Version 2.6 documentation
 
