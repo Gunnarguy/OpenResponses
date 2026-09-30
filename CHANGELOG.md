@@ -4,21 +4,24 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 ## 2.8 — in development
 
-**Marketing version:** 2.8. Xcode Cloud assigns the build number; build 49 (September 28) is the first 2.8 archive. GPT-Live behavior was checked against OpenAI's Live reference and guides on September 28, 2026.
+**Marketing version:** 2.8. Xcode Cloud assigns the build number; build 49 (September 28) is the first 2.8 archive. GPT-Live behavior was checked against OpenAI's Live reference and guides on September 28, 2026, and model settings against OpenAI's model pages, GPT-6 guide, reasoning guide and async tool calling guide on September 29, 2026.
 
 ### Added
 
+- GPT-6.1 Sol (`gpt-6.1-sol`, released September 29, 2026) is in every model menu with its documented settings: reasoning effort low to max (it rejects `none`, so a saved `none` is sent as `low`), pro reasoning mode and async tool calls.
 - Local Python: with Settings → Local Python on, the assistant can write Python and, after you approve each run in a sheet that shows the code, run it on your device. It runs Pyodide 314.0.7 (CPython compiled to WebAssembly, bundled, MPL-2.0) in a sealed web view: standard library only, no network, no files, no package installs, a fresh namespace each run, and a 30-second limit. The runtime adds about 13.5 MB before compression.
 - Search your conversations: the Conversations list has a search field that matches by meaning with Apple's on-device language model and falls back to matching words where your language has no model. Nothing leaves the device; vectors are cached per message and refreshed when a message changes.
 - Sign-in for MCP providers that refuse the app's own callback address (monday.com, Airtable, Intercom and Vercel on September 8): the app registers `https://gunzino.me/openresponses/oauth/callback.html`, which hands the result straight back to the app.
 
 ### Fixed
 
+- The model menus on the chat status bar and in request settings list the account's newer models. 2.7 recognized later GPT releases by version number, but only Settings → Model read the account's model list, so GPT-6.1 Sol was missing from the other two menus. The app now asks GET /models once per launch and adds every current general-purpose model the account has that the catalog does not list yet. A model the catalog does not know starts reasoning effort at low, because `none` returns HTTP 400 on models that do not accept it (GPT-6 Astra and GPT-6.1 Sol); 2.7 offered `none` to every model except Astra.
 - Settings → Model → Voice opens the voice settings and they stay open. The sheet was attached to a section inside the settings form and closed within seconds, whenever the form redrew (reported on a device September 28, 2026).
 - GPT-Live 1 no longer plays on after you talk over it. Live sends no speech-started event and can keep talking while it listens, so with Voice Barge-In on and sound going to headphones or Bluetooth, about 0.2 seconds of your speech pauses the assistant at once. If Live keeps sending audio over the next 0.6 seconds, it was only an "mm-hmm" and playback resumes where it stopped; otherwise the audio still queued on the phone is dropped. On the built-in speaker, where the microphone hears the assistant, playback is unchanged.
 
 ### Changed
 
+- Pro reasoning mode is offered for every GPT-5.6 and GPT-6 model, as OpenAI's reasoning guide states ("GPT-5.6 and GPT-6 models support standard and pro reasoning modes", September 29, 2026). 2.7 offered it only for GPT-6 Astra and GPT-5.6 Sol.
 - GitHub CI builds and tests with the same Xcode as the App Store archive (Xcode 27.0, 27A266a, on GitHub's `xcode-27` image).
 - ARCHITECTURE.md, ROADMAP.md, APP_STORE.md, docs/ROADMAP.md, docs/mcp-discovery.md and the Copilot instructions describe the current code; the 2.7 note on retired models below is corrected.
 - Accessibility: every screen the new UI tests audit uses at least 4.5:1 text contrast, the chat toolbar icons are labelled for VoiceOver and have 44-point targets, and at the largest text sizes the message bar no longer pushes the chat wider than the screen (icons show the Large Content Viewer instead). `scripts/ui_tests.sh` runs the audits from a fresh install.

@@ -24,6 +24,24 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         super.tearDown()
     }
 
+    func testAccountModelsKeepTheCurrentGeneralModelsFromTheModelList() async {
+        UserDefaults.standard.removeObject(forKey: "accountModels")
+        defer { UserDefaults.standard.removeObject(forKey: "accountModels") }
+        let api = MockOpenAIService()
+        api.listedModels = ["gpt-4o", "gpt-6-sol", "gpt-6.2-sol", "gpt-6.2-sol-2026-10-06", "gpt-realtime-2.1"].map {
+            OpenAIModel(id: $0, object: "model", created: 0, ownedBy: "openai")
+        }
+        let viewModel = makeViewModel(api: api)
+        viewModel.exploreModeEnabled = false
+
+        await viewModel.refreshAccountModels()
+
+        XCTAssertEqual(viewModel.accountModels, ["gpt-6.2-sol", "gpt-6-sol"])
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "accountModels"), ["gpt-6.2-sol", "gpt-6-sol"], "kept for the next launch")
+        let menu = CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel, account: viewModel.accountModels)
+        XCTAssertEqual(menu.first, "gpt-6.2-sol", "a model released after this build still reaches the model menus")
+    }
+
     func testSendUserMessageCreatesRemoteConversationBeforeRequest() async {
         let api = MockOpenAIService()
         api.createConversationResult = makeConversationDetail(id: "conv_remote_1")
@@ -867,8 +885,10 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         throw OpenAIServiceError.invalidRequest("Unused in tests")
     }
 
+    var listedModels: [OpenAIModel] = []
+
     func listModels() async throws -> [OpenAIModel] {
-        []
+        listedModels
     }
 
     func listConversations(limit: Int?, order: String?) async throws -> ConversationListResponse {

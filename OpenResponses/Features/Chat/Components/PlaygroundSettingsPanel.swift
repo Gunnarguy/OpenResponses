@@ -51,7 +51,7 @@ struct PlaygroundSettingsPanel: View {
                 // MARK: - Model Section
                 Section("Model") {
                     Picker("Select Model", selection: $viewModel.activePrompt.openAIModel) {
-                        ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel), id: \.self) { model in
+                        ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel, account: viewModel.accountModels), id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }

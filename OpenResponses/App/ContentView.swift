@@ -50,11 +50,14 @@ struct ContentView: View {
                 }
         }
         .onAppear(perform: checkOnboardingAndAPIKey)
+        // The model menus list the account's newer models too; one GET /models per launch keeps them current.
+        .task { await viewModel.refreshAccountModels() }
         .onReceive(NotificationCenter.default.publisher(for: .onboardingCompleted)) { _ in
             checkAPIKey()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in
             checkAPIKey()
+            Task { await viewModel.refreshAccountModels() }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowFullSettings"))) { _ in
             showingSettings = true

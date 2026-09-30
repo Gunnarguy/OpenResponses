@@ -831,6 +831,39 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools("gpt-6-astra-2026-09-03"))
     }
 
+    /// GPT-6.1 Sol, released September 29, 2026: model page and GPT-6 guide checked that day.
+    func testGPT61SolIsInEveryModelMenuWithItsDocumentedSettings() {
+        let model = "gpt-6.1-sol"
+        XCTAssertTrue(CurrentModelCatalog.recommended.contains(model))
+        XCTAssertTrue(CurrentModelCatalog.selectionModels(including: CurrentModelCatalog.defaultModel).contains(model))
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: model), ["low", "medium", "high", "xhigh", "max"])
+        XCTAssertTrue(CurrentModelCatalog.supportsPro(model))
+        XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools(model))
+        XCTAssertEqual(CurrentModelCatalog.description(for: model), "Near-Astra performance at a lower cost")
+        XCTAssertNotNil(ModelCompatibilityService.shared.getCapabilities(for: model))
+        XCTAssertEqual(ModelCompatibilityService.shared.defaultReasoningEffort(for: model), "medium")
+
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = model
+        prompt.reasoningEffort = "none"
+        prompt.currentOptions.reasoningMode = "pro"
+        let reasoning = buildRequest(prompt: prompt)["reasoning"] as? [String: Any]
+        XCTAssertEqual(reasoning?["effort"] as? String, "low", "GPT-6.1 Sol rejects none")
+        XCTAssertEqual(reasoning?["mode"] as? String, "pro")
+    }
+
+    func testModelMenusListTheAccountsNewerModelsFirst() {
+        let listing = ["gpt-4o", "gpt-6-sol", "gpt-6.2-sol", "gpt-6.2-sol-2026-10-06", "gpt-7-luna", "gpt-6.2-sol-audio",
+                       "gpt-image-2.5-flare", "o3", "gpt-5.6-cyber", "gpt-6.2-sol"]
+        let account = CurrentModelCatalog.currentAccountModels(listing)
+        XCTAssertEqual(account, ["gpt-7-luna", "gpt-6.2-sol", "gpt-6-sol"], "current general models only, newest first, no snapshots")
+
+        let menu = CurrentModelCatalog.selectionModels(including: "gpt-6-sol", account: account)
+        XCTAssertEqual(Array(menu.prefix(3)), ["gpt-7-luna", "gpt-6.2-sol", "gpt-6.1-sol"])
+        XCTAssertEqual(menu.filter { $0 == "gpt-6-sol" }.count, 1, "a model the catalog lists appears once")
+        XCTAssertEqual(CurrentModelCatalog.selectionModels(including: "gpt-6-sol"), CurrentModelCatalog.recommended + CurrentModelCatalog.legacy)
+    }
+
     func testLaterGeneralReleasesAreRecognizedButSpecializedModelsAreNot() {
         for model in ["gpt-6.1-sol", "gpt-7", "gpt-7-luna-2027-03-01", "GPT-6-SOL", "gpt-5.6", "gpt-5.6-terra-2026-06-01"] {
             XCTAssertTrue(CurrentModelCatalog.isModern(model), model)
@@ -839,12 +872,13 @@ final class OpenAIServiceTests: XCTestCase {
                       "gpt-5.5", "gpt-oss-120b", "gpt-6-astra-audio", "gpt-4o", "o3", "gpt-6-sol-mini-preview", "gpt-daybreak-red-latest"] {
             XCTAssertFalse(CurrentModelCatalog.isModern(model), model)
         }
-        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.1-sol").first, "none")
+        // A later release starts at low until its model page is checked: `none` returns HTTP 400 where unsupported.
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.2-sol").first, "low")
         XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-7-astra").first, "low")
         XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-7-sol"), CurrentModelCatalog.priority("gpt-6-sol"))
         XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-6-sol"), CurrentModelCatalog.priority("gpt-5.6-sol"))
         XCTAssertEqual(CurrentModelCatalog.family("gpt-6-luna-2026-09-22"), "gpt-6-luna")
-        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.1-sol"), "Current generation model")
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.2-sol"), "Current generation model")
         for retiring in ["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3"] {
             XCTAssertFalse(CurrentModelCatalog.legacy.contains(retiring), retiring)
         }

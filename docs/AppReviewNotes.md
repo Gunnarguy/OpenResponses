@@ -11,7 +11,7 @@ The OpenAI key is stored in the iOS Keychain and sent to OpenAI to authenticate 
 ## Core walkthrough
 
 1. Launch and use Explore Demo to inspect the interface without a key.
-2. For live review, add the privately supplied reviewer key or an authorized test key. Select a model available to that account; the current recommended catalog includes Astra and GPT-5.6 Sol/Terra/Luna.
+2. For live review, add the privately supplied reviewer key or an authorized test key. Select a model available to that account; the current recommended catalog includes GPT-6.1 Sol, GPT-6 Sol, Astra and Luna, and GPT-5.6 Sol/Terra/Luna.
 3. Send a short greeting, verify the first-send disclosure, then allow the request. Observe streaming text, activity and usage. API-provided reasoning summaries appear only when the model/configuration returns them.
 4. Send a follow-up, switch conversations and return. Existing chat history and presets should remain available.
 5. Inspect the request/response details and export a test conversation that contains no private information.

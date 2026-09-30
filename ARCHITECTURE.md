@@ -45,7 +45,7 @@ Workbench draft text and selector state use their own debounced Keychain store. 
 
 ## Models and settings
 
-`CurrentModelCatalog` provides the recommended Astra/Sol/Terra/Luna group and current image/voice defaults. Settings screens bind `Prompt` and `ModernResponseOptions` directly; `ResponseSettingsRegistry` is used only by its tests. Model compatibility shapes the outgoing payload; catalog membership does not confer account access. Missing modern fields in old presets decode with defaults.
+`CurrentModelCatalog` provides the recommended group (GPT-6.1 Sol; GPT-6 Sol, Astra and Luna; GPT-5.6 Sol, Terra and Luna) and current image/voice defaults. The model menus in the chat status bar and request settings also list the account's newer general-purpose models (`ChatViewModel.accountModels`, from one GET /models per launch), so a later release appears without an app update; Settings → Model lists the account's models directly. Settings screens bind `Prompt` and `ModernResponseOptions` directly; `ResponseSettingsRegistry` is used only by its tests. Model compatibility shapes the outgoing payload; catalog membership does not confer account access. Missing modern fields in old presets decode with defaults.
 
 ## Browser, voice and files
 

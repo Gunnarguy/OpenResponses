@@ -1,11 +1,13 @@
 import Foundation
 
-/// Verified against OpenAI's model catalog, changelog and deprecations pages on September 24, 2026.
+/// Verified against OpenAI's model catalog, changelog and deprecations pages on September 24, 2026, and against the
+/// GPT-6.1 Sol model page, the GPT-6 guide and the reasoning and async tool calling guides on September 29, 2026.
 /// Account availability still comes from GET /models; discovery never grants capabilities.
 ///
-/// Later general-purpose releases (for example `gpt-6.1-sol` or `gpt-7-luna`) are recognized by their
-/// version number, so they are listed and configured like the current generation without an app update.
-/// Specialized variants (audio, realtime, transcription, image, search, codex, cyber and similar) are not.
+/// Later general-purpose releases (for example `gpt-6.2-sol` or `gpt-7-luna`) are recognized by their version number
+/// and configured like the current generation. The model menus list them once GET /models shows the account has them
+/// (`currentAccountModels`), so they appear without an app update. Specialized variants (audio, realtime,
+/// transcription, image, search, codex, cyber and similar) are not.
 enum CurrentModelCatalog {
     static let defaultModel = "gpt-6-sol"
     nonisolated static let imageModel = "gpt-image-2.5-flare"
@@ -22,7 +24,7 @@ enum CurrentModelCatalog {
     nonisolated static let fileTranscriptionModel = "gpt-transcribe"
     /// Small, inexpensive model for background probes such as MCP tool discovery.
     nonisolated static let utilityModel = "gpt-6-luna"
-    static let recommended = ["gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+    static let recommended = ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
     /// Earlier models shown when the account's model list is unavailable. Models whose shutdown OpenAI has
     /// announced (gpt-5, gpt-5-mini, gpt-5-nano and o3 on December 11, 2026) are left out; the account's model
     /// list and the model ID field reach every other model the account can use.
@@ -71,18 +73,36 @@ enum CurrentModelCatalog {
         return parsed.variants.count <= 1
     }
 
-    static func selectionModels(including selected: String) -> [String] {
-        let models = recommended + legacy
+    /// The model menus: current general-purpose models on the account that the catalog does not list yet, newest
+    /// first, then the catalog, then the selected model if it is neither.
+    static func selectionModels(including selected: String, account: [String] = []) -> [String] {
+        let listed = recommended + legacy
+        let models = account.filter { !listed.contains($0) } + listed
         return models.contains(selected) || selected.isEmpty ? models : models + [selected]
     }
 
-    static func supportsPro(_ id: String) -> Bool {
-        ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6"].contains(family(id))
+    /// The current general-purpose models in a GET /models listing, newest version first. Dated snapshots,
+    /// specialized variants and retired models are left out.
+    static func currentAccountModels(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids
+            .filter { baseID($0) == $0 && isModern($0) && !isRetired($0) && seen.insert($0).inserted }
+            .sorted { priority($0) == priority($1) ? $0 < $1 : priority($0) > priority($1) }
     }
 
-    /// Async tool calling was introduced with GPT-6 Astra; other models run tools in order.
+    /// Pro reasoning mode. OpenAI's reasoning guide (September 29, 2026): "GPT-5.6 and GPT-6 models support standard
+    /// and pro reasoning modes in the Responses API"; its example uses GPT-6.1 Sol.
+    static func supportsPro(_ id: String) -> Bool {
+        isModern(id)
+    }
+
+    /// Async tool calling. OpenAI documents it for "GPT-6 Astra and later models" (async tool calling guide,
+    /// September 29, 2026), so it is on for Astra and for general releases numbered after 6.0, such as GPT-6.1 Sol.
+    /// GPT-6 Sol and Luna came out after Astra under the same number and stay off until a request shows they accept it.
     static func supportsAsyncTools(_ id: String) -> Bool {
-        family(id) == "gpt-6-astra"
+        if family(id) == "gpt-6-astra" { return true }
+        guard isModern(id), let parsed = generation(id) else { return false }
+        return (parsed.major, parsed.minor) > (6, 0)
     }
 
     /// Models OpenAI has shut down or scheduled for shutdown (deprecations page, September 24, 2026).
@@ -120,12 +140,17 @@ enum CurrentModelCatalog {
         } || full.contains("chat-latest")
     }
 
+    /// Current models whose model pages list `none` reasoning effort (checked September 29, 2026). GPT-6 Astra and
+    /// GPT-6.1 Sol start at low, where `none` returns HTTP 400, and so does any later release until it is listed here.
+    nonisolated private static let modelsAcceptingNoReasoning: Set<String> = [
+        "gpt-6-sol", "gpt-6-luna", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+    ]
+
     static func reasoningEfforts(for id: String) -> [String] {
         let key = family(id)
         if isModern(key) {
-            // GPT-6 Astra-class models start at low; every other current model also accepts none.
-            if generation(key)?.variants == ["astra"] { return ["low", "medium", "high", "xhigh", "max"] }
-            return ["none", "low", "medium", "high", "xhigh", "max"]
+            let efforts = ["low", "medium", "high", "xhigh", "max"]
+            return modelsAcceptingNoReasoning.contains(key) ? ["none"] + efforts : efforts
         }
         if id.contains("-pro") { return ["medium", "high", "xhigh"] }
         if ["gpt-5.5", "gpt-5.4", "gpt-5.2"].contains(where: { id.hasPrefix($0) }) { return ["none", "low", "medium", "high", "xhigh"] }
@@ -179,6 +204,7 @@ enum CurrentModelCatalog {
 
     static func description(for id: String) -> String {
         switch family(id) {
+        case "gpt-6.1-sol": return "Near-Astra performance at a lower cost"
         case "gpt-6-sol": return "Complex coding and agentic work · recommended"
         case "gpt-6-astra": return "Most capable · hardest reasoning, research and computer use"
         case "gpt-6-luna": return "Most efficient · focused, high-volume tasks"

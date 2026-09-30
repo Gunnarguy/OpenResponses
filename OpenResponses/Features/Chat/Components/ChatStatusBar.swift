@@ -109,7 +109,7 @@ struct ChatStatusBar: View {
                     viewModel.saveActivePrompt()
                 }
             )) {
-                ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel), id: \.self) { model in
+                ForEach(CurrentModelCatalog.selectionModels(including: viewModel.activePrompt.openAIModel, account: viewModel.accountModels), id: \.self) { model in
                     Text(model).tag(model)
                 }
             }

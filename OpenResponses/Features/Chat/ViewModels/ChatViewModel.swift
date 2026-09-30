@@ -44,6 +44,10 @@ class ChatViewModel: ObservableObject {
     /// A `run_python` call waiting for the user to approve or decline it (ChatViewModel+LocalPython.swift).
     @Published var pendingPythonRun: PythonRunRequest?
     var pythonRunDecision: CheckedContinuation<Bool, Never>?
+    /// Current general-purpose models on the account from the last successful GET /models, kept between launches.
+    /// The model menus add the ones the catalog does not list, so a model released after this version of the app still
+    /// appears. Before this, the menus read only the catalog and missed GPT-6.1 Sol (September 29, 2026).
+    @Published private(set) var accountModels: [String] = UserDefaults.standard.stringArray(forKey: "accountModels") ?? []
     
 
     /// Prevents multiple concurrent computer_call resolution tasks
@@ -384,6 +388,18 @@ class ChatViewModel: ObservableObject {
             setupBindings()
         }
         updateModelCompatibility()
+    }
+
+    // MARK: - Account models
+
+    /// Asks OpenAI which models this account can use and keeps the current general-purpose ones for the model menus.
+    /// Skipped in Explore Demo. Without an API key or a connection the last list stays.
+    func refreshAccountModels() async {
+        guard !exploreModeEnabled, let models = try? await api.listModels() else { return }
+        let current = CurrentModelCatalog.currentAccountModels(models.map(\.id))
+        guard current != accountModels else { return }
+        accountModels = current
+        UserDefaults.standard.set(current, forKey: "accountModels")
     }
 
     // MARK: - Explore Demo
