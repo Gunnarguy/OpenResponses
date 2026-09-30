@@ -8,6 +8,7 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 ### Fixed
 
+- GitHub CI's unit tests no longer fail on a slow shared runner: the chat lifecycle tests wait up to 15 seconds instead of 1 for background work, and the WebKit browser tests retry a first page load that times out. Run 36751566276 on September 30 failed six timing tests this way while the same code passed locally and on the previous run.
 - The warning shown when you turn on Computer Use said it "can control apps". It drives only the app's own off-screen browser, and the warning says so now.
 
 ## 2.8 — released September 30, 2026 (build 51)

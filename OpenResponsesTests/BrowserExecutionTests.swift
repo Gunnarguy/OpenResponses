@@ -157,6 +157,20 @@ final class BrowserWebKitTests: XCTestCase {
         browser = nil
     }
 
+    /// Loads the fixture, and once more on a fresh browser if the first load times out: on GitHub's shared runner the
+    /// WebContent process once took over the 20-second navigation limit to load this local page (run 36751566276,
+    /// 2026-09-30). A real navigation bug still fails both loads.
+    private func loadFixture() async throws -> BrowserAutomationResult {
+        do {
+            return try await browser.testing_loadHTML(fixture)
+        } catch ComputerUseError.timedOut {
+            browser.closeBrowser()
+            browser = ComputerService(autoAttachWebView: true)
+            browser.beginTurn()
+            return try await browser.testing_loadHTML(fixture)
+        }
+    }
+
     private let fixture = """
     <html><head><meta name='viewport' content='width=device-width, initial-scale=1'><title>Browser fixture</title></head>
     <body><h1>Browser fixture</h1>
@@ -177,7 +191,7 @@ final class BrowserWebKitTests: XCTestCase {
     """
 
     func testRealWebKitSnapshotPreciseClickAndNativeInputSubmission() async throws {
-        let page = try await browser.testing_loadHTML(fixture)
+        let page = try await loadFixture()
         XCTAssertEqual(page.state.title, "Browser fixture")
         let png = try XCTUnwrap(page.screenshot.flatMap { Data(base64Encoded: $0) })
         XCTAssertTrue(png.starts(with: [137, 80, 78, 71]))
@@ -198,7 +212,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testNativeSetterSubmitsOnceAndPreservesWhitespace() async throws {
-        let page = try await browser.testing_loadHTML(fixture)
+        let page = try await loadFixture()
         let ref = try XCTUnwrap(page.state.inputs.first(where: { $0.text == "Email" })?.ref)
         let filled = try await browser.liveBrowserType(text: "  plus + & ' quote  ", fieldHint: nil, submit: true, elementRef: ref)
         XCTAssertTrue(filled.state.visibleTextPreview.contains("Submits: 1"))
@@ -209,7 +223,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testReferencesExpireAfterReadAndChangedDestination() async throws {
-        let page = try await browser.testing_loadHTML(fixture)
+        let page = try await loadFixture()
         let old = try XCTUnwrap(page.state.buttons.first?.ref)
         _ = try await browser.liveBrowserRead()
         do { _ = try await browser.liveBrowserClick(targetText: "", elementRef: old); XCTFail("Stale reference") } catch { }
@@ -223,7 +237,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testMissingDisabledAndObscuredTargetsNeverReportSuccess() async throws {
-        _ = try await browser.testing_loadHTML(fixture)
+        _ = try await loadFixture()
         do { _ = try await browser.liveBrowserType(text: "secret", fieldHint: "Missing field", submit: false); XCTFail() } catch { }
         _ = try await browser.testing_evaluatePage("document.querySelector('#first').disabled=true;document.querySelector('#second').disabled=true")
         do { _ = try await browser.liveBrowserClick(targetText: "Choose"); XCTFail() } catch { }
@@ -232,7 +246,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testInvalidWaitUnknownActionAndApprovalBlockBothToolPaths() async throws {
-        _ = try await browser.testing_loadHTML(fixture)
+        _ = try await loadFixture()
         for action in [ComputerAction(type: "wait", parameters: ["ms": -1]), ComputerAction(type: "wait", parameters: ["ms": Double.nan]), ComputerAction(type: "invalid", parameters: [:])] {
             do { _ = try await browser.executeAction(action); XCTFail() } catch { }
         }
@@ -244,7 +258,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testProcessTerminationInterruptsActiveBatchAndRecoversWithoutReplay() async throws {
-        let initial = try await browser.testing_loadHTML(fixture)
+        let initial = try await loadFixture()
         let oldRef = try XCTUnwrap(initial.state.buttons.first?.ref)
         let pending = Task { try await browser.executeActions([
             ComputerAction(type: "wait", parameters: ["ms": 10_000]),
@@ -262,7 +276,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testInputSanitizationAndInvalidNavigationAreReported() async throws {
-        _ = try await browser.testing_loadHTML(fixture)
+        _ = try await loadFixture()
         do { _ = try await browser.liveBrowserType(text: "line one\nline two", fieldHint: "Email", submit: true); XCTFail() } catch { }
         let submits = try await browser.testing_evaluatePage("window.submits || 0")
         XCTAssertEqual(submits as? Int, 0)
@@ -272,7 +286,7 @@ final class BrowserWebKitTests: XCTestCase {
     }
 
     func testScreenshotClickFiresExactlyOnce() async throws {
-        _ = try await browser.testing_loadHTML(fixture)
+        _ = try await loadFixture()
         let rawPoint = try await browser.testing_evaluatePage("(() => {const r=document.querySelector('#first').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
         let point = try XCTUnwrap(rawPoint as? [String: Double])
         _ = try await browser.executeAction(ComputerAction(type: "click", parameters: point))

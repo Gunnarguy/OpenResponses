@@ -194,7 +194,7 @@ final class ChatViewModelLifecycleTests: XCTestCase {
 
         viewModel.sendUserMessage("Use the public MCP server.")
 
-        let condition4 = await waitUntil(timeout: 1.5) {
+        let condition4 = await waitUntil() {
             api.chatRequests.count == 1 && viewModel.messages.contains { $0.text == "Public MCP ready." }
         }
         XCTAssertTrue(condition4)
@@ -468,8 +468,11 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         viewModel.saveConversation(conversation)
     }
 
+    /// Polls until the condition holds. The limit is generous because it only matters when a test fails: GitHub's
+    /// shared runner missed a 1-second limit in five of these tests on 2026-09-30 (run 36751566276, a Build & Test job of
+    /// 19.5 minutes against 8 the run before), while the same tests pass in well under a second locally.
     private func waitUntil(
-        timeout: TimeInterval = 1.0,
+        timeout: TimeInterval = 15.0,
         pollIntervalNanoseconds: UInt64 = 10_000_000,
         condition: @escaping @MainActor () -> Bool
     ) async -> Bool {

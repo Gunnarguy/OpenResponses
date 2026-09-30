@@ -4,7 +4,7 @@
   "name": "On-device browser and computer use",
   "aliases": ["On-device browser", "computer use", "live browser", "BrowserExecution", "ComputerService", "SafetyApprovalSheet", "Review required", "Approve & Continue", "Safety checks", "Strict Mode"],
   "purpose": "Provides sandboxed browser automation and capture loops for the assistant to interact with websites on-device.",
-  "revision": "93ca8c9",
+  "revision": "86d9c13",
   "verified_on": "2026-09-30",
   "entry_points": ["SafetyApprovalSheet", "SettingsHomeView", "ChatView"],
   "files": [
@@ -18,7 +18,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponsesTests/BrowserExecutionTests.swift", "role": "test", "blob": "59ecb3761a6cac1a3af0a717c709345811cd1042"},
+    {"path": "OpenResponsesTests/BrowserExecutionTests.swift", "role": "test", "blob": "f49296385c5bd198552cb7fd12195a556ad321d9"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"}
   ],
   "nodes": [
@@ -97,10 +97,11 @@
       {"from": "BrowserExecution", "type": "depends_on", "to": "ComputerUseError", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/BrowserExecution.swift", "line": 103, "match": "guard !approvalPending else { throw ComputerUseError.approvalRequired }"}]},
       {"from": "BrowserNavigationPolicy", "type": "depends_on", "to": "ComputerUseError", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/BrowserExecution.swift", "line": 153, "match": "guard let url = URL(string: text) else { throw ComputerUseError.invalidParameters }"}]},
       {"from": "BrowserDOM", "type": "depends_on", "to": "ComputerUseError", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/BrowserDOM.swift", "line": 7, "match": "guard let json = String(data: data, encoding: .utf8) else { throw ComputerUseError.invalidParameters }"}]},
+      {"from": "BrowserAutomationResult", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 163, "match": "private func loadFixture() async throws -> BrowserAutomationResult {"}]},
       {"from": "BrowserCallback", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 9, "match": "let first = BrowserCallback<Int>()"}]},
       {"from": "BrowserExecution", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 42, "match": "let queue = BrowserExecution()"}]},
       {"from": "BrowserNavigationPolicy", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 133, "match": "XCTAssertThrowsError(try BrowserNavigationPolicy.url(url), url)"}]},
-      {"from": "ComputerAction", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 236, "match": "for action in [ComputerAction(type: \"wait\", parameters: [\"ms\": -1]), ComputerAction(type:"}]},
+      {"from": "ComputerAction", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 250, "match": "for action in [ComputerAction(type: \"wait\", parameters: [\"ms\": -1]), ComputerAction(type:"}]},
       {"from": "ComputerService", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 148, "match": "private var browser: ComputerService!"}]},
       {"from": "ComputerUseError", "type": "tested_by", "to": "test:BrowserExecutionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/BrowserExecutionTests.swift", "line": 14, "match": "} catch { XCTAssertTrue(error is ComputerUseError) }"}]},
       {"from": "ComputerService", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 475, "match": "ComputerService.testing_searchResultsURL(currentURL: \"https://www.google.com\", query: \"penguin facts\"),"}]},

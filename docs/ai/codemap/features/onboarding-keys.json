@@ -4,7 +4,7 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "93ca8c9",
+  "revision": "86d9c13",
   "verified_on": "2026-09-30",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
@@ -17,7 +17,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e533e01cce6d0386c6f93ca99ed8eb04aaa79cf"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
-    {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "5c07aeb8cc080124c0ea704c6cd95737fa169f13"}
+    {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "25dbafd611be45be5b43fd8c2253b15cad08739e"}
   ],
   "nodes": [
     {"id": "OnboardingView", "kind": "view", "path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 3, "match": "struct OnboardingView: View {", "status": "VERIFIED", "note": "Multi-page onboarding walkthrough presented on first launch."},
