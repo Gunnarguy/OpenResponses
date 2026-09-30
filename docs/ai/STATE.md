@@ -37,7 +37,7 @@ Last verified commit: ab87186
 - GitHub CI run 36668432665 for ab87186 was still in progress at submission; check it with `gh run view 36668432665 --repo Gunnarguy/OpenResponses`.
 
 ## Blockers / Unknowns
-- App Review may question Local Python under Guideline 2.5.2; the review notes explain it. If rejected, the fallback is shipping with Local Python hidden (the toggle is off by default) and resubmitting.
+- App Review may question Local Python under Guideline 2.5.2. Gunnar decided on 2026-09-29 to leave it in review ("let's try it out, leave for now") after reading Guideline 2.5.2, 4.7 and Developer Program License Agreement 3.3.1(B), which allows interpreted code that fits the app's advertised purpose and stays in the sandbox. If Apple rejects it, remove Local Python entirely (toggle, run_python tool, `OpenResponses/Resources/Pyodide/`, listing and review-note mentions), rebuild and resubmit; hiding it while still bundling it would break Guideline 2.3.1.
 - Async tool calls on GPT-6 Sol and Luna stay off until a live request settles whether "GPT-6 Astra and later models" includes them.
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
