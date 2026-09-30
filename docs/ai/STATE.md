@@ -1,11 +1,11 @@
 # Current State
 
-Updated: 2026-09-29
+Updated: 2026-09-30
 Branch/worktree: main in the repo root, level with origin/main at ab87186 (pushed 2026-09-29 21:21 PDT) apart from this handoff. Xcode Cloud run 51 builds ab87186. Build 51 (Xcode Cloud run 51, ab87186) is attached to version 2.8, which was submitted to App Review on 2026-09-29 at about 21:28 PDT: review submission 5e3d5bf0-cff5-4f69-9019-05599a734175, WAITING_FOR_REVIEW. This handoff and `scripts/asc/` are committed locally, unpushed, because a docs-only push would start another Xcode Cloud build.
 Last verified commit: ab87186
 
 ## Objective
-2.8 is in App Review (Gunnar, 2026-09-29: "update everything, all metadata, make it sound like my other apps ... commit and push, and get this thing into review"). Next: watch the review, answer App Review if it asks about Local Python, and on release day update the gunzino.me OpenResponses page, the gunnarguy.me card and the GitHub profile README to 2.8.
+2.8 is live: App Review approved it with Local Python in it, and App Store Connect showed version 2.8 READY_FOR_SALE with build 51 on 2026-09-30 (release type AFTER_APPROVAL). Remaining release-day chores, not yet asked for: the gunzino.me OpenResponses page to v2.8 (its appstore-versions workflow opens a drift issue while the page says v2.7), App Store on the v2.8 Notion rows plus a Release row, MARKETING_VERSION to 2.9, the gunnarguy.me card and the GitHub profile README.
 
 ## Status
 - 2.8 contents (CHANGELOG.md, docs/ReleaseNotes_2.8.0.md): GPT-6.1 Sol; new models listed from the account's GET /models with settings read from OpenAI's docs pages (docs/model-catalog.md); Local Python (Pyodide 314.0.7, per-run approval); search conversations by meaning; MCP sign-in through https://gunzino.me/openresponses/oauth/callback.html; GPT-Live stops when talked over; Settings → Model → Voice stays open; Pro mode on every GPT-5.6 and GPT-6 model; accessibility pass.
@@ -42,4 +42,4 @@ Last verified commit: ab87186
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Check the review state with `zsh -ic 'cd scripts/asc && python3 release.py status'` (or App Store Connect). If Apple approves, 2.8 goes live on its own: then add App Store to the v2.8 Notion rows, add a Kind = Release row with the build number, update the gunzino.me OpenResponses page to v2.8, and bump MARKETING_VERSION to 2.9. If Apple rejects, read the message and fix what it names.
+Ask Gunnar whether to do the release-day chores listed under Objective; the gunzino.me page is the urgent one because of the daily drift check. The in-app Computer Use alert in SettingsHomeView.swift says "Computer Use can control apps", but it only drives the app's own off-screen browser; fix that text in 2.9.
