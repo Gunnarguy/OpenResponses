@@ -6,10 +6,14 @@ struct OpenAIModel: Codable, Identifiable {
     let object: String
     let created: Int
     let ownedBy: String
+    /// `shutdown_date`: when OpenAI will shut the model down (YYYY-MM-DD), or nil when none is announced
+    /// (Models API reference, September 29, 2026).
+    var shutdownDate: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, object, created
         case ownedBy = "owned_by"
+        case shutdownDate = "shutdown_date"
     }
 
     /// Display name for the model: the API ID as returned, including dated snapshots.

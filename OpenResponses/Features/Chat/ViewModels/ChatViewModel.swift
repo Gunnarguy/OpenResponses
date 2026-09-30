@@ -48,6 +48,9 @@ class ChatViewModel: ObservableObject {
     /// The model menus add the ones the catalog does not list, so a model released after this version of the app still
     /// appears. Before this, the menus read only the catalog and missed GPT-6.1 Sol (September 29, 2026).
     @Published private(set) var accountModels: [String] = UserDefaults.standard.stringArray(forKey: "accountModels") ?? []
+    /// Revision of the model catalog in use (`ModelCatalogStore`). It changes when a newer catalog is downloaded,
+    /// which redraws the model menus.
+    @Published private(set) var modelCatalogRevision = ModelCatalogStore.shared.catalog.revision
     
 
     /// Prevents multiple concurrent computer_call resolution tasks
@@ -396,10 +399,31 @@ class ChatViewModel: ObservableObject {
     /// Skipped in Explore Demo. Without an API key or a connection the last list stays.
     func refreshAccountModels() async {
         guard !exploreModeEnabled, let models = try? await api.listModels() else { return }
+        // Shutdown dates retire a model 30 days ahead (CurrentModelCatalog.isRetired), so record them first.
+        ModelCatalogStore.shared.recordShutdowns(Dictionary(models.compactMap { model in model.shutdownDate.map { (model.id, $0) } },
+                                                            uniquingKeysWith: { first, _ in first }))
         let current = CurrentModelCatalog.currentAccountModels(models.map(\.id))
-        guard current != accountModels else { return }
-        accountModels = current
-        UserDefaults.standard.set(current, forKey: "accountModels")
+        if current != accountModels {
+            accountModels = current
+            UserDefaults.standard.set(current, forKey: "accountModels")
+        }
+        moveActivePromptOffRetiredModel()
+    }
+
+    /// Downloads the model catalog when a day has passed since the last check. A newer catalog redraws the model
+    /// menus, and a model it retires moves the active preset to its replacement now rather than at the next launch.
+    /// Skipped in Explore Demo, which makes no network requests.
+    func refreshModelCatalog() async {
+        guard !exploreModeEnabled, await ModelCatalogStore.shared.refreshIfDue() else { return }
+        modelCatalogRevision = ModelCatalogStore.shared.catalog.revision
+        moveActivePromptOffRetiredModel()
+    }
+
+    private func moveActivePromptOffRetiredModel() {
+        guard CurrentModelCatalog.isRetired(activePrompt.openAIModel) else { return }
+        // replaceActivePrompt moves the model and fits the reasoning settings to the replacement.
+        _ = replaceActivePrompt(with: activePrompt)
+        saveActivePrompt()
     }
 
     // MARK: - Explore Demo

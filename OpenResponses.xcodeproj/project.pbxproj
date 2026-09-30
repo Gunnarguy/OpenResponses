@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		231DAC4EB17E473DB012CCE1 /* ModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */; };
 		2945D95CC18D4633B8D3D065 /* LocalPythonRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */; };
 		39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */; };
 		0F0CF60C606249759EDA6905 /* ChatViewModelLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE44C8A6C09241A29724C883 /* ChatViewModelLifecycleTests.swift */; };
@@ -53,6 +54,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogTests.swift; sourceTree = "<group>"; };
 		B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPythonRunnerTests.swift; sourceTree = "<group>"; };
 		0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSearchIndexTests.swift; sourceTree = "<group>"; };
 		8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLoggerTests.swift; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 		B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */ = {
 			isa = PBXGroup;
 			children = (
+				D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */,
 				B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */,
 				0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */,
 				F3B5108BF978E08347A4D7F7 /* URLDetectorTests.swift */,
@@ -410,6 +413,7 @@
 				B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */,
 				B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */,
 				B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */,
+				231DAC4EB17E473DB012CCE1 /* ModelCatalogTests.swift in Sources */,
 				2945D95CC18D4633B8D3D065 /* LocalPythonRunnerTests.swift in Sources */,
 				39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */,
 				714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */,

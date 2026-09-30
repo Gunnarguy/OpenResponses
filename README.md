@@ -161,7 +161,7 @@ The configurations map to `UserDefaults` (for preferences) or the secure Keychai
 | :--- | :--- | :--- | :--- | :--- |
 | **OpenAI API Key** | Keychain (`openAIKey`) | None | **Yes** | Authenticates all OpenAI network requests. |
 | **Notion Token** | Keychain (`notionApiKey`) | None | No | Authenticates Notion integration requests. |
-| **Model Selection** | `UserDefaults` | `gpt-6-sol` | **Yes** | Responses model; GPT-6.1 Sol, GPT-6 Sol, Astra and Luna and the GPT-5.6 family are in the current catalog, and the model menus also list later general-purpose releases the account can use. |
+| **Model Selection** | `UserDefaults` | `gpt-6-sol` | **Yes** | Responses model; the current catalog (GPT-6.1 Sol, GPT-6 Sol, Astra and Luna, and the GPT-5.6 family) updates from gunzino.me without an app update, and the model menus also list later general-purpose releases the account can use. |
 | **Reasoning Effort** | `UserDefaults` | `medium` | No | Configures model-aware effort choices; current models also expose higher efforts where supported. |
 | **Web Search** | `UserDefaults` | `true` | No | Toggles OpenAI web search capabilities. |
 | **Code Interpreter** | `UserDefaults` | `true` | No | Toggles OpenAI sandboxed Python containers. |

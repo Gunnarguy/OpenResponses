@@ -4,21 +4,21 @@
   "name": "Batch jobs",
   "aliases": ["Batch Jobs", "Batch API Jobs", "Submit New Batch Job", "Upload JSONL Batch", "Active and Historical Batches", "Save Results", "Save Errors"],
   "purpose": "Manages OpenAI Batch jobs: JSONL input upload, job creation, status polling, cancellation, and download of complete result and error files to disk.",
-  "revision": "9f20335",
-  "verified_on": "2026-09-28",
+  "revision": "1f56b73",
+  "verified_on": "2026-09-29",
   "entry_points": ["SettingsHomeView.batchJobsLink"],
   "files": [
     {"path": "OpenResponses/Core/Services/BatchService.swift", "role": "primary", "blob": "7dd55c48f8bcbc0181096c0dbcf62626d274d2cd"},
     {"path": "OpenResponses/Core/Models/BatchModels.swift", "role": "primary", "blob": "186414fa0bf58843e98d7ddcf18282eff3a4062e"},
     {"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "role": "primary", "blob": "cf33edb743abe00c290c4fe3a9fa4edc384a2673"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "9eb44b28a5e475d33a50dab47b1e9069f6b8e1ed"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/ResourcePagination.swift", "role": "shared", "blob": "5d478f1f4155dd12568fd28109a3ce3ec71610c2"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 6, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
-    {"id": "SettingsHomeView.batchJobsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1498, "match": "                NavigationLink(destination: BatchJobsView()) {", "status": "VERIFIED"},
+    {"id": "SettingsHomeView.batchJobsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1501, "match": "                NavigationLink(destination: BatchJobsView()) {", "status": "VERIFIED"},
     {"id": "BatchJobsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 3, "match": "struct BatchJobsView: View {", "status": "VERIFIED"},
     {"id": "BatchJobsView.uploadAndSubmitBatch", "kind": "function", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 265, "match": "    private func uploadAndSubmitBatch(fileURL: URL) {", "status": "VERIFIED"},
     {"id": "BatchJobsView.downloadResults", "kind": "function", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 246, "match": "    private func downloadResults(fileId: String, isErrorFile: Bool = false) {", "status": "VERIFIED"},
@@ -45,8 +45,8 @@
     {"id": "test:BatchServiceTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 267, "match": "    func testBatchDownloadPreservesCompleteErrorFile() async throws {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "SettingsHomeView.batchJobsLink", "type": "calls", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1498, "match": "                NavigationLink(destination: BatchJobsView()) {"}]},
-    {"from": "SettingsHomeView", "type": "renders", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1498, "match": "                NavigationLink(destination: BatchJobsView()) {"}]},
+    {"from": "SettingsHomeView.batchJobsLink", "type": "calls", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1501, "match": "                NavigationLink(destination: BatchJobsView()) {"}]},
+    {"from": "SettingsHomeView", "type": "renders", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1501, "match": "                NavigationLink(destination: BatchJobsView()) {"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.uploadAndSubmitBatch", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 184, "match": "                    uploadAndSubmitBatch(fileURL: url)"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.downloadResults", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 107, "match": "                                        downloadResults(fileId: outputFileId)"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.loadJobs", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 152, "match": "        .onAppear { loadJobs() }"}]},

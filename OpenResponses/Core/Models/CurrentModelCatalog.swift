@@ -1,15 +1,19 @@
 import Foundation
 
-/// Verified against OpenAI's model catalog, changelog and deprecations pages on September 24, 2026, and against the
-/// GPT-6.1 Sol model page, the GPT-6 guide and the reasoning and async tool calling guides on September 29, 2026.
-/// Account availability still comes from GET /models; discovery never grants capabilities.
+/// Which text models the app offers and what each accepts. The current models, their settings, the default model,
+/// the earlier models and the retired ones come from the model catalog (`ModelCatalog`, kept current by
+/// `ModelCatalogStore` from https://gunzino.me/openresponses/models.json), so a new model reaches the menus with its
+/// settings without an app update. Catalog data verified against OpenAI's model pages, GPT-6 guide, reasoning guide
+/// and async tool calling guide on September 29, 2026. Account availability still comes from GET /models; discovery
+/// never grants capabilities.
 ///
-/// Later general-purpose releases (for example `gpt-6.2-sol` or `gpt-7-luna`) are recognized by their version number
-/// and configured like the current generation. The model menus list them once GET /models shows the account has them
-/// (`currentAccountModels`), so they appear without an app update. Specialized variants (audio, realtime,
-/// transcription, image, search, codex, cyber and similar) are not.
+/// A later general-purpose release the catalog does not list yet (for example `gpt-6.2-sol` or `gpt-7-luna`) is
+/// recognized by its version number, listed once GET /models shows the account has it (`currentAccountModels`), and
+/// configured by the fallback rules below. Specialized variants (audio, realtime, transcription, image, search, codex,
+/// cyber and similar) are not.
 enum CurrentModelCatalog {
-    static let defaultModel = "gpt-6-sol"
+    /// Default for new presets, the Workbench and onboarding: the catalog's `defaultModel`.
+    static var defaultModel: String { ModelCatalogStore.shared.catalog.defaultModel }
     nonisolated static let imageModel = "gpt-image-2.5-flare"
     /// Image models offered in settings, newest first. Earlier saved values stay selectable.
     nonisolated static let imageModels = ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"]
@@ -24,11 +28,17 @@ enum CurrentModelCatalog {
     nonisolated static let fileTranscriptionModel = "gpt-transcribe"
     /// Small, inexpensive model for background probes such as MCP tool discovery.
     nonisolated static let utilityModel = "gpt-6-luna"
-    static let recommended = ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
-    /// Earlier models shown when the account's model list is unavailable. Models whose shutdown OpenAI has
-    /// announced (gpt-5, gpt-5-mini, gpt-5-nano and o3 on December 11, 2026) are left out; the account's model
-    /// list and the model ID field reach every other model the account can use.
-    static let legacy = ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini"]
+    /// Current general-purpose models in menu order: the catalog's `current`.
+    static var recommended: [String] { ModelCatalogStore.shared.catalog.current.map(\.id) }
+    /// Earlier models listed after the current ones: the catalog's `earlier`. Models whose shutdown OpenAI has
+    /// announced are left out; the account's model list and the model ID field reach every other model it can use.
+    static var legacy: [String] { ModelCatalogStore.shared.catalog.earlier }
+
+    /// The catalog entry for a current model or one of its dated snapshots.
+    static func entry(for id: String) -> ModelCatalog.Model? {
+        let key = family(id)
+        return ModelCatalogStore.shared.catalog.current.first { $0.id == key }
+    }
 
     /// Variant words that mark a model as something other than a general text-and-tools model.
     nonisolated private static let specializedVariants: Set<String> = [
@@ -90,67 +100,58 @@ enum CurrentModelCatalog {
             .sorted { priority($0) == priority($1) ? $0 < $1 : priority($0) > priority($1) }
     }
 
-    /// Pro reasoning mode. OpenAI's reasoning guide (September 29, 2026): "GPT-5.6 and GPT-6 models support standard
-    /// and pro reasoning modes in the Responses API"; its example uses GPT-6.1 Sol.
+    /// Pro reasoning mode: the catalog's `pro`. For a model it does not list yet, every GPT-5.6 and later general
+    /// model, as OpenAI's reasoning guide states ("GPT-5.6 and GPT-6 models support standard and pro reasoning modes",
+    /// September 29, 2026).
     static func supportsPro(_ id: String) -> Bool {
-        isModern(id)
+        entry(for: id)?.pro ?? isModern(id)
     }
 
-    /// Async tool calling. OpenAI documents it for "GPT-6 Astra and later models" (async tool calling guide,
-    /// September 29, 2026), so it is on for Astra and for general releases numbered after 6.0, such as GPT-6.1 Sol.
-    /// GPT-6 Sol and Luna came out after Astra under the same number and stay off until a request shows they accept it.
+    /// Async tool calling: the catalog's `asyncTools`. For a model it does not list yet, general releases numbered
+    /// after 6.0, since OpenAI documents it for "GPT-6 Astra and later models" (async tool calling guide,
+    /// September 29, 2026).
     static func supportsAsyncTools(_ id: String) -> Bool {
-        if family(id) == "gpt-6-astra" { return true }
+        if let model = entry(for: id) { return model.asyncTools }
         guard isModern(id), let parsed = generation(id) else { return false }
         return (parsed.major, parsed.minor) > (6, 0)
     }
 
-    /// Models OpenAI has shut down or scheduled for shutdown (deprecations page, September 24, 2026).
-    /// They are hidden from the model list, and a preset that names one moves to `replacement(for:)` when loaded.
-    /// Fine-tuned models (`ft:`) are not listed: their inference continues until the base model retires.
-    nonisolated static let retiredModels: [String] = [
-        "computer-use-preview", "o1", "o1-pro", "o1-mini", "o3", "o3-pro", "o3-mini", "o4-mini", "o3-deep-research", "o4-mini-deep-research",
-        "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4-1106-preview", "gpt-4-0613", "gpt-4.1-nano", "gpt-4o-2024-05-13",
-        "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "gpt-5.4-cyber", "chatgpt-4o-latest",
-        "gpt-5-codex", "gpt-5.1-codex", "gpt-5.2-codex", "codex-mini-latest", "babbage-002", "davinci-002",
-        "gpt-4o-realtime", "gpt-4o-mini-realtime", "gpt-4o-audio", "gpt-4o-mini-audio",
-    ]
+    /// Models OpenAI has shut down or scheduled for shutdown: the catalog's `retired` (first taken from the
+    /// deprecations page on September 24, 2026). They are hidden from the model lists, and a preset that names one
+    /// moves to `replacement(for:)` when loaded. Fine-tuned models (`ft:`) are not listed: their inference continues
+    /// until the base model retires.
+    nonisolated static var retiredModels: [String] { ModelCatalogStore.shared.catalog.retired.map(\.id) }
 
-    /// OpenAI's documented replacement for a retired model (deprecations page, September 24, 2026).
-    /// Models without a listed replacement move to the app default.
+    /// Where a preset naming a retired model moves: the replacement of the longest matching retired entry, so
+    /// `gpt-5-mini-2025-08-07` follows `gpt-5-mini` rather than `gpt-5`, otherwise the default model.
     nonisolated static func replacement(for id: String) -> String {
         let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let table: [(String, String)] = [
-            ("gpt-5-mini", "gpt-5.6-terra"), ("gpt-5-nano", "gpt-5.6-luna"), ("gpt-4.1-nano", "gpt-5.6-luna"),
-            ("o4-mini", "gpt-5.6-terra"), ("gpt-3.5-turbo", "gpt-5.6-terra"), ("babbage-002", "gpt-5.6-terra"), ("davinci-002", "gpt-5.6-terra"),
-            ("gpt-5", "gpt-5.6-sol"), ("o1", "gpt-5.6-sol"), ("o3", "gpt-5.6-sol"), ("gpt-4", "gpt-5.6-sol"), ("gpt-4o-2024-05-13", "gpt-5.6-sol"),
-            ("gpt-5.4-cyber", "gpt-5.6-cyber"),
-        ]
-        for (retired, current) in table where full == retired || full.hasPrefix(retired + "-") {
-            return current
+        let catalog = ModelCatalogStore.shared.catalog
+        var match: ModelCatalog.Retired?
+        for entry in catalog.retired where entry.replacement != nil && (full == entry.id || full.hasPrefix(entry.id + "-")) {
+            if entry.id.count > (match?.id.count ?? 0) { match = entry }
         }
-        return "gpt-6-sol"
+        return match?.replacement ?? catalog.defaultModel
     }
 
+    /// Retired when the catalog lists the model (or it is a dated snapshot or older variant of one), or when the
+    /// account's model list says it shuts down within 30 days.
     nonisolated static func isRetired(_ id: String) -> Bool {
         let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let base = baseID(id)
+        let store = ModelCatalogStore.shared
         return retiredModels.contains { name in
             [full, base].contains { $0 == name || ($0.hasPrefix(name + "-") && !isModern($0)) }
-        } || full.contains("chat-latest")
+        } || full.contains("chat-latest") || store.isShuttingDown(full) || store.isShuttingDown(base)
     }
 
-    /// Current models whose model pages list `none` reasoning effort (checked September 29, 2026). GPT-6 Astra and
-    /// GPT-6.1 Sol start at low, where `none` returns HTTP 400, and so does any later release until it is listed here.
-    nonisolated private static let modelsAcceptingNoReasoning: Set<String> = [
-        "gpt-6-sol", "gpt-6-luna", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-    ]
-
     static func reasoningEfforts(for id: String) -> [String] {
+        if let model = entry(for: id) { return model.reasoningEfforts }
         let key = family(id)
         if isModern(key) {
-            let efforts = ["low", "medium", "high", "xhigh", "max"]
-            return modelsAcceptingNoReasoning.contains(key) ? ["none"] + efforts : efforts
+            // A later release the catalog does not list yet starts at low: GPT-6 Astra and GPT-6.1 Sol reject `none`
+            // with HTTP 400, so offering it could break requests.
+            return ["low", "medium", "high", "xhigh", "max"]
         }
         if id.contains("-pro") { return ["medium", "high", "xhigh"] }
         if ["gpt-5.5", "gpt-5.4", "gpt-5.2"].contains(where: { id.hasPrefix($0) }) { return ["none", "low", "medium", "high", "xhigh"] }
@@ -203,19 +204,10 @@ enum CurrentModelCatalog {
     }
 
     static func description(for id: String) -> String {
-        switch family(id) {
-        case "gpt-6.1-sol": return "Near-Astra performance at a lower cost"
-        case "gpt-6-sol": return "Complex coding and agentic work · recommended"
-        case "gpt-6-astra": return "Most capable · hardest reasoning, research and computer use"
-        case "gpt-6-luna": return "Most efficient · focused, high-volume tasks"
-        case "gpt-5.6-sol", "gpt-5.6": return "Previous generation · general-purpose work"
-        case "gpt-5.6-terra": return "Previous generation · balanced capability and cost"
-        case "gpt-5.6-luna": return "Previous generation · fast, lower-cost requests"
-        default:
-            if isModern(id) { return "Current generation model" }
-            if isRetired(id) { return "Retired model · choose a current replacement" }
-            return "Earlier model · " + (id.hasPrefix("gpt-5") || id.hasPrefix("o") ? "reasoning" : "text and chat")
-        }
+        if let model = entry(for: id) { return model.summary }
+        if isModern(id) { return "Current generation model" }
+        if isRetired(id) { return "Retired model · choose a current replacement" }
+        return "Earlier model · " + (id.hasPrefix("gpt-5") || id.hasPrefix("o") ? "reasoning" : "text and chat")
     }
 
     static func priority(_ id: String) -> Int {

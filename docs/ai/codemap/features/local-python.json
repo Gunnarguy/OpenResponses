@@ -4,7 +4,7 @@
   "name": "Local Python",
   "aliases": ["run_python", "Pyodide", "Python on this device", "Run Python?", "Don't Run", "Local Python toggle"],
   "purpose": "Runs Python the model writes on the device with bundled Pyodide in a sandboxed web view, after the user approves each run; standard library only, no network or files.",
-  "revision": "55bae08",
+  "revision": "1f56b73",
   "verified_on": "2026-09-29",
   "entry_points": ["ModernResponseSettings", "PythonRunApprovalSheet"],
   "files": [
@@ -19,10 +19,10 @@
     {"path": "OpenResponses/Resources/Pyodide/pyodide-lock.json", "role": "primary", "blob": "b439be1d2bfdd91bcbd51d7fc9c38482ea1caaa9"},
     {"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "role": "test", "blob": "d5deedd4c928721d5c06a0daeb3246a815c1922d"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "c22f3c4f91078eb1a8123308bb279ca2e9b7ab31"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "bd2143d7a35b1c8ae7f385c6e52f4b630a2a9183"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
-    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "421bcec7c5ec7f8f934bfa7f71b0eba019f31284"}
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a00c4f2ca3f7bc78dfeb616b1e017bc3a9c707ee"}
   ],
   "nodes": [
     {"id": "LocalPythonRunner", "kind": "service", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 10, "match": "final class LocalPythonRunner: NSObject {", "status": "VERIFIED", "note": "Pyodide 314.0.7 in a hidden WKWebView with a non-persistent data store; a run past its time limit tears the web view down."},
@@ -31,9 +31,9 @@
     {"id": "config:pythonContentRules", "kind": "config", "path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 56, "match": "nonisolated static let contentRules = \"\"\"", "status": "VERIFIED", "note": "Blocks every load except the runtime scheme, blob: and data:."},
     {"id": "file:python-runner.html", "kind": "resource", "path": "OpenResponses/Resources/Pyodide/python-runner.html", "line": 10, "match": "import { loadPyodide } from \"./pyodide.mjs\";", "status": "VERIFIED", "note": "Loads Pyodide, then replaces fetch, XMLHttpRequest, WebSocket and EventSource with versions that refuse at once."},
     {"id": "OpenAIService.runPythonFunction", "kind": "config", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1967, "match": "static let runPythonFunction = APICapabilities.Function(", "status": "VERIFIED", "note": "The run_python function tool, strict schema with one `code` string."},
-    {"id": "options:localPython", "kind": "state", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 266, "match": "var localPython: Bool = false", "status": "VERIFIED", "note": "ModernResponseOptions, decoded tolerantly; off by default."},
+    {"id": "options:localPython", "kind": "state", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 258, "match": "var localPython: Bool = false", "status": "VERIFIED", "note": "ModernResponseOptions, decoded tolerantly; off by default."},
     {"id": "ModernResponseSettings", "kind": "view", "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 33, "match": "Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.executeFunctionSwitch", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2284, "match": "private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.executeFunctionSwitch", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2308, "match": "private func executeFunctionSwitch(_ functionName: String, call: OutputItem, messageId: UUID) async -> String? {", "status": "VERIFIED"},
     {"id": "ChatViewModel.runPythonTool", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 11, "match": "func runPythonTool(_ call: OutputItem) async -> String {", "status": "VERIFIED"},
     {"id": "ChatViewModel.requestPythonRun", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 30, "match": "func requestPythonRun(_ code: String) async -> Bool {", "status": "VERIFIED", "note": "Suspends the tool call until the sheet, a dismissal or a cancelled turn resolves it."},
     {"id": "PythonRunApprovalSheet", "kind": "view", "path": "OpenResponses/Features/Chat/Components/PythonRunApprovalSheet.swift", "line": 4, "match": "struct PythonRunApprovalSheet: View {", "status": "VERIFIED"},
@@ -42,7 +42,7 @@
   "edges": [
     {"from": "OpenAIService.runPythonFunction", "type": "depends_on", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1959, "match": "if prompt.currentOptions.localPython {"}], "note": "Offered only when the option is on."},
     {"from": "ModernResponseSettings", "type": "writes", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 33, "match": "Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {"}]},
-    {"from": "ChatViewModel.executeFunctionSwitch", "type": "calls", "to": "ChatViewModel.runPythonTool", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2717, "match": "output = await runPythonTool(call)"}]},
+    {"from": "ChatViewModel.executeFunctionSwitch", "type": "calls", "to": "ChatViewModel.runPythonTool", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2741, "match": "output = await runPythonTool(call)"}]},
     {"from": "ChatViewModel.runPythonTool", "type": "reads", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 13, "match": "guard activePrompt.currentOptions.localPython else { return \"Error: Local Python is turned off in Settings.\" }"}]},
     {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "ChatViewModel.requestPythonRun", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 19, "match": "guard await requestPythonRun(arguments.code) else {"}]},
     {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "LocalPythonRunner.run", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 24, "match": "let result = await LocalPythonRunner.shared.run(arguments.code)"}]},

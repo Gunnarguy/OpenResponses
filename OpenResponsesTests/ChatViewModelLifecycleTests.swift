@@ -42,6 +42,32 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(menu.first, "gpt-6.2-sol", "a model released after this build still reaches the model menus")
     }
 
+    func testAShutdownDateInTheModelListMovesTheActivePresetOffThatModel() async {
+        defer {
+            ModelCatalogStore.shared.recordShutdowns([:])
+            UserDefaults.standard.removeObject(forKey: "accountModelShutdowns")
+            UserDefaults.standard.removeObject(forKey: "accountModels")
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let api = MockOpenAIService()
+        api.listedModels = [OpenAIModel(id: "gpt-5.6-terra", object: "model", created: 0, ownedBy: "openai",
+                                        shutdownDate: formatter.string(from: Date().addingTimeInterval(10 * 86_400)))]
+        let viewModel = makeViewModel(api: api)
+        viewModel.exploreModeEnabled = false
+        var prompt = viewModel.activePrompt
+        prompt.openAIModel = "gpt-5.6-terra"
+        _ = viewModel.replaceActivePrompt(with: prompt)
+        XCTAssertEqual(viewModel.activePrompt.openAIModel, "gpt-5.6-terra")
+
+        await viewModel.refreshAccountModels()
+
+        XCTAssertEqual(viewModel.activePrompt.openAIModel, CurrentModelCatalog.defaultModel, "shuts down in 10 days, no listed replacement")
+        XCTAssertFalse(viewModel.accountModels.contains("gpt-5.6-terra"))
+    }
+
     func testSendUserMessageCreatesRemoteConversationBeforeRequest() async {
         let api = MockOpenAIService()
         api.createConversationResult = makeConversationDetail(id: "conv_remote_1")
