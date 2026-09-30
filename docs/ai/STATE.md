@@ -2,7 +2,7 @@
 
 Updated: 2026-09-30
 Branch/worktree: main in the repo root; this handoff is pushed with the 2.9 version bump (Xcode Cloud builds it as a 2.9 TestFlight build).
-Last verified commit: 93ca8c9
+Last verified commit: 5be03ad
 
 ## Objective
 None active. 2.8 is released and every release-day task is done. 2.9 is open for whatever Gunnar picks next from the Notion roadmap (the v2.9 rows are device checks carried over from 2.8, plus anything he adds).
@@ -36,6 +36,7 @@ None active. 2.8 is released and every release-day task is done. 2.9 is open for
 - `python3 release.py status` (scripts/asc) on 2026-09-30 -> version 2.8 READY_FOR_SALE, build 51 attached, submission 5e3d5bf0 COMPLETE.
 - Gunzino `npm run build` and `./scripts/verify-site.sh source` -> exit 0 before pushing 5e5cf19. Gunnarguy-Portfolio `npm run verify` -> exit 0 before pushing d8327d6.
 - `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
+- GitHub CI run 36751566276 (86d9c13) failed six timing tests on a slow runner (Build & Test 19.5 minutes). 5be03ad raised the lifecycle tests' wait to 15 s and retries a timed-out first WebKit page load once; CI run 36754719209 (5be03ad) -> all four jobs success, 329 tests, 3 skipped, 0 failures, tests 119 s.
 
 ## Blockers / Unknowns
 - The 2.8 features are unchecked on a device (Notion v2.9 row "Live-check the 2.8 features on a device").
