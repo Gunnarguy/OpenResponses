@@ -4,7 +4,7 @@
   "name": "Request Settings",
   "aliases": ["Presets", "request options", "Prompt", "settings registry", "playground panel", "Settings screens", "Preset Library", "Add preset", "Reset Prompt Settings"],
   "purpose": "Manages presets and request options including Prompt persistence, preset library, PlaygroundSettingsPanel, Settings screens, and configuration validation.",
-  "revision": "1f56b73",
+  "revision": "733265a",
   "verified_on": "2026-09-29",
   "entry_points": ["SettingsHomeView", "PlaygroundSettingsPanel"],
   "files": [
@@ -15,10 +15,10 @@
     {"path": "OpenResponses/Features/Chat/Data/PromptLibrary.swift", "role": "primary", "blob": "48dc93e1cf33973c05520c0fbf3cb3460e3c5bb0"},
     {"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "role": "primary", "blob": "227f8db5ee65672addc9af464d50d20610e9f6df"},
     {"path": "OpenResponses/Features/Chat/Components/PlaygroundSettingsPanel.swift", "role": "primary", "blob": "fe6c9cfc135ef11a3d00967d03ac7df14a6f1273"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "primary", "blob": "9eb44b28a5e475d33a50dab47b1e9069f6b8e1ed"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "primary", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "primary", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
-    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a00c4f2ca3f7bc78dfeb616b1e017bc3a9c707ee"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "bd2143d7a35b1c8ae7f385c6e52f4b630a2a9183"},
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e533e01cce6d0386c6f93ca99ed8eb04aaa79cf"},
     {"path": "OpenResponsesTests/PromptPersistenceTests.swift", "role": "test", "blob": "03e608982f9be8a8e2104ac758b0d6bcbb5ffb6e"},
     {"path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift", "role": "test", "blob": "490de415e9300ee60f0868aaa7e508d3ebfb41fc"}
   ],
@@ -28,14 +28,14 @@
     {"id": "ModernResponseSettings", "kind": "view", "path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 3, "match": "struct ModernResponseSettings: View {", "status": "VERIFIED"},
     {"id": "PromptLibraryView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 4, "match": "struct PromptLibraryView: View {", "status": "VERIFIED"},
     {"id": "PromptLibrary", "kind": "state", "path": "OpenResponses/Features/Chat/Data/PromptLibrary.swift", "line": 7, "match": "final class PromptLibrary: ObservableObject {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.saveActivePrompt", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3458, "match": "    func saveActivePrompt() {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.sendUserMessage", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 1198, "match": "    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false, bypassAIDataSharingConsent: Bool = false) {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.saveActivePrompt", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3452, "match": "    func saveActivePrompt() {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.sendUserMessage", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 1192, "match": "    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false, bypassAIDataSharingConsent: Bool = false) {", "status": "VERIFIED"},
     {"id": "ResponseConfigurationValidation", "kind": "service", "path": "OpenResponses/Core/Services/ResponseConfigurationValidation.swift", "line": 6, "match": "enum ResponseConfigurationValidation {", "status": "VERIFIED"},
     {"id": "ResponseSettingsRegistry", "kind": "model", "path": "OpenResponses/Core/Models/ResponseSettingsRegistry.swift", "line": 3, "match": "struct ResponseSettingsRegistry {", "status": "VERIFIED"},
     {"id": "ResponseSettingDescriptor", "kind": "model", "path": "OpenResponses/Core/Models/ResponseSettingDescriptor.swift", "line": 3, "match": "struct ResponseSettingDescriptor: Identifiable {", "status": "VERIFIED"},
     {"id": "Prompt", "kind": "model", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 5, "match": "struct Prompt: Codable, Identifiable, Equatable {", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 223, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
-    {"id": "defaults:activePrompt", "kind": "persistence", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3468, "match": "            UserDefaults.standard.set(encoded, forKey: \"activePrompt\")", "status": "VERIFIED", "note": "the active preset"},
+    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 225, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
+    {"id": "defaults:activePrompt", "kind": "persistence", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3462, "match": "            UserDefaults.standard.set(encoded, forKey: \"activePrompt\")", "status": "VERIFIED", "note": "the active preset"},
     {"id": "defaults:savedPrompts", "kind": "persistence", "path": "OpenResponses/Features/Chat/Data/PromptLibrary.swift", "line": 44, "match": "            userDefaults.set(encoded, forKey: userDefaultsKey)", "status": "VERIFIED", "note": "saved prompt library presets"},
     {"id": "PromptPersistenceTests", "kind": "test", "path": "OpenResponsesTests/PromptPersistenceTests.swift", "line": 36, "match": "final class PromptPersistenceTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "ResponseSettingsRegistryTests", "kind": "test", "path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift", "line": 4, "match": "final class ResponseSettingsRegistryTests: XCTestCase {", "status": "VERIFIED"}
@@ -43,19 +43,19 @@
   "edges": [
     {"from": "SettingsHomeView", "to": "ChatViewModel.saveActivePrompt", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 374, "match": "                    onSave: { viewModel.saveActivePrompt() }"}]},
     {"from": "SettingsHomeView", "to": "PromptLibraryView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 88, "match": "            PromptLibraryView("}]},
-    {"from": "SettingsHomeView", "to": "ModernResponseSettings", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 380, "match": "ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)"}]},
+    {"from": "SettingsHomeView", "to": "ModernResponseSettings", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 377, "match": "ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)"}]},
     {"from": "PlaygroundSettingsPanel", "to": "ChatViewModel.saveActivePrompt", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/PlaygroundSettingsPanel.swift", "line": 63, "match": "                        viewModel.saveActivePrompt()"}]},
-    {"from": "ChatViewModel.saveActivePrompt", "to": "defaults:activePrompt", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3468, "match": "            UserDefaults.standard.set(encoded, forKey: \"activePrompt\")"}]},
+    {"from": "ChatViewModel.saveActivePrompt", "to": "defaults:activePrompt", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3462, "match": "            UserDefaults.standard.set(encoded, forKey: \"activePrompt\")"}]},
     {"from": "PromptLibraryView", "to": "PromptLibrary", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 28, "match": "                .onDelete(perform: library.deletePrompt)"}]},
     {"from": "PromptLibrary", "to": "defaults:savedPrompts", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Data/PromptLibrary.swift", "line": 44, "match": "            userDefaults.set(encoded, forKey: userDefaultsKey)"}]},
     {"from": "PromptLibrary", "to": "defaults:savedPrompts", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Data/PromptLibrary.swift", "line": 50, "match": "        if let data = userDefaults.data(forKey: userDefaultsKey),"}]},
-    {"from": "ChatViewModel.sendUserMessage", "to": "ResponseConfigurationValidation", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 1214, "match": "            do { try ResponseConfigurationValidation.validate(activePrompt) }"}]},
+    {"from": "ChatViewModel.sendUserMessage", "to": "ResponseConfigurationValidation", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 1208, "match": "            do { try ResponseConfigurationValidation.validate(activePrompt) }"}]},
     {"from": "Prompt", "to": "PromptPersistenceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/PromptPersistenceTests.swift", "line": 48, "match": "    func testSaveAndLoadPrompt() {"}]},
     {"from": "ResponseSettingsRegistry", "to": "ResponseSettingsRegistryTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift", "line": 6, "match": "    func testEveryPromptCodingKeyHasSettingsDescriptor() {"}]}
   ],
   "docs": [
-    {"path": "CHANGELOG.md", "section": "2.7", "quote": "New options live in the optional `modernOptions` container, so presets saved by earlier versions still decode.", "claim": "New options live in modernOptions container", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 223, "match": "struct ModernResponseOptions: Codable, Equatable {"}, "note": "Verified"},
-    {"path": "PRIVACY.md", "section": "Reset Prompt Settings", "quote": "**Reset Prompt Settings restores the active prompt/settings defaults. It does not erase all Keychain entries, conversation files, remote objects or website data.**", "claim": "Reset Prompt Settings restores defaults without erasing all data", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3458, "match": "    func saveActivePrompt() {"}, "note": "Functionality matches docs"},
+    {"path": "CHANGELOG.md", "section": "2.7", "quote": "New options live in the optional `modernOptions` container, so presets saved by earlier versions still decode.", "claim": "New options live in modernOptions container", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 225, "match": "struct ModernResponseOptions: Codable, Equatable {"}, "note": "Verified"},
+    {"path": "PRIVACY.md", "section": "Reset Prompt Settings", "quote": "**Reset Prompt Settings restores the active prompt/settings defaults. It does not erase all Keychain entries, conversation files, remote objects or website data.**", "claim": "Reset Prompt Settings restores defaults without erasing all data", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3452, "match": "    func saveActivePrompt() {"}, "note": "Functionality matches docs"},
     {"path": "ARCHITECTURE.md", "section": "Models and settings", "quote": "`ResponseSettingsRegistry` is used only by its tests.", "claim": "Settings screens bind Prompt and ModernResponseOptions directly; ResponseSettingsRegistry is used only by its tests.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/ResponseSettingsRegistry.swift", "line": 3, "match": "struct ResponseSettingsRegistry {"}, "note": "Corrected in the document on 2026-09-28."}
   ],
   "unknowns": ["OpenResponses/Features/Settings/Views/SettingsHomeView.swift.backup is not used by anything in the codebase."],
@@ -88,12 +88,12 @@
       {"from": "AddEditPromptView", "type": "depends_on", "to": "Prompt", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 74, "match": "@Binding var promptToEdit: Prompt?"}]},
       {"from": "SettingsHomeView", "type": "depends_on", "to": "PromptLibrary", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 8, "match": "@StateObject private var promptLibrary = PromptLibrary()"}]},
       {"from": "SettingsHomeView", "type": "depends_on", "to": "PromptLibraryView", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 88, "match": "PromptLibraryView("}]},
-      {"from": "ModelTab", "type": "depends_on", "to": "ModernResponseSettings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 380, "match": "ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)"}]},
+      {"from": "ModelTab", "type": "depends_on", "to": "ModernResponseSettings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 377, "match": "ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 8, "match": "var prompt = Prompt.defaultPrompt()"}]},
       {"from": "ResponseConfigurationValidation", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 13, "match": "XCTAssertThrowsError(try ResponseConfigurationValidation.validate(prompt), content)"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 672, "match": "func buildPreviewRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?,"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:MCPSecretPersistenceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "line": 17, "match": "var prompt = Prompt.defaultPrompt()"}]},
-      {"from": "Prompt", "type": "tested_by", "to": "test:ModelCatalogTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ModelCatalogTests.swift", "line": 124, "match": "XCTAssertEqual(Prompt.defaultPrompt().openAIModel, \"gpt-6.2-sol\")"}]},
+      {"from": "Prompt", "type": "tested_by", "to": "test:ModelCatalogTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ModelCatalogTests.swift", "line": 98, "match": "XCTAssertEqual(Prompt.defaultPrompt().openAIModel, \"gpt-6.2-sol\")"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 23, "match": "prompt: Prompt,"}]},
       {"from": "PromptCacheOptions", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 127, "match": "let options = try JSONDecoder().decode(PromptCacheOptions.self, from: data)"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 291, "match": "var prompt = Prompt.defaultPrompt()"}]},
@@ -120,6 +120,6 @@
       {"from": "GeneralTab", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 243, "match": "Text(aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion ? \"First-send consent has alrea"}], "note": "via AppFeatureFlags"},
       {"from": "ModelTab", "type": "depends_on", "to": "feature:diagnostics", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 365, "match": "@EnvironmentObject private var viewModel: ChatViewModel"}], "note": "via ChatViewModel"}
     ],
-    "edges_omitted": 17
+    "edges_omitted": 16
   }
 }

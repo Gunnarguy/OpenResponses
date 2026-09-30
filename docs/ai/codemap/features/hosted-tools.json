@@ -4,13 +4,13 @@
   "name": "Hosted Tools",
   "aliases": ["OpenAI-hosted tools", "web search", "file search", "code interpreter", "image generation", "hosted shell", "tool search", "Web Search", "File Search", "Code Interpreter", "Image Generation", "Hosted shell", "Load tools on demand"],
   "purpose": "Manages configuration and presentation of OpenAI-hosted tools including web search, file search, code interpreter, image generation, hosted shell, and tool search.",
-  "revision": "1f56b73",
+  "revision": "733265a",
   "verified_on": "2026-09-29",
   "entry_points": ["SettingsHomeView", "ModernResponseSettings"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "role": "primary", "blob": "8c22bba45c58f0ea02b6b5421184fc4cc519ae46"},
     {"path": "OpenResponses/Features/Chat/Components/ImageSuggestionView.swift", "role": "primary", "blob": "b40ab5455050e1243050ebc42c8862d5d85ef5c6"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "9eb44b28a5e475d33a50dab47b1e9069f6b8e1ed"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "71631e02106e2f5a6387af93bcfed8058861eb20"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "shared", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
@@ -18,7 +18,7 @@
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "shared", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a00c4f2ca3f7bc78dfeb616b1e017bc3a9c707ee"},
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"}
   ],
   "nodes": [
@@ -38,19 +38,19 @@
     {"id": "Prompt.enableCodeInterpreter", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 37, "match": "    var enableCodeInterpreter: Bool", "status": "VERIFIED"},
     {"id": "Prompt.enableImageGeneration", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 40, "match": "    var enableImageGeneration: Bool", "status": "VERIFIED"},
     {"id": "Prompt.enableFileSearch", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 46, "match": "    var enableFileSearch: Bool", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions.hostedShell", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 227, "match": "    var hostedShell: Bool = false", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions.toolSearch", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 226, "match": "    var toolSearch: Bool = false", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions.hostedShell", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 229, "match": "    var hostedShell: Bool = false", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions.toolSearch", "kind": "config", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 228, "match": "    var toolSearch: Bool = false", "status": "VERIFIED"},
     {"id": "Prompt", "kind": "model", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 5, "match": "struct Prompt: Codable, Identifiable, Equatable {", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 223, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
-    {"id": "CurrentModelCatalog", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 14, "match": "enum CurrentModelCatalog {", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 225, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
+    {"id": "CurrentModelCatalog", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 13, "match": "enum CurrentModelCatalog {", "status": "VERIFIED"},
     {"id": "openai:responses", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 31, "match": "    private let apiURL = URL(string: \"https://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
     {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "SettingsHomeView", "to": "Prompt.enableWebSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 468, "match": "                Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {"}]},
-    {"from": "SettingsHomeView", "to": "Prompt.enableFileSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 488, "match": "                Toggle(isOn: $viewModel.activePrompt.enableFileSearch) {"}]},
-    {"from": "SettingsHomeView", "to": "Prompt.enableCodeInterpreter", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 525, "match": "                Toggle(isOn: $viewModel.activePrompt.enableCodeInterpreter) {"}]},
-    {"from": "SettingsHomeView", "to": "Prompt.enableImageGeneration", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 546, "match": "                Toggle(isOn: $viewModel.activePrompt.enableImageGeneration) {"}]},
+    {"from": "SettingsHomeView", "to": "Prompt.enableWebSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 465, "match": "                Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {"}]},
+    {"from": "SettingsHomeView", "to": "Prompt.enableFileSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 485, "match": "                Toggle(isOn: $viewModel.activePrompt.enableFileSearch) {"}]},
+    {"from": "SettingsHomeView", "to": "Prompt.enableCodeInterpreter", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 522, "match": "                Toggle(isOn: $viewModel.activePrompt.enableCodeInterpreter) {"}]},
+    {"from": "SettingsHomeView", "to": "Prompt.enableImageGeneration", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 543, "match": "                Toggle(isOn: $viewModel.activePrompt.enableImageGeneration) {"}]},
     {"from": "ModernResponseSettings", "to": "ModernResponseOptions.hostedShell", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 32, "match": "                Toggle(\"Hosted shell\", isOn: $viewModel.activePrompt.currentOptions.hostedShell)"}]},
     {"from": "ModernResponseSettings", "to": "ModernResponseOptions.toolSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "line": 31, "match": "                Toggle(\"Load tools on demand\", isOn: $viewModel.activePrompt.currentOptions.toolSearch)"}]},
     {"from": "Prompt.enableWebSearch", "to": "OpenAIService.buildTools", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1362, "match": "        if prompt.enableWebSearch,"}]},
@@ -69,7 +69,7 @@
     {"from": "OpenAIService.buildTools", "to": "OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 607, "match": "        prompt.enableWebSearch = true"}]}
   ],
   "docs": [
-    {"path": "CHANGELOG.md", "section": "2.7 — released September 25, 2026", "quote": "- GPT Image 2.5 Flare and Sunburst (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`), with the `xhigh` and `max` quality levels only these models accept. GPT Image 2 stays selectable.", "claim": "GPT Image 2.5 Flare and Sunburst are added.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 14, "match": "enum CurrentModelCatalog {"}, "note": "Models are catalogued."}
+    {"path": "CHANGELOG.md", "section": "2.7 — released September 25, 2026", "quote": "- GPT Image 2.5 Flare and Sunburst (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`), with the `xhigh` and `max` quality levels only these models accept. GPT Image 2 stays selectable.", "claim": "GPT Image 2.5 Flare and Sunburst are added.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 13, "match": "enum CurrentModelCatalog {"}, "note": "Models are catalogued."}
   ],
   "unknowns": ["ImageSuggestionView (ImageSuggestionView.swift line 4) is not instantiated outside its own file and previews (live scan)."],
   "related": ["chat-turn", "native-runner", "models", "files-vector-stores"],

@@ -50,12 +50,9 @@ struct ContentView: View {
                 }
         }
         .onAppear(perform: checkOnboardingAndAPIKey)
-        // The model menus come from the model catalog (downloaded at most once a day) plus the account's newer models
-        // (one GET /models per launch). The catalog goes first so the account's list is filtered with its retirements.
-        .task {
-            await viewModel.refreshModelCatalog()
-            await viewModel.refreshAccountModels()
-        }
+        // The model menus list the account's newer models too, with settings from OpenAI's docs pages; one GET /models
+        // per launch keeps them current.
+        .task { await viewModel.refreshAccountModels() }
         .onReceive(NotificationCenter.default.publisher(for: .onboardingCompleted)) { _ in
             checkAPIKey()
         }

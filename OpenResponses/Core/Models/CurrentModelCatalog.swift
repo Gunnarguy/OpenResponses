@@ -1,16 +1,15 @@
 import Foundation
 
 /// Which text models the app offers and what each accepts. The current models, their settings, the default model,
-/// the earlier models and the retired ones come from the model catalog (`ModelCatalog`, kept current by
-/// `ModelCatalogStore` from https://gunzino.me/openresponses/models.json), so a new model reaches the menus with its
-/// settings without an app update. Catalog data verified against OpenAI's model pages, GPT-6 guide, reasoning guide
-/// and async tool calling guide on September 29, 2026. Account availability still comes from GET /models; discovery
-/// never grants capabilities.
+/// the earlier models and the retired ones come from the model list built into the app (`ModelCatalog`), verified
+/// against OpenAI's model pages, GPT-6 guide, reasoning guide and async tool calling guide on September 29, 2026.
+/// Account availability still comes from GET /models; discovery never grants capabilities.
 ///
-/// A later general-purpose release the catalog does not list yet (for example `gpt-6.2-sol` or `gpt-7-luna`) is
-/// recognized by its version number, listed once GET /models shows the account has it (`currentAccountModels`), and
-/// configured by the fallback rules below. Specialized variants (audio, realtime, transcription, image, search, codex,
-/// cyber and similar) are not.
+/// A later general-purpose release the list does not name (for example `gpt-6.2-sol` or `gpt-7-luna`) is recognized
+/// by its version number and listed once GET /models shows the account has it (`currentAccountModels`). Its settings
+/// come from its page on OpenAI's docs site, read once (`ModelCatalogStore.learnSettings(for:)`), or from the fallback
+/// rules below until that page has been read. Specialized variants (audio, realtime, transcription, image, search,
+/// codex, cyber and similar) are not listed.
 enum CurrentModelCatalog {
     /// Default for new presets, the Workbench and onboarding: the catalog's `defaultModel`.
     static var defaultModel: String { ModelCatalogStore.shared.catalog.defaultModel }
@@ -34,10 +33,12 @@ enum CurrentModelCatalog {
     /// announced are left out; the account's model list and the model ID field reach every other model it can use.
     static var legacy: [String] { ModelCatalogStore.shared.catalog.earlier }
 
-    /// The catalog entry for a current model or one of its dated snapshots.
+    /// The settings for a current model or one of its dated snapshots: its built-in entry, or what its page on OpenAI's
+    /// docs site said.
     static func entry(for id: String) -> ModelCatalog.Model? {
         let key = family(id)
-        return ModelCatalogStore.shared.catalog.current.first { $0.id == key }
+        let store = ModelCatalogStore.shared
+        return store.catalog.current.first { $0.id == key } ?? store.learnedModel(key)
     }
 
     /// Variant words that mark a model as something other than a general text-and-tools model.
@@ -92,11 +93,12 @@ enum CurrentModelCatalog {
     }
 
     /// The current general-purpose models in a GET /models listing, newest version first. Dated snapshots,
-    /// specialized variants and retired models are left out.
+    /// specialized variants, retired models and models whose docs page rules out the Responses API are left out.
     static func currentAccountModels(_ ids: [String]) -> [String] {
         var seen = Set<String>()
+        let store = ModelCatalogStore.shared
         return ids
-            .filter { baseID($0) == $0 && isModern($0) && !isRetired($0) && seen.insert($0).inserted }
+            .filter { baseID($0) == $0 && isModern($0) && !isRetired($0) && !store.isUnsupported($0) && seen.insert($0).inserted }
             .sorted { priority($0) == priority($1) ? $0 < $1 : priority($0) > priority($1) }
     }
 

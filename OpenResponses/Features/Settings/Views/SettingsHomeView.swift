@@ -373,9 +373,6 @@ private struct ModelTab: View {
                     openAIService: AppContainer.shared.openAIService,
                     onSave: { viewModel.saveActivePrompt() }
                 )
-            } footer: {
-                // Which model list is in use. A download changes viewModel.modelCatalogRevision, which redraws this.
-                Text(ModelCatalogStore.shared.summary)
             }
             ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)
         }

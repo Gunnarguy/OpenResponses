@@ -2,7 +2,7 @@
   "schema": 1,
   "revision": 1,
   "updated": "2026-09-29",
-  "notes": "Models for OpenResponses 2.8 and later. The app uses the valid copy with the higher revision: this file or the one built into the app. Raise revision with every change. Check: python3 scripts/openai_models.py check",
+  "notes": "The model list built into OpenResponses. A newer model on the account that this list does not name gets its settings from its page on OpenAI's docs site at run time. Format: docs/model-catalog.md.",
   "defaultModel": "gpt-6-sol",
   "current": [
     {"id": "gpt-6.1-sol", "summary": "Near-Astra performance at a lower cost", "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"], "pro": true, "asyncTools": true, "released": "2026-09-29"},

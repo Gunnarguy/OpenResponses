@@ -1,11 +1,9 @@
 import Foundation
 
-/// The model data behind the model menus and each model's settings: which models are current and in what order,
-/// what each accepts, the default model, and where a retired model's presets move. The same file ships in the app
-/// (Resources/ModelCatalog/ModelCatalog.json) and is published at `ModelCatalogStore.remoteURL`; the app uses the
-/// valid copy with the higher revision, so a model OpenAI releases reaches the menus without an app update.
-/// It fills in controls the app already has and never carries code. Format and upkeep: docs/model-catalog.md.
-/// The validation rules match `problem()` in the Gunzino repository's scripts/openai_models.py.
+/// The model list built into the app (Resources/ModelCatalog/ModelCatalog.json): which models are current and in what
+/// order, what each accepts, the default model, and where a retired model's presets move. A newer model on the
+/// account that this list does not name gets its settings from its page on OpenAI's docs site instead
+/// (`settings(fromDocsPage:id:checkedOn:)`, `ModelCatalogStore`). See docs/model-catalog.md.
 nonisolated struct ModelCatalog: Codable, Equatable, Sendable {
     nonisolated struct Model: Codable, Equatable, Sendable {
         let id: String
@@ -73,5 +71,53 @@ nonisolated struct ModelCatalog: Codable, Equatable, Sendable {
     static func decode(_ data: Data) -> ModelCatalog? {
         guard let catalog = try? JSONDecoder().decode(ModelCatalog.self, from: data), catalog.problem() == nil else { return nil }
         return catalog
+    }
+
+    // MARK: - OpenAI's model pages
+
+    /// What a model's docs page says about using it in this app.
+    enum DocsPage: Equatable, Sendable {
+        case model(Model)
+        /// The page lists the Responses API as not supported, so the model cannot be used for chat here.
+        case unsupported
+        /// The page is missing its endpoints table or its reasoning efforts; the model keeps the fallback settings.
+        case unreadable
+    }
+
+    /// The Markdown form of a model's page on OpenAI's docs site.
+    static func docsPageURL(for id: String) -> URL? {
+        guard isValidID(id) else { return nil }
+        return URL(string: "https://developers.openai.com/api/docs/models/\(id).md")
+    }
+
+    /// Reads a model's settings from its docs page, which states them in fixed forms (the GPT-6.1 Sol page on
+    /// September 29, 2026): a `> ` summary line under the title, "`reasoning.effort` supports `low`, `medium` (default),
+    /// ..." in the text, and an endpoints table with a "| Responses | `v1/responses` | Supported |" row. Model pages
+    /// do not state pro mode or async tool calls, so those follow the rules for models the list does not name:
+    /// pro for every GPT-5.6 and later general model, async for versions after 6.0.
+    static func settings(fromDocsPage page: String, id: String, checkedOn day: String) -> DocsPage {
+        let text = page.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard text.range(of: #"\| Responses \| `v1/responses` \| Supported \|"#, options: .regularExpression) != nil else {
+            return text.contains("| Responses |") ? .unsupported : .unreadable
+        }
+        guard let sentence = text.range(of: #"`reasoning\.effort` supports [^.]*\."#, options: .regularExpression) else { return .unreadable }
+        // Every other piece between backticks is a code span: `reasoning.effort`, then each value.
+        let spans = text[sentence].split(separator: "`", omittingEmptySubsequences: false).enumerated()
+            .filter { $0.offset % 2 == 1 }.map { String($0.element) }
+        let accepted = Self.efforts.filter(spans.contains)
+        guard !accepted.isEmpty else { return .unreadable }
+
+        let quote = page.split(separator: "\n").first { $0.hasPrefix("> ") && !$0.contains("documentation index") }
+        var summary = quote.map { $0.dropFirst(2).trimmingCharacters(in: .whitespaces) } ?? ""
+        if summary.hasSuffix(".") { summary.removeLast() }
+        if summary.count > 80 {
+            let cut = summary.prefix(79)
+            summary = String(cut[..<(cut.lastIndex(of: " ") ?? cut.endIndex)]) + "…"
+        }
+        let generation = CurrentModelCatalog.generation(id)
+        return .model(Model(id: id, summary: summary.isEmpty ? "Current generation model" : summary, reasoningEfforts: accepted,
+                            pro: CurrentModelCatalog.isModern(id),
+                            asyncTools: generation.map { ($0.major, $0.minor) > (6, 0) } ?? false,
+                            released: day))
     }
 }

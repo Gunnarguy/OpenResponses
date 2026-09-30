@@ -1,103 +1,129 @@
 import Foundation
 import os
 
-/// The model catalog the app uses, readable from any thread. It starts from the copy built into the app, or from the
-/// last downloaded copy when that one has a higher revision; `refreshIfDue()` downloads `remoteURL` at most once a
-/// day and sends nothing but the request for the file. Shutdown dates from the account's GET /models listing
-/// (`recordShutdowns`) retire a model `shutdownWindow` before it shuts down.
+/// The model data the app uses, readable from any thread: the list built into the app, the settings read from OpenAI's
+/// docs pages for newer models on the account, and the account's shutdown dates. Nothing needs updating by hand when
+/// OpenAI releases a model: GET /models lists it, and `learnSettings(for:)` reads its page once.
 nonisolated final class ModelCatalogStore: @unchecked Sendable {
     static let shared = ModelCatalogStore()
 
-    /// Published from the Gunzino site repository (public/openresponses/models.json), where a daily GitHub Action
-    /// proposes models OpenAI adds. See docs/model-catalog.md.
-    static let remoteURL = URL(string: "https://gunzino.me/openresponses/models.json")!
-    /// The remote file is checked at most this often.
-    static let checkInterval: TimeInterval = 24 * 60 * 60
     /// A model whose shutdown date is this close, or past, counts as retired: hidden from the model lists, and a preset
     /// naming it moves to its replacement.
     static let shutdownWindow: TimeInterval = 30 * 24 * 60 * 60
+    /// A model's docs page is read again after this long, in case OpenAI changed it or it could not be read.
+    static let recheckInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// At most this many docs pages are read per refresh.
+    static let lookupsPerRefresh = 3
 
-    enum Source: String, Sendable {
-        case builtIn = "built into this version"
-        case downloaded = "downloaded from gunzino.me"
+    /// What the app learned about a model from its docs page.
+    struct Learned: Codable, Equatable, Sendable {
+        /// nil when the page could not be read; the model keeps the fallback settings.
+        var model: ModelCatalog.Model?
+        /// The page lists the Responses API as not supported, so the model lists leave the model out.
+        var unsupported = false
+        var checked: Date
     }
 
     private struct State: Sendable {
         var catalog: ModelCatalog
-        var source: Source
+        var learned: [String: Learned]
         var shutdowns: [String: Date]
     }
 
     private let state: OSAllocatedUnfairLock<State>
-    private let cacheURL: URL
+    private let learnedURL: URL
     private let defaults: UserDefaults
-    private let checkedKey = "modelCatalogCheckedAt"
+    private let readsDocs: Bool
     private let shutdownsKey = "accountModelShutdowns"
 
-    /// `restore: false` ignores the downloaded copy and the saved shutdown dates. The shared store does that under
-    /// unit tests, so they run against the built-in catalog.
-    init(bundled: ModelCatalog = ModelCatalogStore.builtIn, cacheDirectory: URL? = nil, defaults: UserDefaults = .standard,
-         restore: Bool = !ModelCatalogStore.isRunningTests) {
+    /// `restore: false` ignores saved settings and shutdown dates, and `readsDocs: false` never fetches a page. The
+    /// shared store does both under unit tests, so they run against the built-in list without the network.
+    init(catalog: ModelCatalog = ModelCatalogStore.builtIn, cacheDirectory: URL? = nil, defaults: UserDefaults = .standard,
+         restore: Bool = !ModelCatalogStore.isRunningTests, readsDocs: Bool = !ModelCatalogStore.isRunningTests) {
         let directory = cacheDirectory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        cacheURL = directory.appendingPathComponent("ModelCatalog.json")
+        learnedURL = directory.appendingPathComponent("LearnedModelSettings.json")
         self.defaults = defaults
-        var initial = State(catalog: bundled, source: .builtIn, shutdowns: [:])
+        self.readsDocs = readsDocs
+        var initial = State(catalog: catalog, learned: [:], shutdowns: [:])
         if restore {
-            if let data = try? Data(contentsOf: cacheURL), let cached = ModelCatalog.decode(data), cached.revision > bundled.revision {
-                initial.catalog = cached
-                initial.source = .downloaded
+            if let data = try? Data(contentsOf: learnedURL), let saved = try? JSONDecoder().decode([String: Learned].self, from: data) {
+                initial.learned = saved
             }
-            let saved = defaults.dictionary(forKey: shutdownsKey) as? [String: String] ?? [:]
-            initial.shutdowns = saved.compactMapValues(Self.date)
+            let dates = defaults.dictionary(forKey: shutdownsKey) as? [String: String] ?? [:]
+            initial.shutdowns = dates.compactMapValues(Self.date)
         }
         state = OSAllocatedUnfairLock(initialState: initial)
     }
 
+    /// The built-in model list.
     var catalog: ModelCatalog { state.withLock { $0.catalog } }
-    var source: Source { state.withLock { $0.source } }
 
-    /// For Settings → Model, e.g. "Model list revision 2 of 2026-09-30, downloaded from gunzino.me."
-    var summary: String {
-        let (catalog, source) = state.withLock { ($0.catalog, $0.source) }
-        return "Model list revision \(catalog.revision) of \(catalog.updated), \(source.rawValue)."
+    /// Replaces the model list (tests).
+    func use(_ catalog: ModelCatalog) {
+        state.withLock { $0.catalog = catalog }
     }
 
-    /// Downloads the catalog when the last check is older than `checkInterval`, and uses it when it is valid and has a
-    /// higher revision than the one in use. Returns true when the catalog in use changed.
+    // MARK: - Settings from OpenAI's docs pages
+
+    /// Settings read from the model's docs page, when the built-in list does not name it.
+    func learnedModel(_ id: String) -> ModelCatalog.Model? {
+        state.withLock { $0.learned[id]?.model }
+    }
+
+    /// True when the model's docs page says the Responses API does not support it.
+    func isUnsupported(_ id: String) -> Bool {
+        state.withLock { $0.learned[id]?.unsupported ?? false }
+    }
+
+    /// Reads the docs page of each model that has none on record, or whose record is older than `recheckInterval`, at
+    /// most `lookupsPerRefresh` of them, and keeps what it finds for the next launch. A page that cannot be fetched is
+    /// tried again on the next refresh. Returns true when a model's settings changed.
     @discardableResult
-    func refreshIfDue(now: Date = Date(),
-                      load: (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }) async -> Bool {
-        if let last = defaults.object(forKey: checkedKey) as? Date, now.timeIntervalSince(last) < Self.checkInterval { return false }
-        let request = URLRequest(url: Self.remoteURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        guard let (data, response) = try? await load(request), (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
-        defaults.set(now, forKey: checkedKey)
-        return adopt(data)
+    func learnSettings(for ids: [String], now: Date = Date(),
+                       load: (URL) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(from: $0) }) async -> Bool {
+        guard readsDocs else { return false }
+        let due = ids.filter { id in
+            guard let learned = state.withLock({ $0.learned[id] }) else { return true }
+            return now.timeIntervalSince(learned.checked) >= Self.recheckInterval
+        }
+        var changed = false
+        for id in due.prefix(Self.lookupsPerRefresh) {
+            guard let url = ModelCatalog.docsPageURL(for: id), let (data, response) = try? await load(url),
+                  let status = (response as? HTTPURLResponse)?.statusCode, status < 500 else { continue }
+            var learned = Learned(checked: now)
+            if status == 200, let page = String(data: data, encoding: .utf8) {
+                switch ModelCatalog.settings(fromDocsPage: page, id: id, checkedOn: Self.day(now)) {
+                case .model(let model): learned.model = model
+                case .unsupported: learned.unsupported = true
+                case .unreadable: break
+                }
+            }
+            if remember(learned, for: id) { changed = true }
+            AppLogger.log("Read OpenAI's page for \(id): \(learned.model != nil ? "settings found" : learned.unsupported ? "not for Responses" : "no settings")",
+                          category: .general, level: .info)
+        }
+        return changed
     }
 
-    /// Uses a downloaded catalog file when it is valid and newer than the one in use, and keeps it for the next launch.
+    /// Records what a model's page said and saves the records. Returns true when the model's settings changed.
     @discardableResult
-    func adopt(_ data: Data) -> Bool {
-        guard let downloaded = ModelCatalog.decode(data) else {
-            AppLogger.log("Ignored an invalid model catalog download", category: .general, level: .warning)
-            return false
+    func remember(_ learned: Learned, for id: String) -> Bool {
+        let (previous, all) = state.withLock { state -> (Learned?, [String: Learned]) in
+            let previous = state.learned[id]
+            state.learned[id] = learned
+            return (previous, state.learned)
         }
-        let applied = state.withLock { state -> Bool in
-            guard downloaded.revision > state.catalog.revision else { return false }
-            state.catalog = downloaded
-            state.source = .downloaded
-            return true
-        }
-        if applied {
-            try? data.write(to: cacheURL, options: .atomic)
-            AppLogger.log("Using model catalog revision \(downloaded.revision)", category: .general, level: .info)
-        }
-        return applied
+        if let data = try? JSONEncoder().encode(all) { try? data.write(to: learnedURL, options: .atomic) }
+        return previous?.model != learned.model || previous?.unsupported != learned.unsupported
     }
 
-    /// Replaces the catalog in use without the revision check (tests).
-    func use(_ catalog: ModelCatalog, source: Source = .builtIn) {
-        state.withLock { $0.catalog = catalog; $0.source = source }
+    /// Forgets everything read from docs pages (tests).
+    func forgetLearned() {
+        state.withLock { $0.learned = [:] }
+        try? FileManager.default.removeItem(at: learnedURL)
     }
+
+    // MARK: - Shutdown dates
 
     /// Shutdown dates from GET /models (`shutdown_date`, YYYY-MM-DD) by model ID, kept for the next launch.
     func recordShutdowns(_ dates: [String: String]) {
@@ -111,16 +137,16 @@ nonisolated final class ModelCatalogStore: @unchecked Sendable {
         return date.timeIntervalSince(now) <= Self.shutdownWindow
     }
 
-    // MARK: - Built-in copy
+    // MARK: - Built-in list
 
-    /// The catalog built into this version (Resources/ModelCatalog/ModelCatalog.json). The unit tests check it; if it
-    /// were ever unreadable, a one-model catalog keeps the app working.
+    /// The list built into this version (Resources/ModelCatalog/ModelCatalog.json). The unit tests check it; if it were
+    /// ever unreadable, a one-model list keeps the app working.
     static let builtIn: ModelCatalog = {
         if let url = Bundle.main.url(forResource: "ModelCatalog", withExtension: "json"),
            let data = try? Data(contentsOf: url), let catalog = ModelCatalog.decode(data) {
             return catalog
         }
-        AppLogger.log("ModelCatalog.json is missing or invalid; using a one-model catalog", category: .general, level: .error)
+        AppLogger.log("ModelCatalog.json is missing or invalid; using a one-model list", category: .general, level: .error)
         return ModelCatalog(schema: ModelCatalog.supportedSchema, revision: 1, updated: "", notes: nil, defaultModel: "gpt-6-sol",
                             current: [.init(id: "gpt-6-sol", summary: "Complex coding and agentic work",
                                             reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"], pro: true, asyncTools: false)],
@@ -129,11 +155,14 @@ nonisolated final class ModelCatalogStore: @unchecked Sendable {
 
     static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
-    private static func date(_ text: String) -> Date? {
+    private static func formatter() -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: String(text.prefix(10)))
+        return formatter
     }
+
+    private static func date(_ text: String) -> Date? { formatter().date(from: String(text.prefix(10))) }
+    private static func day(_ date: Date) -> String { formatter().string(from: date) }
 }

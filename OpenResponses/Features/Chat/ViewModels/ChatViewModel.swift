@@ -48,9 +48,6 @@ class ChatViewModel: ObservableObject {
     /// The model menus add the ones the catalog does not list, so a model released after this version of the app still
     /// appears. Before this, the menus read only the catalog and missed GPT-6.1 Sol (September 29, 2026).
     @Published private(set) var accountModels: [String] = UserDefaults.standard.stringArray(forKey: "accountModels") ?? []
-    /// Revision of the model catalog in use (`ModelCatalogStore`). It changes when a newer catalog is downloaded,
-    /// which redraws the model menus.
-    @Published private(set) var modelCatalogRevision = ModelCatalogStore.shared.catalog.revision
     
 
     /// Prevents multiple concurrent computer_call resolution tasks
@@ -396,26 +393,23 @@ class ChatViewModel: ObservableObject {
     // MARK: - Account models
 
     /// Asks OpenAI which models this account can use and keeps the current general-purpose ones for the model menus.
-    /// Skipped in Explore Demo. Without an API key or a connection the last list stays.
+    /// A model the built-in list does not name gets its settings from its page on OpenAI's docs site, read once, so a
+    /// new release shows up with the right options without an app update. Skipped in Explore Demo. Without an API key
+    /// or a connection the last list stays.
     func refreshAccountModels() async {
         guard !exploreModeEnabled, let models = try? await api.listModels() else { return }
+        let store = ModelCatalogStore.shared
         // Shutdown dates retire a model 30 days ahead (CurrentModelCatalog.isRetired), so record them first.
-        ModelCatalogStore.shared.recordShutdowns(Dictionary(models.compactMap { model in model.shutdownDate.map { (model.id, $0) } },
-                                                            uniquingKeysWith: { first, _ in first }))
-        let current = CurrentModelCatalog.currentAccountModels(models.map(\.id))
+        store.recordShutdowns(Dictionary(models.compactMap { model in model.shutdownDate.map { (model.id, $0) } },
+                                         uniquingKeysWith: { first, _ in first }))
+        let ids = models.map(\.id)
+        let unknown = CurrentModelCatalog.currentAccountModels(ids).filter { CurrentModelCatalog.entry(for: $0) == nil }
+        if await store.learnSettings(for: unknown) { objectWillChange.send() }
+        let current = CurrentModelCatalog.currentAccountModels(ids)
         if current != accountModels {
             accountModels = current
             UserDefaults.standard.set(current, forKey: "accountModels")
         }
-        moveActivePromptOffRetiredModel()
-    }
-
-    /// Downloads the model catalog when a day has passed since the last check. A newer catalog redraws the model
-    /// menus, and a model it retires moves the active preset to its replacement now rather than at the next launch.
-    /// Skipped in Explore Demo, which makes no network requests.
-    func refreshModelCatalog() async {
-        guard !exploreModeEnabled, await ModelCatalogStore.shared.refreshIfDue() else { return }
-        modelCatalogRevision = ModelCatalogStore.shared.catalog.revision
         moveActivePromptOffRetiredModel()
     }
 
