@@ -2,7 +2,7 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
-## 2.8 — prepared September 29, 2026
+## 2.8 — submitted for review September 29, 2026 (build 51)
 
 **Marketing version:** 2.8. Xcode Cloud assigns the build number; build 49 (September 28) is the first 2.8 archive, and the build submitted for review is the Xcode Cloud archive of the commit that prepared this entry. App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt) and [2.8 release notes](docs/ReleaseNotes_2.8.0.md). GPT-Live behavior was checked against OpenAI's Live reference and guides on September 28, 2026, and model settings against OpenAI's model pages, GPT-6 guide, reasoning guide and async tool calling guide on September 29, 2026.
 
