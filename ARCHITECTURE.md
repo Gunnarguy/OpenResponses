@@ -1,6 +1,6 @@
 # OpenResponses system architecture
 
-**Current source:** September 28, 2026, v2.8 in development; 2.7 shipped September 25 as build 47, and [CHANGELOG.md](CHANGELOG.md) records each release. The [2.6 technical change record](docs/releases/v2.6/TechnicalChanges.md) is the detailed service/contract reference; the [source inventory](docs/releases/v2.6/SourceInventory.md) identifies the 2.6 implementation snapshot.
+**Current source:** September 30, 2026, v2.9 in development; 2.8 shipped September 30 as build 51, and [CHANGELOG.md](CHANGELOG.md) records each release. The [2.6 technical change record](docs/releases/v2.6/TechnicalChanges.md) is the detailed service/contract reference; the [source inventory](docs/releases/v2.6/SourceInventory.md) identifies the 2.6 implementation snapshot.
 
 ## App ownership and execution
 

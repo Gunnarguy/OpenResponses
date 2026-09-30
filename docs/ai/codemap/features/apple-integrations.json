@@ -4,8 +4,8 @@
   "name": "Apple system integrations",
   "aliases": ["Apple Calendar/Reminders/Contacts", "Grant Access", "Calendar", "Reminders", "Contacts"],
   "purpose": "Provides tools and repositories to read and write Apple Calendar, Reminders, and Contacts data using EventKit and Contacts frameworks.",
-  "revision": "733265a",
-  "verified_on": "2026-09-29",
+  "revision": "93ca8c9",
+  "verified_on": "2026-09-30",
   "entry_points": ["ChatViewModel.appleFunctions", "AppleIntegrationsCard"],
   "files": [
     {"path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "role": "primary", "blob": "d5dde7d43b346f6913f6ce47daca6a3801067c52"},
@@ -17,10 +17,10 @@
     {"path": "OpenResponses/Core/Models/AppleDataModels.swift", "role": "primary", "blob": "48f7ce85fe04d49cbbd54d32c85793bee76fd5fc"},
     {"path": "OpenResponses/Core/Models/AppleContactModels.swift", "role": "primary", "blob": "e5413881be01dae35ee1f0442f5f0358885712ed"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e533e01cce6d0386c6f93ca99ed8eb04aaa79cf"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "9e84c8ecb3e4bb40430325960bfcc8ebeec39f42"},
+    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "c564fbbd1e8b785ab200ff3e813abc4f8cc892ec"},
     {"path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "role": "test", "blob": "7fe34d5dc8f2f7489c8eafa115cb2016b90c2326"},
     {"path": "OpenResponsesTests/DateFormattingTests.swift", "role": "test", "blob": "6dc9f6c15af1c71dd6cbadfd6891d302a195cbd0"}
   ],

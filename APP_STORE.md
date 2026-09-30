@@ -1,5 +1,7 @@
 # OpenResponses App Store package
 
+> **Update 2026-09-30:** 2.8 is live (released September 30, 2026, build 51, approved on the first submission with Local Python in it). The project now declares 2.9.
+
 > **Update 2026-09-29:** 2.8 is prepared for review: [release notes](docs/ReleaseNotes_2.8.0.md), store copy in `fastlane/metadata/en-US` (rewritten to match the OpenIntelligence and OpenManual listings), [App Review notes](docs/AppReviewNotes.md). Marketing, support and privacy links move from GitHub to gunzino.me/openresponses/ with this version.
 
 > **Update 2026-09-28:** 2.7 is live (released September 25, 2026, build 47), and 2.8 is in development with build 49 in App Store Connect. The notes below predate the 2.7 release.

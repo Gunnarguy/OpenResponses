@@ -4,8 +4,8 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "733265a",
-  "verified_on": "2026-09-29",
+  "revision": "93ca8c9",
+  "verified_on": "2026-09-30",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
     {"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "role": "primary", "blob": "665f6880fee18a16659b00a1b95fbc936f9b98a8"},
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "role": "primary", "blob": "5c0317a44cdd08aa368e6e0241c2fc232e0adc67"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "primary", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "b38807ed24d9008248c2b8b45bf339f353bb6c90"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "91559dad2cf131daaa7eca36341e93c5958af759"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e533e01cce6d0386c6f93ca99ed8eb04aaa79cf"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "5c07aeb8cc080124c0ea704c6cd95737fa169f13"}

@@ -1,6 +1,6 @@
 # OpenResponses 2.8 release notes
 
-Prepared September 29, 2026. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt), written to match the OpenIntelligence and OpenManual listings; the full list of changes is in the [changelog](../CHANGELOG.md). Model facts were checked against OpenAI's model pages, GPT-6 guide, reasoning guide and async tool calling guide on September 29, 2026.
+Prepared September 29, 2026 and released September 30, 2026 with build 51, Local Python included; App Review approved it on the first submission. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt), written to match the OpenIntelligence and OpenManual listings; the full list of changes is in the [changelog](../CHANGELOG.md). Model facts were checked against OpenAI's model pages, GPT-6 guide, reasoning guide and async tool calling guide on September 29, 2026.
 
 ## Models
 
