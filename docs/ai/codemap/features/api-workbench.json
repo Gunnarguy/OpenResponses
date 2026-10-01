@@ -4,8 +4,8 @@
   "name": "API Workbench",
   "aliases": ["API Workbench", "Run request", "Stop connection", "Export request draft", "Count input tokens", "Delete this resource?", "Replace the current request?"],
   "purpose": "Provides a developer workbench to construct and send raw API requests over HTTP, SSE, and WebSockets with Keychain draft persistence and DELETE confirmation.",
-  "revision": "55bae08",
-  "verified_on": "2026-09-29",
+  "revision": "ce20b29",
+  "verified_on": "2026-10-01",
   "entry_points": ["ModernResponseSettings.workbenchLink", "APIWorkbenchView"],
   "files": [
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
@@ -13,7 +13,7 @@
     {"path": "OpenResponses/Core/Services/APIWorkbenchSession.swift", "role": "primary", "blob": "89163beb2e17be1128065569ab0700848fd819a0"},
     {"path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift", "role": "primary", "blob": "69daf996f314a9859f63af8ebb1fcf4cacd9868f"},
     {"path": "OpenResponses/Features/Chat/Components/JSONCodeEditor.swift", "role": "primary", "blob": "0fcb41d6297bdfcf70159c237c48fb3b252b2fc6"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "ce0197bddb4594122c007af44f5bd35d82762af2"},
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "e8c5abd1a1875b7f468275340d683b8dd3af7a1c"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"}
   ],
   "nodes": [
@@ -32,7 +32,7 @@
     {"id": "keychain:apiWorkbenchDraft.v1", "kind": "persistence", "path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift", "line": 71, "match": "         kSecAttrAccount as String: \"apiWorkbenchDraft.v1\"]", "status": "VERIFIED"},
     {"id": "openai:wss://api.openai.com/v1/responses", "kind": "integration", "path": "OpenResponses/Core/Services/APIWorkbenchSession.swift", "line": 71, "match": "                        request.url = URL(string: \"wss://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
     {"id": "openai:/responses", "kind": "integration", "path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 92, "match": "            case .responses: return \"/responses\"", "status": "VERIFIED"},
-    {"id": "test:APIWorkbenchEventTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 550, "match": "final class APIWorkbenchEventTests: XCTestCase {", "status": "VERIFIED"},
+    {"id": "test:APIWorkbenchEventTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 551, "match": "final class APIWorkbenchEventTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
@@ -50,7 +50,7 @@
     {"from": "APIWorkbenchSession.run", "to": "openai:/responses", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/APIWorkbenchSession.swift", "line": 89, "match": "                    let (bytes, response) = try await URLSession.shared.bytes(for: request)"}]},
     {"from": "APIWorkbenchView.Endpoint", "to": "APIWorkbenchSession.run", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 375, "match": "            let path = try endpoint.path(id: resourceID)"}]},
     {"from": "APIWorkbenchView.Template", "to": "APIWorkbenchView", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 17, "match": "    @State private var requestText = ResponsesAPIClient.pretty(Template.response.body)"}]},
-    {"from": "APIWorkbenchSession", "to": "test:APIWorkbenchEventTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 553, "match": "        session.receive([\"type\": \"response.created\", \"response\": [\"id\": \"resp_new\"]])"}]},
+    {"from": "APIWorkbenchSession", "to": "test:APIWorkbenchEventTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 554, "match": "        session.receive([\"type\": \"response.created\", \"response\": [\"id\": \"resp_new\"]])"}]},
     {"from": "APIWorkbenchView.Endpoint", "to": "test:OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 980, "match": "        let paths = try APIWorkbenchView.Endpoint.allCases.map { try $0.path(id: \"id_1\") }"}]}
   ],
   "docs": [
@@ -63,7 +63,7 @@
     "nodes": [
       {"id": "APIWorkbenchDraft", "kind": "model", "path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift", "line": 5, "match": "struct APIWorkbenchDraft: Codable, Equatable {", "status": "VERIFIED"},
       {"id": "test:AppCompletionTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 6, "match": "final class AppCompletionTests: XCTestCase {", "status": "VERIFIED"},
-      {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 6, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"}
+      {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 7, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
       {"from": "APIWorkbenchView", "type": "depends_on", "to": "APIWorkbenchSession", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 6, "match": "@StateObject private var session = APIWorkbenchSession()"}]},
@@ -74,7 +74,7 @@
       {"from": "APIWorkbenchDraftStore", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 74, "match": "let store = APIWorkbenchDraftStore(read: { persisted }, write: { persisted = $0 })"}]},
       {"from": "APIWorkbenchSession", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 59, "match": "for transport in APIWorkbenchSession.Transport.allCases {"}]},
       {"from": "APIWorkbenchView", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 980, "match": "let paths = try APIWorkbenchView.Endpoint.allCases.map { try $0.path(id: \"id_1\") }"}]},
-      {"from": "APIWorkbenchSession", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 552, "match": "let session = APIWorkbenchSession()"}]},
+      {"from": "APIWorkbenchSession", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 553, "match": "let session = APIWorkbenchSession()"}]},
       {"from": "APIWorkbenchView", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 5, "match": "@AppStorage(AppFeatureFlags.aiDataSharingConsentVersionKey) private var consentVersion = 0"}], "note": "via AppFeatureFlags"},
       {"from": "APIWorkbenchView", "type": "depends_on", "to": "feature:native-runner", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 17, "match": "@State private var requestText = ResponsesAPIClient.pretty(Template.response.body)"}], "note": "via ResponsesAPIClient, ResponseTurnRunner"},
       {"from": "APIWorkbenchView", "type": "depends_on", "to": "feature:models", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 138, "match": "\"session\": [\"type\": \"realtime\", \"model\": CurrentModelCatalog.realtimeModel]]"}], "note": "via CurrentModelCatalog"},

@@ -433,6 +433,46 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(api.sendFunctionOutputsCalls.first?.conversationId, "conv_remote_batch")
     }
 
+    // A streamed function call's step runs while the app works and then shows what the run returned.  Before 2.9 both
+    // steps here stayed on Queued.  The browser call fails because Computer Use is off in this chat.
+    func testStreamedFunctionStepsShowWhatTheAppsRunReturned() async throws {
+        let api = MockOpenAIService()
+        let item = { (id: String, name: String, arguments: String) -> [String: Any] in
+            ["id": id, "type": "function_call", "call_id": "call_\(id)", "name": name, "arguments": arguments, "status": "completed"]
+        }
+        let calc = item("fc_calc", "calculator", #"{"expression":"2+2"}"#)
+        let web = item("fc_web", "browserNavigate", #"{"url":"https://example.com"}"#)
+        api.streamEvents = try [
+            ["type": "response.created", "response": ["id": "resp_tools", "status": "in_progress"]],
+            ["type": "response.output_item.added", "output_index": 0, "item": calc],
+            ["type": "response.output_item.added", "output_index": 1, "item": web],
+            ["type": "response.output_item.done", "output_index": 0, "item": calc],
+            ["type": "response.output_item.done", "output_index": 1, "item": web],
+        ].map { event in
+            var event = event
+            event["sequence_number"] = 0
+            return try JSONDecoder().decode(StreamingEvent.self, from: JSONSerialization.data(withJSONObject: event))
+        }
+        let viewModel = makeViewModel(api: api)
+        viewModel.activePrompt.enableStreaming = true
+        viewModel.activePrompt.enableComputerUse = false
+        viewModel.activePrompt.enableCustomTool = true
+        viewModel.activePrompt.customToolName = "calculator"
+        viewModel.activePrompt.customToolExecutionType = "calculator"
+
+        viewModel.sendUserMessage("What's 2+2, and open example.com.")
+
+        let step = { (id: String) in viewModel.messages.lazy.compactMap { $0.toolTimeline?.first { $0.id == id } }.first }
+        let finished = await waitUntil {
+            [step("fc_calc")?.status, step("fc_web")?.status].allSatisfy { $0 == .completed || $0 == .failed }
+        }
+        XCTAssertTrue(finished)
+        XCTAssertEqual(step("fc_calc")?.status, .completed)
+        XCTAssertEqual(step("fc_web")?.status, .failed)
+        XCTAssertEqual(step("fc_web")?.rawOutputPreview, "Error: Browser tools are disabled in this chat.")
+        XCTAssertEqual(step("fc_web")?.rawArguments, #"{"url":"https://example.com"}"#)
+    }
+
     private func makeViewModel(
         api: MockOpenAIService,
         backgroundPollIntervalNanoseconds: UInt64 = 10_000_000
@@ -604,6 +644,8 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
     var sendFunctionOutputCalls: [FunctionOutputCall] = []
     var sendFunctionOutputsCalls: [FunctionOutputsBatchCall] = []
     var streamFunctionOutputsCalls: [FunctionOutputsBatchCall] = []
+    /// Events the next streamed chat request yields, in order.
+    var streamEvents: [StreamingEvent] = []
     var probeMCPListToolsResult: (label: String, count: Int)?
     var probeMCPListToolsError: Error?
 
@@ -715,7 +757,9 @@ private final class MockOpenAIService: OpenAIServiceProtocol {
         previousResponseId: String?,
         conversationId: String?
     ) -> AsyncThrowingStream<StreamingEvent, Error> {
+        let events = streamEvents
         return AsyncThrowingStream { continuation in
+            for event in events { continuation.yield(event) }
             continuation.finish()
         }
     }

@@ -4,8 +4,8 @@
   "name": "Apple system integrations",
   "aliases": ["Apple Calendar/Reminders/Contacts", "Grant Access", "Calendar", "Reminders", "Contacts"],
   "purpose": "Provides tools and repositories to read and write Apple Calendar, Reminders, and Contacts data using EventKit and Contacts frameworks.",
-  "revision": "93ca8c9",
-  "verified_on": "2026-09-30",
+  "revision": "ce20b29",
+  "verified_on": "2026-10-01",
   "entry_points": ["ChatViewModel.appleFunctions", "AppleIntegrationsCard"],
   "files": [
     {"path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "role": "primary", "blob": "d5dde7d43b346f6913f6ce47daca6a3801067c52"},
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Core/Services/EventKitPermissionManager.swift", "role": "primary", "blob": "3008403974a764d899634b9f116038912abf3798"},
     {"path": "OpenResponses/Core/Models/AppleDataModels.swift", "role": "primary", "blob": "48f7ce85fe04d49cbbd54d32c85793bee76fd5fc"},
     {"path": "OpenResponses/Core/Models/AppleContactModels.swift", "role": "primary", "blob": "e5413881be01dae35ee1f0442f5f0358885712ed"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e533e01cce6d0386c6f93ca99ed8eb04aaa79cf"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
@@ -25,7 +25,7 @@
     {"path": "OpenResponsesTests/DateFormattingTests.swift", "role": "test", "blob": "6dc9f6c15af1c71dd6cbadfd6891d302a195cbd0"}
   ],
   "nodes": [
-    {"id": "ChatViewModel.appleFunctions", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2698, "match": "case \"fetchAppleCalendarEvents\":", "status": "VERIFIED"},
+    {"id": "ChatViewModel.appleFunctions", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2711, "match": "case \"fetchAppleCalendarEvents\":", "status": "VERIFIED"},
     {"id": "AppleIntegrationsCard", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1588, "match": "private struct AppleIntegrationsCard: View {", "status": "VERIFIED"},
     {"id": "AppleProvider", "kind": "service", "path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "line": 42, "match": "public final class AppleProvider: ToolProvider {", "status": "VERIFIED"},
     {"id": "AppleCalendarRepository", "kind": "service", "path": "OpenResponses/Core/Services/AppleCalendarRepository.swift", "line": 7, "match": "public final class AppleCalendarRepository {", "status": "VERIFIED"},
@@ -48,8 +48,8 @@
     {"id": "test:DateFormattingTests", "kind": "test", "path": "OpenResponsesTests/DateFormattingTests.swift", "line": 4, "match": "final class DateFormattingTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "ChatViewModel.appleFunctions", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2713, "match": "let provider = AppContainer.shared.appleProvider"}]},
-    {"from": "ChatViewModel.appleFunctions", "type": "reads", "to": "Prompt.enableAppleIntegrations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2040, "match": "} else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {"}]},
+    {"from": "ChatViewModel.appleFunctions", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2726, "match": "let provider = AppContainer.shared.appleProvider"}]},
+    {"from": "ChatViewModel.appleFunctions", "type": "reads", "to": "Prompt.enableAppleIntegrations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 2053, "match": "} else if appleFunctions.contains(functionName) && !activePrompt.enableAppleIntegrations {"}]},
     {"from": "AppleIntegrationsCard", "type": "calls", "to": "AppleProvider", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1682, "match": "try await AppContainer.shared.appleProvider.connect(presentingAnchor: nil)"}]},
     {"from": "AppleIntegrationsCard", "type": "reads", "to": "eventkit:EKEventStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1673, "match": "calendarAccess = EKEventStore.authorizationStatus(for: .event)"}]},
     {"from": "AppleIntegrationsCard", "type": "reads", "to": "contacts:CNContactStore", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1675, "match": "contactsAccess = CNContactStore.authorizationStatus(for: .contacts)"}]},

@@ -142,7 +142,7 @@ final class ManagedResponsePresentation {
         guard let id = call["id"] as? String,
               let index = viewModel.messages.firstIndex(where: { $0.id == messageId }),
               let slot = viewModel.messages[index].toolTimeline?.firstIndex(where: { $0.id == id }) else { return }
-        viewModel.messages[index].toolTimeline?[slot].status = output.hasPrefix("Error:") ? .failed : .completed
+        viewModel.messages[index].toolTimeline?[slot].status = ChatViewModel.functionOutputFailed(output) ? .failed : .completed
         viewModel.messages[index].toolTimeline?[slot].rawOutputPreview = String(output.prefix(24_000))
         viewModel.messages[index].toolTimeline?[slot].completedAt = Date()
     }

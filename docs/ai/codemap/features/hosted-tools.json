@@ -4,22 +4,25 @@
   "name": "Hosted Tools",
   "aliases": ["OpenAI-hosted tools", "web search", "file search", "code interpreter", "image generation", "hosted shell", "tool search", "Web Search", "File Search", "Code Interpreter", "Image Generation", "Hosted shell", "Load tools on demand"],
   "purpose": "Manages configuration and presentation of OpenAI-hosted tools including web search, file search, code interpreter, image generation, hosted shell, and tool search.",
-  "revision": "93ca8c9",
-  "verified_on": "2026-09-30",
+  "revision": "ce20b29",
+  "verified_on": "2026-10-01",
   "entry_points": ["SettingsHomeView", "ModernResponseSettings"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "role": "primary", "blob": "8c22bba45c58f0ea02b6b5421184fc4cc519ae46"},
     {"path": "OpenResponses/Features/Chat/Components/ImageSuggestionView.swift", "role": "primary", "blob": "b40ab5455050e1243050ebc42c8862d5d85ef5c6"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "71631e02106e2f5a6387af93bcfed8058861eb20"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "212308e1c8e47a99741cbc2239284b997ad2a6c9"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "shared", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
-    {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "8ceca75b90f127aa9da5438236de4edea5fa0b86"},
+    {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "cb6af7c174a0cc626deb1236a2c3ad86333b4b66"},
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "shared", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"},
+    {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "97ae5fd82592f92f66d7ca25a2ef3a477795e956"},
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "e8c5abd1a1875b7f468275340d683b8dd3af7a1c"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 6, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
@@ -44,7 +47,12 @@
     {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 225, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
     {"id": "CurrentModelCatalog", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 13, "match": "enum CurrentModelCatalog {", "status": "VERIFIED"},
     {"id": "openai:responses", "kind": "integration", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 31, "match": "    private let apiURL = URL(string: \"https://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
-    {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
+    {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"},
+    {"id": "ChatMessage.listedArtifacts", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 113, "match": "    @MainActor var listedArtifacts: [CodeInterpreterArtifact] {", "status": "VERIFIED", "note": "image artifacts aren't listed again while the message has pictures"},
+    {"id": "ToolRowsTextAndFilesTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1178, "match": "final class ToolRowsTextAndFilesTests: XCTestCase {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.appendArtifact", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5677, "match": "    func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.prefers", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5700, "match": "    static func prefers(_ new: CodeInterpreterArtifact, over old: CodeInterpreterArtifact) -> Bool {", "status": "VERIFIED", "note": "one entry per file: the loaded copy under its real name"},
+    {"id": "ToolExecutionTimeline.displayName", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 47, "match": "    var displayName: String {", "status": "VERIFIED", "note": "hosted tool steps named as Settings names the tools"}
   ],
   "edges": [
     {"from": "SettingsHomeView", "to": "Prompt.enableWebSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 465, "match": "                Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {"}]},
@@ -61,12 +69,18 @@
     {"from": "ModernResponseOptions.toolSearch", "to": "OpenAIService.encodeTools", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1087, "match": "                    if prompt.currentOptions.toolSearch {"}]},
     {"from": "OpenAIService.buildRequestObject", "to": "OpenAIService.buildTools", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1017, "match": "        var tools = buildTools(for: prompt, userMessage: userMessage, isStreaming: isStreaming)"}]},
     {"from": "OpenAIService.buildRequestObject", "to": "OpenAIService.encodeTools", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 776, "match": "        if let encodedTools = encodeTools(tools, prompt: prompt, isStreaming: stream) {"}]},
-    {"from": "MessageBubbleView", "to": "ArtifactsView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 95, "match": "                    ArtifactsView(artifacts: artifacts)"}]},
+    {"from": "MessageBubbleView", "to": "ArtifactsView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 95, "match": "                    ArtifactsView(artifacts: message.listedArtifacts)"}]},
     {"from": "ArtifactsView", "to": "ArtifactView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "line": 162, "match": "                    ArtifactView(artifact: artifact)"}]},
     {"from": "MessageBubbleView", "to": "MessageToolIndicator", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 62, "match": "                    MessageToolIndicator(message: message)"}]},
     {"from": "MessageBubbleView", "to": "EnhancedImageView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 88, "match": "                        EnhancedImageView(image: images[idx])"}]},
     {"from": "MessageBubbleView", "to": "ToolTimelineView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 74, "match": "                        ToolTimelineView(timeline: toolTimeline)"}]},
-    {"from": "OpenAIService.buildTools", "to": "OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 607, "match": "        prompt.enableWebSearch = true"}]}
+    {"from": "OpenAIService.buildTools", "to": "OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 607, "match": "        prompt.enableWebSearch = true"}]},
+    {"from": "MessageBubbleView", "to": "ChatMessage.listedArtifacts", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 94, "match": "                if !message.listedArtifacts.isEmpty {"}]},
+    {"from": "ChatMessage.listedArtifacts", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1293, "match": "    func testAChartShowsOnceAndSavedFilesKeepTheirText() throws {"}]},
+    {"from": "ChatViewModel.appendArtifact", "to": "ChatViewModel.prefers", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5686, "match": "            if let kept = messages[index].artifacts?[slot], ChatViewModel.prefers(artifact, over: kept) {"}]},
+    {"from": "ToolTimelineView", "to": "ToolExecutionTimeline.displayName", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "line": 71, "match": "                    Text(event.displayName)"}]},
+    {"from": "ChatViewModel.prefers", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1293, "match": "    func testAChartShowsOnceAndSavedFilesKeepTheirText() throws {"}]},
+    {"from": "ToolExecutionTimeline.displayName", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1252, "match": "    func testCodeInterpreterStepShowsItsNameAndCode() throws {"}]}
   ],
   "docs": [
     {"path": "CHANGELOG.md", "section": "2.7 — released September 25, 2026", "quote": "- GPT Image 2.5 Flare and Sunburst (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`), with the `xhigh` and `max` quality levels only these models accept. GPT Image 2 stays selectable.", "claim": "GPT Image 2.5 Flare and Sunburst are added.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 13, "match": "enum CurrentModelCatalog {"}, "note": "Models are catalogued."}

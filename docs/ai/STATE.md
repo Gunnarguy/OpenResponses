@@ -1,8 +1,8 @@
 # Current State
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 Branch/worktree: main in the repo root; this handoff is pushed with the 2.9 version bump (Xcode Cloud builds it as a 2.9 TestFlight build).
-Last verified commit: 5be03ad
+Last verified commit: the 2.9 tool-steps commit that carries this handoff (parent ce20b29)
 
 ## Objective
 None active. 2.8 is released and every release-day task is done. 2.9 is open for whatever Gunnar picks next from the Notion roadmap (the v2.9 rows are device checks carried over from 2.8, plus anything he adds).
@@ -29,9 +29,10 @@ None active. 2.8 is released and every release-day task is done. 2.9 is open for
 - Simulator for this repo: "OpenResponses tests" 2C5F635A-DB92-4FD4-ACC1-DEB2B2939DEA; check `xcrun simctl list devices` first.
 
 ## Working Set
-- None in progress.
+- 2.9 fixes found while filming the 2.8 demos (PostDesk `Docs/DEMOS.md`), committed to main and NOT pushed: a push starts the Xcode Cloud 2.9 archive and GitHub CI, so Gunnar decides when. CHANGELOG 2.9 lists them: tool steps leave Queued on `response.output_item.done`, a failed function or MCP step shows Failed, the answer after a tool call starts a new paragraph, the failure note clears when the answer starts, a chart shows once and each file is listed once, saved text artifacts keep their words, steps are named like Settings names the tools, and a Code Interpreter step shows its code.
 
 ## Verification
+- 2.9 tool-steps fixes: full unit suite, the set CI runs, on simulator 2C5F635A -> 337 executed, 0 failures, 1 skipped (the live docs-page test without its variable). New tests: ToolRowsTextAndFilesTests (7) and ChatViewModelLifecycleTests.testStreamedFunctionStepsShowWhatTheAppsRunReturned. A reviewer pass found that browser failures read "Error processing …", MCP's in_progress event names no tool and an mcp_tool_execution_error has no message; all three are fixed and tested. `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
 - 2.9 changes (version bump, Computer Use text): full unit suite, the set CI runs, on simulator 2C5F635A -> 329 executed, 0 failures, 2 skipped (the live docs-page test without its variable, and a search-by-meaning test).
 - `python3 release.py status` (scripts/asc) on 2026-09-30 -> version 2.8 READY_FOR_SALE, build 51 attached, submission 5e3d5bf0 COMPLETE.
 - Gunzino `npm run build` and `./scripts/verify-site.sh source` -> exit 0 before pushing 5e5cf19. Gunnarguy-Portfolio `npm run verify` -> exit 0 before pushing d8327d6.
@@ -44,4 +45,4 @@ None active. 2.8 is released and every release-day task is done. 2.9 is open for
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-None. The previous objective is complete and verified. There is no active objective; ask the user what to pick up, or take an item from the Notion roadmap (the v2.9 rows).
+Ask Gunnar whether to push main (starts the Xcode Cloud 2.9 build). The PostDesk session films the OpenResponses demos on this build. Otherwise there is no active objective; take an item from the Notion roadmap (the v2.9 rows).

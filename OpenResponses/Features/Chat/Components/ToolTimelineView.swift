@@ -68,7 +68,7 @@ struct ToolExecutionCard: View {
                         .foregroundColor(statusColor)
                         .frame(width: 16, alignment: .center)
                     
-                    Text(event.toolName)
+                    Text(event.displayName)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
@@ -103,7 +103,7 @@ struct ToolExecutionCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let args = event.rawArguments, !args.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Arguments:")
+                            Text(event.toolType == "code_interpreter_call" ? "Code:" : "Arguments:")
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)

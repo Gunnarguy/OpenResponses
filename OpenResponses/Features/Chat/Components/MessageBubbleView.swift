@@ -91,8 +91,8 @@ struct MessageBubbleView: View {
                 }
 
                 // Code interpreter artifacts (files, logs, data outputs)
-                if let artifacts = message.artifacts, !artifacts.isEmpty {
-                    ArtifactsView(artifacts: artifacts)
+                if !message.listedArtifacts.isEmpty {
+                    ArtifactsView(artifacts: message.listedArtifacts)
                         .padding(.vertical, 4)
                 }
 

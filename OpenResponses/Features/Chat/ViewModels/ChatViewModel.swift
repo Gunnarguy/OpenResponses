@@ -78,6 +78,8 @@ class ChatViewModel: ObservableObject {
     // Coalesces rapid-fire text deltas into fewer UI updates per message.
     // Keyed by messageId.
     var deltaBuffers: [UUID: String] = [:]
+    // The output item the last text delta belonged to, keyed by messageId, so a new item starts a new paragraph.
+    var lastTextItemIds: [UUID: String] = [:]
     private var deltaFlushWorkItems: [UUID: DispatchWorkItem] = [:]
     // Flush after this many milliseconds without new punctuation, to avoid lag.
     private let deltaFlushDebounceMs: Int = 150 // Reduced from 500ms for snappier updates
@@ -253,6 +255,16 @@ class ChatViewModel: ObservableObject {
     func functionOutputSummaryText(for messageId: UUID) -> String? {
         guard let summaries = functionOutputSummariesByMessageId[messageId], !summaries.isEmpty else { return nil }
         return summaries.joined(separator: "\n\n")
+    }
+
+    /// True when a message's text is nothing but failure summaries the app showed while it waited for the model's words.
+    /// The text keeps the first summary when a second failure comes later, so it can differ from all of them joined.
+    func textIsOnlyFunctionOutputSummaries(_ text: String, for messageId: UUID) -> Bool {
+        guard let summaries = functionOutputSummariesByMessageId[messageId], !summaries.isEmpty,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        var rest = text
+        for summary in summaries { rest = rest.replacingOccurrences(of: summary, with: "") }
+        return rest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Clears any stored summaries once the response finishes.
@@ -1940,6 +1952,7 @@ class ChatViewModel: ObservableObject {
             _ = await MainActor.run { self.pendingFunctionCallIds.remove(canonicalCallId) }
             return
         }
+        await MainActor.run { self.finishFunctionTimeline(call, output: output, for: messageId) }
 
         if let summary = FunctionOutputSummarizer.failureSummary(functionName: functionName, rawOutput: output) {
             await MainActor.run {
@@ -3083,6 +3096,9 @@ class ChatViewModel: ObservableObject {
         if output == nil {
             // Execute using extracted switch logic
             output = await executeFunctionSwitch(functionName, call: call, messageId: messageId)
+        }
+        if let output {
+            await MainActor.run { self.finishFunctionTimeline(call, output: output, for: messageId) }
         }
 
         // If execution returned an error instead of output, bail
@@ -5180,6 +5196,7 @@ class ChatViewModel: ObservableObject {
         containerFileCache.removeAll()
         processedAnnotations.removeAll()
         deltaBuffers.removeAll()
+        lastTextItemIds.removeAll()
         deltaFlushWorkItems.values.forEach { $0.cancel() }
         deltaFlushWorkItems.removeAll()
         surfacedMCPToolWarnings.removeAll()
@@ -5221,12 +5238,14 @@ class ChatViewModel: ObservableObject {
             if let work = deltaFlushWorkItems[messageId] { work.cancel() }
             deltaFlushWorkItems[messageId] = nil
             flushDeltaBufferIfNeeded(for: messageId)
+            lastTextItemIds[messageId] = nil
             stopImageGenerationHeartbeat(for: messageId)
             finalizeStreamingReasoning(for: messageId)
         } else {
             deltaFlushWorkItems.values.forEach { $0.cancel() }
             deltaFlushWorkItems.removeAll()
             deltaBuffers.removeAll()
+            lastTextItemIds.removeAll()
             imageHeartbeatTasks.values.forEach { $0.cancel() }
             imageHeartbeatTasks.removeAll()
         }
@@ -5661,12 +5680,30 @@ extension ChatViewModel {
         if messages[index].artifacts == nil {
             messages[index].artifacts = []
         }
-        messages[index].artifacts?.append(artifact)
+        // One entry per file.  A file can arrive from its annotation and again from a sandbox link in the answer, and
+        // a chart was listed three times on 2026-10-01.  Keep the copy that loaded, under its real name.
+        if let slot = messages[index].artifacts?.firstIndex(where: { $0.fileId == artifact.fileId }) {
+            if let kept = messages[index].artifacts?[slot], ChatViewModel.prefers(artifact, over: kept) {
+                messages[index].artifacts?[slot] = artifact
+            }
+        } else {
+            messages[index].artifacts?.append(artifact)
+        }
 
         // If it's an image artifact, also add to the legacy images array for backward compatibility
         if case .image(let image) = artifact.content {
             appendImage(image, to: messageId)
         }
+    }
+
+    /// Which of two copies of one file to keep: one that loaded over one that failed, then a real name over the bare file id.
+    static func prefers(_ new: CodeInterpreterArtifact, over old: CodeInterpreterArtifact) -> Bool {
+        let failed = { (artifact: CodeInterpreterArtifact) -> Bool in
+            if case .error = artifact.content { return true }
+            return false
+        }
+        if failed(old) != failed(new) { return failed(old) }
+        return old.filename.hasPrefix(old.fileId) && !new.filename.hasPrefix(new.fileId)
     }
 
     /// Get MIME type for file extension
@@ -6392,6 +6429,25 @@ extension ChatViewModel {
         
         message.toolTimeline = timeline
         messages[idx] = message
+    }
+
+    /// Closes a client function's row once the app has run it: Completed, or Failed when the output is an error.
+    /// The row is keyed by the output item's id, as `handleOutputItemAddedChunk` created it.
+    func finishFunctionTimeline(_ call: OutputItem, output: String, for messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }),
+              let slot = messages[idx].toolTimeline?.firstIndex(where: { $0.id == call.id }) else { return }
+        var message = messages[idx]
+        message.toolTimeline?[slot].status = ChatViewModel.functionOutputFailed(output) ? .failed : .completed
+        message.toolTimeline?[slot].rawOutputPreview = String(output.prefix(24_000))
+        message.toolTimeline?[slot].completedAt = Date()
+        messages[idx] = message
+    }
+
+    /// A function's output reports a failure when it starts with "Error": "Error: …", and the browser's
+    /// "Error processing browserNavigate: …".  FunctionOutputSummarizer also counts " error" anywhere in the text,
+    /// which a page about baseball would match, so a step's status doesn't use it.
+    static func functionOutputFailed(_ output: String) -> Bool {
+        output.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("error")
     }
 
     /// Handles non-streaming responses from the OpenAI API.

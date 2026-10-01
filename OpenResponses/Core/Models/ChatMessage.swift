@@ -41,7 +41,20 @@ struct ToolExecutionTimeline: Codable, Equatable, Identifiable {
     var screenshotThumbnail: Data?
     let startedAt: Date
     var completedAt: Date?
-    
+
+    /// The name a row shows.  A hosted tool's item has no name of its own, so its row is named after the tool as
+    /// Settings names it ("Code Interpreter"), not the API's item type ("code_interpreter_call").
+    var displayName: String {
+        guard toolName == toolType else { return toolName }
+        switch toolType {
+        case "code_interpreter_call": return "Code Interpreter"
+        case "web_search_call": return "Web Search"
+        case "file_search_call": return "File Search"
+        case "image_generation_call": return "Image Generation"
+        default: return toolName
+        }
+    }
+
     init(
         id: String = UUID().uuidString,
         responseId: String? = nil,
@@ -93,6 +106,21 @@ nonisolated struct ChatMessage: Identifiable, Codable {
     var tokenUsage: TokenUsage?
     /// Code interpreter artifacts (files, logs, data outputs)
     var artifacts: [CodeInterpreterArtifact]?
+    /// The artifacts the bubble lists under Generated Files.  `appendArtifact` also puts an image artifact's picture in
+    /// `images`, which the bubble draws above the list and which is the copy saved with the conversation (an artifact's
+    /// picture isn't saved).  So while the message has pictures, an image artifact isn't listed again (one chart, not two),
+    /// nor is a saved one that came back without its picture.  One that failed to load stays listed, so its error shows.
+    @MainActor var listedArtifacts: [CodeInterpreterArtifact] {
+        let all = artifacts ?? []
+        guard images?.isEmpty == false else { return all }
+        return all.filter { artifact in
+            switch artifact.content {
+            case .image: return false
+            case .error(let message): return !(artifact.artifactType == .image && message == ArtifactContent.notLoaded)
+            default: return true
+            }
+        }
+    }
     /// MCP approval requests pending user decision
     var mcpApprovalRequests: [MCPApprovalRequest]?
     /// Reasoning trace emitted by reasoning models (e.g., GPT-5)
@@ -847,6 +875,39 @@ struct MCPToolError: Decodable {
     let message: String
 }
 
+extension MCPToolError {
+    private enum Keys: String, CodingKey { case type, code, message, content }
+
+    /// An mcp_tool_execution_error carries `content` and no `message` (openai-python's McpToolCallError, read 2026-10-01).
+    /// Requiring `message` failed the whole item, so its done event was dropped and the step never showed Failed.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        let type = try? container.decodeIfPresent(String.self, forKey: .type)
+        let message = try? container.decodeIfPresent(String.self, forKey: .message)
+        let content = try? container.decodeIfPresent(AnyCodable.self, forKey: .content)
+        self.init(
+            type: type ?? "error",
+            code: try? container.decodeIfPresent(Int.self, forKey: .code),
+            message: message ?? MCPToolError.text(of: content?.value) ?? type ?? "error"
+        )
+    }
+
+    /// The words in an error's content: a string, text parts, or an object's text or message.
+    private static func text(of value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            return string.isEmpty ? nil : string
+        case let list as [Any?]:
+            let parts = list.compactMap { text(of: $0) }
+            return parts.isEmpty ? nil : parts.joined(separator: " ")
+        case let object as [String: Any?]:
+            return text(of: object["text"] ?? nil) ?? text(of: object["message"] ?? nil)
+        default:
+            return nil
+        }
+    }
+}
+
 /// Streaming output item (message, reasoning, tool_call, mcp_list_tools, mcp_call, mcp_approval_request, etc.)
 struct StreamingOutputItem: Decodable, CustomStringConvertible {
     /// Unique identifier for this output item
@@ -1041,8 +1102,11 @@ struct StreamingItem: Decodable, CustomStringConvertible {
     /// Structured error payload when a tool call fails (e.g., MCP call.done with status=failed)
     let error: MCPToolError?
 
+    /// The Python a code_interpreter_call ran, or nil if not available.
+    let code: String?
+
     enum CodingKeys: String, CodingKey {
-        case id, type, status, content, role, name, arguments, action, actions, error, tools
+        case id, type, status, content, role, name, arguments, action, actions, error, tools, code
         case callId = "call_id"
         case pendingSafetyChecks = "pending_safety_checks"
         case serverLabel = "server_label"
@@ -1066,6 +1130,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         serverLabel = try container.decodeIfPresent(String.self, forKey: .serverLabel)
         tools = try container.decodeIfPresent([[String: AnyCodable]].self, forKey: .tools)
         approvalRequestId = try container.decodeIfPresent(String.self, forKey: .approvalRequestId)
+        code = try? container.decodeIfPresent(String.self, forKey: .code)
     }
 
     /// Provides a readable description of the item
@@ -1090,6 +1155,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         self.tools = nil
         self.approvalRequestId = nil
         self.error = nil
+        self.code = nil
     }
 
     /// Initialize from a StreamingOutputItem (used in response completion)
@@ -1109,6 +1175,7 @@ struct StreamingItem: Decodable, CustomStringConvertible {
         self.tools = streamingOutputItem.tools
         self.approvalRequestId = streamingOutputItem.approvalRequestId
         self.error = streamingOutputItem.error
+        self.code = nil
     }
 }
 

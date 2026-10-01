@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import UIKit
 import XCTest
 @testable import OpenResponses
 
@@ -1170,5 +1171,151 @@ final class MCPDiscoveryTests: XCTestCase {
         let service = MCPDiscoveryService(keyProvider: { nil }, transport: harness.open)
         do { _ = try await service.discover(config()); XCTFail("Expected missing key") } catch { XCTAssertTrue(error is OpenAIServiceError) }
         XCTAssertTrue(harness.requests.isEmpty)
+    }
+}
+
+@MainActor
+final class ToolRowsTextAndFilesTests: XCTestCase {
+    private func streaming() -> (ChatViewModel, ChatMessage) {
+        let viewModel = ChatViewModel()
+        let message = ChatMessage(role: .assistant, text: "")
+        viewModel.messages = [message]
+        viewModel.streamingMessageId = message.id
+        return (viewModel, message)
+    }
+
+    private func feed(_ viewModel: ChatViewModel, _ events: [[String: Any]], to message: ChatMessage) throws {
+        for var event in events {
+            event["sequence_number"] = event["sequence_number"] ?? 0
+            let chunk = try JSONDecoder().decode(StreamingEvent.self, from: JSONSerialization.data(withJSONObject: event))
+            viewModel.handleStreamChunk(chunk, for: message.id)
+        }
+    }
+
+    private func row(_ viewModel: ChatViewModel, _ id: String) -> ToolExecutionTimeline? {
+        viewModel.messages.first?.toolTimeline?.first { $0.id == id }
+    }
+
+    // The API ends an item with response.output_item.done.  Before 2.9 only response.output_item.completed, which the
+    // API never sends, closed a row, so every hosted tool showed Queued after it had finished.
+    func testHostedToolRowsRunThenFinishOnOutputItemDone() throws {
+        let (viewModel, message) = streaming()
+        try feed(viewModel, [
+            ["type": "response.output_item.added", "output_index": 0, "item": ["id": "ci_1", "type": "code_interpreter_call", "status": "in_progress"]],
+            ["type": "response.output_item.added", "output_index": 1, "item": ["id": "ws_1", "type": "web_search_call", "status": "in_progress"]],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "ci_1")?.status, .queued)
+        try feed(viewModel, [["type": "response.code_interpreter_call.interpreting", "item_id": "ci_1", "output_index": 0]], to: message)
+        XCTAssertEqual(row(viewModel, "ci_1")?.status, .running)
+        try feed(viewModel, [
+            ["type": "response.output_item.done", "output_index": 0, "item": ["id": "ci_1", "type": "code_interpreter_call", "status": "completed"]],
+            ["type": "response.output_item.done", "output_index": 1, "item": ["id": "ws_1", "type": "web_search_call", "status": "failed"]],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "ci_1")?.status, .completed)
+        XCTAssertNotNil(row(viewModel, "ci_1")?.completedAt)
+        XCTAssertEqual(row(viewModel, "ws_1")?.status, .failed)
+
+        // A replayed event doesn't reopen a finished row.
+        try feed(viewModel, [["type": "response.output_item.done", "output_index": 0, "item": ["id": "ci_1", "type": "code_interpreter_call", "status": "incomplete"]]], to: message)
+        XCTAssertEqual(row(viewModel, "ci_1")?.status, .completed)
+    }
+
+    // A step's output is a failure when it starts with "Error".  The browser's failures read "Error processing …",
+    // and a page that only mentions errors isn't one.
+    func testAFunctionFailsWhenItsOutputStartsWithError() {
+        XCTAssertTrue(ChatViewModel.functionOutputFailed("Error processing browserNavigate: Timed out waiting for navigation."))
+        XCTAssertTrue(ChatViewModel.functionOutputFailed("Error: Browser tools are disabled in this chat."))
+        XCTAssertTrue(ChatViewModel.functionOutputFailed("  error searching contacts"))
+        XCTAssertFalse(ChatViewModel.functionOutputFailed(#"{"title":"2016 World Series","text":"Cleveland made 3 errors in Game 7"}"#))
+    }
+
+    // MCP's in_progress event names no tool, so its row stayed Queued until the end.  A tool execution error carries
+    // content instead of a message, and the item didn't decode, so the row never showed Failed.
+    func testMCPStepsRunThenFailOnAToolError() throws {
+        let (viewModel, message) = streaming()
+        let item: [String: Any] = ["id": "mcp_1", "type": "mcp_call", "name": "fetch", "server_label": "docs", "arguments": "{}"]
+        try feed(viewModel, [["type": "response.output_item.added", "output_index": 0, "item": item]], to: message)
+        XCTAssertEqual(row(viewModel, "mcp_1")?.status, .queued)
+        try feed(viewModel, [["type": "response.mcp_call.in_progress", "item_id": "mcp_1", "output_index": 0]], to: message)
+        XCTAssertEqual(row(viewModel, "mcp_1")?.status, .running)
+
+        var failed = item
+        failed["status"] = "failed"
+        failed["error"] = ["type": "mcp_tool_execution_error", "content": [["type": "text", "text": "No page with that name."]]]
+        let decoded = try JSONDecoder().decode(StreamingItem.self, from: JSONSerialization.data(withJSONObject: failed))
+        XCTAssertEqual(decoded.error?.message, "No page with that name.")
+        try feed(viewModel, [["type": "response.output_item.done", "output_index": 0, "item": failed]], to: message)
+        XCTAssertEqual(row(viewModel, "mcp_1")?.status, .failed)
+    }
+
+    // A Code Interpreter step reads "Code Interpreter", not "code_interpreter_call", and opens to the Python it ran.
+    func testCodeInterpreterStepShowsItsNameAndCode() throws {
+        let (viewModel, message) = streaming()
+        let code = "import matplotlib.pyplot as plt\nplt.pie([1450, 520, 180, 340, 95, 45])"
+        try feed(viewModel, [
+            ["type": "response.output_item.added", "output_index": 0, "item": ["id": "ci_1", "type": "code_interpreter_call", "status": "in_progress", "container_id": "cntr_1"]],
+            ["type": "response.output_item.done", "output_index": 0, "item": ["id": "ci_1", "type": "code_interpreter_call", "status": "completed", "container_id": "cntr_1", "code": code]],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "ci_1")?.displayName, "Code Interpreter")
+        XCTAssertEqual(row(viewModel, "ci_1")?.rawArguments, code)
+        XCTAssertEqual(ToolExecutionTimeline(toolType: "function_call", toolName: "browserNavigate").displayName, "browserNavigate")
+    }
+
+    // The note the app shows when a tool fails is a placeholder until the model writes.  After two failures the text
+    // still held only the first note, which no longer matched both joined, so it stayed above the answer.
+    func testFailureNotesClearWhenTheAnswerStarts() throws {
+        let (viewModel, message) = streaming()
+        viewModel.recordFunctionOutputSummary("browserNavigate failed: Timed out waiting for navigation.", for: message.id)
+        viewModel.recordFunctionOutputSummary("browserType failed: Timed out waiting for typing.", for: message.id)
+        XCTAssertEqual(viewModel.messages.first?.text, "browserNavigate failed: Timed out waiting for navigation.")
+        try feed(viewModel, [["type": "response.output_text.delta", "item_id": "msg_b", "output_index": 3, "content_index": 0, "delta": "The Chicago Cubs won in 2016."]], to: message)
+        viewModel.flushDeltaBufferIfNeeded(for: message.id)
+        XCTAssertEqual(viewModel.messages.first?.text, "The Chicago Cubs won in 2016.")
+    }
+
+    // Text after a tool call comes in a new output item.  Before 2.9 it ran straight on: "retrying.The Chicago Cubs".
+    func testTextFromANewOutputItemStartsANewParagraph() throws {
+        let (viewModel, message) = streaming()
+        try feed(viewModel, [
+            ["type": "response.output_text.delta", "item_id": "msg_a", "output_index": 0, "content_index": 0, "delta": "The page didn't load, so I'm retrying."],
+            ["type": "response.output_text.delta", "item_id": "msg_b", "output_index": 2, "content_index": 0, "delta": "The Chicago Cubs won"],
+            ["type": "response.output_text.delta", "item_id": "msg_b", "output_index": 2, "content_index": 0, "delta": " in 2016."],
+        ], to: message)
+        viewModel.flushDeltaBufferIfNeeded(for: message.id)
+        XCTAssertEqual(viewModel.messages.first?.text, "The page didn't load, so I'm retrying.\n\nThe Chicago Cubs won in 2016.")
+        XCTAssertEqual(ChatViewModel.paragraphBreak(after: ""), "")
+        XCTAssertEqual(ChatViewModel.paragraphBreak(after: "Done.\n"), "\n")
+        XCTAssertEqual(ChatViewModel.paragraphBreak(after: "Done.\n\n"), "")
+    }
+
+    // appendArtifact also puts a chart's picture in `images`, and the bubble drew both: every chart twice.  A reopened
+    // conversation listed the chart again as "Content not loaded", and a saved text file lost its words.
+    func testAChartShowsOnceAndSavedFilesKeepTheirText() throws {
+        let viewModel = ChatViewModel()
+        let message = ChatMessage(role: .assistant, text: "Here's the chart.")
+        viewModel.messages = [message]
+        let chart = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        viewModel.appendArtifact(CodeInterpreterArtifact(fileId: "cfile_chart", filename: "chart.png", containerId: "cntr_1", mimeType: "image/png", content: .image(chart)), to: message.id)
+        viewModel.appendArtifact(CodeInterpreterArtifact(fileId: "cfile_csv", filename: "totals.csv", containerId: "cntr_1", mimeType: "text/csv", content: .text("name,total\nSam,19.20")), to: message.id)
+        // The same file again from a sandbox link, once under its bare id: still one entry, under its real name.
+        viewModel.appendArtifact(CodeInterpreterArtifact(fileId: "cfile_chart", filename: "cfile_chart.png", containerId: "cntr_1", mimeType: "image/png", content: .image(chart)), to: message.id)
+        viewModel.appendArtifact(CodeInterpreterArtifact(fileId: "cfile_csv", filename: "totals.csv", containerId: "cntr_1", mimeType: "text/csv", content: .text("name,total\nSam,19.20")), to: message.id)
+        let live = try XCTUnwrap(viewModel.messages.first)
+        XCTAssertEqual(live.artifacts?.map(\.filename), ["chart.png", "totals.csv"])
+        XCTAssertEqual(live.images?.count, 1)
+        XCTAssertEqual(live.listedArtifacts.map(\.filename), ["totals.csv"])
+
+        let reopened = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(live))
+        XCTAssertEqual(reopened.images?.count, 1)
+        XCTAssertEqual(reopened.listedArtifacts.map(\.filename), ["totals.csv"])
+        XCTAssertEqual(reopened.listedArtifacts.first?.content.textContent, "name,total\nSam,19.20")
+
+        // A chart that failed to load stays listed, so its error shows, even beside a picture that did load.
+        var both = reopened
+        both.artifacts?.append(CodeInterpreterArtifact(fileId: "cfile_x", filename: "second.png", containerId: "cntr_1", mimeType: "image/png", content: .error("Failed to load: timed out")))
+        XCTAssertEqual(both.listedArtifacts.map(\.filename), ["totals.csv", "second.png"])
     }
 }

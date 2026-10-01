@@ -54,6 +54,11 @@ extension ChatViewModel {
             handleComputerCallEvent(chunk, messageId: messageId)
         case "response.output_item.added":
             handleOutputItemAddedChunk(chunk, messageId: messageId)
+        case "response.web_search_call.in_progress", "response.web_search_call.searching",
+             "response.file_search_call.in_progress", "response.file_search_call.searching",
+             "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting",
+             "response.image_generation_call.in_progress", "response.image_generation_call.generating":
+            markToolItemRunning(chunk.itemId, messageId: messageId)
         case "response.output_item.completed":
             if chunk.item?.type == "mcp_list_tools" { handleMCPListToolsChunk(chunk, messageId: messageId) }
             handleOutputItemCompletedChunk(chunk, messageId: messageId)
@@ -61,6 +66,8 @@ extension ChatViewModel {
             handleMCPListToolsChunk(chunk, messageId: messageId)
         case "response.mcp_call.added", "response.mcp_call.in_progress":
             handleMCPCallAddedChunk(chunk, messageId: messageId)
+            // in_progress carries only item_id, which handleMCPCallAddedChunk can't name a tool from.
+            markToolItemRunning(chunk.itemId, messageId: messageId)
         case "response.mcp_call.done", "response.mcp_call.completed", "response.mcp_call.failed":
             handleMCPCallDoneChunk(chunk, messageId: messageId)
         case "response.mcp_call_arguments.delta":
@@ -250,10 +257,10 @@ extension ChatViewModel {
         // so the real AI response doesn't get appended after error text
         let isFirstDelta = (deltaBuffers[messageId] ?? "").isEmpty
         if isFirstDelta {
-            if let summaryText = functionOutputSummaryText(for: messageId) {
+            if functionOutputSummaryText(for: messageId) != nil {
                 let currentText = messages[messageIndex].text ?? ""
-                // If message text is exactly the error summary, clear it before appending real text
-                if currentText == summaryText {
+                // If the message text is only error summaries, clear it before appending real text
+                if textIsOnlyFunctionOutputSummaries(currentText, for: messageId) {
                     var updated = messages
                     updated[messageIndex].text = ""
                     messages = updated
@@ -264,7 +271,14 @@ extension ChatViewModel {
 
         AppLogger.log("Buffering text delta (len=\(delta.count)) for index \(messageIndex)", category: .ui, level: .debug)
         let existing = deltaBuffers[messageId] ?? ""
-        deltaBuffers[messageId] = existing + delta
+        var piece = delta
+        // Text from a new output item (the answer after a tool call) starts a new paragraph instead of running on
+        // ("retrying.The Chicago Cubs").  The managed runner separates its own items in ManagedResponsePresentation.
+        if managedResponseMessageId != messageId, let itemId = chunk.itemId, lastTextItemIds[messageId] != itemId {
+            piece = ChatViewModel.paragraphBreak(after: (messages[messageIndex].text ?? "") + existing) + delta
+            lastTextItemIds[messageId] = itemId
+        }
+        deltaBuffers[messageId] = existing + piece
 
         let totalText = (messages[messageIndex].text ?? "") + (deltaBuffers[messageId] ?? "")
         let estimate = ChatViewModel.estimateTokens(for: totalText)
@@ -290,6 +304,7 @@ extension ChatViewModel {
     /// Handles completion of output items and triggers tool-specific follow-up actions.
     private func handleOutputItemDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
         guard let item = chunk.item else { return }
+        markToolItemDone(item, responseId: chunk.response?.id ?? lastResponseId, messageId: messageId)
         handleCompletedStreamingItem(item, for: messageId)
         trackToolUsage(item, for: messageId)
 
@@ -590,8 +605,10 @@ extension ChatViewModel {
         if let item = chunk.item {
             cacheStreamingReasoningItem(item, responseId: chunk.response?.id ?? lastResponseId)
             trackToolUsage(item, for: messageId)
-            
-            if !(managedResponseMessageId == messageId && item.type == "function_call"), ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
+            // A replayed event, or one for a row ManagedResponsePresentation already opened, doesn't set it back to Queued.
+            let hasRow = messages.first(where: { $0.id == messageId })?.toolTimeline?.contains(where: { $0.id == item.id }) == true
+
+            if !hasRow, !(managedResponseMessageId == messageId && item.type == "function_call"), ["function_call", "mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type) {
                 let name = item.name ?? item.serverLabel ?? item.type
                 upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .queued)
             }
@@ -609,6 +626,45 @@ extension ChatViewModel {
                 upsertToolTimeline(for: messageId, responseId: chunk.response?.id ?? lastResponseId, itemId: item.id, toolType: item.type, toolName: name, status: .completed, arguments: item.arguments)
             }
         }
+    }
+
+    /// The API closes every output item with `response.output_item.done` and never sends `response.output_item.completed`
+    /// (openai-python's ResponseStreamEvent, read 2026-10-01), so this is where a tool's row leaves Queued.  A hosted tool
+    /// has finished by now.  A client function call has only finished streaming its arguments: the app runs it next, and
+    /// `finishFunctionTimeline` closes its row.  A row that already finished keeps its status.
+    private func markToolItemDone(_ item: StreamingItem, responseId: String?, messageId: UUID) {
+        let isClientCall = item.type == "function_call" && managedResponseMessageId != messageId
+        guard isClientCall || ["mcp_call", "code_interpreter_call", "web_search_call", "file_search_call", "image_generation_call"].contains(item.type),
+              let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let row = messages[index].toolTimeline?.first(where: { $0.id == item.id })
+        if let row, [.completed, .failed, .cancelled].contains(row.status) { return }
+        let status: ToolExecutionTimeline.Status
+        switch item.status?.lowercased() {
+        case "failed": status = .failed
+        case "incomplete": status = .cancelled
+        default: status = item.type == "mcp_call" && item.error != nil ? .failed : (isClientCall ? .running : .completed)
+        }
+        upsertToolTimeline(
+            for: messageId, responseId: responseId, itemId: item.id, toolType: item.type,
+            toolName: item.name ?? item.serverLabel ?? item.type, status: status,
+            arguments: (row?.rawArguments ?? "").isEmpty ? (item.arguments ?? item.code) : nil
+        )
+    }
+
+    /// A hosted tool's progress events (in_progress, searching, interpreting, generating) show its row as Running.
+    private func markToolItemRunning(_ itemId: String?, messageId: UUID) {
+        guard let itemId, let index = messages.firstIndex(where: { $0.id == messageId }),
+              let slot = messages[index].toolTimeline?.firstIndex(where: { $0.id == itemId }),
+              messages[index].toolTimeline?[slot].status == .queued else { return }
+        var message = messages[index]
+        message.toolTimeline?[slot].status = .running
+        messages[index] = message
+    }
+
+    /// What goes between two text items in one message, so the second starts a new paragraph.
+    static func paragraphBreak(after text: String) -> String {
+        if text.isEmpty || text.hasSuffix("\n\n") { return "" }
+        return text.hasSuffix("\n") ? "\n" : "\n\n"
     }
 
     /// Handles MCP list_tools events, which report available tools from the remote server.

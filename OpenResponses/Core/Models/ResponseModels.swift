@@ -208,10 +208,19 @@ enum ArtifactContent: Codable {
         case type, content
     }
     
+    /// What a saved image or data file reads as once reopened: `encode` doesn't save its bytes.
+    static let notLoaded = "Content not loaded"
+
     init(from decoder: Decoder) throws {
-        // This will be set by the parsing logic in ChatViewModel
-        // For now, default to error state
-        self = .error("Content not loaded")
+        // `encode` saves the words of a text file or an error, so those come back as they were.  An image's or a data
+        // file's bytes aren't saved (an image artifact's picture is kept in the message's `images`).
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        let content = try? container?.decodeIfPresent(String.self, forKey: .content)
+        switch try? container?.decodeIfPresent(String.self, forKey: .type) {
+        case "text"?: self = .text(content ?? "")
+        case "error"?: self = .error(content ?? ArtifactContent.notLoaded)
+        default: self = .error(ArtifactContent.notLoaded)
+        }
     }
     
     func encode(to encoder: Encoder) throws {
