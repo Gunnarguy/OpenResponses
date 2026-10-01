@@ -5,7 +5,7 @@ Branch/worktree: main in the repo root; pushed with the 2.9 fixes on 2026-10-01,
 Last verified commit: the 2.9 tool-steps commit that carries this handoff (parent ce20b29)
 
 ## Objective
-Ship 2.9 to App Review (Gunnar's ask, 2026-10-01: "get it into review with all the proper metadata"). He created version 2.9 in App Store Connect (`9343d705-a4ce-481c-9459-92ee7b1035f4`); `scripts/asc/release.py` points at it.
+2.9 is in App Review: submitted 2026-10-01 11:41 PDT (submission `e52a229a-6e96-4a0f-bec5-8af7a067667f`, build 54 from Xcode Cloud run 54 on baff2fc, version `9343d705-a4ce-481c-9459-92ee7b1035f4`, release after approval). What's New and promotional text match `fastlane/metadata/en-US`.
 
 ## Status
 - 2.8 released 2026-09-30 (build 51, Xcode Cloud run 51 from ab87186). Submitted 2026-09-29 about 21:28 PDT (review submission 5e3d5bf0-cff5-4f69-9019-05599a734175) and approved on the first submission with Local Python in it; App Store Connect showed READY_FOR_SALE. Contents: CHANGELOG.md "2.8", docs/ReleaseNotes_2.8.0.md.
@@ -45,4 +45,4 @@ Ship 2.9 to App Review (Gunnar's ask, 2026-10-01: "get it into review with all t
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Watch the Xcode Cloud run for the 2.9 push, attach its build to version 2.9 when VALID, write What's New and promotional text from `fastlane/metadata/en-US`, and submit (see Working Set). After approval: the release-day places in Active Constraints.
+Wait for App Review (`python3 release.py status` from `scripts/asc` through `zsh -ic`). On approval, update the release-day places in Active Constraints, and push this handoff commit with the next code change (it is docs-only).
