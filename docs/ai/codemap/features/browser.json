@@ -4,7 +4,7 @@
   "name": "On-device browser and computer use",
   "aliases": ["On-device browser", "computer use", "live browser", "BrowserExecution", "ComputerService", "SafetyApprovalSheet", "Review required", "Approve & Continue", "Safety checks", "Strict Mode"],
   "purpose": "Provides sandboxed browser automation and capture loops for the assistant to interact with websites on-device.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["SafetyApprovalSheet", "SettingsHomeView", "ChatView"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Core/Models/ComputerModels.swift", "role": "primary", "blob": "2e4827d8aaf13e3df016ea412da9e4e2019805e7"},
     {"path": "OpenResponses/Features/Chat/Components/SafetyApprovalSheet.swift", "role": "primary", "blob": "f8207be6b43c6f47f6a19c3e47704e27a2396045"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},

@@ -4,7 +4,7 @@
   "name": "Attachments",
   "aliases": ["photos", "camera", "documents", "file conversion", "AttachmentPills", "ImagePickerView", "CameraPickerView", "DocumentPicker", "FileConverterService", "ImageProcessingUtils", "Choose Files", "Photo Library", "Take Photo", "Attach files or photos"],
   "purpose": "Provides UI and utilities for picking, converting, and uploading files, documents, and images as chat attachments.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["ChatView", "ChatInputView", "AttachmentPills"],
   "files": [
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Core/Utilities/ImageProcessingUtils.swift", "role": "primary", "blob": "9f992c331c230057ee7f8bfe922d1696884bc43a"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponsesTests/ImageProcessingUtilsTests.swift", "role": "test", "blob": "c6b368adec1b69d66b673ef68fc1d52aa582c5b8"},
     {"path": "OpenResponsesTests/UIImageExtensionsTests.swift", "role": "test", "blob": "9aa7151d7394dfed9899fba4f208dc7885a4d71d"}

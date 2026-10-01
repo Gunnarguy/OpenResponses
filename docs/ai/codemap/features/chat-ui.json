@@ -4,13 +4,13 @@
   "name": "Chat UI",
   "aliases": ["Chat", "Message", "Take Photo", "Photo Library", "Choose Files", "Start Voice Mode", "Stop streaming", "Copy", "Share", "Delete", "Report Issue", "Open in Safari", "Chat screen", "messages", "input bar", "status bar", "links", "images"],
   "purpose": "Chat screen composition, message streaming, attachment and camera pickers, input bar actions, playground status bar and link rendering.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "primary", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "primary", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "primary", "blob": "212308e1c8e47a99741cbc2239284b997ad2a6c9"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "primary", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"},
     {"path": "OpenResponses/Features/Chat/Components/FormattedTextView.swift", "role": "primary", "blob": "7fc4383fe8ca11929b44f10ba929cacc31a4f166"},
     {"path": "OpenResponses/Features/Chat/Components/MessageMetadataView.swift", "role": "primary", "blob": "41c217b0339b7569fd795a7fe81c79f0c348d500"},
     {"path": "OpenResponses/Features/Chat/Components/ChatStatusBar.swift", "role": "primary", "blob": "3fcfd9e6dd49f493fd5e570f0a04d0d9f8641664"},
@@ -19,7 +19,7 @@
     {"path": "OpenResponses/Core/Utilities/Optional+StringHelpers.swift", "role": "primary", "blob": "e74e580507e2d5d06f5ff9b2a221024d7cd7f0e5"},
     {"path": "OpenResponses/Features/DebugTools/Views/WebContentView.swift", "role": "primary", "blob": "5cdb83a3e8341d0c336e86a4b42a1563b665e997"},
     {"path": "OpenResponses/Features/DebugTools/Views/WebContentTestView.swift", "role": "primary", "blob": "c8b92494e19624827012136d884dd253467ba623"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/VoiceRecorderService.swift", "role": "shared", "blob": "c426b498cdb1fa6dd636d36597d6f0f3710cd84d"},
     {"path": "OpenResponsesTests/URLDetectorTests.swift", "role": "test", "blob": "c5535b222210dbd7a78212f506d360c6ac88ff7e"},
     {"path": "OpenResponsesTests/OptionalStringHelpersTests.swift", "role": "test", "blob": "d4886558d6800897ec393e05fb6bb5890a5ab53d"},
@@ -74,7 +74,9 @@
   "derived": {
     "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
+      {"id": "InlineMarkdown", "kind": "model", "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 380, "match": "enum InlineMarkdown {", "status": "VERIFIED"},
       {"id": "test:OpenResponsesTests", "kind": "test", "path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 11, "match": "final class OpenResponsesTests: XCTestCase {", "status": "VERIFIED"},
+      {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 7, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"},
       {"id": "test:URLDetectorStandaloneTests", "kind": "test", "path": "OpenResponsesTests/URLDetectorTests.swift", "line": 4, "match": "final class URLDetectorStandaloneTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
@@ -87,6 +89,7 @@
       {"from": "MessageBubbleView", "type": "depends_on", "to": "WebContentView", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 133, "match": "WebContentView(url: url)"}]},
       {"from": "WebContentTestView", "type": "depends_on", "to": "MessageBubbleView", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/DebugTools/Views/WebContentTestView.swift", "line": 12, "match": "MessageBubbleView(message: message) {"}]},
       {"from": "URLDetector", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 544, "match": "let links = URLDetector.extractImageLinks(from: text)"}]},
+      {"from": "InlineMarkdown", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1358, "match": "let rendered = InlineMarkdown.attributed(\"**Calculating tip distribution**\\n\\nSam pays $19.20.\")"}]},
       {"from": "URLDetector", "type": "tested_by", "to": "test:URLDetectorStandaloneTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/URLDetectorTests.swift", "line": 8, "match": "let urls = URLDetector.extractRenderableURLs(from: text)"}]},
       {"from": "WebView", "type": "tested_by", "to": "test:WebContentNavigationPolicyTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/WebContentNavigationPolicyTests.swift", "line": 16, "match": "let webViewStruct = WebView("}]},
       {"from": "ChatView", "type": "depends_on", "to": "feature:diagnostics", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 5, "match": "@EnvironmentObject private var viewModel: ChatViewModel"}], "note": "via ChatViewModel, ActivityVisibility, ActivityToggleButton, ActivityFeedView"},

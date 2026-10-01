@@ -473,6 +473,28 @@ final class ChatViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(step("fc_web")?.rawArguments, #"{"url":"https://example.com"}"#)
     }
 
+    // A tool loop completes a response every round.  A round that only called another tool cleared the failure notes,
+    // so the note that stood in for the answer stayed above it.  The notes now last until a round brings a message.
+    func testFailureNotesLastThroughARoundOfOnlyToolCalls() throws {
+        let viewModel = makeViewModel(api: MockOpenAIService())
+        let message = ChatMessage(role: .assistant, text: "")
+        viewModel.messages = [message]
+        viewModel.streamingMessageId = message.id
+        let feed: ([String: Any]) throws -> Void = { event in
+            var event = event
+            event["sequence_number"] = 0
+            let chunk = try JSONDecoder().decode(StreamingEvent.self, from: JSONSerialization.data(withJSONObject: event))
+            viewModel.handleStreamChunk(chunk, for: message.id)
+        }
+        viewModel.recordFunctionOutputSummary("browserType failed: Timed out waiting for page paint.", for: message.id)
+        try feed(["type": "response.completed", "response": ["id": "resp_round", "status": "completed",
+                  "output": [["id": "fc_read", "type": "function_call", "name": "browserRead", "call_id": "call_read"]]]])
+        viewModel.streamingMessageId = message.id
+        try feed(["type": "response.output_text.delta", "item_id": "msg_answer", "output_index": 0, "content_index": 0, "delta": "The Chicago Cubs won in 2016."])
+        viewModel.flushDeltaBufferIfNeeded(for: message.id)
+        XCTAssertEqual(viewModel.messages.first { $0.id == message.id }?.text, "The Chicago Cubs won in 2016.")
+    }
+
     private func makeViewModel(
         api: MockOpenAIService,
         backgroundPollIntervalNanoseconds: UInt64 = 10_000_000

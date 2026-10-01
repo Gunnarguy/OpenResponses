@@ -1,1 +1,1 @@
-GPT-6.1 Sol is in, and new OpenAI models now show up on their own. There's also Python that runs on your phone and search that finds chats by what they're about.
+Every tool step now shows what it's doing: a spinner while it works, then Completed or Failed.  Tap Code Interpreter to see the Python it ran.

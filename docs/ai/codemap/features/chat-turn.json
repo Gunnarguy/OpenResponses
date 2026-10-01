@@ -4,25 +4,26 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "primary", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "role": "primary", "blob": "e69ab05c6dc658e054b94925c5baf1333aea55a9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "primary", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "role": "primary", "blob": "784908f4af8d23b763459f8f478ec97d6e772785"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "primary", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Protocols/OpenAIServiceProtocol.swift", "role": "shared", "blob": "43e8f50c5039f087f92e75158ef6ed915fbbea28"},
-    {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "97ae5fd82592f92f66d7ca25a2ef3a477795e956"},
+    {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "9bd0fafebcd8c73a0b88e1cbd0fff57acdb7b9cf"},
     {"path": "OpenResponses/Core/Models/ResponseModels.swift", "role": "shared", "blob": "5acc158415c1257d70497a45be7e26572437146c"},
     {"path": "OpenResponses/Core/Models/StreamingStatus.swift", "role": "primary", "blob": "0b4db9914049675ccc29d068acb07318dc4c0fe1"},
     {"path": "OpenResponses/Core/Models/StreamingEvent.swift", "role": "shared", "blob": "8b137891791fe96927ad78e64b0aad7bded08bdc"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "role": "shared", "blob": "6063db0a5ab62fa8ccdb8f21e6500996c12b1287"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "e8c5abd1a1875b7f468275340d683b8dd3af7a1c"},
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "83849a184ed28f6d695fa1217596505fdf5bce3d"},
     {"path": "OpenResponsesTests/StreamingTerminationTests.swift", "role": "test", "blob": "24264432f19b9d2547aa6dbca2cfdb8f203e6c81"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},
@@ -39,7 +40,7 @@
     {"id": "OpenAIService.buildRequestObject", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 741, "match": "    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) throws -> [String: Any] {", "status": "VERIFIED"},
     {"id": "StreamingEvent", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 588, "match": "struct StreamingEvent: Decodable, CustomStringConvertible {", "status": "VERIFIED"},
     {"id": "StreamingStatus", "kind": "model", "path": "OpenResponses/Core/Models/StreamingStatus.swift", "line": 4, "match": "enum StreamingStatus: Equatable {", "status": "VERIFIED"},
-    {"id": "ChatMessage", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 88, "match": "nonisolated struct ChatMessage: Identifiable, Codable {", "status": "VERIFIED"},
+    {"id": "ChatMessage", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 87, "match": "nonisolated struct ChatMessage: Identifiable, Codable {", "status": "VERIFIED"},
     {"id": "ManagedResponsePresentation", "kind": "util", "path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "line": 5, "match": "final class ManagedResponsePresentation {", "status": "VERIFIED"},
     {"id": "Prompt.enableStreaming", "kind": "config", "path": "OpenResponses/Core/Models/Prompt.swift", "line": 186, "match": "    var enableStreaming: Bool", "status": "VERIFIED"},
     {"id": "state:isStreaming", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 14, "match": "    @Published var isStreaming: Bool = false", "status": "VERIFIED"},
@@ -51,10 +52,11 @@
     {"id": "StreamingEventDecodingTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 151, "match": "final class StreamingEventDecodingTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "StreamingTerminationTests", "kind": "test", "path": "OpenResponsesTests/StreamingTerminationTests.swift", "line": 4, "match": "final class StreamingTerminationTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.paragraphBreak", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "line": 665, "match": "    static func paragraphBreak(after text: String) -> String {", "status": "VERIFIED", "note": "what goes between two text output items in one message"},
+    {"id": "ChatViewModel.paragraphBreak", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "line": 670, "match": "    static func paragraphBreak(after text: String) -> String {", "status": "VERIFIED", "note": "what goes between two text output items in one message"},
     {"id": "state:lastTextItemIds", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 82, "match": "    var lastTextItemIds: [UUID: String] = [:]", "status": "VERIFIED"},
     {"id": "ToolRowsTextAndFilesTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1178, "match": "final class ToolRowsTextAndFilesTests: XCTestCase {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 262, "match": "    func textIsOnlyFunctionOutputSummaries(_ text: String, for messageId: UUID) -> Bool {", "status": "VERIFIED", "note": "clears the failure note when the answer starts"}
+    {"id": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 262, "match": "    func textIsOnlyFunctionOutputSummaries(_ text: String, for messageId: UUID) -> Bool {", "status": "VERIFIED", "note": "clears the failure note when the answer starts"},
+    {"id": "InlineMarkdown", "kind": "util", "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 380, "match": "enum InlineMarkdown {", "status": "VERIFIED", "note": "reasoning summaries render inline Markdown"}
   ],
   "edges": [
     {"from": "ChatView", "to": "ChatInputView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 263, "match": "            ChatInputView("}]},
@@ -88,7 +90,8 @@
     {"from": "ChatViewModel.handleTextDeltaChunk", "to": "state:lastTextItemIds", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "line": 279, "match": "            lastTextItemIds[messageId] = itemId"}]},
     {"from": "ChatViewModel.handleTextDeltaChunk", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1277, "match": "    func testTextFromANewOutputItemStartsANewParagraph() throws {"}]},
     {"from": "ChatViewModel.handleTextDeltaChunk", "to": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "line": 263, "match": "                if textIsOnlyFunctionOutputSummaries(currentText, for: messageId) {"}]},
-    {"from": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1266, "match": "    func testFailureNotesClearWhenTheAnswerStarts() throws {"}]}
+    {"from": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1266, "match": "    func testFailureNotesClearWhenTheAnswerStarts() throws {"}]},
+    {"from": "InlineMarkdown", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1357, "match": "    func testReasoningSummariesShowTheirMarkdown() throws {"}]}
   ],
   "docs": [
     {"path": "ARCHITECTURE.md", "section": "State and persistence", "quote": "Stream buffers and delayed callbacks belong to a conversation/generation; switching or deleting chats cancels and flushes the outgoing owner before changing storage state.", "claim": "Switching chats cancels streams and flushes buffers.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 4049, "match": "    func flushDeltaBufferIfNeeded(for messageId: UUID) {"}, "note": "It is implemented."},
@@ -115,8 +118,8 @@
       {"from": "ChatViewModel", "type": "depends_on", "to": "OpenAIService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 383, "match": "self.api = api ?? OpenAIService()"}]},
       {"from": "ChatViewModel", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 130, "match": "let model = ChatViewModel(storageService: ConversationStorageService(storageURL: directory), startBackgroundWork: false)"}]},
       {"from": "OpenAIService", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 14, "match": "let preview = OpenAIService().testing_buildRequestObject(for: prompt, userMessage: \"test\")"}]},
-      {"from": "ChatViewModel", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 479, "match": ") -> ChatViewModel {"}]},
-      {"from": "OpenAIService", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 721, "match": "OpenAIService().buildPreviewRequestObject(for: prompt, userMessage: userMessage, attachments: attachments,"}]},
+      {"from": "ChatViewModel", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 501, "match": ") -> ChatViewModel {"}]},
+      {"from": "OpenAIService", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 743, "match": "OpenAIService().buildPreviewRequestObject(for: prompt, userMessage: userMessage, attachments: attachments,"}]},
       {"from": "OpenAIService", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 10, "match": "private var service: OpenAIService!"}]},
       {"from": "ChatViewModel", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 411, "match": "let viewModel = ChatViewModel("}]},
       {"from": "OpenAIService", "type": "tested_by", "to": "test:OpenResponsesTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 290, "match": "let service = OpenAIService()"}]},

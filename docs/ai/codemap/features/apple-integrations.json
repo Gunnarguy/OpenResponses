@@ -4,7 +4,7 @@
   "name": "Apple system integrations",
   "aliases": ["Apple Calendar/Reminders/Contacts", "Grant Access", "Calendar", "Reminders", "Contacts"],
   "purpose": "Provides tools and repositories to read and write Apple Calendar, Reminders, and Contacts data using EventKit and Contacts frameworks.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["ChatViewModel.appleFunctions", "AppleIntegrationsCard"],
   "files": [
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Core/Services/EventKitPermissionManager.swift", "role": "primary", "blob": "3008403974a764d899634b9f116038912abf3798"},
     {"path": "OpenResponses/Core/Models/AppleDataModels.swift", "role": "primary", "blob": "48f7ce85fe04d49cbbd54d32c85793bee76fd5fc"},
     {"path": "OpenResponses/Core/Models/AppleContactModels.swift", "role": "primary", "blob": "e5413881be01dae35ee1f0442f5f0358885712ed"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},

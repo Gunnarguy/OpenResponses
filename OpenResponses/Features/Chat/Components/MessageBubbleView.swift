@@ -375,6 +375,14 @@ private struct TypingCursor: View {
 }
 
 /// Collapsible stack that surfaces reasoning traces from reasoning-capable models.
+/// Reasoning summaries arrive as Markdown ("**Calculating tip distribution**"), and `Text(String)` drew the asterisks.
+/// Inline Markdown only, keeping the summary's line breaks; text that doesn't parse shows as it came.
+enum InlineMarkdown {
+    static func attributed(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+    }
+}
+
 private struct AssistantReasoningView: View {
     let reasoning: [ReasoningTrace]
     @State private var isExpanded: Bool
@@ -402,7 +410,7 @@ private struct AssistantReasoningView: View {
                                 .textCase(.uppercase)
                         }
 
-                        Text(trace.text)
+                        Text(InlineMarkdown.attributed(trace.text))
                             .font(.callout)
                             .foregroundColor(.primary)
                     }

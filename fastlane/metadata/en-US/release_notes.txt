@@ -1,38 +1,29 @@
-2.8 is a big one. OpenAI released GPT-6.1 Sol while I was finishing it, so that's in, and new models should show up on their own from now on.
+2.9 is about seeing what the assistant is doing while it uses its tools.
 
 
-NEW MODELS
+TOOL STEPS
 
-• GPT-6.1 Sol is in every model menu, with the reasoning levels OpenAI lists for it, Low through Max. It doesn't take None, so a preset set to None sends Low instead of failing.
+• Tool steps sat on "Queued" even after they'd finished.  Now each one shows a spinner while it works and says Completed or Failed when it's done.  That goes for web search, file search, Code Interpreter, image generation, MCP tools and the browser steps of Computer Use.
 
-• When OpenAI releases a model your key can use, it shows up at the top of the model menu the next time the app starts. The app reads that model's page on OpenAI's docs once to learn its reasoning levels, so you're not waiting on an update from me.
+• Steps have their real names, like Code Interpreter instead of "code_interpreter_call".  Tap the Code Interpreter step to see the Python it ran.
 
-• Pro reasoning mode works on every GPT-5.6 and GPT-6 model now, not just Astra and 5.6 Sol.
+• When a step fails, it says Failed.  That includes an MCP tool that returns an error, which the app used to miss.
 
-• If OpenAI says a model shuts down within 30 days, it comes off the menus and any preset using it moves to its replacement.
-
-
-NEW
-
-• Local Python. Turn it on in Settings → Model and the assistant can write Python and run it on your phone. You see the code first and nothing runs until you tap Run. Standard library only, no internet, no files, 30 seconds a run.
-
-• Search your conversations by what they're about, not just the exact words. It uses Apple's on-device language model, so the search never leaves your phone.
-
-• monday.com, Airtable, Intercom and Vercel wouldn't accept the app's own sign-in address, so signing in to them now goes through a page on my site that hands you straight back to the app.
+• The answer after a tool call starts its own paragraph instead of running into the sentence before it, and the note the app shows when a browser step fails goes away once the answer starts.
 
 
-VOICE
+CHARTS AND FILES
 
-• GPT-Live 1 stops when you talk over it. With headphones or Bluetooth and Voice Barge-In on, about 0.2 seconds of you talking pauses it, and if you only said "mm-hmm" it picks up where it stopped. On the phone's speaker it works like before, because the mic hears it there.
+• A chart from Code Interpreter shows once.  It could show up two or three times before.
 
-• Settings → Model → Voice opened and then closed itself within seconds. It stays open now.
+• Each file Code Interpreter makes is listed once, and text files still have their contents when you reopen the chat.
 
 
-EASIER TO READ AND TAP
+ALSO
 
-• Text on the chat, Settings and Conversations screens has at least 4.5:1 contrast, the chat toolbar buttons have names VoiceOver reads out, and they're all at least 44 points to tap.
+• Reasoning summaries show their formatting instead of raw asterisks.
 
-• At the largest text sizes the message bar pushed the chat past the edge of the screen. It fits now.
+• The Computer Use warning says what it actually drives: a browser inside the app, nothing else.
 
 
 Still no account, still your own key, and your chat history stays on your phone.

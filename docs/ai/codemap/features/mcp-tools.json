@@ -4,7 +4,7 @@
   "name": "MCP tool discovery and approval",
   "aliases": ["tool discovery", "tool call approval", "MCP approval", "discovery catalog", "Discover Tools", "Refresh Tools", "Browse Tools & Choose Access", "Approve", "Reject"],
   "purpose": "Discovers available MCP tools via MCPDiscoveryService probe stream and handles tool execution approvals during chat.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["MCPApprovalView", "ChatViewModel.respondToMCPApproval"],
   "files": [
@@ -14,12 +14,12 @@
     {"path": "OpenResponses/Core/Utilities/MCPApprovalUtils.swift", "role": "primary", "blob": "d510b837bcaff6985e206320cc19eb6eda65cbe5"},
     {"path": "OpenResponses/Features/Chat/Views/MCPApprovalView.swift", "role": "primary", "blob": "45fcde7e7e0f9eaed8c7647027bfb012678cf497"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+MCP.swift", "role": "primary", "blob": "9320969b876556c6f511b5e646ca8f19f90679c3"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "212308e1c8e47a99741cbc2239284b997ad2a6c9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/MCPApprovalUtilsTests.swift", "role": "test", "blob": "470a8095d6bfe3f30893b926c9b420200dca1cd3"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "e8c5abd1a1875b7f468275340d683b8dd3af7a1c"}
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "83849a184ed28f6d695fa1217596505fdf5bce3d"}
   ],
   "nodes": [
     {"id": "MCPDiscoveryService", "kind": "service", "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 202, "match": "final class MCPDiscoveryService {", "status": "VERIFIED"},

@@ -4,7 +4,7 @@
   "name": "Model catalog, selection and capability checks",
   "aliases": ["model picker", "model list", "GPT-6 Sol", "Astra", "Luna", "retired models", "replacement model", "capabilities", "reasoning effort", "default model", "version-aware recognition", "GPT-6.1 Sol", "account models", "model menu", "model catalog", "ModelCatalogStore", "shutdown date", "OpenAI docs page", "learned model settings"],
   "purpose": "Which models the app offers, which it treats as current or retired, what each supports, and how a preset naming a retired model is moved to its replacement.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["DynamicModelSelector", "CurrentModelCatalog"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Core/Services/ModelCompatibilityService.swift", "role": "primary", "blob": "3f2d60d3a40c0230830905f1ef06046a6c33531e"},
     {"path": "OpenResponses/Features/Chat/Components/DynamicModelSelector.swift", "role": "primary", "blob": "fe1373c5e6fa227f8eafc1b25ca0b5a0964bac88"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "primary", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"},
     {"path": "OpenResponses/Core/Models/ModelCatalog.swift", "role": "primary", "blob": "821cb6d0d6b967a9d149eee5ef72b9ad6fa97589"},

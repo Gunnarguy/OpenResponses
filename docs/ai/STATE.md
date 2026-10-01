@@ -1,11 +1,11 @@
 # Current State
 
 Updated: 2026-10-01
-Branch/worktree: main in the repo root; this handoff is pushed with the 2.9 version bump (Xcode Cloud builds it as a 2.9 TestFlight build).
+Branch/worktree: main in the repo root; pushed with the 2.9 fixes on 2026-10-01, and Xcode Cloud archives that push for App Review.
 Last verified commit: the 2.9 tool-steps commit that carries this handoff (parent ce20b29)
 
 ## Objective
-None active. 2.8 is released and every release-day task is done. 2.9 is open for whatever Gunnar picks next from the Notion roadmap (the v2.9 rows are device checks carried over from 2.8, plus anything he adds).
+Ship 2.9 to App Review (Gunnar's ask, 2026-10-01: "get it into review with all the proper metadata"). He created version 2.9 in App Store Connect (`9343d705-a4ce-481c-9459-92ee7b1035f4`); `scripts/asc/release.py` points at it.
 
 ## Status
 - 2.8 released 2026-09-30 (build 51, Xcode Cloud run 51 from ab87186). Submitted 2026-09-29 about 21:28 PDT (review submission 5e3d5bf0-cff5-4f69-9019-05599a734175) and approved on the first submission with Local Python in it; App Store Connect showed READY_FOR_SALE. Contents: CHANGELOG.md "2.8", docs/ReleaseNotes_2.8.0.md.
@@ -26,14 +26,14 @@ None active. 2.8 is released and every release-day task is done. 2.9 is open for
 - The Gunzino and Gunnarguy-Portfolio repositories are shared with other sessions and bots: commit only your own paths, fetch before pushing. The Gunnarguy profile repo's .git sits in iCloud and can stall; materialize it first (see MACHINE-MAP).
 - New models: no scheduled GitHub Actions; the app reads OpenAI's docs pages itself (docs/model-catalog.md). Check the parser with `TEST_RUNNER_LIVE_OPENAI_DOCS=1 ... -only-testing:OpenResponsesTests/ModelCatalogTests`.
 - Local Python passed App Review with 2.8 (memory: openresponses-local-python-app-review). Keep it bundled, sandboxed, off by default, approval per run.
-- Simulator for this repo: "OpenResponses tests" 2C5F635A-DB92-4FD4-ACC1-DEB2B2939DEA; check `xcrun simctl list devices` first.
+- Simulator for this repo: "OpenResponses tests" 73D9ECD6-A7CD-475B-9407-BC12F0B4B0CB (iPhone 18 Pro, iOS 27.0), created 2026-10-01 after 2C5F635A was deleted by something outside this repo; check `xcrun simctl list devices` first. Never run the unit tests on "OpenResponses demo" (D2926987): ChatViewModelLifecycleTests saves and then deletes the Keychain `openAIKey`, which would erase the key Gunnar loaded there for the demos.
 
 ## Working Set
-- 2.9 fixes found while filming the 2.8 demos (PostDesk `Docs/DEMOS.md`), committed to main and NOT pushed: a push starts the Xcode Cloud 2.9 archive and GitHub CI, so Gunnar decides when. CHANGELOG 2.9 lists them: tool steps leave Queued on `response.output_item.done`, a failed function or MCP step shows Failed, the answer after a tool call starts a new paragraph, the failure note clears when the answer starts, a chart shows once and each file is listed once, saved text artifacts keep their words, steps are named like Settings names the tools, and a Code Interpreter step shows its code.
+- 2.9 = the fixes found while filming the 2.8 demos (CHANGELOG 2.9, docs/ReleaseNotes_2.9.0.md). Store text for 2.9 is in `fastlane/metadata/en-US/release_notes.txt` and `promotional_text.txt`, written to App Store Connect as-is; description, keywords and URLs are unchanged from 2.8.
+- Release steps, from `scripts/asc` through `zsh -ic`: push main (Xcode Cloud archives 2.9), `python3 release.py wait RUN` for that push's run, `attach --go` (newest VALID 2.9 build; builds from the 2.9 bump on 2026-09-30 exist too, so attach only after this run's build is VALID), PATCH What's New and promotional text on localization `f344a94d-500c-400a-90d6-840ec22f9261`, `submit --go`.
 
 ## Verification
-- 2.9 tool-steps fixes: full unit suite, the set CI runs, on simulator 2C5F635A -> 337 executed, 0 failures, 1 skipped (the live docs-page test without its variable). New tests: ToolRowsTextAndFilesTests (7) and ChatViewModelLifecycleTests.testStreamedFunctionStepsShowWhatTheAppsRunReturned. A reviewer pass found that browser failures read "Error processing …", MCP's in_progress event names no tool and an mcp_tool_execution_error has no message; all three are fixed and tested. `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
-- 2.9 changes (version bump, Computer Use text): full unit suite, the set CI runs, on simulator 2C5F635A -> 329 executed, 0 failures, 2 skipped (the live docs-page test without its variable, and a search-by-meaning test).
+- 2.9 fixes: full unit suite, the set CI runs, on simulator 73D9ECD6 -> 343 executed, 0 failures, 3 skipped (the live docs-page test without its variable, and two search-by-meaning tests that need Apple's on-device model, which a new simulator doesn't have yet). New tests: ToolRowsTextAndFilesTests (12) and two in ChatViewModelLifecycleTests. Two reviewer passes found: browser failures read "Error processing ...", MCP's in_progress names no tool, an mcp_tool_execution_error has no message, a screenshot that replaces `images` hid a chart, and managed image rows kept "Image Generation Call"; all fixed and tested. `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
 - `python3 release.py status` (scripts/asc) on 2026-09-30 -> version 2.8 READY_FOR_SALE, build 51 attached, submission 5e3d5bf0 COMPLETE.
 - Gunzino `npm run build` and `./scripts/verify-site.sh source` -> exit 0 before pushing 5e5cf19. Gunnarguy-Portfolio `npm run verify` -> exit 0 before pushing d8327d6.
 - `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
@@ -45,4 +45,4 @@ None active. 2.8 is released and every release-day task is done. 2.9 is open for
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Ask Gunnar whether to push main (starts the Xcode Cloud 2.9 build). The PostDesk session films the OpenResponses demos on this build. Otherwise there is no active objective; take an item from the Notion roadmap (the v2.9 rows).
+Watch the Xcode Cloud run for the 2.9 push, attach its build to version 2.9 when VALID, write What's New and promotional text from `fastlane/metadata/en-US`, and submit (see Working Set). After approval: the release-day places in Active Constraints.

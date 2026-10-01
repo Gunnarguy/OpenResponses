@@ -1,17 +1,17 @@
 """OpenResponses release steps for the version being prepared (mirrors OpenManual's asc_attach.py and asc_submit.py). Run through `zsh -ic` from this folder; set VERSION below for each release.
   status          run, builds, attached build, version state, open submissions, purchases
   wait RUN        poll until Xcode Cloud run RUN finished and its build is VALID (or failed); prints changes only
-  attach --go     attach the newest VALID 2.8 build
+  attach --go     attach the newest VALID 2.9 build
   submit --go     create or reuse a review submission, add the version, submit
 """
 import sys, time
 sys.path.insert(0, sys.path[0])
 from asc import call
-APP, VERSION, PRODUCT = "6757338355", "8dc1e46a-ea72-462b-891f-b1b2a7b2c2bc", "02676c39-e39d-49e8-af7f-412bc7c32473"
+APP, VERSION, PRODUCT = "6757338355", "9343d705-a4ce-481c-9459-92ee7b1035f4", "02676c39-e39d-49e8-af7f-412bc7c32473"
 OPEN = {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW", "UNRESOLVED_ISSUES"}
 
 def builds():
-    return call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=2.8&sort=-uploadedDate&limit=4")["data"]
+    return call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=2.9&sort=-uploadedDate&limit=4")["data"]
 
 def run_state(number):
     for r in call("GET", f"/v1/ciProducts/{PRODUCT}/buildRuns?sort=-number&limit=4")["data"]:
@@ -42,8 +42,8 @@ elif cmd == "wait":
             break
         time.sleep(60)
 elif cmd == "attach":
-    valid = call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=2.8&filter[processingState]=VALID&sort=-uploadedDate&limit=1")["data"]
-    newest = valid[0]; print("newest valid 2.8 build:", newest["attributes"]["version"])
+    valid = call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=2.9&filter[processingState]=VALID&sort=-uploadedDate&limit=1")["data"]
+    newest = valid[0]; print("newest valid 2.9 build:", newest["attributes"]["version"])
     if not go: sys.exit("dry run; add --go")
     call("PATCH", f"/v1/appStoreVersions/{VERSION}/relationships/build", {"data": {"type": "builds", "id": newest["id"]}})
     print("now attached:", call("GET", f"/v1/appStoreVersions/{VERSION}/build")["data"]["attributes"]["version"])

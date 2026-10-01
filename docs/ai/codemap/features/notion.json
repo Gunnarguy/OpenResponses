@@ -4,7 +4,7 @@
   "name": "Notion integration",
   "aliases": ["Notion Integration", "Connect to Notion", "Manage Existing Integration Key", "Enable Legacy Notion Tools", "Existing Notion integration", "direct API tools", "token", "Notion workspaces", "NotionService"],
   "purpose": "Provides direct Notion API tools and token connection management alongside hosted MCP Notion.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["NotionConnectionView", "ChatViewModel.notionFunctions"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Core/ToolProviders/NotionProvider+Connect.swift", "role": "primary", "blob": "d5264689ffb9235f86ccc7e0630147a5e4c26a80"},
     {"path": "OpenResponses/Core/ToolProviders/NotionModels.swift", "role": "primary", "blob": "88f1126d70b6a69a2fe5d0a013ef70d0f032a616"},
     {"path": "OpenResponses/Features/Settings/Views/NotionConnectionView.swift", "role": "primary", "blob": "424796ae088da31ca25aaac3b60175dd5b08d656"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},

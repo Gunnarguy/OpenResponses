@@ -2,23 +2,24 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
-## 2.9 — in development
+## 2.9 — submitted October 1, 2026
 
-**Marketing version:** 2.9.
+**Marketing version:** 2.9. Xcode Cloud assigns the build number; the build submitted for review is the Xcode Cloud archive of the commit that prepared this entry. App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt) and [2.9 release notes](docs/ReleaseNotes_2.9.0.md). Everything below was found while filming the app's demo videos on 2.8.
 
 ### Fixed
 
 - Tool steps no longer stay on "Queued" after they finish. A step moved on only at `response.output_item.completed`, an event the Responses API doesn't send: it ends every output item with `response.output_item.done` (openai-python's stream event types, read October 1, 2026). Web search, file search, Code Interpreter, image generation and MCP steps now show Running while they work and Completed or Failed when they end. The app's own functions, the browser steps of Computer Use among them, show Running until the app has run them, then Completed, or Failed when their output starts with "Error" (the browser's failures read "Error processing …").
 - A failed MCP tool shows Failed. Its error carries `content` instead of `message` (openai-python's McpToolCallError), the app couldn't read the item, and it dropped the event.
 - The answer after a tool call starts a new paragraph. Text from a new output item ran straight on from the text before it ("retrying.The Chicago Cubs") on the streaming path taken with Computer Use and with models older than GPT-5.6 or specialized ones such as Codex models; the path the other GPT-5.6 and GPT-6 models take already separated them.
-- The note the app shows when a tool fails goes away once the model starts its answer, as intended. After a second failure the message still held only the first note, which no longer matched the notes joined, so it stayed above the answer.
-- A Code Interpreter chart shows once. The app keeps each generated picture with the message's images too, which is the copy a saved conversation keeps, and the message drew both. The same file could also be added again from a link in the answer (one chart was listed three times, once under its bare file id); each file is listed once now, under its real name. A reopened conversation no longer lists the chart again as "Content not loaded", and generated text files keep their words: every saved file came back as "Content not loaded", though a text file's words were saved. A picture that failed to load stays listed with its error.
+- The note the app shows when a tool fails goes away once the model starts its answer, as intended. Each round of a tool loop forgot the notes when its response completed, so after a round that only called another tool, or a second failure, the note stayed above the answer.
+- A Code Interpreter chart shows once. The app keeps each generated picture with the message's images too, which is the copy a saved conversation keeps, and the message drew both. The same file could also be added again from a link in the answer, and code that displayed a chart and also saved it got it cited twice: Code Interpreter keeps the displayed plot as a file named by its own id (one chart was listed three times). Each file is listed once now, and a plot that matches a file the code saved shows once, as the saved file. A reopened conversation no longer lists the chart again as "Content not loaded", and generated text files keep their words: every saved file came back as "Content not loaded", though a text file's words were saved. A picture that failed to load stays listed with its error.
+- Reasoning summaries show their formatting. A summary's heading showed its Markdown asterisks ("**Calculating tip distribution**").
 - GitHub CI's unit tests no longer fail on a slow shared runner: the chat lifecycle tests wait up to 15 seconds instead of 1 for background work, and the WebKit browser tests retry a first page load that times out. Run 36751566276 on September 30 failed six timing tests this way while the same code passed locally and on the previous run.
 - The warning shown when you turn on Computer Use said it "can control apps". It drives only the app's own off-screen browser, and the warning says so now.
 
 ### Changed
 
-- Tool steps are named as Settings names the tools ("Code Interpreter", "Web Search", "File Search", "Image Generation") instead of by the API's item types ("code_interpreter_call"), and a Code Interpreter step opens to the Python it ran.
+- Tool steps are named as Settings names the tools ("Code Interpreter", "Web Search", "File Search", "Image Generation") instead of by the API's item types ("code_interpreter_call", or "Image Generation Call" with GPT-5.6 and GPT-6 models), and a Code Interpreter step opens to the Python it ran.
 
 ## 2.8 — released September 30, 2026 (build 51)
 

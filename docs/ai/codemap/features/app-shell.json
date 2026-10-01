@@ -4,7 +4,7 @@
   "name": "App shell",
   "aliases": ["OpenResponses", "About", "Privacy Policy", "Support (GitHub)", "License", "Third-Party Software", "Compact Context", "Done", "Save conversations", "launch", "root navigation"],
   "purpose": "App launch, root navigation, dependency injection, scene lifecycle persistence, URL scheme handling and network monitoring.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["OpenResponsesApp", "ContentView"],
   "files": [
@@ -18,7 +18,7 @@
     {"path": "OpenResponses/Resources/UI/Launch Screen.storyboard", "role": "primary", "blob": "7901d460801f2b7d2cf737ea48a0f2d7f4fd2f0f"},
     {"path": "OpenResponses/Resources/Assets/Assets.xcassets", "role": "primary"},
     {"path": "OpenResponses/Features/Settings/Views/AboutView.swift", "role": "primary", "blob": "e8f241190713aeb4e8cd383c303bd82d64d8a44e"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/ConversationStorageService.swift", "role": "shared", "blob": "bc9c3e66069ffd91889f8818a8464daad6f8589b"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},

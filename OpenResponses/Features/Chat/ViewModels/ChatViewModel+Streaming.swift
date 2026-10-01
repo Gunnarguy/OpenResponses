@@ -434,7 +434,12 @@ extension ChatViewModel {
             recomputeCumulativeUsage()
         }
 
-        clearFunctionOutputSummaries(for: messageId)
+        // A tool loop completes a response every round.  The failure notes stay until a round brings a message, so the
+        // answer's first words can still replace a note that stood in for it (a round of only browserRead cleared them,
+        // and the note stayed above the answer on 2026-10-01).
+        if chunk.response?.output?.contains(where: { $0.type == "message" }) ?? true {
+            clearFunctionOutputSummaries(for: messageId)
+        }
 
         applyReasoningTraces(responseId: chunk.response?.id, to: messageId)
 

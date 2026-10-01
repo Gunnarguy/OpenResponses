@@ -43,16 +43,15 @@ struct ToolExecutionTimeline: Codable, Equatable, Identifiable {
     var completedAt: Date?
 
     /// The name a row shows.  A hosted tool's item has no name of its own, so its row is named after the tool as
-    /// Settings names it ("Code Interpreter"), not the API's item type ("code_interpreter_call").
+    /// Settings names it ("Code Interpreter"), not after the API's item type: "code_interpreter_call" on the streaming
+    /// path, or "Image Generation Call" with an agent suffix from ManagedResponsePresentation.
     var displayName: String {
-        guard toolName == toolType else { return toolName }
-        switch toolType {
-        case "code_interpreter_call": return "Code Interpreter"
-        case "web_search_call": return "Web Search"
-        case "file_search_call": return "File Search"
-        case "image_generation_call": return "Image Generation"
-        default: return toolName
-        }
+        let names = ["code_interpreter_call": "Code Interpreter", "web_search_call": "Web Search",
+                     "file_search_call": "File Search", "image_generation_call": "Image Generation"]
+        guard let name = names[toolType] else { return toolName }
+        if toolName == toolType { return name }
+        let generated = toolType.replacingOccurrences(of: "_", with: " ").capitalized
+        return toolName.hasPrefix(generated) ? name + toolName.dropFirst(generated.count) : toolName
     }
 
     init(
@@ -108,15 +107,16 @@ nonisolated struct ChatMessage: Identifiable, Codable {
     var artifacts: [CodeInterpreterArtifact]?
     /// The artifacts the bubble lists under Generated Files.  `appendArtifact` also puts an image artifact's picture in
     /// `images`, which the bubble draws above the list and which is the copy saved with the conversation (an artifact's
-    /// picture isn't saved).  So while the message has pictures, an image artifact isn't listed again (one chart, not two),
-    /// nor is a saved one that came back without its picture.  One that failed to load stays listed, so its error shows.
+    /// picture isn't saved).  So an image artifact isn't listed while `images` holds that very picture (one chart, not
+    /// two), and a browser screenshot that replaces `images` brings it back to the list.  A saved one that came back
+    /// without its picture isn't listed beside the message's pictures.  One that failed to load stays, with its error.
     @MainActor var listedArtifacts: [CodeInterpreterArtifact] {
         let all = artifacts ?? []
-        guard images?.isEmpty == false else { return all }
+        let shown = images ?? []
         return all.filter { artifact in
             switch artifact.content {
-            case .image: return false
-            case .error(let message): return !(artifact.artifactType == .image && message == ArtifactContent.notLoaded)
+            case .image(let picture): return !shown.contains { $0 === picture }
+            case .error(let message): return shown.isEmpty || !(artifact.artifactType == .image && message == ArtifactContent.notLoaded)
             default: return true
             }
         }
@@ -880,8 +880,12 @@ extension MCPToolError {
 
     /// An mcp_tool_execution_error carries `content` and no `message` (openai-python's McpToolCallError, read 2026-10-01).
     /// Requiring `message` failed the whole item, so its done event was dropped and the step never showed Failed.
+    /// An error sent as a bare string is read as its message.
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: Keys.self)
+        guard let container = try? decoder.container(keyedBy: Keys.self) else {
+            self.init(type: "error", code: nil, message: try decoder.singleValueContainer().decode(String.self))
+            return
+        }
         let type = try? container.decodeIfPresent(String.self, forKey: .type)
         let message = try? container.decodeIfPresent(String.self, forKey: .message)
         let content = try? container.decodeIfPresent(AnyCodable.self, forKey: .content)

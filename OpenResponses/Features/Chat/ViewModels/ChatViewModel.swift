@@ -5676,9 +5676,32 @@ extension ChatViewModel {
     /// Append an artifact to a message
     func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var artifact = artifact
+        // The bubble leaves an image artifact out of its list while `images` holds that very picture, so a copy of a
+        // picture that's already there points at the one there.
+        if case .image(let picture) = artifact.content, let png = picture.pngData(),
+           let same = messages[index].images?.first(where: { $0 !== picture && $0.pngData() == png }) {
+            artifact = CodeInterpreterArtifact(id: artifact.id, fileId: artifact.fileId, filename: artifact.filename,
+                                               containerId: artifact.containerId, mimeType: artifact.mimeType, content: .image(same))
+        }
 
         if messages[index].artifacts == nil {
             messages[index].artifacts = []
+        }
+        // Code Interpreter keeps a plot it displayed as a file named by its own id, so code that also saves the figure
+        // under a name gets one chart cited twice (2026-10-01).  Keep the saved file, in the plot's place.
+        if case .image(let picture) = artifact.content,
+           let slot = messages[index].artifacts?.firstIndex(where: { ChatViewModel.isTwin(artifact, of: $0) }),
+           let twin = messages[index].artifacts?[slot], case .image(let shown) = twin.content {
+            if twin.filename.hasPrefix(twin.fileId) {
+                messages[index].artifacts?[slot] = artifact
+                if let at = messages[index].images?.firstIndex(where: { $0 === shown }) {
+                    messages[index].images?[at] = picture
+                } else {
+                    appendImage(picture, to: messageId)
+                }
+            }
+            return
         }
         // One entry per file.  A file can arrive from its annotation and again from a sandbox link in the answer, and
         // a chart was listed three times on 2026-10-01.  Keep the copy that loaded, under its real name.
@@ -5704,6 +5727,48 @@ extension ChatViewModel {
         }
         if failed(old) != failed(new) { return failed(old) }
         return old.filename.hasPrefix(old.fileId) && !new.filename.hasPrefix(new.fileId)
+    }
+
+    /// Two image files that are one chart: from one container, exactly one named by its own file id (the plot Code
+    /// Interpreter captured), and the same picture at two resolutions.
+    static func isTwin(_ a: CodeInterpreterArtifact, of b: CodeInterpreterArtifact) -> Bool {
+        guard a.fileId != b.fileId, a.containerId == b.containerId,
+              a.filename.hasPrefix(a.fileId) != b.filename.hasPrefix(b.fileId),
+              case .image(let x) = a.content, case .image(let y) = b.content else { return false }
+        return looksAlike(x, y)
+    }
+
+    /// Same shape, and at 32 by 32 in color under 3% of pixels differ by more than 64 levels in a channel, with an average
+    /// difference under 6.  One chart at two resolutions passes; two pies with different slices differ across whole wedges.
+    static func looksAlike(_ a: UIImage, _ b: UIImage) -> Bool {
+        let ratio = { (image: UIImage) in image.size.width / max(image.size.height, 1) }
+        guard abs(ratio(a) - ratio(b)) < 0.03, let x = colorThumbnail(a), let y = colorThumbnail(b) else { return false }
+        var total = 0, strong = 0
+        for pixel in stride(from: 0, to: x.count, by: 4) {
+            var worst = 0
+            for channel in 0..<3 {
+                let difference = abs(Int(x[pixel + channel]) - Int(y[pixel + channel]))
+                total += difference
+                worst = max(worst, difference)
+            }
+            if worst > 64 { strong += 1 }
+        }
+        let count = x.count / 4
+        return Double(total) / Double(count * 3) < 6 && Double(strong) / Double(count) < 0.03
+    }
+
+    private static func colorThumbnail(_ image: UIImage) -> [UInt8]? {
+        guard let cg = image.cgImage else { return nil }
+        let side = 32
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        return drawn ? pixels : nil
     }
 
     /// Get MIME type for file extension

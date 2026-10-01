@@ -4,7 +4,7 @@
   "name": "Request Settings",
   "aliases": ["Presets", "request options", "Prompt", "settings registry", "playground panel", "Settings screens", "Preset Library", "Add preset", "Reset Prompt Settings"],
   "purpose": "Manages presets and request options including Prompt persistence, preset library, PlaygroundSettingsPanel, Settings screens, and configuration validation.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["SettingsHomeView", "PlaygroundSettingsPanel"],
   "files": [
@@ -18,7 +18,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "primary", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "primary", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponsesTests/PromptPersistenceTests.swift", "role": "test", "blob": "03e608982f9be8a8e2104ac758b0d6bcbb5ffb6e"},
     {"path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift", "role": "test", "blob": "490de415e9300ee60f0868aaa7e508d3ebfb41fc"}
   ],
@@ -91,7 +91,7 @@
       {"from": "ModelTab", "type": "depends_on", "to": "ModernResponseSettings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 377, "match": "ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 8, "match": "var prompt = Prompt.defaultPrompt()"}]},
       {"from": "ResponseConfigurationValidation", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 13, "match": "XCTAssertThrowsError(try ResponseConfigurationValidation.validate(prompt), content)"}]},
-      {"from": "Prompt", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 717, "match": "func buildPreviewRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?,"}]},
+      {"from": "Prompt", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 739, "match": "func buildPreviewRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?,"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:MCPSecretPersistenceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "line": 17, "match": "var prompt = Prompt.defaultPrompt()"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:ModelCatalogTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ModelCatalogTests.swift", "line": 98, "match": "XCTAssertEqual(Prompt.defaultPrompt().openAIModel, \"gpt-6.2-sol\")"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 23, "match": "prompt: Prompt,"}]},

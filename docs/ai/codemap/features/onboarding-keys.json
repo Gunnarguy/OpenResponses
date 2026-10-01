@@ -4,7 +4,7 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
@@ -15,9 +15,9 @@
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "primary", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "b38807ed24d9008248c2b8b45bf339f353bb6c90"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
-    {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "d05446e55847c78cb7733b423eb59b042324f05a"}
+    {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "e941ee4ae132a4fa92e8780383bab9fb755fe88f"}
   ],
   "nodes": [
     {"id": "OnboardingView", "kind": "view", "path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 3, "match": "struct OnboardingView: View {", "status": "VERIFIED", "note": "Multi-page onboarding walkthrough presented on first launch."},

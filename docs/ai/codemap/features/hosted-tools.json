@@ -4,7 +4,7 @@
   "name": "Hosted Tools",
   "aliases": ["OpenAI-hosted tools", "web search", "file search", "code interpreter", "image generation", "hosted shell", "tool search", "Web Search", "File Search", "Code Interpreter", "Image Generation", "Hosted shell", "Load tools on demand"],
   "purpose": "Manages configuration and presentation of OpenAI-hosted tools including web search, file search, code interpreter, image generation, hosted shell, and tool search.",
-  "revision": "ce20b29",
+  "revision": "a5769e3",
   "verified_on": "2026-10-01",
   "entry_points": ["SettingsHomeView", "ModernResponseSettings"],
   "files": [
@@ -12,7 +12,7 @@
     {"path": "OpenResponses/Features/Chat/Components/ImageSuggestionView.swift", "role": "primary", "blob": "b40ab5455050e1243050ebc42c8862d5d85ef5c6"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "212308e1c8e47a99741cbc2239284b997ad2a6c9"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "shared", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
     {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "cb6af7c174a0cc626deb1236a2c3ad86333b4b66"},
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "shared", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
@@ -20,9 +20,9 @@
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "2739f300bee07aeb94c12001e785ff6cb6431d51"},
-    {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "97ae5fd82592f92f66d7ca25a2ef3a477795e956"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "e8c5abd1a1875b7f468275340d683b8dd3af7a1c"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9315beae225d7879233c6284109c22f7659f821d"}
+    {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "9bd0fafebcd8c73a0b88e1cbd0fff57acdb7b9cf"},
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "83849a184ed28f6d695fa1217596505fdf5bce3d"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 6, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
@@ -51,8 +51,10 @@
     {"id": "ChatMessage.listedArtifacts", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 113, "match": "    @MainActor var listedArtifacts: [CodeInterpreterArtifact] {", "status": "VERIFIED", "note": "image artifacts aren't listed again while the message has pictures"},
     {"id": "ToolRowsTextAndFilesTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1178, "match": "final class ToolRowsTextAndFilesTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "ChatViewModel.appendArtifact", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5677, "match": "    func appendArtifact(_ artifact: CodeInterpreterArtifact, to messageId: UUID) {", "status": "VERIFIED"},
-    {"id": "ChatViewModel.prefers", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5700, "match": "    static func prefers(_ new: CodeInterpreterArtifact, over old: CodeInterpreterArtifact) -> Bool {", "status": "VERIFIED", "note": "one entry per file: the loaded copy under its real name"},
-    {"id": "ToolExecutionTimeline.displayName", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 47, "match": "    var displayName: String {", "status": "VERIFIED", "note": "hosted tool steps named as Settings names the tools"}
+    {"id": "ChatViewModel.prefers", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5723, "match": "    static func prefers(_ new: CodeInterpreterArtifact, over old: CodeInterpreterArtifact) -> Bool {", "status": "VERIFIED", "note": "one entry per file: the loaded copy under its real name"},
+    {"id": "ToolExecutionTimeline.displayName", "kind": "model", "path": "OpenResponses/Core/Models/ChatMessage.swift", "line": 48, "match": "    var displayName: String {", "status": "VERIFIED", "note": "hosted tool steps named as Settings names the tools"},
+    {"id": "ChatViewModel.isTwin", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5734, "match": "    static func isTwin(_ a: CodeInterpreterArtifact, of b: CodeInterpreterArtifact) -> Bool {", "status": "VERIFIED", "note": "a displayed plot and the saved file of one chart"},
+    {"id": "ChatViewModel.looksAlike", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5743, "match": "    static func looksAlike(_ a: UIImage, _ b: UIImage) -> Bool {", "status": "VERIFIED"}
   ],
   "edges": [
     {"from": "SettingsHomeView", "to": "Prompt.enableWebSearch", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 465, "match": "                Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {"}]},
@@ -77,10 +79,13 @@
     {"from": "OpenAIService.buildTools", "to": "OpenAIServiceTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 607, "match": "        prompt.enableWebSearch = true"}]},
     {"from": "MessageBubbleView", "to": "ChatMessage.listedArtifacts", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 94, "match": "                if !message.listedArtifacts.isEmpty {"}]},
     {"from": "ChatMessage.listedArtifacts", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1293, "match": "    func testAChartShowsOnceAndSavedFilesKeepTheirText() throws {"}]},
-    {"from": "ChatViewModel.appendArtifact", "to": "ChatViewModel.prefers", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5686, "match": "            if let kept = messages[index].artifacts?[slot], ChatViewModel.prefers(artifact, over: kept) {"}]},
+    {"from": "ChatViewModel.appendArtifact", "to": "ChatViewModel.prefers", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5709, "match": "            if let kept = messages[index].artifacts?[slot], ChatViewModel.prefers(artifact, over: kept) {"}]},
     {"from": "ToolTimelineView", "to": "ToolExecutionTimeline.displayName", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "line": 71, "match": "                    Text(event.displayName)"}]},
     {"from": "ChatViewModel.prefers", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1293, "match": "    func testAChartShowsOnceAndSavedFilesKeepTheirText() throws {"}]},
-    {"from": "ToolExecutionTimeline.displayName", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1252, "match": "    func testCodeInterpreterStepShowsItsNameAndCode() throws {"}]}
+    {"from": "ToolExecutionTimeline.displayName", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1252, "match": "    func testCodeInterpreterStepShowsItsNameAndCode() throws {"}]},
+    {"from": "ChatViewModel.appendArtifact", "to": "ChatViewModel.isTwin", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5694, "match": "           let slot = messages[index].artifacts?.firstIndex(where: { ChatViewModel.isTwin(artifact, of: $0) }),"}]},
+    {"from": "ChatViewModel.isTwin", "to": "ChatViewModel.looksAlike", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5738, "match": "        return looksAlike(x, y)"}]},
+    {"from": "ChatViewModel.isTwin", "to": "ToolRowsTextAndFilesTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1367, "match": "    func testAChartCitedAsPlotAndSavedFileShowsOnce() throws {"}]}
   ],
   "docs": [
     {"path": "CHANGELOG.md", "section": "2.7 — released September 25, 2026", "quote": "- GPT Image 2.5 Flare and Sunburst (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`), with the `xhigh` and `max` quality levels only these models accept. GPT Image 2 stays selectable.", "claim": "GPT Image 2.5 Flare and Sunburst are added.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 13, "match": "enum CurrentModelCatalog {"}, "note": "Models are catalogued."}

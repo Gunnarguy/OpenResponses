@@ -1318,4 +1318,85 @@ final class ToolRowsTextAndFilesTests: XCTestCase {
         both.artifacts?.append(CodeInterpreterArtifact(fileId: "cfile_x", filename: "second.png", containerId: "cntr_1", mimeType: "image/png", content: .error("Failed to load: timed out")))
         XCTAssertEqual(both.listedArtifacts.map(\.filename), ["totals.csv", "second.png"])
     }
+
+    // A browser screenshot replaces the message's pictures, so a chart left out of the list because it was shown
+    // above has to come back to the list once it isn't.
+    func testAChartComesBackToTheListWhenAScreenshotReplacesIt() throws {
+        let viewModel = ChatViewModel()
+        let message = ChatMessage(role: .assistant, text: "")
+        viewModel.messages = [message]
+        let picture = { (color: UIColor) in
+            UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+            }
+        }
+        viewModel.appendArtifact(CodeInterpreterArtifact(fileId: "cfile_chart", filename: "chart.png", containerId: "cntr_1", mimeType: "image/png", content: .image(picture(.systemBlue))), to: message.id)
+        XCTAssertTrue(try XCTUnwrap(viewModel.messages.first).listedArtifacts.isEmpty)
+        viewModel.messages[0].images = [picture(.white)]
+        XCTAssertEqual(viewModel.messages[0].listedArtifacts.map(\.filename), ["chart.png"])
+    }
+
+    // The newer-model path names an image step "Image Generation Call", with the agent after it for a subagent.
+    func testManagedImageStepsUseTheToolsName() {
+        let row = { (name: String) in ToolExecutionTimeline(toolType: "image_generation_call", toolName: name).displayName }
+        XCTAssertEqual(row("image_generation_call"), "Image Generation")
+        XCTAssertEqual(row("Image Generation Call"), "Image Generation")
+        XCTAssertEqual(row("Image Generation Call · /researcher"), "Image Generation · /researcher")
+        XCTAssertEqual(ToolExecutionTimeline(toolType: "web_search_call", toolName: "web_search_call").displayName, "Web Search")
+    }
+
+    // An MCP error sent as a bare string is read as its message instead of failing the whole item.
+    func testAnMCPErrorSentAsTextStillDecodes() throws {
+        let item: [String: Any] = ["id": "mcp_2", "type": "mcp_call", "name": "fetch", "server_label": "docs", "status": "failed", "error": "Server timed out"]
+        let decoded = try JSONDecoder().decode(StreamingItem.self, from: JSONSerialization.data(withJSONObject: item))
+        XCTAssertEqual(decoded.error?.message, "Server timed out")
+    }
+
+    // Reasoning summaries are Markdown.  The view drew "**Calculating tip distribution**" with its asterisks.
+    func testReasoningSummariesShowTheirMarkdown() throws {
+        let rendered = InlineMarkdown.attributed("**Calculating tip distribution**\n\nSam pays $19.20.")
+        XCTAssertEqual(String(rendered.characters), "Calculating tip distribution\n\nSam pays $19.20.")
+        let bold = try XCTUnwrap(rendered.runs.first?.inlinePresentationIntent)
+        XCTAssertTrue(bold.contains(.stronglyEmphasized))
+        XCTAssertEqual(String(InlineMarkdown.attributed("2 * 3 = 6").characters), "2 * 3 = 6")
+    }
+
+    // Code Interpreter keeps a plot it displayed as a file named by its own id, and code that also saved the figure
+    // got the same chart shown twice.  One chart, from the saved file, whichever arrives first; two different charts stay.
+    func testAChartCitedAsPlotAndSavedFileShowsOnce() throws {
+        let pie = { (size: CGSize, slices: [CGFloat]) in
+            UIGraphicsImageRenderer(size: size, format: { let f = UIGraphicsImageRendererFormat(); f.scale = 1; return f }()).image { context in
+                UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size))
+                let center = CGPoint(x: size.width / 2, y: size.height / 2), radius = size.height * 0.4
+                var start: CGFloat = 0
+                for (slice, color) in zip(slices, [UIColor.systemBlue, .systemGreen, .systemOrange, .systemRed]) {
+                    let path = UIBezierPath()
+                    path.move(to: center)
+                    path.addArc(withCenter: center, radius: radius, startAngle: start, endAngle: start + slice * 2 * .pi, clockwise: true)
+                    color.setFill(); path.fill()
+                    start += slice * 2 * .pi
+                }
+            }
+        }
+        let shares: [CGFloat] = [0.55, 0.2, 0.13, 0.12]
+        let plot = CodeInterpreterArtifact(fileId: "cfile_plot", filename: "cfile_plot.png", containerId: "cntr_1", mimeType: "image/png", content: .image(pie(CGSize(width: 90, height: 60), shares)))
+        let saved = CodeInterpreterArtifact(fileId: "cfile_saved", filename: "monthly_spending_pie.png", containerId: "cntr_1", mimeType: "image/png", content: .image(pie(CGSize(width: 270, height: 180), shares)))
+        XCTAssertTrue(ChatViewModel.isTwin(plot, of: saved))
+
+        for order in [[plot, saved], [saved, plot]] {
+            let viewModel = ChatViewModel()
+            let message = ChatMessage(role: .assistant, text: "")
+            viewModel.messages = [message]
+            for artifact in order { viewModel.appendArtifact(artifact, to: message.id) }
+            let shown = try XCTUnwrap(viewModel.messages.first)
+            XCTAssertEqual(shown.artifacts?.map(\.filename), ["monthly_spending_pie.png"])
+            XCTAssertEqual(shown.images?.count, 1)
+            XCTAssertEqual(shown.images?.first?.size.width, 270)
+            XCTAssertTrue(shown.listedArtifacts.isEmpty)
+        }
+
+        let other = CodeInterpreterArtifact(fileId: "cfile_other", filename: "cfile_other.png", containerId: "cntr_1", mimeType: "image/png", content: .image(pie(CGSize(width: 90, height: 60), [0.25, 0.25, 0.25, 0.25])))
+        XCTAssertFalse(ChatViewModel.isTwin(other, of: saved))
+    }
 }
