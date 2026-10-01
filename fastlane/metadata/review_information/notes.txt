@@ -1,21 +1,23 @@
-OpenResponses 2.7 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
+OpenResponses 2.9 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
 
 The key is stored in iOS Keychain and sent to OpenAI for authentication. Before the first live request, the app presents its data-sharing notice and requires Allow & Send. Selected prompts, attachments and tool results are transmitted for processing; local history and optional remote storage are separate.
+
+New in 2.9 (how tool activity is shown; no new permissions, services or data collection):
+• Each tool step under an answer (web search, file search, Code Interpreter, image generation, MCP, the in-app browser) shows a spinner while it runs and Completed or Failed when it ends. Tapping a step shows what it did; a Code Interpreter step shows the Python that OpenAI ran.
+• A Code Interpreter chart appears once (it could appear two or three times), text after a tool call starts a new paragraph, reasoning summaries render their formatting, and the Computer Use notice says it drives only the app's own browser.
+• The App Store previews are screen recordings of this build.
+
+In the app since 2.8: Local Python (Settings → Model, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, CPython compiled to WebAssembly, MPL-2.0) ships in the app bundle; no code or packages are downloaded or installed. It runs in a WKWebView whose content rules block every load except the bundled runtime: Python standard library only, no network, no file access, a fresh namespace each run, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
 
 Suggested review:
 1. Explore Demo, then configure an authorized test key for live requests.
 2. Select an account-available model, send a greeting, accept the first-send notice and inspect streaming, activity and request details.
 3. Send a follow-up and switch chats; existing history should remain available.
-4. Try Web Search and inspect sources. Attach a small file and observe vector-store indexing if using file search.
-5. Open Settings → Model → API Workbench to inspect raw requests, events, exports, token counting and compaction.
-6. Open voice mode, grant microphone access and speak for multiple turns. Test mute and return to listening after the answer. Settings → Model → Voice switches between GPT Realtime 2.1 and GPT-Live 1.
+4. Turn on Code Interpreter, ask for a pie chart of a few numbers, and tap the Code Interpreter step under the answer to see its code.
+5. Try Web Search and inspect sources. Attach a small file and observe vector-store indexing if using file search.
+6. Open Settings → Model → API Workbench to inspect raw requests, events, exports, token counting and compaction.
+7. Open voice mode, grant microphone access and speak for multiple turns. Settings → Model → Voice switches between GPT Realtime 2.1 and GPT-Live 1.
 
-Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. DOM/screenshot actions share cancellation, deadlines and action limits. API-provided safety prompts may be denied; not every action has a separate approval. Stopping cannot reverse a website mutation already received.
+Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. DOM/screenshot actions share cancellation, deadlines and action limits. API-provided safety prompts may be denied; not every action has a separate approval.
 
-MCP setup/discovery uses OpenAI-hosted MCP. The endpoint and server authentication may be sent to OpenAI so it can connect. Private OAuth services may need separate account setup. Apple Calendar/Reminders/Contacts and Notion are optional and require their own permissions or credentials.
-
-Batch exports save complete available output/error files. Paid jobs are not necessary to inspect this screen. Features for OpenAI services that are shut down or deprecated (Assistants, fine-tuning, published prompts) were removed in 2.7. Arbitrary Workbench tool schemas do not execute arbitrary shell commands on the iPhone.
-
-
-MCP Connections: Settings → MCP opens the new account library. Supported providers use the iOS system browser for account sign-in; tool discovery is separate and uses the reviewer’s OpenAI API account after consent. Public entries need no provider account. The catalog explicitly identifies providers requiring developer registration or different callback setup; those entries do not claim working sign-in. Existing direct Notion integration keys remain under legacy management.
-Workbench request drafts persist securely; malformed schemas are rejected locally. Voice starts a separate session and does not inherit chat history/tools.
+MCP setup/discovery uses OpenAI-hosted MCP; the endpoint and server authentication may be sent to OpenAI so it can connect. Supported providers use the iOS system browser for sign-in, and monday.com, Airtable, Intercom and Vercel return through https://gunzino.me/openresponses/oauth/callback.html, a static page that forwards the result to the app's openresponses:// callback. Apple Calendar/Reminders/Contacts and Notion are optional and require their own permissions or credentials.
