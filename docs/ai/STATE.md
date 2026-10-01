@@ -5,7 +5,7 @@ Branch/worktree: main in the repo root; pushed with the 2.9 fixes on 2026-10-01,
 Last verified commit: the 2.9 tool-steps commit that carries this handoff (parent ce20b29)
 
 ## Objective
-2.9 is in App Review: submitted 2026-10-01 11:41 PDT (submission `e52a229a-6e96-4a0f-bec5-8af7a067667f`, build 54 from Xcode Cloud run 54 on baff2fc, version `9343d705-a4ce-481c-9459-92ee7b1035f4`, release after approval). What's New and promotional text match `fastlane/metadata/en-US`.
+2.9 is in App Review: resubmitted 2026-10-01 14:33 PDT with three App Store previews (submission `a4928014-ecb3-4a57-a7eb-24cd2eba5032`, build 54 from Xcode Cloud run 54 on baff2fc, version `9343d705-a4ce-481c-9459-92ee7b1035f4`, release after approval).  The first submission (11:41, `e52a229a-...`) was pulled at the owner's word to add the previews.  The previews (chart, browser, thinker, in the 6.5" iPhone set, posters at 00:00:00:24) are the Apple-encoder cuts from `~/Movies/App demos/OpenResponses/App Store/`: the first x264 uploads sat in PROCESSING for 80 minutes, so `scripts/asc/previews.py clear` deleted them and they were uploaded again at 14:07.  App Store Connect took the submission while the new ones were still processing.  Check them with `previews.py state`. What's New and promotional text match `fastlane/metadata/en-US`.
 
 ## Status
 - 2.8 released 2026-09-30 (build 51, Xcode Cloud run 51 from ab87186). Submitted 2026-09-29 about 21:28 PDT (review submission 5e3d5bf0-cff5-4f69-9019-05599a734175) and approved on the first submission with Local Python in it; App Store Connect showed READY_FOR_SALE. Contents: CHANGELOG.md "2.8", docs/ReleaseNotes_2.8.0.md.
