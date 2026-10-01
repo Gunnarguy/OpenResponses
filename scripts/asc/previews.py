@@ -2,6 +2,7 @@
 
   cancel --go                  pull the open review submission so the version takes new media (it goes back in the queue)
   upload FILE... --go          add previews to the 6.5" iPhone set, in order; 6.9", 6.3" and 6.1" use them scaled
+  clear --go                   delete every preview in the set (to re-upload one stuck in processing)
   state                        every preview in the set: file, processing state, poster time code
   poster INDEX TIMECODE --go   set one preview's poster frame (the default is 5 s in)
 
@@ -72,6 +73,16 @@ elif cmd == "upload":
         call("PATCH", f"/v1/appPreviews/{r['id']}", {"data": {"type": "appPreviews", "id": r["id"],
             "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
         print(f"uploaded {os.path.basename(f)} as {r['id']} in {len(r['attributes']['uploadOperations'])} parts", flush=True)
+elif cmd == "clear":
+    # Apple's forums: a preview stuck in processing past an hour is deleted and uploaded again (2026-10-01: three
+    # sat at PROCESSING for 80 minutes).
+    found = previews()
+    for p in found:
+        print("delete", p["attributes"].get("fileName"), p["id"])
+    if not go: sys.exit("dry run; add --go")
+    for p in found:
+        call("DELETE", f"/v1/appPreviews/{p['id']}")
+    print("left in the set:", len(previews()))
 elif cmd == "state":
     for i, p in enumerate(previews()):
         a = p["attributes"]
