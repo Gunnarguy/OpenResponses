@@ -12,7 +12,7 @@
   <a href="https://apps.apple.com/us/app/openresponses/id6757338355">
     <img alt="Download on the App Store" src="https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=appstore&logoColor=white">
   </a>
-  <img alt="Swift" src="https://img.shields.io/badge/Swift-5.10-F05138?style=for-the-badge&logo=swift&logoColor=white">
+  <img alt="Swift" src="https://img.shields.io/badge/Swift-5%20language%20mode-F05138?style=for-the-badge&logo=swift&logoColor=white">
   <img alt="iOS" src="https://img.shields.io/badge/iOS-17%2B-111827?style=for-the-badge&logo=apple&logoColor=white">
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
@@ -21,6 +21,8 @@
 
 Version 2.8 adds GPT-6.1 Sol, lists new OpenAI models on its own with settings read from OpenAI's docs pages, runs Python on the device after you approve each run, searches conversations by meaning on the device, signs in to MCP providers that refuse the app's own callback, stops GPT-Live when you talk over it, and holds 4.5:1 text contrast and 44-point tap targets on the chat, Settings and Conversations screens. See the [2.8 release notes](docs/ReleaseNotes_2.8.0.md) and the [changelog](CHANGELOG.md).
 
+**App Store, checked October 1:** version 2.8 is live. App Store Connect reports 2.8 `READY_FOR_SALE` with build **51**, the Xcode Cloud run 51 archive of commit `ab87186`, and the public store lookup carries a release timestamp of 2026-09-30T08:14:26Z (01:14 Pacific). Version 2.9 is in App Review: build **54**, the Xcode Cloud run 54 archive of commit `baff2fc`, was submitted October 1 and releases after approval. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md) and its [What's New](fastlane/metadata/en-US/release_notes.txt).
+
 ## Version 2.7
 
 Version 2.7 adds GPT-6 Sol and GPT-6 Luna, GPT Image 2.5 Flare and Sunburst with X-High and Max quality, and version-aware recognition of later general-purpose GPT releases. See the [2.7 release notes](docs/ReleaseNotes_2.7.0.md).
@@ -28,8 +30,6 @@ Version 2.7 adds GPT-6 Sol and GPT-6 Luna, GPT Image 2.5 Flare and Sunburst with
 ## Version 2.6 documentation
 
 The [complete v2.5 → v2.6 release dossier](docs/releases/v2.6/README.md) covers the full source comparison, [What’s New](docs/ReleaseNotes_2.6.0.md), [changelog](CHANGELOG.md), technical behavior, upgrade steps, validation, and store/reviewer copy. Its [129-file inventory](docs/releases/v2.6/SourceInventory.md) includes committed work and the September implementation changes.
-
-**App Store, checked September 8 (evening Pacific):** version 2.6 is live. App Store Connect reports 2.6 `READY_FOR_SALE` with build **41**, the Xcode Cloud run 41 archive of commit `5b270d8`, uploaded 12:14 Pacific; the public store lookup carries a release timestamp of 2026-09-09T01:59:47Z (18:59 Pacific). Build 41 is the completed 2.6 source plus the CI-only change in `5b270d8`; local build 39 was the same app source. The ASC snapshot below/linked predates the release.
 
 ## Overview
 
@@ -219,7 +219,7 @@ Current API contracts and verification details are recorded in [API refresh note
 | Test Type | Command / Procedure | Expected Result |
 | :--- | :--- | :--- |
 | **Build Target** | Build project in Xcode (`Cmd+B`) | Compilation completes with no errors. |
-| **Unit/integration tests** | Use an available simulator and the command in the [validation ledger](docs/releases/v2.6/Validation.md). | Latest implementation run: 294 tests, zero failures. |
+| **Unit/integration tests** | Use an available simulator and the command in the [validation ledger](docs/releases/v2.6/Validation.md). | Latest implementation run (October 1, 2026): 343 tests, zero failures, 3 skipped. |
 | **Secret Scan** | `python3 scripts/secret_scan.py` | CLI tool returns success with no keys detected. |
 | **Preflight check** | `bash scripts/preflight_check.sh` | Confirms Info.plist privacy descriptions are present. |
 
@@ -241,7 +241,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | Document | Purpose |
 |---|---|
 | [2.6 release dossier](docs/releases/v2.6/README.md) | Complete release documentation and evidence index |
-| [Changelog](CHANGELOG.md) | Detailed categorized 2.5 → 2.6 changes |
+| [Changelog](CHANGELOG.md) | Detailed categorized 2.5 → 2.9 changes |
 | [Architecture](ARCHITECTURE.md) | System design, data flow, and service boundaries |
 | [Security](SECURITY.md) | Secret handling, local storage, and release checks |
 | [Privacy](PRIVACY.md) | Data storage, API transmission, and user controls |
@@ -249,13 +249,14 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | [App Store Notes](APP_STORE.md) | App Store metadata, review notes, and release checklist |
 | [Case Study](docs/CASE_STUDY.md) | Engineering retrospective and implementation notes |
 | [Contributing](CONTRIBUTING.md) | Local development setup and contribution guidelines |
-| [Release Notes (v2.6.0)](docs/ReleaseNotes_2.6.0.md) | Summary of changes, fixes, and updates in version 2.6.0 |
+| [Release Notes (v2.8.0)](docs/ReleaseNotes_2.8.0.md) | Summary of changes, fixes, and updates in version 2.8.0, the version on the App Store |
+| [Release Notes (v2.9.0)](docs/ReleaseNotes_2.9.0.md) | Version 2.9.0, in App Review, with its [What's New](fastlane/metadata/en-US/release_notes.txt) |
 
 ---
 
 ## Roadmap
 
-The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Remaining work includes release-candidate distribution, broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
+The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7 and 2.8 have shipped. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
 
 ---
 
