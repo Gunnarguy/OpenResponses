@@ -17,11 +17,15 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
+## Version 2.9
+
+Version 2.9 is about seeing what the assistant is doing while it uses its tools. Each tool step shows a spinner while it works and says Completed or Failed when it's done, steps have their real names (Code Interpreter instead of `code_interpreter_call`), and a Code Interpreter step shows the Python it ran. A chart from Code Interpreter shows once, each file it makes is listed once, and reasoning summaries show their formatting instead of raw asterisks. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md), its [What's New](fastlane/metadata/en-US/release_notes.txt) and the [changelog](CHANGELOG.md).
+
+**App Store, checked October 2:** version 2.9 is live. App Store Connect reports 2.9 `READY_FOR_SALE` with build **54**, the Xcode Cloud run 54 archive of commit `baff2fc`, and the public store lookup carries a release timestamp of 2026-10-02T16:24:23Z (09:24 Pacific).
+
 ## Version 2.8
 
-Version 2.8 adds GPT-6.1 Sol, lists new OpenAI models on its own with settings read from OpenAI's docs pages, runs Python on the device after you approve each run, searches conversations by meaning on the device, signs in to MCP providers that refuse the app's own callback, stops GPT-Live when you talk over it, and holds 4.5:1 text contrast and 44-point tap targets on the chat, Settings and Conversations screens. See the [2.8 release notes](docs/ReleaseNotes_2.8.0.md) and the [changelog](CHANGELOG.md).
-
-**App Store, checked October 1:** version 2.8 is live. App Store Connect reports 2.8 `READY_FOR_SALE` with build **51**, the Xcode Cloud run 51 archive of commit `ab87186`, and the public store lookup carries a release timestamp of 2026-09-30T08:14:26Z (01:14 Pacific). Version 2.9 is in App Review: build **54**, the Xcode Cloud run 54 archive of commit `baff2fc`, was submitted October 1 and releases after approval. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md) and its [What's New](fastlane/metadata/en-US/release_notes.txt).
+Version 2.8 adds GPT-6.1 Sol, lists new OpenAI models on its own with settings read from OpenAI's docs pages, runs Python on the device after you approve each run, searches conversations by meaning on the device, signs in to MCP providers that refuse the app's own callback, stops GPT-Live when you talk over it, and holds 4.5:1 text contrast and 44-point tap targets on the chat, Settings and Conversations screens. See the [2.8 release notes](docs/ReleaseNotes_2.8.0.md) and the [changelog](CHANGELOG.md). It went live September 30, 2026 as build **51**, the Xcode Cloud run 51 archive of commit `ab87186`.
 
 ## Version 2.7
 
@@ -249,14 +253,14 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | [App Store Notes](APP_STORE.md) | App Store metadata, review notes, and release checklist |
 | [Case Study](docs/CASE_STUDY.md) | Engineering retrospective and implementation notes |
 | [Contributing](CONTRIBUTING.md) | Local development setup and contribution guidelines |
-| [Release Notes (v2.8.0)](docs/ReleaseNotes_2.8.0.md) | Summary of changes, fixes, and updates in version 2.8.0, the version on the App Store |
-| [Release Notes (v2.9.0)](docs/ReleaseNotes_2.9.0.md) | Version 2.9.0, in App Review, with its [What's New](fastlane/metadata/en-US/release_notes.txt) |
+| [Release Notes (v2.8.0)](docs/ReleaseNotes_2.8.0.md) | Summary of changes, fixes, and updates in version 2.8.0 |
+| [Release Notes (v2.9.0)](docs/ReleaseNotes_2.9.0.md) | Version 2.9.0, the version on the App Store, with its [What's New](fastlane/metadata/en-US/release_notes.txt) |
 
 ---
 
 ## Roadmap
 
-The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7 and 2.8 have shipped. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
+The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7, 2.8 and 2.9 have shipped. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
 
 ---
 
