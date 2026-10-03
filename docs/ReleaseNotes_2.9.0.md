@@ -1,6 +1,6 @@
 # OpenResponses 2.9 release notes
 
-Submitted October 1, 2026. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt), and the promotional text is [promotional_text.txt](../fastlane/metadata/en-US/promotional_text.txt). Every change was found while filming the app's demo videos on 2.8; the details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 2.9.
+Submitted October 1, 2026, and released October 2 as build 54. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt), and the promotional text is [promotional_text.txt](../fastlane/metadata/en-US/promotional_text.txt). Every change was found while filming the app's demo videos on 2.8; the details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 2.9.
 
 ## Tool steps
 
