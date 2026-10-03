@@ -1,5 +1,7 @@
 # OpenResponses App Store package
 
+> **Update 2026-10-02:** 2.9 is live (released October 2, 2026, build 54). The project now declares 3.0.
+
 > **Update 2026-10-01:** 2.9 is submitted for review: [release notes](docs/ReleaseNotes_2.9.0.md), What's New and promotional text in `fastlane/metadata/en-US` (identical to App Store Connect). The description, keywords and URLs are unchanged from 2.8.
 
 > **Update 2026-09-30:** 2.8 is live (released September 30, 2026, build 51, approved on the first submission with Local Python in it). The project now declares 2.9.

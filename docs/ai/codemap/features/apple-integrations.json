@@ -4,8 +4,8 @@
   "name": "Apple system integrations",
   "aliases": ["Apple Calendar/Reminders/Contacts", "Grant Access", "Calendar", "Reminders", "Contacts"],
   "purpose": "Provides tools and repositories to read and write Apple Calendar, Reminders, and Contacts data using EventKit and Contacts frameworks.",
-  "revision": "a5769e3",
-  "verified_on": "2026-10-01",
+  "revision": "83d7fb6",
+  "verified_on": "2026-10-02",
   "entry_points": ["ChatViewModel.appleFunctions", "AppleIntegrationsCard"],
   "files": [
     {"path": "OpenResponses/Core/ToolProviders/AppleProvider.swift", "role": "primary", "blob": "d5dde7d43b346f6913f6ce47daca6a3801067c52"},
@@ -20,7 +20,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "419c4b616f642c085304b2286a5b85ac8033aeac"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
-    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "c564fbbd1e8b785ab200ff3e813abc4f8cc892ec"},
+    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "3aebd1d62f983ae226c77e2b7e71c2db64546e93"},
     {"path": "OpenResponsesTests/AppleDateUtilitiesTests.swift", "role": "test", "blob": "7fe34d5dc8f2f7489c8eafa115cb2016b90c2326"},
     {"path": "OpenResponsesTests/DateFormattingTests.swift", "role": "test", "blob": "6dc9f6c15af1c71dd6cbadfd6891d302a195cbd0"}
   ],

@@ -2,6 +2,10 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
+## 3.0 — in development
+
+**Marketing version:** 3.0.
+
 ## 2.9 — released October 2, 2026 (build 54)
 
 **Marketing version:** 2.9. Released October 2, 2026 as build 54, the Xcode Cloud run 54 archive of commit `baff2fc`, after one submission on October 1. App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt) and [2.9 release notes](docs/ReleaseNotes_2.9.0.md). Everything below was found while filming the app's demo videos on 2.8.
