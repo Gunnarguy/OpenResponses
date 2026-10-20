@@ -4,7 +4,7 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "37042f1",
+  "revision": "8836c39",
   "verified_on": "2026-10-19",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [

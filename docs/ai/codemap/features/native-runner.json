@@ -4,7 +4,7 @@
   "name": "Native Runner",
   "aliases": ["Native tool execution", "function and custom tools", "async and programmatic calls", "multi-agent WebSocket turns", "Tool rounds", "Client tool calls", "Tool Execution Timeline"],
   "purpose": "Coordinates native tool execution, modern model routing, function dispatch, result submission, and multi-agent WebSocket turns.",
-  "revision": "37042f1",
+  "revision": "8836c39",
   "verified_on": "2026-10-19",
   "entry_points": ["ChatView", "ChatViewModel.sendUserMessage"],
   "files": [
