@@ -1,29 +1,9 @@
-2.9 is about seeing what the assistant is doing while it uses its tools.
+3.0 shows you what the model is sending to a tool while it's still writing it.
 
 
 TOOL STEPS
 
-• Tool steps sat on "Queued" even after they'd finished.  Now each one shows a spinner while it works and says Completed or Failed when it's done.  That goes for web search, file search, Code Interpreter, image generation, MCP tools and the browser steps of Computer Use.
-
-• Steps have their real names, like Code Interpreter instead of "code_interpreter_call".  Tap the Code Interpreter step to see the Python it ran.
-
-• When a step fails, it says Failed.  That includes an MCP tool that returns an error, which the app used to miss.
-
-• The answer after a tool call starts its own paragraph instead of running into the sentence before it, and the note the app shows when a browser step fails goes away once the answer starts.
-
-
-CHARTS AND FILES
-
-• A chart from Code Interpreter shows once.  It could show up two or three times before.
-
-• Each file Code Interpreter makes is listed once, and text files still have their contents when you reopen the chat.
-
-
-ALSO
-
-• Reasoning summaries show their formatting instead of raw asterisks.
-
-• The Computer Use warning says what it actually drives: a browser inside the app, nothing else.
+• When the model calls one of the app's own tools, like the browser, Calendar, Reminders, Contacts, Notion, Local Python or your Custom tool, its step fills in the arguments as the model writes them.  Before, the step stayed empty until the whole call had come in.  Tap the step to see them.
 
 
 Still no account, still your own key, and your chat history stays on your phone.
