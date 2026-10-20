@@ -6,6 +6,10 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 **Marketing version:** 3.0.
 
+### Fixed
+
+- A function call's step shows its arguments while the model writes them. The app ignored `response.function_call_arguments.delta` and `.done`, so the step stayed empty until `response.output_item.done` finished the item (Responses API streaming events reference, read October 19, 2026). Calls still run from that item, as before. The app now also recognizes `response.custom_tool_call_input.delta` and `.done`, but a custom tool call has no step yet, so nothing shows for it.
+
 ## 2.9 — released October 2, 2026 (build 54)
 
 **Marketing version:** 2.9. Released October 2, 2026 as build 54, the Xcode Cloud run 54 archive of commit `baff2fc`, after one submission on October 1. App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt) and [2.9 release notes](docs/ReleaseNotes_2.9.0.md). Everything below was found while filming the app's demo videos on 2.8.
