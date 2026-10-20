@@ -4,8 +4,8 @@
   "name": "MCP tool discovery and approval",
   "aliases": ["tool discovery", "tool call approval", "MCP approval", "discovery catalog", "Discover Tools", "Refresh Tools", "Browse Tools & Choose Access", "Approve", "Reject"],
   "purpose": "Discovers available MCP tools via MCPDiscoveryService probe stream and handles tool execution approvals during chat.",
-  "revision": "a5769e3",
-  "verified_on": "2026-10-01",
+  "revision": "0e99db9",
+  "verified_on": "2026-10-19",
   "entry_points": ["MCPApprovalView", "ChatViewModel.respondToMCPApproval"],
   "files": [
     {"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "role": "primary", "blob": "c01d14ba1238a3b97e5370376b6e7653aa75be11"},
@@ -19,7 +19,7 @@
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/MCPApprovalUtilsTests.swift", "role": "test", "blob": "470a8095d6bfe3f30893b926c9b420200dca1cd3"},
-    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "83849a184ed28f6d695fa1217596505fdf5bce3d"}
+    {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"}
   ],
   "nodes": [
     {"id": "MCPDiscoveryService", "kind": "service", "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 202, "match": "final class MCPDiscoveryService {", "status": "VERIFIED"},

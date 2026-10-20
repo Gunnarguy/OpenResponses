@@ -1220,6 +1220,40 @@ final class ToolRowsTextAndFilesTests: XCTestCase {
         XCTAssertEqual(row(viewModel, "ci_1")?.status, .completed)
     }
 
+    // A function call's arguments stream in response.function_call_arguments.delta.  Before these events were handled
+    // the row stayed empty until output_item.done.  The .done event repeats the whole string and adds nothing more.
+    func testFunctionCallArgumentsStreamIntoTheirRow() throws {
+        let (viewModel, message) = streaming()
+        try feed(viewModel, [
+            ["type": "response.output_item.added", "output_index": 0, "item": ["id": "fc_1", "type": "function_call", "name": "get_weather", "status": "in_progress", "arguments": ""]],
+            ["type": "response.function_call_arguments.delta", "item_id": "fc_1", "output_index": 0, "delta": #"{"city":"#],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "fc_1")?.rawArguments, #"{"city":"#)
+        XCTAssertEqual(row(viewModel, "fc_1")?.status, .queued)
+
+        try feed(viewModel, [
+            ["type": "response.function_call_arguments.delta", "item_id": "fc_1", "output_index": 0, "delta": #""Oslo"}"#],
+            ["type": "response.function_call_arguments.done", "item_id": "fc_1", "output_index": 0, "arguments": #"{"city":"Oslo"}"#],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "fc_1")?.rawArguments, #"{"city":"Oslo"}"#)
+        XCTAssertEqual(row(viewModel, "fc_1")?.status, .queued)
+    }
+
+    // With no fragments, the .done event's whole string fills the row.  A custom tool call has no row, so its input
+    // events change nothing.
+    func testArgumentsDoneFillsAnEmptyRowAndCustomInputHasNoRow() throws {
+        let (viewModel, message) = streaming()
+        try feed(viewModel, [
+            ["type": "response.output_item.added", "output_index": 0, "item": ["id": "fc_2", "type": "function_call", "name": "lookup", "status": "in_progress", "arguments": ""]],
+            ["type": "response.function_call_arguments.done", "item_id": "fc_2", "output_index": 0, "arguments": #"{"q":"x"}"#],
+            ["type": "response.custom_tool_call_input.delta", "item_id": "ctc_1", "output_index": 1, "delta": "SELECT 1"],
+            ["type": "response.custom_tool_call_input.done", "item_id": "ctc_1", "output_index": 1, "input": "SELECT 1"],
+        ], to: message)
+        XCTAssertEqual(row(viewModel, "fc_2")?.rawArguments, #"{"q":"x"}"#)
+        XCTAssertNil(row(viewModel, "ctc_1"))
+        XCTAssertEqual(viewModel.messages.first?.toolTimeline?.count, 1)
+    }
+
     // A step's output is a failure when it starts with "Error".  The browser's failures read "Error processing …",
     // and a page that only mentions errors isn't one.
     func testAFunctionFailsWhenItsOutputStartsWithError() {

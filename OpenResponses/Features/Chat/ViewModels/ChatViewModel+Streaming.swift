@@ -74,6 +74,10 @@ extension ChatViewModel {
             handleMCPArgumentsDeltaChunk(chunk, messageId: messageId)
         case "response.mcp_call_arguments.done":
             handleMCPArgumentsDoneChunk(chunk, messageId: messageId)
+        case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
+            handleToolArgumentsDeltaChunk(chunk, messageId: messageId)
+        case "response.function_call_arguments.done", "response.custom_tool_call_input.done":
+            handleToolArgumentsDoneChunk(chunk, messageId: messageId)
         case "response.mcp_approval_request.added":
             handleMCPApprovalRequestChunk(chunk, messageId: messageId)
         default:
@@ -891,6 +895,34 @@ extension ChatViewModel {
         } else {
             logActivity("MCP: Arguments ready")
         }
+    }
+
+    /// A function call's arguments (and a custom tool's input) stream as fragments before `response.output_item.done`
+    /// carries the finished item (streaming-events reference, read 2026-10-19).  Each fragment goes onto the call's row,
+    /// so the arguments show while they stream.  Neither event changes the row's status or runs the call; that still
+    /// happens from `response.output_item.done`, and `markToolItemDone` leaves a row that already has arguments alone.
+    /// A custom tool call has no row yet, so its fragments have nowhere to go.
+    private func handleToolArgumentsDeltaChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId, let fragment = chunk.delta, !fragment.isEmpty else { return }
+        appendStreamingArguments(fragment, itemId: itemId, messageId: messageId)
+    }
+
+    /// The `.done` event repeats the whole string, which only fills a row that got no fragments.
+    private func handleToolArgumentsDoneChunk(_ chunk: StreamingEvent, messageId: UUID) {
+        guard let itemId = chunk.itemId, let whole = chunk.arguments, !whole.isEmpty,
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              let row = messages[index].toolTimeline?.first(where: { $0.id == itemId }),
+              (row.rawArguments ?? "").isEmpty else { return }
+        appendStreamingArguments(whole, itemId: itemId, messageId: messageId)
+    }
+
+    private func appendStreamingArguments(_ text: String, itemId: String, messageId: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let slot = messages[index].toolTimeline?.firstIndex(where: { $0.id == itemId }) else { return }
+        var message = messages[index]
+        let current = message.toolTimeline?[slot].rawArguments ?? ""
+        message.toolTimeline?[slot].rawArguments = current + text
+        messages[index] = message
     }
 
     /// Handles MCP approval request events when user authorization is needed for a tool call.
