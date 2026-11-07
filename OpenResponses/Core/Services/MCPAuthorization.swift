@@ -27,6 +27,7 @@ nonisolated enum MCPOAuthSecurity {
     /// For providers that register only HTTPS redirect URIs (monday.com, Airtable, Intercom and Vercel rejected
     /// `redirectURI` on September 8, 2026). This static page, from the Gunzino site repository, passes the query
     /// (code, state, iss or error) on to `redirectURI` unchanged, where the sign-in session is waiting.
+    // Stays on gunzino.me after the 2026-11-06 move to gunndamental.com: the 301 keeps path and query, and a new URI needs every provider re-registered.
     static let webRedirectURI = "https://gunzino.me/openresponses/oauth/callback.html"
 
     static func publicHTTPS(_ text: String) throws -> URL {

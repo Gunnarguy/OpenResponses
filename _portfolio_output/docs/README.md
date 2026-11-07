@@ -186,7 +186,7 @@ Please open an issue before large architectural work so we can coordinate on Pha
 
 ## Support
 
-- Email: [support@gunnarguy.com](mailto:support@gunnarguy.com)
+- Email: [gunnarguy@me.com](mailto:gunnarguy@me.com)
 - Issues: <https://github.com/Gunnarguy/OpenResponses/issues>
 - Discussions and roadmap queries: see `docs/ROADMAP.md` and `docs/MVAS_SUBMISSION_TRACKER.md`
 

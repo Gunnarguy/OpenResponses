@@ -85,7 +85,7 @@ To prevent accidental check-ins of testing tokens, the repository includes two v
 
 If you discover a security vulnerability or credential exposure:
 1. **Do Not File a Public Issue:** Please do not open a public GitHub issue for security disclosures.
-2. **Report Privately:** Email details to [security@gunnarguy.com](mailto:security@gunnarguy.com). If possible, include code snippets or steps to reproduce the issue.
+2. **Report Privately:** Email details to [gunnarguy@me.com](mailto:gunnarguy@me.com). If possible, include code snippets or steps to reproduce the issue.
 3. **Response SLA:** We will acknowledge receipt of your vulnerability report within 48 hours and provide a remediation timeline.
 
 ---

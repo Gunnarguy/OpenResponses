@@ -171,7 +171,7 @@ struct MessageBubbleView: View {
                 Button(role: .destructive) {
                     let subject = "Report Content"
                     let body = "I would like to report the following message (ID: \(message.id)):\n\nIf possible, please describe why this content is objectionable."
-                    if let url = URL(string: "mailto:support@gunnarguy.com?subject=\(subject)&body=\(body)") {
+                    if let url = URL(string: "mailto:gunnarguy@me.com?subject=\(subject)&body=\(body)") {
                         openURL(url)
                     }
                 } label: {

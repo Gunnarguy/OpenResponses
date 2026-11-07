@@ -20,7 +20,7 @@ A model whose GET /models entry has a `shutdown_date` within 30 days, or past, c
 lists, and a preset naming it moves to its replacement.
 
 The docs request carries no personal data, chat content or API key, and Explore Demo and unit tests make none. The
-privacy policy at https://gunzino.me/openresponses/privacy/ describes both automatic requests (section 3, updated
+privacy policy at https://gunndamental.com/openresponses/privacy/ describes both automatic requests (section 3, updated
 2026-09-29). Page text is parsed as data for settings the app already has, never run (App Review Guideline 2.5.2).
 
 ## The built-in file
