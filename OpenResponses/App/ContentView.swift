@@ -1,8 +1,12 @@
 // FILE: OpenResponses/ContentView.swift
+import StoreKit
 import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
+    @ObservedObject private var reviewPrompt = ReviewPromptService.shared
     @State private var showingSettings = false
     @State private var showingConversationList = false
     @State private var showingShareSheet = false
@@ -50,6 +54,18 @@ struct ContentView: View {
                 }
         }
         .onAppear(perform: checkOnboardingAndAPIKey)
+        // A chat turn just stopped streaming: count the answer, which may make this the moment to ask for a rating.
+        .onChange(of: viewModel.isStreaming) { wasStreaming, isStreaming in
+            guard wasStreaming, !isStreaming else { return }
+            reviewPrompt.noteTurnEnded(lastMessage: viewModel.messages.last, exploreDemo: viewModel.exploreModeEnabled)
+        }
+        .onChange(of: reviewPrompt.wantsPrompt) { _, wants in
+            if wants { askForRatingWhenInFront() }
+        }
+        // A request held because the app was not in front, or because the next answer had started, is made on return.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, reviewPrompt.wantsPrompt { askForRatingWhenInFront() }
+        }
         // The model menus list the account's newer models too, with settings from OpenAI's docs pages; one GET /models
         // per launch keeps them current.
         .task { await viewModel.refreshAccountModels() }
@@ -79,6 +95,21 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(items: [viewModel.exportConversationText()])
+        }
+    }
+
+    /// Hands the rating request to StoreKit two seconds after the answer landed, and only while the app is in front
+    /// with no answer streaming and onboarding closed. Held otherwise, and "asked" is recorded only when the request
+    /// was made, so a version's one ask is never spent where no sheet can show. Apple decides whether the sheet shows.
+    private func askForRatingWhenInFront() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard reviewPrompt.wantsPrompt, scenePhase == .active, !viewModel.isStreaming, !showingOnboarding else {
+                return
+            }
+            requestReview()
+            AppLogger.log("Rating request handed to StoreKit", category: .ui, level: .info)
+            reviewPrompt.didAsk()
         }
     }
 

@@ -6,6 +6,10 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 **Marketing version:** 3.0.
 
+### Added
+
+- The app asks for an App Store rating with Apple's own sheet (SwiftUI `requestReview`; `RequestReviewAction` and the Human Interface Guidelines' Ratings and reviews page read November 14, 2026, and the declaration confirmed in the iOS 27.0 SDK). Until now it never asked: on November 14, 2026 it had 359 first-time downloads and 1 US rating. It asks two seconds after a chat answer finishes, on the first answer that finished with no failed or cancelled tool step, or on the third finished answer of any kind, once per app version and never within 14 days of the last ask. It never asks at launch, during onboarding, in Explore Demo, from a button or under tests, and an error, a stopped answer or one waiting for an approval doesn't count. If the app is not in front, or the next answer has started, the request is held and made on the next return to the app, and the ask is recorded only when the request was made. Apple decides whether the sheet shows (at most three times in 365 days, never in TestFlight). About has a "Rate OpenResponses" link that opens the App Store's review form. 14 tests in `ReviewPromptServiceTests`.
+
 ### Fixed
 
 - A function call's step shows its arguments while the model writes them. The app ignored `response.function_call_arguments.delta` and `.done`, so the step stayed empty until `response.output_item.done` finished the item (Responses API streaming events reference, read October 19, 2026). Calls still run from that item, as before. The app now also recognizes `response.custom_tool_call_input.delta` and `.done`, but a custom tool call has no step yet, so nothing shows for it.

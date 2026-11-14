@@ -10,6 +10,9 @@ import SwiftUI
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// App Store id 6757338355, the id in the README's App Store link.
+    static let writeReviewURL = URL(string: "https://apps.apple.com/app/id6757338355?action=write-review")!
+
     // Read version from bundle
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -85,6 +88,22 @@ struct AboutView: View {
 
     private var linksSection: some View {
         VStack(spacing: 12) {
+            // Opens the App Store's own review form. The in-app rating sheet is never called from a button: Apple may
+            // show nothing there (RequestReviewAction, read 2026-11-14).
+            Link(destination: Self.writeReviewURL) {
+                HStack {
+                    Label("Rate OpenResponses", systemImage: "star")
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                }
+                .padding()
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the App Store to write a review")
+
             Link(destination: URL(string: "https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md")!) {
                 HStack {
                     Label("Privacy Policy", systemImage: "lock.shield")

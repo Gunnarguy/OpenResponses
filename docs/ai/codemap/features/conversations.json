@@ -4,8 +4,8 @@
   "name": "Conversations",
   "aliases": ["local storage", "chat list", "remote conversations", "compaction", "import", "export", "Conversations", "Export Current Conversation", "Import Conversation", "ConversationListView", "ConversationExportView"],
   "purpose": "Manages conversation persistence to disk, the conversations list, remote OpenAI conversation fetching/deletion, compaction, and import/export.",
-  "revision": "a5769e3",
-  "verified_on": "2026-10-01",
+  "revision": "4eefe1b",
+  "verified_on": "2026-11-14",
   "entry_points": ["ConversationListView", "ConversationExportView", "OpenResponsesApp"],
   "files": [
     {"path": "OpenResponses/Core/Models/Conversation.swift", "role": "primary", "blob": "8bf4c941ac634b05c9e6a10bb9fd12aff32b389d"},
@@ -15,7 +15,7 @@
     {"path": "OpenResponses/Features/Chat/Components/ConversationExportView.swift", "role": "primary", "blob": "3f74a035e128ab69d66f280ea506b17a8461bb6b"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
-    {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "b38807ed24d9008248c2b8b45bf339f353bb6c90"},
+    {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "a1a2a38356331a31538748bb8a79c669db77328f"},
     {"path": "OpenResponses/App/OpenResponsesApp.swift", "role": "shared", "blob": "3bf293c143908f410d4a0ba6af8f0f40eeed4312"},
     {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "e941ee4ae132a4fa92e8780383bab9fb755fe88f"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"},
@@ -24,7 +24,7 @@
   ],
   "nodes": [
     {"id": "OpenResponsesApp", "kind": "entry", "path": "OpenResponses/App/OpenResponsesApp.swift", "line": 11, "match": "struct OpenResponsesApp: App {", "status": "VERIFIED"},
-    {"id": "ContentView", "kind": "view", "path": "OpenResponses/App/ContentView.swift", "line": 4, "match": "struct ContentView: View {", "status": "VERIFIED"},
+    {"id": "ContentView", "kind": "view", "path": "OpenResponses/App/ContentView.swift", "line": 5, "match": "struct ContentView: View {", "status": "VERIFIED"},
     {"id": "ConversationListView", "kind": "view", "path": "OpenResponses/Features/Conversations/Views/ConversationListView.swift", "line": 4, "match": "struct ConversationListView: View {", "status": "VERIFIED"},
     {"id": "ConversationExportView", "kind": "view", "path": "OpenResponses/Features/Chat/Components/ConversationExportView.swift", "line": 181, "match": "struct ConversationExportView: View {", "status": "VERIFIED"},
     {"id": "ChatViewModel.selectConversation", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3866, "match": "    func selectConversation(_ conversation: Conversation) {", "status": "VERIFIED"},
@@ -55,7 +55,7 @@
     {"id": "test:ConversationSearchIndexTests", "kind": "test", "path": "OpenResponsesTests/ConversationSearchIndexTests.swift", "line": 6, "match": "final class ConversationSearchIndexTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "ContentView", "type": "renders", "to": "ConversationListView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 78, "match": "            ConversationListView(isPresented: $showingConversationList)"}]},
+    {"from": "ContentView", "type": "renders", "to": "ConversationListView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 94, "match": "            ConversationListView(isPresented: $showingConversationList)"}]},
     {"from": "ConversationListView", "type": "calls", "to": "ChatViewModel.selectConversation", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Conversations/Views/ConversationListView.swift", "line": 37, "match": "                                viewModel.selectConversation(conversation)"}]},
     {"from": "ConversationListView", "type": "calls", "to": "ChatViewModel.deleteConversation", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Conversations/Views/ConversationListView.swift", "line": 172, "match": "            viewModel.deleteConversation(conversation)"}]},
     {"from": "ConversationListView", "type": "calls", "to": "ChatViewModel.createNewConversation", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Conversations/Views/ConversationListView.swift", "line": 100, "match": "                        viewModel.createNewConversation()"}]},
