@@ -138,7 +138,7 @@ To edit a specific area, provide the source image and a transparent mask. The tr
 
 |                                                 Image                                                  |                                                Mask                                                |                                                    Output                                                     |
 | :----------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------: |
-| ![Lounge](https://raw.githubusercontent.com/GunnarHostetler/OpenResponses/main/docs/assets/lounge.png) | ![Mask](https://raw.githubusercontent.com/GunnarHostetler/OpenResponses/main/docs/assets/mask.png) | ![Result](https://raw.githubusercontent.com/GunnarHostetler/OpenResponses/main/docs/assets/lounge_result.png) |
+| ![Lounge](https://cdn.openai.com/API/docs/images/sunlit_lounge.png) | ![Mask](https://cdn.openai.com/API/docs/images/mask.png) | ![Result](https://cdn.openai.com/API/docs/images/sunlit_lounge_result.png) |
 
 ```python
 from openai import OpenAI

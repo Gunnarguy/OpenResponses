@@ -4,13 +4,13 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "4eefe1b",
-  "verified_on": "2026-11-13",
+  "revision": "b648aa7",
+  "verified_on": "2026-11-17",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "primary", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "primary", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+Streaming.swift", "role": "primary", "blob": "fe524550c355d82f01feebcc5a8e2b95b5ac1e3e"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "primary", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Protocols/OpenAIServiceProtocol.swift", "role": "shared", "blob": "43e8f50c5039f087f92e75158ef6ed915fbbea28"},
@@ -23,7 +23,7 @@
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
     {"path": "OpenResponsesTests/StreamingTerminationTests.swift", "role": "test", "blob": "24264432f19b9d2547aa6dbca2cfdb8f203e6c81"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "bc0e1305da829a0e996024c13c7499e5c1314d0c"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"}
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "e842e8e1c1e41af1647f73d5c2163879751782c7"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},

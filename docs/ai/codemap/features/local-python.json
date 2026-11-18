@@ -4,8 +4,8 @@
   "name": "Local Python",
   "aliases": ["run_python", "Pyodide", "Python on this device", "Run Python?", "Don't Run", "Local Python toggle"],
   "purpose": "Runs Python the model writes on the device with bundled Pyodide in a sandboxed web view, after the user approves each run; standard library only, no network or files.",
-  "revision": "4eefe1b",
-  "verified_on": "2026-11-13",
+  "revision": "b648aa7",
+  "verified_on": "2026-11-17",
   "entry_points": ["ModernResponseSettings", "PythonRunApprovalSheet"],
   "files": [
     {"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "role": "primary", "blob": "84b1a74bf4fa866399b30f6fb0e5cf1077a692a4"},
@@ -19,7 +19,7 @@
     {"path": "OpenResponses/Resources/Pyodide/pyodide-lock.json", "role": "primary", "blob": "b439be1d2bfdd91bcbd51d7fc9c38482ea1caaa9"},
     {"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "role": "test", "blob": "d5deedd4c928721d5c06a0daeb3246a815c1922d"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "435729bcd21de1d74ee995339b76d118a4616b6a"}

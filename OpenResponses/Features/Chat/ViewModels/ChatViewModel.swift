@@ -4416,7 +4416,7 @@ class ChatViewModel: ObservableObject {
                             // Build https URL from domain-like token
                             return URL(string: tokenLower.hasPrefix("http") ? tokenLower : "https://\(tokenLower)")
                         }
-                        // NEW: Handle concatenated domain like "strykercom" -> "stryker.com"
+                        // NEW: Handle concatenated domain like "examplecom" -> "example.com"
                         if let concatenated = urlFromConcatenatedDomain(tokenLower) { return concatenated }
                         if let explicitSearchQuery,
                            let directSearchURL = ComputerService.searchResultsURL(forSiteKeyword: tokenLower, query: explicitSearchQuery) {
@@ -4471,7 +4471,7 @@ class ChatViewModel: ObservableObject {
                     let host = domain.lowercased()
                     return URL(string: "https://\(host)")
                 }
-                // NEW: Try concatenated TLDs in tokens (e.g., "Strykercom")
+                // NEW: Try concatenated TLDs in tokens (e.g., "Examplecom")
                 if let cat = tokens
                     .map({ $0.trimmingCharacters(in: .punctuationCharacters).lowercased() })
                     .compactMap({ urlFromConcatenatedDomain($0) })

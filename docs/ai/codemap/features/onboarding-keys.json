@@ -4,8 +4,8 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "4eefe1b",
-  "verified_on": "2026-11-14",
+  "revision": "b648aa7",
+  "verified_on": "2026-11-17",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
     {"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "role": "primary", "blob": "665f6880fee18a16659b00a1b95fbc936f9b98a8"},
@@ -15,7 +15,7 @@
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "primary", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "a1a2a38356331a31538748bb8a79c669db77328f"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "e4bbc88342dc21aab55ea4960939ebbb4c62639d"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "role": "test", "blob": "e941ee4ae132a4fa92e8780383bab9fb755fe88f"}
   ],

@@ -4,15 +4,15 @@
   "name": "Hosted Tools",
   "aliases": ["OpenAI-hosted tools", "web search", "file search", "code interpreter", "image generation", "hosted shell", "tool search", "Web Search", "File Search", "Code Interpreter", "Image Generation", "Hosted shell", "Load tools on demand"],
   "purpose": "Manages configuration and presentation of OpenAI-hosted tools including web search, file search, code interpreter, image generation, hosted shell, and tool search.",
-  "revision": "4eefe1b",
-  "verified_on": "2026-11-13",
+  "revision": "b648aa7",
+  "verified_on": "2026-11-17",
   "entry_points": ["SettingsHomeView", "ModernResponseSettings"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Components/ArtifactView.swift", "role": "primary", "blob": "8c22bba45c58f0ea02b6b5421184fc4cc519ae46"},
     {"path": "OpenResponses/Features/Chat/Components/ImageSuggestionView.swift", "role": "primary", "blob": "b40ab5455050e1243050ebc42c8862d5d85ef5c6"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "e4bbc88342dc21aab55ea4960939ebbb4c62639d"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "20a21dffa4839e7ba0261185fdee95f264130101"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"},
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "e842e8e1c1e41af1647f73d5c2163879751782c7"},
     {"path": "OpenResponses/Features/Compatibility/ModelCompatibilityView.swift", "role": "shared", "blob": "02b2903cf2a1e11cff16b8d377c4fb410748c200"},
     {"path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "role": "shared", "blob": "cb6af7c174a0cc626deb1236a2c3ad86333b4b66"},
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "shared", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
@@ -22,7 +22,7 @@
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "bc0e1305da829a0e996024c13c7499e5c1314d0c"},
     {"path": "OpenResponses/Core/Models/ChatMessage.swift", "role": "shared", "blob": "9bd0fafebcd8c73a0b88e1cbd0fff57acdb7b9cf"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"}
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 6, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},

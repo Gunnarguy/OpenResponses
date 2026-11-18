@@ -9,7 +9,7 @@
 ## Prerequisites
 
 - [ ] Confirm Apple Developer Program enrollment for required entitlements.
-- [ ] Review latest App Intents and Model Context Protocol documentation (WWDC25 sessions, developer.apple.com/modelcontextprotocol).
+- [ ] Review latest App Intents and Model Context Protocol documentation (WWDC25 sessions, modelcontextprotocol.io).
 - [ ] Audit current `AppContainer` services to ensure dependency injection can host Apple-specific services.
 
 ## Workstream 1 · API Capability Inventory
@@ -60,7 +60,7 @@
 
 ## Reference Materials
 
-- Model Context Protocol docs: <https://developer.apple.com/documentation/modelcontextprotocol>
+- Model Context Protocol docs: <https://modelcontextprotocol.io/docs/getting-started/intro>
 - EventKit framework docs: <https://developer.apple.com/documentation/eventkit>
 - App Intents session videos (WWDC24/25): check Apple Developer app for latest deep dives.
 - Notes App Intents overview: search "Apple Notes App Intents" in 2025 documentation (beta availability varies by OS).
