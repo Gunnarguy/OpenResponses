@@ -2,6 +2,14 @@
 
 **Updated:** September 28, 2026. Open work is tracked in the Notion roadmap and [CHANGELOG.md](CHANGELOG.md) records each release; this file records the 2.6 delivery and the ideas scheduled for 2.8. The [v2.6 dossier](docs/releases/v2.6/README.md) contains the full change history, and [ASC status](docs/releases/v2.6/ASCStatus.md) distinguishes uploaded builds from the completed working tree.
 
+## 3.0 (in development)
+
+- [x] Decisions screen (Settings → Advanced → Developer Operations → Decisions) and an API Workbench "Create decision" endpoint for `POST /v1/decisions`, with unit tests (November 13, 2026).
+- [ ] A live Decisions request: `scripts/decisions_probe.sh [Keychain service]`.
+- [x] The Decisions screen, its Demo Mode guard, the question editor and the answer cards checked on simulator 2460D513 (November 13, 2026).
+- [ ] A live answer on a device with a key.
+- [ ] Not planned: the Agents API (`/v1/agents/sessions`, beta). It overlaps the app's Responses features and has no Zero Data Retention; revisit if it leaves beta with something the Responses API lacks.
+
 ## Implemented for the completed 2.6 source
 
 - [x] Shared Astra/Sol/Terra/Luna catalog, model-aware reasoning/request controls, GPT Image 2 and current Realtime/transcription defaults.

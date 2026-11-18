@@ -27,6 +27,8 @@ enum CurrentModelCatalog {
     nonisolated static let fileTranscriptionModel = "gpt-transcribe"
     /// Small, inexpensive model for background probes such as MCP tool discovery.
     nonisolated static let utilityModel = "gpt-6-luna"
+    /// The only model POST /v1/decisions accepts (developers.openai.com/api/docs/guides/decisions, read 2026-11-13).
+    nonisolated static let decisionsModel = "gpt-6-luna"
     /// Current general-purpose models in menu order: the catalog's `current`.
     static var recommended: [String] { ModelCatalogStore.shared.catalog.current.map(\.id) }
     /// Earlier models listed after the current ones: the catalog's `earlier`. Models whose shutdown OpenAI has

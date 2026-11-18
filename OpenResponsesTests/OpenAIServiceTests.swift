@@ -5,6 +5,8 @@
 
 @testable import OpenResponses
 import XCTest
+import UIKit
+import SwiftUI
 
 final class OpenAIServiceTests: XCTestCase {
     private var service: OpenAIService!
@@ -980,7 +982,7 @@ final class OpenAIServiceTests: XCTestCase {
         let paths = try APIWorkbenchView.Endpoint.allCases.map { try $0.path(id: "id_1") }
         for expected in ["/responses", "/responses/input_tokens", "/responses/compact", "/responses/id_1", "/conversations/id_1/items",
                          "/models", "/moderations", "/embeddings", "/vector_stores/id_1/search", "/containers", "/batches/id_1/cancel",
-                         "/realtime/client_secrets", "/audio/voice_consents"] {
+                         "/realtime/client_secrets", "/audio/voice_consents", "/decisions"] {
             XCTAssertTrue(paths.contains(expected), expected)
         }
         for retired in ["/assistants", "/threads", "/prompts", "/evals", "/fine_tuning", "/images/variations", "/videos", "/chat/completions"] {
@@ -1066,4 +1068,160 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertFalse((computerRequest["tools"] as? [[String: Any]] ?? []).contains { $0["type"] as? String == "programmatic_tool_calling" })
     }
 
+}
+
+@testable import OpenResponses
+
+/// POST /v1/decisions request building and answer decoding, against the shapes in OpenAI's API reference
+/// (developers.openai.com/api/reference/resources/decisions/methods/create, read 2026-11-13).
+@MainActor
+final class DecisionsTests: XCTestCase {
+    func testExampleBodyMatchesTheReferenceShape() throws {
+        let body = DecisionsRequest.example.body
+        XCTAssertEqual(body["model"] as? String, "gpt-6-luna")
+        XCTAssertTrue(body["input"] is String, "Text-only input is sent as a plain string")
+        let questions = try XCTUnwrap(body["questions"] as? [[String: Any]])
+        XCTAssertEqual(questions.map { $0["type"] as? String }, ["choice", "predicate", "score"])
+        XCTAssertEqual(questions.map { $0["name"] as? String }, ["department", "asks_for_refund", "urgency"])
+        let choices = try XCTUnwrap(questions[0]["choices"] as? [[String: Any]])
+        XCTAssertEqual(choices.first?["value"] as? String, "billing")
+        XCTAssertEqual(choices.first?["description"] as? String, "Payments, invoices, and refunds.")
+        XCTAssertNil(questions[1]["choices"]); XCTAssertNil(questions[1]["levels"])
+        let levels = try XCTUnwrap(questions[2]["levels"] as? [[String: Any]])
+        XCTAssertEqual(levels.map { $0["label"] as? String }, ["Low", "Medium", "High"])
+        XCTAssertNil(DecisionsRequest.example.problem)
+        XCTAssertNoThrow(try JSONSerialization.data(withJSONObject: body))
+    }
+
+    func testImageInputBecomesAUserMessageWithTextThenImage() throws {
+        var request = DecisionsRequest(input: "Inspect the product in this photo.", imageDataURL: "data:image/jpeg;base64,AAAA",
+                                       questions: [DecisionQuestion(kind: .predicate, instructions: "Is it damaged?")])
+        let input = try XCTUnwrap(request.body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.first?["role"] as? String, "user")
+        let content = try XCTUnwrap(input.first?["content"] as? [[String: Any]])
+        XCTAssertEqual(content.map { $0["type"] as? String }, ["input_text", "input_image"])
+        XCTAssertEqual(content[1]["image_url"] as? String, "data:image/jpeg;base64,AAAA")
+        request.input = ""
+        XCTAssertNil(request.problem, "An image alone is enough input")
+    }
+
+    func testEmptyNamesAreFilledSoEveryAnswerCanBeMatched() throws {
+        let request = DecisionsRequest(input: "x", questions: [DecisionQuestion(kind: .predicate, instructions: "A?"),
+                                                              DecisionQuestion(kind: .predicate, name: "  ", instructions: "B?")])
+        let questions = try XCTUnwrap(request.body["questions"] as? [[String: Any]])
+        XCTAssertEqual(questions.map { $0["name"] as? String }, ["question_1", "question_2"])
+    }
+
+    func testProblemsNameWhatOpenAIWouldReject() {
+        func problem(_ questions: [DecisionQuestion], input: String = "x") -> String? {
+            DecisionsRequest(input: input, questions: questions).problem
+        }
+        let ok = DecisionQuestion(kind: .predicate, name: "a", instructions: "A?")
+        XCTAssertEqual(problem([ok], input: " \n"), "Add some input to evaluate.")
+        XCTAssertEqual(problem([]), "Add at least one question.")
+        XCTAssertEqual(problem(Array(repeating: ok, count: 401).enumerated().map { var q = $0.element; q.name = "q\($0.offset)"; return q }),
+                       "Ask at most 400 questions per request.")
+        XCTAssertEqual(problem([DecisionQuestion(kind: .predicate)]), "Question 1 needs instructions.")
+        XCTAssertEqual(problem([ok, ok]), "Two questions are named a. Give each a different name.")
+        XCTAssertEqual(problem([DecisionQuestion(kind: .choice, instructions: "?", options: [DecisionOption(value: "a")])]),
+                       "Question 1 needs 2 to 255 choices.")
+        XCTAssertEqual(problem([DecisionQuestion(kind: .choice, instructions: "?", options: [DecisionOption(value: "a"), DecisionOption(value: " a ")])]),
+                       "Question 1 has two choices with the same value.")
+        XCTAssertEqual(problem([DecisionQuestion(kind: .choice, instructions: "?", options: [DecisionOption(value: "a"), DecisionOption(value: "")])]),
+                       "Question 1 has a choice with no value.")
+        XCTAssertEqual(problem([DecisionQuestion(kind: .score, instructions: "?", options: Array(repeating: DecisionOption(value: "L"), count: 11))]),
+                       "Question 1 needs 2 to 10 levels.")
+        XCTAssertNil(problem([DecisionQuestion(kind: .score, instructions: "?", options: [DecisionOption(value: "L"), DecisionOption(value: "L")])]),
+                     "Score levels may repeat a label; only choices must be unique")
+    }
+
+    func testDecodesEveryAnswerTypeFromTheReference() {
+        let json: [String: Any] = [
+            "model": "gpt-6-luna",
+            "answers": [
+                ["type": "predicate", "name": "visible_damage", "probability": 0.92],
+                ["type": "choice", "name": "department", "choice": "billing", "confidence": 0.93,
+                 "probabilities": [["value": "billing", "probability": 0.95], ["value": "other", "probability": 0.05]]],
+                ["type": "score", "name": "severity", "score": 1.1, "confidence": 0.55,
+                 "probabilities": [["value": 0, "label": "Cosmetic", "probability": 0.1], ["value": 1, "label": "Workaround available", "probability": 0.7],
+                                   ["value": 2, "label": "Fully blocked", "probability": 0.2]]],
+                ["type": "refusal", "name": NSNull()],
+                ["type": "choice", "name": "flag", "choice": true, "confidence": 1, "probabilities": [["value": true, "probability": 1]]],
+                ["type": "ranking", "name": "future"]
+            ],
+            "usage": ["input_tokens": 42, "input_tokens_details": ["cached_tokens": 0, "cache_write_tokens": 0], "output_tokens": 0, "total_tokens": 42]
+        ]
+        let result = DecisionsResult(json: json)
+        XCTAssertEqual(result.answers, [
+            .predicate(name: "visible_damage", probability: 0.92),
+            .choice(name: "department", choice: "billing", confidence: 0.93,
+                    bars: [.init(label: "billing", probability: 0.95), .init(label: "other", probability: 0.05)]),
+            .score(name: "severity", score: 1.1, confidence: 0.55,
+                   bars: [.init(label: "Cosmetic", probability: 0.1), .init(label: "Workaround available", probability: 0.7),
+                          .init(label: "Fully blocked", probability: 0.2)]),
+            .refusal(name: nil),
+            .choice(name: "flag", choice: "true", confidence: 1, bars: [.init(label: "true", probability: 1)]),
+            .unknown(name: "future", type: "ranking")
+        ])
+        XCTAssertEqual(result.inputTokens, 42)
+        XCTAssertEqual(result.estimatedCost ?? 0, 0.0000042, accuracy: 1e-12)
+        XCTAssertNil(DecisionsResult(model: "m", answers: [], inputTokens: 2_000, cachedTokens: 1_500).estimatedCost,
+                     "Cached tokens have their own rate, so no single-rate estimate is shown")
+    }
+
+    func testQuestionsSurviveARoundTripThroughSavedData() throws {
+        let questions = DecisionsRequest.example.questions
+        let decoded = try JSONDecoder().decode([DecisionQuestion].self, from: JSONEncoder().encode(questions))
+        XCTAssertEqual(decoded, questions)
+    }
+
+    func testImagesAreResizedToAJPEGDataURL() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 1000)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 3000, height: 1000))
+        }
+        let url = try XCTUnwrap(DecisionsView.dataURL(for: image))
+        XCTAssertTrue(url.hasPrefix("data:image/jpeg;base64,"))
+        let data = try XCTUnwrap(Data(base64Encoded: String(url.dropFirst("data:image/jpeg;base64,".count))))
+        let decoded = try XCTUnwrap(UIImage(data: data))
+        XCTAssertEqual(decoded.size.width * decoded.scale, 1536)
+        XCTAssertEqual(decoded.size.height * decoded.scale, 512)
+    }
+
+    func testWorkbenchSendsTheSameExample() throws {
+        XCTAssertEqual(try APIWorkbenchView.Endpoint.decision.path(id: ""), "/decisions")
+        XCTAssertEqual(APIWorkbenchView.Endpoint.decision.method, "POST")
+        XCTAssertFalse(APIWorkbenchView.Endpoint.decision.needsID)
+        let example = try XCTUnwrap(APIWorkbenchView.Endpoint.decision.exampleBody)
+        XCTAssertEqual(example["model"] as? String, CurrentModelCatalog.decisionsModel)
+        XCTAssertEqual((example["questions"] as? [Any])?.count, 3)
+        XCTAssertEqual(APIWorkbenchView.Endpoint(rawValue: "Create decision"), .decision)
+    }
+}
+
+extension DecisionsTests {
+    /// Draws the three answer cards from the reference examples and saves the picture to the app's tmp folder as
+    /// decisions-answers.png, so the bars can be looked at without a live key.
+    func testAnswerCardsRender() throws {
+        let questions = DecisionsRequest.example.questions
+        let answers: [DecisionsResult.Answer] = [
+            .choice(name: "department", choice: "billing", confidence: 0.93,
+                    bars: [.init(label: "billing", probability: 0.95), .init(label: "technical", probability: 0.02),
+                           .init(label: "shipping", probability: 0.01), .init(label: "other", probability: 0.02)]),
+            .predicate(name: "asks_for_refund", probability: 0.92),
+            .score(name: "urgency", score: 1.1, confidence: 0.55,
+                   bars: [.init(label: "Low", probability: 0.1), .init(label: "Medium", probability: 0.7), .init(label: "High", probability: 0.2)]),
+            .refusal(name: "declined_example")
+        ]
+        let view = VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(answers.enumerated()), id: \.offset) { index, answer in
+                AnswerView(answer: answer, question: questions.indices.contains(index) ? questions[index] : nil)
+            }
+        }
+        .padding().frame(width: 360).background(Color.white)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        let image = try XCTUnwrap(renderer.uiImage)
+        XCTAssertGreaterThan(image.size.height, 300)
+        try XCTUnwrap(image.pngData()).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("decisions-answers.png"))
+    }
 }

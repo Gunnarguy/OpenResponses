@@ -1498,6 +1498,9 @@ Toggle(isOn: backgroundModeBinding) {
                 NavigationLink(destination: BatchJobsView()) {
                     Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
                 }
+                NavigationLink(destination: DecisionsView()) {
+                    Label("Decisions", systemImage: "checklist")
+                }
             } header: {
                 Label("Developer Operations", systemImage: "terminal")
             }

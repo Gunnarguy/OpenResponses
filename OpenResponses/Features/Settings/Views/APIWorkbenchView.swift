@@ -46,6 +46,7 @@ struct APIWorkbenchView: View {
         case containerFiles = "Container files", deleteContainer = "Delete container"
         case listBatches = "List batches", retrieveBatch = "Retrieve batch", cancelBatch = "Cancel batch"
         case realtimeClientSecret = "Create Realtime client secret", voiceConsents = "List voice consents"
+        case decision = "Create decision"
 
         var method: String {
             switch self {
@@ -119,6 +120,7 @@ struct APIWorkbenchView: View {
             case .cancelBatch: return "/batches/\(id)/cancel"
             case .realtimeClientSecret: return "/realtime/client_secrets"
             case .voiceConsents: return "/audio/voice_consents"
+            case .decision: return "/decisions"
             }
         }
 
@@ -136,6 +138,7 @@ struct APIWorkbenchView: View {
             case .cancel, .cancelBatch: return [:]
             case .realtimeClientSecret: return ["expires_after": ["anchor": "created_at", "seconds": 600],
                                                 "session": ["type": "realtime", "model": CurrentModelCatalog.realtimeModel]]
+            case .decision: return DecisionsRequest.example.body
             default: return nil
             }
         }

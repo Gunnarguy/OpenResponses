@@ -4,8 +4,8 @@
   "name": "Native Runner",
   "aliases": ["Native tool execution", "function and custom tools", "async and programmatic calls", "multi-agent WebSocket turns", "Tool rounds", "Client tool calls", "Tool Execution Timeline"],
   "purpose": "Coordinates native tool execution, modern model routing, function dispatch, result submission, and multi-agent WebSocket turns.",
-  "revision": "8836c39",
-  "verified_on": "2026-10-19",
+  "revision": "4eefe1b",
+  "verified_on": "2026-11-13",
   "entry_points": ["ChatView", "ChatViewModel.sendUserMessage"],
   "files": [
     {"path": "OpenResponses/Core/Services/ResponseTurnRunner.swift", "role": "primary", "blob": "1d2e962276c8460584ccd4b65cf25335b2f1292c"},
@@ -17,7 +17,7 @@
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "eff0e5032314bbd2e2e32266275ed57a4a3db139"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "a040941d9bd1d82090e50f176fc8c52bb5651e7b"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "role": "shared", "blob": "6063db0a5ab62fa8ccdb8f21e6500996c12b1287"},
-    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "3ea01702360f05a1f65ae26b9f61c73b55aa0371"},
+    {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "435729bcd21de1d74ee995339b76d118a4616b6a"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
     {"path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "role": "test", "blob": "fdacea5a395ef70925f0a86fdf261fb242a7b1aa"},
@@ -27,7 +27,7 @@
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},
     {"id": "ChatViewModel.sendUserMessage", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 1204, "match": "    func sendUserMessage(_ text: String, bypassMCPGate: Bool = false, bypassAIDataSharingConsent: Bool = false) {", "status": "VERIFIED"},
-    {"id": "CurrentModelCatalog.isModern", "kind": "function", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 77, "match": "    nonisolated static func isModern(_ id: String) -> Bool {", "status": "VERIFIED"},
+    {"id": "CurrentModelCatalog.isModern", "kind": "function", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 79, "match": "    nonisolated static func isModern(_ id: String) -> Bool {", "status": "VERIFIED"},
     {"id": "ResponseTurnRunner", "kind": "service", "path": "OpenResponses/Core/Services/ResponseTurnRunner.swift", "line": 5, "match": "final class ResponseTurnRunner {", "status": "VERIFIED"},
     {"id": "ResponseSocketRunner", "kind": "service", "path": "OpenResponses/Core/Services/ResponseSocketRunner.swift", "line": 6, "match": "final class ResponseSocketRunner {", "status": "VERIFIED"},
     {"id": "ResponsesAPIClient", "kind": "service", "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 5, "match": "final class ResponsesAPIClient {", "status": "VERIFIED"},
@@ -38,7 +38,7 @@
     {"id": "ToolTimelineView", "kind": "view", "path": "OpenResponses/Features/Chat/Components/ToolTimelineView.swift", "line": 3, "match": "struct ToolTimelineView: View {", "status": "VERIFIED"},
     {"id": "MessageBubbleView", "kind": "view", "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 3, "match": "struct MessageBubbleView: View {", "status": "VERIFIED"},
     {"id": "ManagedResponsePresentation", "kind": "util", "path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "line": 5, "match": "final class ManagedResponsePresentation {", "status": "VERIFIED"},
-    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 225, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
+    {"id": "ModernResponseOptions", "kind": "model", "path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 227, "match": "struct ModernResponseOptions: Codable, Equatable {", "status": "VERIFIED"},
     {"id": "keychain:openAIKey", "kind": "persistence", "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 31, "match": "        guard let key = KeychainService.shared.load(forKey: \"openAIKey\"), !key.isEmpty else {", "status": "VERIFIED"},
     {"id": "openai:responses", "kind": "integration", "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 28, "match": "              let url = URL(string: \"https://api.openai.com/v1\" + path), url.host == \"api.openai.com\" else {", "status": "VERIFIED"},
     {"id": "openai:responses-wss", "kind": "integration", "path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 105, "match": "        request.url = URL(string: \"wss://api.openai.com/v1/responses\")!", "status": "VERIFIED"},
@@ -94,7 +94,7 @@
     "nodes": [
       {"id": "test:AppCompletionTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 6, "match": "final class AppCompletionTests: XCTestCase {", "status": "VERIFIED"},
       {"id": "test:FunctionOutputSummarizerTests", "kind": "test", "path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "line": 4, "match": "final class FunctionOutputSummarizerTests: XCTestCase {", "status": "VERIFIED"},
-      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 9, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"},
+      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 10, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"},
       {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 7, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
@@ -103,7 +103,7 @@
       {"from": "ResponsesAPIClient", "type": "depends_on", "to": "ResponseSocketRunner", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "line": 103, "match": "func multiAgentConnection() throws -> ResponseSocketRunner.Connection {"}]},
       {"from": "ResponsesAPIClient", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 66, "match": "XCTAssertThrowsError(try ResponsesAPIClient().request(path: \"/responses\", body: invalid)) { error in"}]},
       {"from": "FunctionOutputSummarizer", "type": "tested_by", "to": "test:FunctionOutputSummarizerTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "line": 7, "match": "let summary = FunctionOutputSummarizer.failureSummary(functionName: \"getNotionDatabase\", rawOutput: raw)"}]},
-      {"from": "ResponsesAPIClient", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 786, "match": "let count = ResponsesAPIClient.tokenCountBody(from: buildRequest(prompt: prompt, stream: true))"}]},
+      {"from": "ResponsesAPIClient", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 787, "match": "let count = ResponsesAPIClient.tokenCountBody(from: buildRequest(prompt: prompt, stream: true))"}]},
       {"from": "ResponseSocketRunner", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 809, "match": "let socket = ResponseSocketRunner.Connection(events: events, send: { event in"}]},
       {"from": "ResponseTurnRunner", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 601, "match": "let result = try await ResponseTurnRunner().run(body: [\"model\": \"gpt-6-astra\", \"input\": \"Read two lists\", \"store\": false], stream: { body in"}]},
       {"from": "ResponsesAPIClient", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 964, "match": "XCTAssertFalse(ResponsesAPIClient.pretty(body).contains(\"Private instructions\"))"}]},

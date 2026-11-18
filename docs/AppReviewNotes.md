@@ -26,6 +26,7 @@ The OpenAI key is stored in the iOS Keychain and sent to OpenAI to authenticate 
 6. Enable hosted Web Search and make a simple public-information request. Inspect the returned source/citation links.
 7. Attach a small document. In a vector-store workflow, observe indexing until ready; upload success alone is not search readiness.
 8. Open **Settings → Model → API Workbench**. Inspect a template and raw JSON response. The Workbench also exposes token counting, compaction, known-conversation inspection and background-response management.
+9. Open **Settings → Advanced → Developer Operations → Decisions** (3.0). Tap **Ask** on the example support message. It sends one `POST /v1/decisions` request with three questions to `gpt-6-luna` and shows a probability bar for each answer. An optional photo comes from the system photo picker, which needs no photo-library permission.
 
 ## Voice
 

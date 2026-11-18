@@ -17,6 +17,10 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
+## Version 3.0 (in development)
+
+Version 3.0 adds a screen for OpenAI's Decisions API (`POST /v1/decisions`): **Settings → Advanced → Developer Operations → Decisions**. Write some text or add a photo, ask yes-or-no, choice and score questions, and read back a probability for each answer instead of a written reply. It runs on `gpt-6-luna`, the only model Decisions accepts, and only the input is billed ($0.10 per million tokens). The API Workbench has a matching "Create decision" endpoint. 3.0 also fills in a function call's step with its arguments while the model writes them, and Calendar and Reminders accept dates and times with no time-zone offset. See the [3.0 release notes](docs/ReleaseNotes_3.0.0.md) and the [changelog](CHANGELOG.md).
+
 ## Version 2.9
 
 Version 2.9 is about seeing what the assistant is doing while it uses its tools. Each tool step shows a spinner while it works and says Completed or Failed when it's done, steps have their real names (Code Interpreter instead of `code_interpreter_call`), and a Code Interpreter step shows the Python it ran. A chart from Code Interpreter shows once, each file it makes is listed once, and reasoning summaries show their formatting instead of raw asterisks. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md), its [What's New](fastlane/metadata/en-US/release_notes.txt) and the [changelog](CHANGELOG.md).
@@ -44,7 +48,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 * **Technical Characteristics:** Direct client-to-endpoint connections, local document parsing (with Vision OCR), and sandboxed browser automation loops.
 * **Feature Tiers:** 
   * **Core Playground**: Responses API (Chat, Tool Calling, Vision, Models)
-  * **Developer Lab**: Batch API
+  * **Developer Lab**: Batch API, Decisions API
 * **Product Lineage:** OpenResponses is the active evolution of Gunnar Hostetler's API-tooling work and supersedes the older OpenAssistant Assistants API client.
 
 ---
@@ -57,7 +61,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 | Language | Swift |
 | UI | SwiftUI |
 | Architecture | MVVM-S |
-| Primary APIs | OpenAI Responses API, Notion API, EventKit, Contacts |
+| Primary APIs | OpenAI Responses API, OpenAI Decisions API, Notion API, EventKit, Contacts |
 | Storage | Keychain, sandboxed JSON files |
 | App Store | [Download](https://apps.apple.com/app/apple-store/id6757338355?pt=127101782&ct=GitHub_Repo&mt=8) |
 | Status | Active |
@@ -70,7 +74,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 * **Direct API Connections:** Outbound HTTPS traffic routes directly from the iOS client to OpenAI and Notion endpoints without intermediate proxy servers.
 * **Asynchronous SSE Streaming:** Uses Swift Concurrency (`AsyncThrowingStream`) to parse Server-Sent Events line-by-line, dispatching UI updates to the `@MainActor` to avoid layout race conditions.
 * **Realtime Voice WebSockets:** Includes Voice Mode using `wss://` for bi-directional 24kHz PCM16 audio streaming (Direct BYOK WebSocket mode).
-* **Developer Labs:** Batch job management with complete output/error exports, defaulting to the Responses endpoint. Assistants, fine-tuning and published prompts were removed in 2.7 after OpenAI shut them down or deprecated them.
+* **Developer Labs:** Batch job management with complete output/error exports, defaulting to the Responses endpoint. Decisions (3.0) asks typed questions about text or a photo and shows the probability of each answer. Assistants, fine-tuning and published prompts were removed in 2.7 after OpenAI shut them down or deprecated them.
 * **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the secure iOS Keychain. Request inspection/logging includes targeted credential redaction; keys are transmitted to the relevant service when needed for authentication.
 * **On-device Browser Automation:** Persistent WKWebView with serialized DOM and screenshot actions, precise element references, cancellation, deadlines, and per-turn limits. Pending computer safety checks pause both tool paths. See [browser execution](docs/browser-execution.md).
 * **Local Ingestion & OCR:** Extracts text from PDFs using `PDFKit` and recognizes text in image attachments using the native `Vision` OCR framework locally on-device.
@@ -158,6 +162,7 @@ flowchart TD
 | **Browser Automation** | [ComputerService.swift](OpenResponses/Core/Services/ComputerService.swift) | Sandboxed browser automation and capture loops. |
 | **File Extraction** | [FileConverterService.swift](OpenResponses/Core/Services/FileConverterService.swift) | On-device file conversions and OCR text recognition. |
 | **Notion Client** | [NotionService.swift](OpenResponses/Core/Services/NotionService.swift) | Direct Notion workspace database integrations. |
+| **Decisions** | [DecisionsModels.swift](OpenResponses/Core/Models/DecisionsModels.swift), [DecisionsView.swift](OpenResponses/Features/Settings/Views/DecisionsView.swift) | `POST /v1/decisions` request building, validation, answer decoding and the playground screen. |
 
 ---
 
@@ -185,7 +190,7 @@ The playground now includes a shared current-model catalog, Astra-compatible rea
 
 Native chat now executes configured function/custom tools, Astra async lookups, programmatic tool calls, and multi-agent responses. Multi-agent uses WebSocket result injection so waiting agents can resume immediately. Read-only calls can overlap; writes run sequentially. Root answers, subagent activity, tool results, and image previews appear in the chat. Interrupted turns preserve known results and mark uncertain outcomes without automatically retrying writes. MCP configuration is available again. These orchestration features apply to current-model foreground requests with Computer Use disabled.
 
-**Settings → Model → API Workbench** exposes editable requests over HTTP, SSE, and persistent Responses WebSockets. It includes steering, tool-result batches and live injection, full response export, input token counting, standalone compaction, response retrieval/cancellation/input items, and conversation retrieval/items. Examples cover asynchronous functions, custom text tools, programmatic tool calling, hosted shell, image generation, apply patch, and the multi-agent beta. Workbench client tools use actual results supplied by the user; native chat executes its configured tools.
+**Settings → Model → API Workbench** exposes editable requests over HTTP, SSE, and persistent Responses WebSockets. It includes steering, tool-result batches and live injection, full response export, input token counting, standalone compaction, response retrieval/cancellation/input items, and conversation retrieval/items. Examples cover asynchronous functions, custom text tools, programmatic tool calling, hosted shell, image generation, apply patch, and the multi-agent beta, and "Create decision" sends a Decisions API request (3.0). Workbench client tools use actual results supplied by the user; native chat executes its configured tools.
 
 Manual chat compaction preserves the complete returned output window, including opaque items, then replays it on the next turn. It never treats a compaction ID as a response ID. The workbench displays unknown events and exports the complete final response; its on-screen event preview is bounded.
 
@@ -260,7 +265,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 ## Roadmap
 
-The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7, 2.8 and 2.9 have shipped. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
+The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7, 2.8 and 2.9 have shipped, and 3.0, with the Decisions screen, is in development. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
 
 ---
 

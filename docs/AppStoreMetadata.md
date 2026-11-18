@@ -55,6 +55,7 @@ Capture the actual release candidate with nonprivate demo/test data. Suggested c
 
 1. Chat with current model selection, streamed text and a readable activity/result card.
 2. API Workbench with a harmless request and a complete-response export affordance.
+   For 3.0, the Decisions screen with the example's answer bars is a candidate too.
 3. Continuing voice mode with its listening/mute controls.
 4. MCP discovery showing verified tools and schema detail without credentials.
 5. Browser/search results showing a real page or useful source citations.
