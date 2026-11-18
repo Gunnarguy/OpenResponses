@@ -71,8 +71,7 @@ public final class AppleReminderRepository: Sendable {
         completed: Bool?,
         listIdentifiers: [String]?
     ) async throws -> [AppleReminderSummary] {
-        let start = try parseDate(startISO8601)
-        let end = try parseDate(endISO8601)
+        let (start, end) = try AppleDateUtilities.queryRange(startISO8601: startISO8601, endISO8601: endISO8601)
 
         return try await fetchReminders(
             dueBetween: start,
@@ -88,6 +87,7 @@ public final class AppleReminderRepository: Sendable {
         title: String,
         notes: String?,
         dueDate: Date?,
+        dueDateHasTime: Bool = true,
         priority: Int?,
         listIdentifier: String?
     ) async throws -> AppleReminderSummary {
@@ -99,7 +99,7 @@ public final class AppleReminderRepository: Sendable {
         reminder.priority = priority ?? 0
 
         if let dueDate {
-            let dueComponents = AppleDateUtilities.makeReminderDateComponents(from: dueDate)
+            let dueComponents = AppleDateUtilities.makeReminderDateComponents(from: dueDate, includeTime: dueDateHasTime)
             reminder.startDateComponents = dueComponents
             reminder.dueDateComponents = dueComponents
         }
@@ -128,14 +128,6 @@ public final class AppleReminderRepository: Sendable {
             priority: reminder.priority,
             notes: reminder.notes
         )
-    }
-
-    private func parseDate(_ rawValue: String?) throws -> Date? {
-        guard let rawValue else { return nil }
-        guard let parsed = AppleDateUtilities.parseQueryDate(rawValue) else {
-            throw AppleDataAccessError.invalidDate(rawValue)
-        }
-        return parsed
     }
 
     private func fetchReminderObjects(

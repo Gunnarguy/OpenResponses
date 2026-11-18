@@ -167,13 +167,7 @@ extension AppleProvider: AppleCalendarReadable {
         notes: String?,
         calendarIdentifier: String?
     ) async throws -> AppleCalendarEventDetail {
-        guard let startDate = AppleDateUtilities.parseISO8601(startISO8601) else {
-            throw AppleDataAccessError.invalidDate(startISO8601)
-        }
-
-        guard let endDate = AppleDateUtilities.parseISO8601(endISO8601) else {
-            throw AppleDataAccessError.invalidDate(endISO8601)
-        }
+        let (startDate, endDate) = try AppleDateUtilities.eventInterval(startISO8601: startISO8601, endISO8601: endISO8601)
 
         let summary = try await calendarRepo.createEvent(
             title: title,
@@ -253,20 +247,13 @@ extension AppleProvider: AppleReminderReadable {
         priority: Int?,
         listIdentifier: String?
     ) async throws -> AppleReminderDetail {
-        let dueDate: Date?
-        if let dueDateISO8601 {
-            guard let parsed = AppleDateUtilities.parseISO8601(dueDateISO8601) else {
-                throw AppleDataAccessError.invalidDate(dueDateISO8601)
-            }
-            dueDate = parsed
-        } else {
-            dueDate = nil
-        }
+        let due = try AppleDateUtilities.reminderDue(dueDateISO8601)
 
         let summary = try await reminderRepo.createReminder(
             title: title,
             notes: notes,
-            dueDate: dueDate,
+            dueDate: due?.date,
+            dueDateHasTime: due?.hasTime ?? true,
             priority: priority,
             listIdentifier: listIdentifier
         )

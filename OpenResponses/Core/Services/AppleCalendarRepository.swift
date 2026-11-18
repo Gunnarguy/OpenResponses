@@ -62,13 +62,8 @@ public final class AppleCalendarRepository {
         endISO8601: String,
         calendarIdentifiers: [String]?
     ) async throws -> [AppleCalendarItemSummary] {
-        guard let start = AppleDateUtilities.parseQueryDate(startISO8601) else {
-            throw AppleDataAccessError.invalidDate(startISO8601)
-        }
-
-        guard let end = AppleDateUtilities.parseQueryDate(endISO8601) else {
-            throw AppleDataAccessError.invalidDate(endISO8601)
-        }
+        let range = try AppleDateUtilities.queryRange(startISO8601: startISO8601, endISO8601: endISO8601)
+        guard let start = range.start, let end = range.end else { throw AppleDataAccessError.invalidDateRange }
 
         return try await fetchEvents(
             start: start,
