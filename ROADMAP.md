@@ -5,6 +5,10 @@
 ## 3.0 (in development)
 
 - [x] Decisions screen (Settings → Advanced → Developer Operations → Decisions) and an API Workbench "Create decision" endpoint for `POST /v1/decisions`, with unit tests (November 13, 2026).
+- [x] A function call's step shows its arguments while they stream (October 19, 2026).
+- [x] Calendar and Reminders accept a date or time with no time-zone offset (October 21 to 23, 2026).
+- [x] App Store rating request with Apple's `requestReview` sheet, and a "Rate OpenResponses" link in About (November 14, 2026).
+- [ ] The rating sheet seen once in a development build.
 - [ ] A live Decisions request: `scripts/decisions_probe.sh [Keychain service]`.
 - [x] The Decisions screen, its Demo Mode guard, the question editor and the answer cards checked on simulator 2460D513 (November 13, 2026).
 - [ ] A live answer on a device with a key.

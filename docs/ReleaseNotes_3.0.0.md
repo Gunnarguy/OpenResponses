@@ -1,6 +1,6 @@
 # OpenResponses 3.0 release notes
 
-In development. Version 3.0 was created in App Store Connect on October 19, 2026, and nothing is submitted yet. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
+Version 3.0 was created in App Store Connect on October 19, 2026. Its code was pushed on November 17, 2026 (`7a12b34`, Xcode Cloud run 55), and nothing is submitted yet. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
 
 ## Tool steps
 
@@ -32,7 +32,24 @@ OpenAI's Decisions API (`POST /v1/decisions`) is generally available: it returns
 
 Request building, validation and answer decoding are in `DecisionsModels.swift` (`DecisionsRequest.problem` names what OpenAI would reject before the request is sent). The Agents API (`/v1/agents/sessions`, beta) was considered and not added: the app already does multi-agent turns, programmatic tool calling, the hosted shell and MCP through the Responses API, and the Agents API has no Zero Data Retention.
 
+## Rating request
+
+Until 3.0 the app never asked for a rating: on November 14, 2026 it had 359 first-time downloads and 1 US rating. 3.0 asks with Apple's own sheet (SwiftUI `requestReview`; `RequestReviewAction` and the Human Interface Guidelines' Ratings and reviews page, read November 14, 2026).
+
+| Rule | Value |
+| --- | --- |
+| Asks on | the first chat answer that finished with no failed or cancelled tool step, or the third finished answer of any kind |
+| When | two seconds after the answer finishes, only while the app is in front, nothing is streaming and onboarding is closed; otherwise held until the next return to the app |
+| Per version | once |
+| Between asks | at least 14 days |
+| Never | at launch, in onboarding, in Explore Demo, from a button, under tests; an error, a stopped answer or one waiting for an approval doesn't count |
+| Recorded as asked | only after the request was made. Apple decides whether the sheet shows (at most three times in 365 days, never in TestFlight) |
+
+About has a "Rate OpenResponses" link to `https://apps.apple.com/app/id6757338355?action=write-review`. The rules are `ReviewPromptService.shouldAsk` and `outcome`; the request is made in `ContentView.askForRatingWhenInFront`.
+
 ## Verification
+
+November 17, 2026, the tree that was pushed (`7a12b34`, with every 3.0 change): the full unit suite (`-only-testing:OpenResponsesTests`) on simulator "OpenResponses tests" 7AFAC899 (iPhone 18 Pro, iOS 27.0): 384 executed, 4 skipped, 0 failures, including the 14 in `ReviewPromptServiceTests`. Xcode Cloud run 55 archives that commit. Not seen yet: the rating sheet itself, and a live Decisions answer.
 
 `ToolRowsTextAndFilesTests` and `StreamingEventDecodingTests` on simulator "OpenResponses tests" 96574C1C (created October 19, 2026): 23 executed, 0 failures, including the new `testFunctionCallArgumentsStreamIntoTheirRow` and `testArgumentsDoneFillsAnEmptyRowAndCustomInputHasNoRow`. The full suite CI runs has not been run on this change yet. Code: commit `8836c39`.
 

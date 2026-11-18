@@ -7,6 +7,7 @@ New in 3.0 (no new permissions or data collection; one new OpenAI endpoint with 
 • The API Workbench has a "Create decision" endpoint.
 • A function call's step under an answer fills in its arguments while the model writes them.
 • Calendar and Reminders accept a date or time without a time-zone offset, read in the device's time zone.
+• After a finished answer the app may show Apple's rating sheet; About has a Rate link.
 
 In the app since 2.9: each tool step shows a spinner while it runs and Completed or Failed when it ends, and tapping a step shows what it did.
 

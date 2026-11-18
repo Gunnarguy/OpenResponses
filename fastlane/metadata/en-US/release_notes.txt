@@ -13,4 +13,14 @@ DECISIONS
 • The API Workbench has a Create decision endpoint too, so you can send the raw request yourself.
 
 
+CALENDAR AND REMINDERS
+
+• Events and reminders get added when the model leaves the time zone off a time, which it does a lot.  In 2.9 those failed, twelve out of twelve on one photographed schedule.  Now a time with no zone is read in your phone's time zone.
+
+
+ALSO
+
+• About has a Rate OpenResponses link that opens the App Store's review page.
+
+
 Still no account, still your own key, and your chat history stays on your phone.
