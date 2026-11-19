@@ -1,140 +1,528 @@
 import SwiftUI
 import UIKit
 
-/// Consolidated Settings container aligned with OpenAI Responses API.
-/// Tabs: General, Model, Tools, Advanced
+/// Settings, laid out like the system Settings app: one list of named pages, each row showing what is set now, and a
+/// search field that finds any option by name.
+///
+/// Until 3.1 Settings was five segmented tabs (General, Model, Tools, MCP, Advanced). Local Python, the hosted shell,
+/// multi-agent, moderation, the voice settings and the API Workbench sat at the bottom of the Model tab under one
+/// "Current Responses capabilities" heading, Decisions and Batch under Advanced, and Verbosity appeared twice. Gunnar,
+/// 2026-11-19: "holy shit are some of the best options hidden".
 struct SettingsHomeView: View {
     @EnvironmentObject private var viewModel: ChatViewModel
     @StateObject private var promptLibrary = PromptLibrary()
+    @Environment(\.dismiss) private var dismiss
 
-    @State private var apiKey: String = ""
-    @State private var apiKeySaveState: ApiKeySaveState = .idle
-    @State private var apiKeyLastSavedNormalized: String = ""
-    @State private var apiKeyPendingSave: DispatchWorkItem?
-    @State private var selectedTab: SettingsTab = .general
-
-    // Sheets
-    @State private var showingNotionQuickConnect = false
-    @State private var showingFileManager = false
+    @State private var path: [SettingsPage] = []
+    @State private var searchText = ""
+    @State private var hasApiKey = false
     @State private var showingPromptLibrary = false
-    @State private var showingMCPGallery = false
-    @State private var showingRemoteMCPSheet = false
+    @State private var showingVoiceSettings = false
+    @State private var showingAbout = false
+    @State private var resetConfirm = false
+    @State private var showingFiles = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                // Segmented tabs
-                Picker("", selection: $selectedTab) {
-                    ForEach(SettingsTab.allCases, id: \.self) { tab in
-                        Text(tab.title).tag(tab)
-                    }
+        NavigationStack(path: $path) {
+            Form {
+                if searchText.isEmpty {
+                    rootSections
+                } else {
+                    searchResults
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                // Tab content
-                Group {
-                    switch selectedTab {
-                    case .general:
-                        GeneralTab(
-                            apiKey: $apiKey,
-                            apiKeySaveState: $apiKeySaveState,
-                            isApiKeyDirty: normalizeApiKey(apiKey) != apiKeyLastSavedNormalized,
-                            saveApiKeyNow: { commitApiKey(apiKey) },
-                            showingPromptLibrary: $showingPromptLibrary
-                        )
-                    case .model: ModelTab()
-                    case .tools: ToolsTab(
-                        showingNotionQuickConnect: $showingNotionQuickConnect,
-                        showingFileManager: $showingFileManager
-                    )
-                    case .mcp: MCPConnectionsView(viewModel: viewModel)
-                    case .advanced: AdvancedTab()
-                    }
-                }
-                .animation(.none, value: selectedTab)
             }
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search settings")
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "gearshape.fill")
-                            .foregroundColor(.blue)
-                        Text(selectedTab == .mcp ? "Connections" : "Settings").font(.headline)
-                    }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
+            .navigationDestination(for: SettingsPage.self) { page in
+                destination(for: page)
+            }
         }
-        .onAppear {
-            let loaded = KeychainService.shared.load(forKey: "openAIKey") ?? ""
-            apiKey = loaded
-            apiKeyLastSavedNormalized = normalizeApiKey(loaded)
-            apiKeySaveState = .idle
-        }
-        .onChange(of: apiKey) { _, newValue in
-            scheduleApiKeyCommit(newValue)
-        }
-        .onDisappear {
-            commitApiKey(apiKey)
-        }
-        .sheet(isPresented: $showingNotionQuickConnect) {
-            NotionConnectionView()
-        }
-        .sheet(isPresented: $showingFileManager) {
-            FileManagerView()
-                .environmentObject(viewModel)
-        }
+        .onAppear(perform: refreshKeyStatus)
+        .onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in refreshKeyStatus() }
         .sheet(isPresented: $showingPromptLibrary) {
             PromptLibraryView(
                 library: promptLibrary,
                 createPromptFromCurrentSettings: { viewModel.activePrompt }
             )
         }
-.sheet(isPresented: $showingMCPGallery) {
-    MCPConnectorGalleryView(viewModel: viewModel)
-}
-.sheet(isPresented: $showingRemoteMCPSheet) {
-    RemoteMCPSetupSheet()
-        .environmentObject(viewModel)
-}
+        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
+        .sheet(isPresented: $showingAbout) { AboutView() }
+        .sheet(isPresented: $showingFiles) { FileManagerView().environmentObject(viewModel) }
     }
 
-    private func normalizeApiKey(_ raw: String) -> String {
+    private func refreshKeyStatus() {
+        hasApiKey = !(KeychainService.shared.load(forKey: "openAIKey") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var prompt: Prompt { viewModel.activePrompt }
+
+    // MARK: Root
+
+    @ViewBuilder
+    private var rootSections: some View {
+        Section {
+            NavigationLink(value: SettingsPage.account) {
+                SettingsRow("OpenAI API Key", icon: hasApiKey ? "key.fill" : "key.slash", tint: hasApiKey ? .green : .red,
+                            value: hasApiKey ? "Saved" : "Not set")
+            }
+            if !hasApiKey || viewModel.exploreModeEnabled {
+                Toggle(isOn: Binding(
+                    get: { viewModel.exploreModeEnabled },
+                    set: { viewModel.setExploreModeEnabled($0) }
+                )) {
+                    SettingsToggleLabel("Demo Mode", icon: "play.circle.fill", tint: .orange,
+                                        detail: "Try the app with built-in answers. Nothing is sent to OpenAI.")
+                }
+                if viewModel.exploreModeEnabled {
+                    Button { viewModel.startExploreDemoConversation(); dismiss() } label: {
+                        Label("Start Demo", systemImage: "sparkles")
+                    }
+                    Button(role: .destructive) { viewModel.exitExploreDemo() } label: {
+                        Label("Exit Demo", systemImage: "xmark.circle")
+                    }
+                }
+            }
+        }
+
+        Section {
+            NavigationLink(value: SettingsPage.model) {
+                SettingsRow("Model & Reasoning", icon: "cpu", tint: .blue, value: modelSummary)
+            }
+            NavigationLink(value: SettingsPage.instructions) {
+                SettingsRow("Instructions", icon: "text.quote", tint: .indigo, value: instructionsSummary)
+            }
+            NavigationLink(value: SettingsPage.responseFormat) {
+                SettingsRow("Response Format", icon: "text.alignleft", tint: .teal, value: responseSummary)
+            }
+            Button { showingVoiceSettings = true } label: {
+                SettingsRow("Voice", icon: "waveform", tint: .pink,
+                            value: CurrentModelCatalog.supportedRealtimeModel(UserDefaults.standard.string(forKey: "realtime_model") ?? CurrentModelCatalog.realtimeModel))
+            }
+            .buttonStyle(.plain)
+        } header: {
+            Label("Assistant", systemImage: "sparkles")
+        }
+
+        Section {
+            NavigationLink(value: SettingsPage.tools) {
+                SettingsRow("Tools", icon: "wrench.and.screwdriver.fill", tint: .orange, value: toolsSummary)
+            }
+            NavigationLink(value: SettingsPage.agents) {
+                SettingsRow("Agents & Tool Calling", icon: "person.3.fill", tint: .purple, value: agentsSummary)
+            }
+            if AppFeatureFlags.isMCPAvailable {
+                NavigationLink(value: SettingsPage.connections) {
+                    SettingsRow("Connected Apps (MCP)", icon: "link", tint: .cyan, value: nil)
+                }
+            }
+            Button { showingFiles = true } label: {
+                SettingsRow("Files & Vector Stores", icon: "folder.fill", tint: .brown, value: nil)
+            }
+            .buttonStyle(.plain)
+        } header: {
+            Label("What the assistant can do", systemImage: "wrench.and.screwdriver")
+        } footer: {
+            Text("Tools let the assistant search the web, read your files, run code, draw images, use your calendar and more.")
+        }
+
+        Section {
+            Button { showingPromptLibrary = true } label: {
+                SettingsRow("Prompt Library", icon: "books.vertical.fill", tint: .mint, value: nil)
+            }
+            .buttonStyle(.plain)
+            Button(role: .destructive) { resetConfirm = true } label: {
+                Label("Reset All Prompt Settings", systemImage: "arrow.counterclockwise")
+            }
+            .alert("Reset Prompt Settings?", isPresented: $resetConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Reset", role: .destructive) { viewModel.resetToDefaultPrompt() }
+            } message: {
+                Text("Restore the model, instructions, tools and options to their defaults. Your API key, conversations and voice choice are kept.")
+            }
+        } header: {
+            Label("Presets", systemImage: "bookmark")
+        }
+
+        Section {
+            NavigationLink(value: SettingsPage.workbench) {
+                SettingsRow("API Workbench", icon: "hammer.fill", tint: .gray, value: nil)
+            }
+            NavigationLink(value: SettingsPage.decisions) {
+                SettingsRow("Decisions", icon: "checklist", tint: .green, value: nil)
+            }
+            NavigationLink(value: SettingsPage.batch) {
+                SettingsRow("Batch Jobs", icon: "clock.arrow.circlepath", tint: .blue, value: nil)
+            }
+            NavigationLink(value: SettingsPage.developer) {
+                SettingsRow("Request Options", icon: "slider.horizontal.3", tint: .gray, value: serviceTierName)
+            }
+        } header: {
+            Label("Developer", systemImage: "hammer")
+        } footer: {
+            Text("Send any API request by hand, ask yes-or-no and scoring questions, run batches, and choose what each response includes.")
+        }
+
+        Section {
+            NavigationLink(value: SettingsPage.privacy) {
+                SettingsRow("Privacy & Safety", icon: "hand.raised.fill", tint: .blue, value: prompt.storeResponses ? "Stored on OpenAI" : "Not stored")
+            }
+            Button { showingAbout = true } label: {
+                SettingsRow("About, Licenses & Rating", icon: "info.circle.fill", tint: .gray, value: nil)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: Summaries shown on the root rows
+
+    private var modelSummary: String {
+        let caps = ModelCompatibilityService.shared.getCapabilities(for: prompt.openAIModel)
+        guard caps?.supportsReasoningEffort == true else { return prompt.openAIModel }
+        return "\(prompt.openAIModel) · \(ModelConfigurationView.effortName(prompt.reasoningEffort))"
+    }
+
+    private var instructionsSummary: String {
+        let text = prompt.systemInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "None" : "Custom"
+    }
+
+    private var responseSummary: String {
+        var parts = [prompt.textFormatType == "json_schema" ? "JSON" : "Text"]
+        if !prompt.enableStreaming { parts.append("no streaming") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var enabledToolNames: [String] {
+        var names: [String] = []
+        if prompt.enableWebSearch { names.append("Web") }
+        if prompt.enableFileSearch { names.append("Files") }
+        if prompt.enableCodeInterpreter { names.append("Code") }
+        if prompt.currentOptions.localPython { names.append("Python") }
+        if prompt.currentOptions.hostedShell { names.append("Shell") }
+        if prompt.enableImageGeneration { names.append("Images") }
+        if prompt.enableComputerUse { names.append("Computer") }
+        if prompt.enableAppleIntegrations { names.append("Apple") }
+        if prompt.enableCustomTool { names.append("Custom") }
+        return names
+    }
+
+    private var toolsSummary: String {
+        let names = enabledToolNames
+        if names.isEmpty { return "None on" }
+        if names.count <= 3 { return names.joined(separator: ", ") }
+        return "\(names.count) on"
+    }
+
+    private var agentsSummary: String {
+        if prompt.backgroundMode { return "Background" }
+        if prompt.currentOptions.multiAgent { return "Multi-agent" }
+        switch prompt.toolChoice {
+        case "required": return "Always use tools"
+        case "none": return "No tools"
+        default: return "Automatic"
+        }
+    }
+
+    private var serviceTierName: String {
+        switch prompt.serviceTier {
+        case "default": return "Standard"
+        case "auto", "": return "Auto"
+        default: return prompt.serviceTier.capitalized
+        }
+    }
+
+    // MARK: Search
+
+    @ViewBuilder
+    private var searchResults: some View {
+        let matches = SettingsSearchIndex.matches(searchText)
+        if matches.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+        } else {
+            Section("Settings") {
+                ForEach(matches) { entry in
+                    Button {
+                        open(entry.page)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.title).foregroundStyle(.primary)
+                            Text(entry.location).font(.caption).foregroundStyle(Color.accessibleSecondaryText)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func open(_ page: SettingsPage) {
+        searchText = ""
+        switch page {
+        case .voice: showingVoiceSettings = true
+        case .about: showingAbout = true
+        case .promptLibrary: showingPromptLibrary = true
+        case .files: showingFiles = true
+        default: path = [page]
+        }
+    }
+
+    // MARK: Pages
+
+    @ViewBuilder
+    private func destination(for page: SettingsPage) -> some View {
+        switch page {
+        case .account: AccountPage()
+        case .model:
+            Form {
+                ModelConfigurationView(activePrompt: $viewModel.activePrompt, openAIService: AppContainer.shared.openAIService,
+                                       onSave: { viewModel.saveActivePrompt() }, part: .model)
+                ReasoningOptionsSection()
+            }
+            .navigationTitle("Model & Reasoning")
+        case .instructions:
+            Form {
+                ModelConfigurationView(activePrompt: $viewModel.activePrompt, openAIService: AppContainer.shared.openAIService,
+                                       onSave: { viewModel.saveActivePrompt() }, part: .instructions)
+            }
+            .navigationTitle("Instructions")
+            .onDisappear { viewModel.saveActivePrompt() }
+        case .responseFormat:
+            Form {
+                ModelConfigurationView(activePrompt: $viewModel.activePrompt, openAIService: AppContainer.shared.openAIService,
+                                       onSave: { viewModel.saveActivePrompt() }, part: .responseFormat)
+                CompactionSection()
+            }
+            .navigationTitle("Response Format")
+            .onDisappear { viewModel.saveActivePrompt() }
+        case .tools: ToolsTab().navigationTitle("Tools")
+        case .customTool:
+            Form { CustomToolSections() }
+                .navigationTitle("Custom Tool")
+                .onDisappear { viewModel.saveActivePrompt() }
+        case .agents:
+            Form { AgentOptionsSections() }
+                .navigationTitle("Agents & Tool Calling")
+                .onDisappear { viewModel.saveActivePrompt() }
+        case .connections: MCPConnectionsView(viewModel: viewModel).navigationTitle("Connected Apps")
+        case .workbench: APIWorkbenchView()
+        case .decisions: DecisionsView()
+        case .batch: BatchJobsView()
+        case .developer: AdvancedTab().navigationTitle("Request Options")
+        case .privacy: PrivacyPage()
+        case .voice, .about, .promptLibrary, .files: EmptyView()
+        }
+    }
+}
+
+/// Every page Settings can open. Sheets (voice, about, prompt library) are listed so search can open them.
+enum SettingsPage: Hashable {
+    case account, model, instructions, responseFormat, voice
+    case tools, customTool, agents, connections, files
+    case promptLibrary
+    case workbench, decisions, batch, developer
+    case privacy, about
+}
+
+/// A Settings row: colored icon tile, name, and the current value in gray on the right.
+struct SettingsRow: View {
+    let title: LocalizedStringKey
+    let icon: String
+    let tint: Color
+    let value: String?
+
+    init(_ title: LocalizedStringKey, icon: String, tint: Color, value: String?) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        self.value = value
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SettingsIconTile(icon: icon, tint: tint)
+            Text(title).foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            if let value {
+                Text(value)
+                    .foregroundStyle(Color.accessibleSecondaryText)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Search index
+
+/// Every option a person might look for, with the words they might use, and the page that holds it.
+struct SettingsSearchIndex {
+    struct Entry: Identifiable {
+        let title: String
+        let location: String
+        let page: SettingsPage
+        let keywords: String
+        var id: String { title + location }
+    }
+
+    static func matches(_ query: String) -> [Entry] {
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return [] }
+        return entries.filter { entry in
+            let haystack = (entry.title + " " + entry.location + " " + entry.keywords).lowercased()
+            return words.allSatisfy { haystack.contains($0) }
+        }
+    }
+
+    static let entries: [Entry] = [
+        Entry(title: "OpenAI API Key", location: "API Key", page: .account, keywords: "key sk token account sign"),
+        Entry(title: "Demo Mode", location: "Settings", page: .account, keywords: "explore demo offline try"),
+        Entry(title: "Model", location: "Model & Reasoning", page: .model, keywords: "gpt sol luna astra choose switch"),
+        Entry(title: "Reasoning Effort", location: "Model & Reasoning", page: .model, keywords: "think thinking effort high low"),
+        Entry(title: "Reasoning Summary", location: "Model & Reasoning", page: .model, keywords: "thoughts summary show thinking"),
+        Entry(title: "Answer Length (Verbosity)", location: "Model & Reasoning", page: .model, keywords: "verbosity short long concise"),
+        Entry(title: "Temperature and Top P", location: "Model & Reasoning", page: .model, keywords: "creativity random sampling"),
+        Entry(title: "Pro Reasoning Mode", location: "Model & Reasoning", page: .model, keywords: "pro compute harder"),
+        Entry(title: "Reuse Earlier Reasoning", location: "Model & Reasoning", page: .model, keywords: "reasoning context turns"),
+        Entry(title: "System Instructions", location: "Instructions", page: .instructions, keywords: "prompt persona personality behavior"),
+        Entry(title: "Developer Instructions", location: "Instructions", page: .instructions, keywords: "rules developer"),
+        Entry(title: "JSON Schema Output", location: "Response Format", page: .responseFormat, keywords: "structured json format schema"),
+        Entry(title: "Limit Response Length", location: "Response Format", page: .responseFormat, keywords: "max output tokens length"),
+        Entry(title: "Stream Responses", location: "Response Format", page: .responseFormat, keywords: "streaming live typing"),
+        Entry(title: "Compact Long Chats", location: "Response Format", page: .responseFormat, keywords: "compaction context long truncation"),
+        Entry(title: "Voice", location: "Voice", page: .voice, keywords: "realtime live audio speak talk voice"),
+        Entry(title: "Web Search", location: "Tools", page: .tools, keywords: "internet browse search domains location"),
+        Entry(title: "File Search", location: "Tools", page: .tools, keywords: "vector store documents rag hybrid"),
+        Entry(title: "Code Interpreter", location: "Tools", page: .tools, keywords: "python sandbox charts memory"),
+        Entry(title: "Local Python", location: "Tools", page: .tools, keywords: "python pyodide device offline code"),
+        Entry(title: "Hosted Shell", location: "Tools", page: .tools, keywords: "shell terminal container bash"),
+        Entry(title: "Image Generation", location: "Tools", page: .tools, keywords: "draw picture image size quality"),
+        Entry(title: "Computer Use", location: "Tools", page: .tools, keywords: "browser click automate"),
+        Entry(title: "Apple Calendar, Reminders and Contacts", location: "Tools", page: .tools, keywords: "calendar reminders contacts events apple"),
+        Entry(title: "Notion", location: "Connected Apps", page: .connections, keywords: "notion mcp"),
+        Entry(title: "Custom Tool", location: "Tools", page: .customTool, keywords: "function webhook calculator echo"),
+        Entry(title: "Connected Apps (MCP)", location: "Connected Apps", page: .connections, keywords: "mcp connectors servers remote"),
+        Entry(title: "Files & Vector Stores", location: "Files", page: .files, keywords: "upload files vector stores manage"),
+        Entry(title: "Multi-agent", location: "Agents & Tool Calling", page: .agents, keywords: "subagents agents helpers parallel"),
+        Entry(title: "Load Tools on Demand", location: "Agents & Tool Calling", page: .agents, keywords: "tool search defer"),
+        Entry(title: "Async Lookups", location: "Agents & Tool Calling", page: .agents, keywords: "async background tools"),
+        Entry(title: "Programmatic Tool Calling", location: "Agents & Tool Calling", page: .agents, keywords: "programmatic code tools"),
+        Entry(title: "Tool Choice", location: "Agents & Tool Calling", page: .agents, keywords: "required auto none use tools"),
+        Entry(title: "Parallel Tool Calls", location: "Agents & Tool Calling", page: .agents, keywords: "parallel several"),
+        Entry(title: "Limit Tool Calls", location: "Agents & Tool Calling", page: .agents, keywords: "max tool calls"),
+        Entry(title: "Background Mode", location: "Agents & Tool Calling", page: .agents, keywords: "background long task"),
+        Entry(title: "Prompt Library", location: "Presets", page: .promptLibrary, keywords: "presets save load"),
+        Entry(title: "API Workbench", location: "Developer", page: .workbench, keywords: "raw request endpoint curl http"),
+        Entry(title: "Decisions", location: "Developer", page: .decisions, keywords: "classify yes no score choice luna"),
+        Entry(title: "Batch Jobs", location: "Developer", page: .batch, keywords: "batch jsonl bulk"),
+        Entry(title: "Service Tier", location: "Request Options", page: .developer, keywords: "flex fast priority speed cost"),
+        Entry(title: "Response Includes and Logprobs", location: "Request Options", page: .developer, keywords: "include logprobs sources results"),
+        Entry(title: "Custom Metadata", location: "Request Options", page: .developer, keywords: "metadata json tags"),
+        Entry(title: "Store on OpenAI", location: "Privacy & Safety", page: .privacy, keywords: "store retention history"),
+        Entry(title: "Content Moderation", location: "Privacy & Safety", page: .privacy, keywords: "moderation block flagged safety"),
+        Entry(title: "Data Sharing Consent", location: "Privacy & Safety", page: .privacy, keywords: "consent privacy policy sharing"),
+        Entry(title: "Safety Identifier and Prompt Cache Key", location: "Privacy & Safety", page: .privacy, keywords: "cache identity safety identifier"),
+        Entry(title: "About and Licenses", location: "About", page: .about, keywords: "version licenses rate review"),
+    ]
+}
+
+// MARK: - API Key page
+
+private struct AccountPage: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+    @State private var apiKey: String = ""
+    @State private var saveState: ApiKeySaveState = .idle
+    @State private var lastSavedNormalized: String = ""
+    @State private var pendingSave: DispatchWorkItem?
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 8) {
+                    SecureField("sk-...", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .submitLabel(.done)
+                        .onSubmit { commit(apiKey) }
+                        .accessibilityConfiguration(
+                            hint: AccessibilityUtils.Hint.apiKeyField,
+                            identifier: AccessibilityUtils.Identifier.apiKeyField
+                        )
+                    if !apiKey.isEmpty {
+                        Button { apiKey = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                        }
+                        .accessibilityLabel("Clear API key")
+                    }
+                    saveStatusBadge
+                }
+            } header: {
+                Text("OpenAI API Key")
+            } footer: {
+                Text("Every request uses this key and is billed to your OpenAI account. It is stored in this device's Keychain. Create one at platform.openai.com.")
+            }
+        }
+        .navigationTitle("API Key")
+        .onAppear {
+            let loaded = KeychainService.shared.load(forKey: "openAIKey") ?? ""
+            apiKey = loaded
+            lastSavedNormalized = normalize(loaded)
+            saveState = .idle
+        }
+        .onChange(of: apiKey) { _, newValue in schedule(newValue) }
+        .onDisappear { commit(apiKey) }
+    }
+
+    @ViewBuilder
+    private var saveStatusBadge: some View {
+        switch saveState {
+        case .idle:
+            if normalize(apiKey) != lastSavedNormalized {
+                Button { commit(apiKey) } label: {
+                    Image(systemName: "checkmark.circle").foregroundColor(.blue)
+                }
+                .accessibilityLabel("Save API key")
+            }
+        case .saving:
+            ProgressView().controlSize(.small)
+        case .saved:
+            Image(systemName: "checkmark.circle.fill").foregroundColor(.green).accessibilityLabel("Saved")
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red).accessibilityLabel("Not saved")
+        }
+    }
+
+    private func normalize(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func scheduleApiKeyCommit(_ raw: String) {
-        let normalized = normalizeApiKey(raw)
-        guard normalized != apiKeyLastSavedNormalized else { return }
-
-        apiKeyPendingSave?.cancel()
-        let work = DispatchWorkItem { [raw] in
-            commitApiKey(raw)
-        }
-        apiKeyPendingSave = work
+    private func schedule(_ raw: String) {
+        guard normalize(raw) != lastSavedNormalized else { return }
+        pendingSave?.cancel()
+        let work = DispatchWorkItem { [raw] in commit(raw) }
+        pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
-    private func commitApiKey(_ raw: String) {
-        apiKeyPendingSave?.cancel()
-        apiKeyPendingSave = nil
-
-        let normalized = normalizeApiKey(raw)
-        guard normalized != apiKeyLastSavedNormalized else { return }
-
-        apiKeySaveState = .saving
-
+    private func commit(_ raw: String) {
+        pendingSave?.cancel()
+        pendingSave = nil
+        let normalized = normalize(raw)
+        guard normalized != lastSavedNormalized else { return }
+        saveState = .saving
         DispatchQueue.global(qos: .userInitiated).async {
-            let success: Bool
-            if normalized.isEmpty {
-                success = KeychainService.shared.delete(forKey: "openAIKey")
-            } else {
-                success = KeychainService.shared.save(value: normalized, forKey: "openAIKey")
-            }
-
+            let success = normalized.isEmpty
+                ? KeychainService.shared.delete(forKey: "openAIKey")
+                : KeychainService.shared.save(value: normalized, forKey: "openAIKey")
             DispatchQueue.main.async {
-                self.apiKeyLastSavedNormalized = normalized
-                self.apiKeySaveState = success ? .saved : .failed
+                self.lastSavedNormalized = normalized
+                self.saveState = success ? .saved : .failed
                 NotificationCenter.default.post(name: .openAIKeyDidChange, object: nil)
             }
         }
@@ -145,204 +533,64 @@ private enum ApiKeySaveState: Equatable {
     case idle, saving, saved, failed
 }
 
-// MARK: - Tabs
+// MARK: - Privacy & Safety page
 
-private enum SettingsTab: CaseIterable {
-    case general, model, tools, mcp, advanced
-
-    static var allCases: [SettingsTab] {
-        if AppFeatureFlags.isMCPAvailable {
-            return [.general, .model, .tools, .mcp, .advanced]
-        }
-
-        return [.general, .model, .tools, .advanced]
-    }
-
-    var title: String {
-        switch self {
-        case .general:  return "General"
-        case .model:    return "Model"
-        case .tools:    return "Tools"
-        case .mcp:      return "MCP"
-        case .advanced: return "Advanced"
-        }
-    }
-}
-
-// MARK: - General Tab (Consolidated)
-
-private struct GeneralTab: View {
+private struct PrivacyPage: View {
     @EnvironmentObject private var viewModel: ChatViewModel
-    @Binding var apiKey: String
-    @Binding var apiKeySaveState: ApiKeySaveState
-    let isApiKeyDirty: Bool
-    let saveApiKeyNow: () -> Void
-    @Binding var showingPromptLibrary: Bool
     @AppStorage("aiDataSharingConsentVersion") private var aiDataSharingConsentVersion = 0
-    @State private var resetConfirm = false
-    @State private var showAdvancedIdentity = false
 
     var body: some View {
         Form {
-            // MARK: API Key
-
             Section {
-                HStack(spacing: 8) {
-                    SecureField("sk-...", text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-.submitLabel(.done)
-    .onSubmit { saveApiKeyNow() }
-    .accessibilityConfiguration(
-        hint: AccessibilityUtils.Hint.apiKeyField,
-        identifier: AccessibilityUtils.Identifier.apiKeyField
-    )
-
-                    if !apiKey.isEmpty {
-                        Button { apiKey = "" } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
-                        }
-                    }
-
-                    saveStatusBadge
+                Toggle(isOn: storeResponsesBinding) {
+                    SettingsToggleLabel("Store on OpenAI", icon: "externaldrive.fill.badge.icloud", tint: .blue,
+                                        detail: "Keeps responses on OpenAI so a chat can continue from them and Background Mode works. Off: nothing is kept there.")
                 }
             } header: {
-                Label("OpenAI API Key", systemImage: "key.fill")
+                Text("Storage")
+            }
+
+            ModerationSection()
+
+            Section {
+                Text("Prompts, attachments, and request-related tool data are sent to OpenAI only after you approve the first live request.")
+                Text(aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion
+                     ? "First-send consent has been granted on this device."
+                     : "You'll see the data-sharing notice before the first live request.")
+                    .font(.callout)
+                    .foregroundStyle(Color.accessibleSecondaryText)
+                Link(destination: URL(string: "https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md")!) {
+                    Label("Open Privacy Policy", systemImage: "lock.shield")
+                }
+                if aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion {
+                    Button(role: .destructive) {
+                        aiDataSharingConsentVersion = 0
+                        viewModel.resetAIDataSharingConsent()
+                    } label: {
+                        Label("Reset First-Send Consent", systemImage: "arrow.counterclockwise")
+                    }
+                }
+            } header: {
+                Text("Data sharing")
             } footer: {
-                Text("Required for API access. Stored securely in Keychain.")
-            }
-
-            // MARK: Explore Demo (conditional)
-            if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.exploreModeEnabled {
-                Section {
-                    Toggle("Demo Mode", isOn: Binding(
-                        get: { viewModel.exploreModeEnabled },
-                        set: { viewModel.setExploreModeEnabled($0) }
-                    ))
-
-                    if viewModel.exploreModeEnabled {
-                        Button { viewModel.startExploreDemoConversation() } label: {
-                            Label("Start Demo", systemImage: "sparkles")
-                        }
-                        Button(role: .destructive) { viewModel.exitExploreDemo() } label: {
-                            Label("Exit Demo", systemImage: "xmark.circle")
-                        }
-                    }
-                } header: {
-                    Label("Explore Mode", systemImage: "play.circle")
-                } footer: {
-                    Text("Try the app with simulated responses—no API key needed.")
-                }
+                Text("Demo Mode stays offline and never sends requests to OpenAI.")
             }
 
             Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Prompts, attachments, and request-related tool data are only sent to OpenAI after you approve the first live request.")
-                        .font(.subheadline)
-
-                    Text(aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion ? "First-send consent has already been granted on this device." : "You’ll see the data-sharing notice before the first live AI request.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Link(destination: URL(string: "https://github.com/Gunnarguy/OpenResponses/blob/main/PRIVACY.md")!) {
-                        Label("Open Privacy Policy", systemImage: "lock.shield")
-                    }
-
-                    if aiDataSharingConsentVersion >= AppFeatureFlags.aiDataSharingConsentVersion {
-                        Button(role: .destructive) {
-                            aiDataSharingConsentVersion = 0
-                            viewModel.resetAIDataSharingConsent()
-                        } label: {
-                            Label("Reset First-Send Consent", systemImage: "arrow.counterclockwise")
-                        }
-                    }
-                }
+                TextField("Safety identifier", text: $viewModel.activePrompt.safetyIdentifier)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                TextField("Prompt cache key", text: $viewModel.activePrompt.promptCacheKey)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
             } header: {
-                Label("AI Data Sharing", systemImage: "externaldrive.badge.icloud")
+                Text("Identity and caching")
             } footer: {
-                Text("Explore Demo remains offline and never sends requests to OpenAI.")
-            }
-
-            // MARK: Streaming
-
-            Section {
-                Toggle("Stream Responses", isOn: $viewModel.activePrompt.enableStreaming)
-            } header: {
-                Label("Streaming", systemImage: "bolt.horizontal")
-            } footer: {
-                Text("See responses as they're generated.")
-            }
-
-            // MARK: API Behavior
-
-            Section {
-                Toggle("Store on OpenAI", isOn: storeResponsesBinding)
-
-                DisclosureGroup("Identity & Caching", isExpanded: $showAdvancedIdentity) {
-                    TextField("Safety Identifier", text: $viewModel.activePrompt.safetyIdentifier)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    Text("Hashed user ID for abuse detection.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-
-                    TextField("Prompt Cache Key", text: $viewModel.activePrompt.promptCacheKey)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                    Text("Reuse cached prompts for faster responses.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            } header: {
-                Label("API Behavior", systemImage: "server.rack")
-            } footer: {
-                Text("Background responses require Store on OpenAI to stay enabled.")
-            }
-
-            // MARK: Presets
-
-            Section {
-                Button { showingPromptLibrary = true } label: {
-                    HStack {
-                        Label("Prompt Library", systemImage: "book.fill")
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundColor(.secondary).font(.caption)
-                    }
-                }
-
-                Button(role: .destructive) { resetConfirm = true } label: {
-                    Label("Reset Prompt Settings", systemImage: "arrow.counterclockwise")
-                }
-                .alert("Reset Prompt Settings?", isPresented: $resetConfirm) {
-                    Button("Cancel", role: .cancel) {}
-                    Button("Reset", role: .destructive) { viewModel.resetToDefaultPrompt() }
-                } message: {
-                    Text("Restore the current prompt configuration to defaults. API keys, conversation history, and voice preferences are kept.")
-                }
-            } header: {
-                Label("Presets", systemImage: "bookmark.fill")
+                Text("The safety identifier is a hashed user ID OpenAI uses for abuse detection. A prompt cache key groups requests that share a long prompt so they answer faster.")
             }
         }
-    }
-
-    @ViewBuilder
-    private var saveStatusBadge: some View {
-        switch apiKeySaveState {
-        case .idle:
-            if isApiKeyDirty {
-                Button { saveApiKeyNow() } label: {
-                    Image(systemName: "checkmark.circle").foregroundColor(.blue)
-                }
-            } else {
-                EmptyView()
-            }
-        case .saving:
-            ProgressView().controlSize(.small)
-        case .saved:
-            Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red)
-        }
+        .navigationTitle("Privacy & Safety")
+        .onDisappear { viewModel.saveActivePrompt() }
     }
 
     private var storeResponsesBinding: Binding<Bool> {
@@ -359,33 +607,12 @@ private struct GeneralTab: View {
     }
 }
 
-// MARK: - Model Tab
-
-private struct ModelTab: View {
-    @EnvironmentObject private var viewModel: ChatViewModel
-    @State private var showingVoiceSettings = false
-
-    var body: some View {
-        Form {
-            Section {
-                ModelConfigurationView(
-                    activePrompt: $viewModel.activePrompt,
-                    openAIService: AppContainer.shared.openAIService,
-                    onSave: { viewModel.saveActivePrompt() }
-                )
-            }
-            ModernResponseSettings(showingVoiceSettings: $showingVoiceSettings)
-        }
-        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
-    }
-}
-
 // MARK: - Tools Tab (Consolidated with Inline Selection)
 
 private struct ToolsTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
-    @Binding var showingNotionQuickConnect: Bool
-    @Binding var showingFileManager: Bool
+    @State private var showingNotionQuickConnect = false
+    @State private var showingFileManager = false
     @State private var hasNotionIntegrationToken: Bool = false
     @AppStorage("hasShownComputerUseDisclosure") private var hasShownComputerUseDisclosure = false
     @State private var showComputerUseDisclosure = false
@@ -463,34 +690,45 @@ private struct ToolsTab: View {
 
             Section {
                 Toggle(isOn: $viewModel.activePrompt.enableWebSearch) {
-                    Text("Web Search")
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                    SettingsToggleLabel("Web Search", icon: "globe", tint: .blue,
+                                        detail: "Looks things up on the web and cites its sources.")
                 }
-                    .tint(.blue)
 
                 if viewModel.activePrompt.enableWebSearch {
-                    DisclosureGroup("Options", isExpanded: $showWebSearchAdvanced) {
+                    Toggle("Live web access", isOn: $viewModel.activePrompt.currentOptions.webSearchExternalAccess)
+                    DisclosureGroup("Domains, location and search instructions", isExpanded: $showWebSearchAdvanced) {
                         webSearchOptions
                     }
-.font(.subheadline)
+                    .font(.subheadline)
                 }
             } header: {
-                Label("Web Search", systemImage: "globe")
+                Text("Search")
             }
 
             // MARK: File Search with Smart Vector Store Selection
 
             Section {
                 Toggle(isOn: $viewModel.activePrompt.enableFileSearch) {
-                    Text("File Search")
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                    SettingsToggleLabel("File Search", icon: "doc.text.magnifyingglass", tint: .purple,
+                                        detail: "Answers from documents you uploaded to a vector store.")
                 }
-                    .tint(.purple)
 
                 if viewModel.activePrompt.enableFileSearch {
                     vectorStoreSelectionView
+                    Toggle("Hybrid ranking (meaning + keywords)", isOn: Binding(
+                        get: { viewModel.activePrompt.currentOptions.hybridEmbeddingWeight != nil },
+                        set: { enabled in
+                            viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = enabled ? 0.5 : nil
+                            viewModel.activePrompt.currentOptions.hybridTextWeight = enabled ? 0.5 : nil
+                        }))
+                    if let embedding = viewModel.activePrompt.currentOptions.hybridEmbeddingWeight {
+                        Slider(value: Binding(get: { embedding }, set: {
+                            viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = $0
+                            viewModel.activePrompt.currentOptions.hybridTextWeight = 1 - $0
+                        }), in: 0...1, step: 0.1) { Text("Meaning weight") }
+                        Text("Meaning \(Int(embedding * 100))% · keywords \(100 - Int(embedding * 100))%")
+                            .font(.caption).foregroundStyle(Color.accessibleSecondaryText)
+                    }
                 }
 
                 // Advanced file management link - always visible
@@ -509,97 +747,105 @@ private struct ToolsTab: View {
                     }
                 }
             } header: {
-                Label("File Search", systemImage: "doc.text.magnifyingglass")
+                Text("Your documents")
             } footer: {
                 if viewModel.activePrompt.enableFileSearch, !availableVectorStores.isEmpty {
                     Text("Select up to 2 vector stores. \(selectedVectorStoreIds.count)/2 selected.")
                 }
             }
 
-            // MARK: Code Interpreter with Smart File Selection
+            // MARK: Code
 
             Section {
                 Toggle(isOn: $viewModel.activePrompt.enableCodeInterpreter) {
-                    Text("Code Interpreter")
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                    SettingsToggleLabel("Code Interpreter", icon: "chart.xyaxis.line", tint: .orange,
+                                        detail: "Runs Python in an OpenAI sandbox to calculate, analyze files and draw charts.")
                 }
-                    .tint(.orange)
-
                 if viewModel.activePrompt.enableCodeInterpreter {
                     fileSelectionView
+                    Picker("Sandbox memory", selection: $viewModel.activePrompt.currentOptions.codeInterpreterMemoryLimit) {
+                        Text("Default").tag("")
+                        ForEach(["1g", "4g", "16g", "64g"], id: \.self) { Text($0.uppercased().replacingOccurrences(of: "G", with: " GB")).tag($0) }
+                    }
                 }
             } header: {
-                Label("Code Interpreter", systemImage: "terminal")
+                Text("Run code")
             } footer: {
                 if viewModel.activePrompt.enableCodeInterpreter, !availableFiles.isEmpty {
-                    Text("Pre-load files into the Python sandbox. \(selectedFileIds.count) selected.")
+                    Text("Files you select are loaded into the sandbox. \(selectedFileIds.count) selected.")
                 }
             }
 
-            // MARK: Image Generation
+            CodeRunningToolsSection()
+
+            // MARK: Create
 
             Section {
                 Toggle(isOn: $viewModel.activePrompt.enableImageGeneration) {
-                    Text("Image Generation")
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                    SettingsToggleLabel("Image Generation", icon: "paintpalette.fill", tint: .pink,
+                                        detail: isImageGenerationSupported ? "Draws and edits images in the chat." : "Not available with the selected model.")
                 }
-                    .tint(.pink)
-                    .disabled(!isImageGenerationSupported)
+                .disabled(!isImageGenerationSupported)
 
                 if viewModel.activePrompt.enableImageGeneration {
-                    DisclosureGroup("Options", isExpanded: $showImageGenAdvanced) {
-                        imageGenerationOptions
+                    DisclosureGroup("Model, size, quality and more", isExpanded: $showImageGenAdvanced) {
+                        ImageGenerationOptionsRows()
                     }
-.font(.subheadline)
+                    .font(.subheadline)
                 }
             } header: {
-                Label("Image Generation", systemImage: "photo.artframe")
+                Text("Create")
             }
 
-            // MARK: Computer Use
+            // MARK: Act
 
             Section {
                 computerUseToggle
-            } header: {
-                Label("Computer Use", systemImage: "desktopcomputer")
-            }
-
-            // MARK: External Integrations
-
-            Section {
-                NavigationLink {
-                    MCPConnectionsView(viewModel: viewModel)
-                } label: {
-                    Label("Connect Apps & Accounts", systemImage: "link.circle.fill")
-                }
-                Text("Connect Notion and other services with account sign-in in Connections.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if hasNotionIntegrationToken {
-                    DisclosureGroup("Existing Notion integration") {
-                        Toggle("Enable Legacy Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
-                        Button("Manage Existing Integration Key") { showingNotionQuickConnect = true }
-                        Text("Your existing direct Notion integration is preserved. Use Connections for the hosted Notion MCP sign-in.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-
                 #if canImport(EventKit)
                     Toggle(isOn: $viewModel.activePrompt.enableAppleIntegrations) {
-                        Text("Apple Calendar/Reminders/Contacts")
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
+                        SettingsToggleLabel("Calendar, Reminders & Contacts", icon: "calendar", tint: .red,
+                                            detail: "Reads and adds events, reminders and contacts on this iPhone, with your permission.")
                     }
-
                     if viewModel.activePrompt.enableAppleIntegrations {
                         AppleIntegrationsCard()
                     }
                 #endif
+                NavigationLink(value: SettingsPage.customTool) {
+                    SettingsRow("Custom Tool", icon: "puzzlepiece.extension.fill", tint: .gray,
+                                value: viewModel.activePrompt.enableCustomTool ? "On" : "Off")
+                }
             } header: {
-                Label("Integrations", systemImage: "link")
+                Text("Act for you")
+            }
+
+            // MARK: Connected apps
+
+            Section {
+                if AppFeatureFlags.isMCPAvailable {
+                    NavigationLink(value: SettingsPage.connections) {
+                        SettingsRow("Connected Apps (MCP)", icon: "link", tint: .cyan, value: nil)
+                    }
+                }
+                if hasNotionIntegrationToken {
+                    DisclosureGroup("Existing Notion integration") {
+                        Toggle("Enable Legacy Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                        Button("Manage Existing Integration Key") { showingNotionQuickConnect = true }
+                        Text("Your direct Notion integration is kept. Connected Apps has the hosted Notion sign-in.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Other apps")
+            } footer: {
+                Text("Sign in to Notion, GitHub and other services so the assistant can use them.")
             }
         }
+        .sheet(isPresented: $showingNotionQuickConnect) { NotionConnectionView() }
+        .sheet(isPresented: $showingFileManager) {
+            FileManagerView().environmentObject(viewModel)
+        }
+        .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+        .onDisappear { viewModel.saveActivePrompt() }
         .onAppear {
             refreshNotionTokenStatus()
             loadVectorStores()
@@ -1209,34 +1455,6 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
         }
     }
 
-    // MARK: Image Generation Options
-
-    @ViewBuilder
-    private var imageGenerationOptions: some View {
-        Picker("Size", selection: $viewModel.activePrompt.imageGenerationSize) {
-            Text("Auto").tag("auto")
-            Text("1024×1024").tag("1024x1024")
-            Text("1024×1536").tag("1024x1536")
-            Text("1536×1024").tag("1536x1024")
-        }
-        .pickerStyle(.segmented)
-
-        let qualities = CurrentModelCatalog.imageQualities(for: viewModel.activePrompt.imageGenerationModel)
-        let qualityPicker = Picker("Quality", selection: $viewModel.activePrompt.imageGenerationQuality) {
-            ForEach(qualities, id: \.self) { quality in
-                Text(quality == "xhigh" ? "X-High" : quality.capitalized).tag(quality)
-            }
-            if !qualities.contains(viewModel.activePrompt.imageGenerationQuality) {
-                Text(viewModel.activePrompt.imageGenerationQuality).tag(viewModel.activePrompt.imageGenerationQuality)
-            }
-        }
-        if qualities.count > 4 {
-            qualityPicker.pickerStyle(.menu)
-        } else {
-            qualityPicker.pickerStyle(.segmented)
-        }
-    }
-
     // MARK: Computer Use Toggle
 
     @ViewBuilder
@@ -1253,11 +1471,11 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
         )
 
         Toggle(isOn: computerUseBinding) {
-            Text("Computer Use")
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            SettingsToggleLabel("Computer Use", icon: "cursorarrow.click.2", tint: .indigo,
+                                detail: isComputerUseSupported
+                                    ? "The model drives this app's browser one click at a time, and asks you before risky steps."
+                                    : "Needs a computer-capable model such as GPT-6 Sol, Astra or Luna.")
         }
-            .tint(.indigo)
             .disabled(!isComputerUseSupported)
             .alert("Enable Computer Use?", isPresented: $showComputerUseDisclosure) {
                 Button("Continue") {
@@ -1269,20 +1487,14 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
                 Text("Computer Use lets the model drive the app's own browser, one click or keystroke at a time. It asks for your approval when OpenAI flags a safety check. Only allow actions you trust.")
             }
 
-        if !isComputerUseSupported {
-            Text("Requires a computer-capable model such as GPT-6 Sol, Astra or Luna.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        } else if viewModel.activePrompt.enableComputerUse {
+        if isComputerUseSupported, viewModel.activePrompt.enableComputerUse {
             Toggle(isOn: $viewModel.activePrompt.ultraStrictComputerUse) {
-                Text("Strict Mode")
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Strict mode")
+                    Text("Turns off the app's helper steps so only the model acts.")
+                        .font(.caption).foregroundStyle(Color.accessibleSecondaryText)
+                }
             }
-                .tint(.red)
-            Text("Disables helper behaviors for pure model control.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
         }
     }
 
@@ -1381,8 +1593,6 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
 
 private struct AdvancedTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
-    @State private var showingAbout = false
-    @State private var showResponseIncludes = false
 
     private var modelCaps: ModelCompatibilityService.ModelCapabilities? {
         ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)
@@ -1390,170 +1600,47 @@ private struct AdvancedTab: View {
 
     var body: some View {
         Form {
-            // MARK: Tool Execution
-
             Section {
-                Picker("Tool Choice", selection: $viewModel.activePrompt.toolChoice) {
-                    Text("Auto").tag("auto")
-                    Text("Required").tag("required")
-                    Text("None").tag("none")
-                }
-.pickerStyle(.segmented)
-
-Toggle(isOn: $viewModel.activePrompt.parallelToolCalls) {
-    Text("Parallel Tool Calls")
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-}
-
-Toggle(isOn: backgroundModeBinding) {
-    Text("Background Mode")
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-}
-
-                limitToolCallsRow
-            } header: {
-                Label("Tool Execution", systemImage: "hammer.circle")
-            } footer: {
-                Text("Control how the model uses tools during generation. Background mode requires Store on OpenAI.")
-            }
-
-            // MARK: Request Options
-
-            Section {
-                Picker("Truncation", selection: $viewModel.activePrompt.truncationStrategy) {
-                    Text("Disabled").tag("disabled")
-                    Text("Auto").tag("auto")
-                }
-.pickerStyle(.segmented)
-
-                Picker("Service Tier", selection: $viewModel.activePrompt.serviceTier) {
+                Picker("Service tier", selection: $viewModel.activePrompt.serviceTier) {
                     Text("Auto").tag("auto")
                     Text("Standard").tag("default")
-                    Text("Flex").tag("flex")
+                    Text("Flex · cheaper, slower").tag("flex")
                     Text("Fast").tag("fast")
                     Text("Ultrafast").tag("ultrafast")
                 }
-.pickerStyle(.menu)
             } header: {
-                Label("Request Options", systemImage: "slider.horizontal.3")
+                Text("Speed and cost")
+            } footer: {
+                Text("Flex costs less and may queue. Fast and Ultrafast answer sooner at a higher price, on models that offer them.")
             }
-
-            // MARK: Response Includes
 
             Section {
-                DisclosureGroup("Response Includes", isExpanded: $showResponseIncludes) {
-                    Toggle(isOn: $viewModel.activePrompt.includeFileSearchResults) {
-                        Text("File Search Results")
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    Toggle(isOn: $viewModel.activePrompt.includeWebSearchResults) {
-                        Text("Web Search Results")
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    Toggle(isOn: $viewModel.activePrompt.includeWebSearchSources) {
-                        Text("Web Search Sources")
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    Toggle(isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs) {
-                        Text("Code Interpreter Output")
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-
-                    if modelCaps?.supportsReasoningEffort == true {
-                        Toggle(isOn: $viewModel.activePrompt.includeReasoningContent) {
-                            Text("Reasoning Content")
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                    }
-
-                    logprobsToggle
+                Toggle("File search results", isOn: $viewModel.activePrompt.includeFileSearchResults)
+                Toggle("Web search results", isOn: $viewModel.activePrompt.includeWebSearchResults)
+                Toggle("Web search sources", isOn: $viewModel.activePrompt.includeWebSearchSources)
+                Toggle("Code Interpreter output", isOn: $viewModel.activePrompt.includeCodeInterpreterOutputs)
+                if modelCaps?.supportsReasoningEffort == true {
+                    Toggle("Encrypted reasoning content", isOn: $viewModel.activePrompt.includeReasoningContent)
                 }
+                logprobsToggle
             } header: {
-                Label("Output Options", systemImage: "tray.full")
+                Text("Include in each response")
             } footer: {
-                Text("Additional data to include in responses.")
+                Text("Extra data the API returns with each answer, shown in the message details. Logprobs are not available on reasoning models.")
             }
-
-            // MARK: Metadata
 
             Section {
                 TextEditor(text: $viewModel.activePrompt.metadata.bound)
-                    .frame(height: 80)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)))
+                    .font(.system(.callout, design: .monospaced))
+                    .frame(minHeight: 90)
+                    .accessibilityLabel("Custom metadata JSON")
             } header: {
-                Label("Custom Metadata", systemImage: "tag")
+                Text("Custom metadata")
             } footer: {
-                Text("JSON key-value pairs attached to requests.")
-            }
-
-            // MARK: Developer Operations
-            Section {
-                NavigationLink(destination: BatchJobsView()) {
-                    Label("Batch Jobs", systemImage: "clock.arrow.circlepath")
-                }
-                NavigationLink(destination: DecisionsView()) {
-                    Label("Decisions", systemImage: "checklist")
-                }
-            } header: {
-                Label("Developer Operations", systemImage: "terminal")
-            }
-
-            // MARK: About
-
-            Section {
-                Button { showingAbout = true } label: {
-                    HStack {
-                        Label("About & Licenses", systemImage: "info.circle")
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundColor(.secondary).font(.caption)
-                    }
-                }
+                Text("JSON key-value pairs attached to each request, such as {\"project\": \"demo\"}.")
             }
         }
-.sheet(isPresented: $showingAbout) {
-    AboutView()
-        }
-    }
-
-    private var backgroundModeBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.activePrompt.backgroundMode },
-            set: { newValue in
-                if newValue {
-                    viewModel.activePrompt.storeResponses = true
-                    viewModel.applyDraftStorePreference(true)
-                }
-                viewModel.activePrompt.backgroundMode = newValue
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var limitToolCallsRow: some View {
-        Toggle("Limit Tool Calls", isOn: Binding(
-            get: { viewModel.activePrompt.maxToolCalls > 0 },
-            set: { newValue in
-                viewModel.activePrompt.maxToolCalls = newValue ? 4 : 0
-            }
-        ))
-
-        if viewModel.activePrompt.maxToolCalls > 0 {
-            Stepper(
-                "Max: \(viewModel.activePrompt.maxToolCalls)",
-                value: Binding(
-                    get: { max(viewModel.activePrompt.maxToolCalls, 1) },
-                    set: { viewModel.activePrompt.maxToolCalls = max(min($0, 32), 1) }
-                ),
-                in: 1 ... 32
-            )
-        }
+        .onDisappear { viewModel.saveActivePrompt() }
     }
 
     @ViewBuilder

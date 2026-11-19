@@ -4,8 +4,8 @@
   "name": "App shell",
   "aliases": ["OpenResponses", "About", "Privacy Policy", "Support (GitHub)", "License", "Third-Party Software", "Compact Context", "Done", "Save conversations", "launch", "root navigation", "Rate OpenResponses", "rating request", "requestReview", "App Store review"],
   "purpose": "App launch, root navigation, dependency injection, scene lifecycle persistence, URL scheme handling, network monitoring, and the App Store rating request (Apple's requestReview sheet after a finished answer, and the Rate OpenResponses link in About).",
-  "revision": "b648aa7",
-  "verified_on": "2026-11-17",
+  "revision": "2b0ee98",
+  "verified_on": "2026-11-19",
   "entry_points": ["OpenResponsesApp", "ContentView"],
   "files": [
     {"path": "OpenResponses/App/OpenResponsesApp.swift", "role": "primary", "blob": "3bf293c143908f410d4a0ba6af8f0f40eeed4312"},
@@ -25,7 +25,7 @@
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"},
-    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "cff9650ad0772db2c47fe5db794f1dea4705b32c"},
+    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "322106908800ba904cb0059ca0ee82de1b97f9af"},
     {"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "role": "test", "blob": "88410dde98a1fdb36c9a1b9ab0db6aec8c02c627"}
   ],
   "nodes": [
@@ -79,7 +79,7 @@
     {"from": "ContentView", "type": "renders", "to": "feature:onboarding-keys", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 83, "match": "            OnboardingView(isPresented: $showingOnboarding)"}], "note": "Presents OnboardingView as full-screen cover."},
     {"from": "ContentView", "type": "renders", "to": "feature:request-settings", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 91, "match": "            SettingsHomeView()"}], "note": "Presents SettingsHomeView in sheet."},
     {"from": "ContentView", "type": "renders", "to": "feature:conversations", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 94, "match": "            ConversationListView(isPresented: $showingConversationList)"}], "note": "Presents ConversationListView in sheet."},
-    {"from": "feature:request-settings", "type": "renders", "to": "AboutView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 1521, "match": "    AboutView()"}], "note": "Presents AboutView from Settings."},
+    {"from": "feature:request-settings", "type": "renders", "to": "AboutView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 56, "match": ".sheet(isPresented: $showingAbout) { AboutView() }"}], "note": "Presents AboutView from Settings."},
     {"from": "Info.plist", "type": "configures", "to": "OpenResponsesApp", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Info.plist", "line": 6, "match": "<key>CFBundleURLSchemes</key><array><string>openresponses</string></array>"}], "note": "Configures openresponses URL scheme for the application."},
     {"from": "feature:chat-turn", "type": "depends_on", "to": "NetworkMonitor", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 75, "match": "    private lazy var networkMonitor = NetworkMonitor.shared"}], "note": "ChatViewModel holds NetworkMonitor.shared"},
     {"from": "OpenResponsesApp", "type": "tested_by", "to": "test:OpenResponsesUITestsLaunchTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "line": 22, "match": "        app.launch()"}], "note": "Tests app launch into foreground."},

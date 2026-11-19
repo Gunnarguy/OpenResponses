@@ -6,11 +6,13 @@ Last verified commit: 060afd3 (code last tested at 7a12b34: full unit suite on s
 
 ## Objective
 Get OpenResponses 3.0 submitted. Xcode Cloud build 55 (commit 7a12b34) SUCCEEDED and is VALID in App Store Connect but is not attached to the 3.0 version. Attaching it, pasting the What's New (`fastlane/metadata/en-US/release_notes.txt`, 1,294 chars) and submitting are Gunnar's.
-Current step: a live check of 3.0 on a simulator with Gunnar's real key: one chat answer, which should bring up the rating sheet (Debug builds always show it), and one Decisions request.
+3.0 was checked live on 2026-11-19 (chat, rating sheet, Decisions: see Verification).
+Settings redesign (Gunnar, 2026-11-19: "make all of these settings, every single page, WAY more intuitive"; he chose to do it in this session): the five segmented tabs are now one list of named pages with search, in `SettingsHomeView.swift`, `ModernResponseSettings.swift` (split into named sections) and `ModelConfigurationView.swift` (Form sections by `Part`). Recorded under CHANGELOG "3.1 — in development"; build 55 (3.0) has none of it. Committed locally, not pushed. Unit suite 384 tests, 4 skipped, 0 failures; the new UI tests pass; the Settings accessibility audit still fails (see Blockers).
+Release-note style (Gunnar, 2026-11-19: match OpenIntelligence's ASC release notes for every app): OpenResponses 3.0 already had that layout; its What's New gained the rating sheet line and `promotional_text.txt` was rewritten (it still described 2.9). OpenCone 3.2's What's New was put in that layout by the OpenCone session (OpenCone commit 17b8b44, 3.2 WAITING_FOR_REVIEW). OpenManual has no fastlane release notes in its repo.
 
 ## Status
 - 3.0 = a6c5507 rating request + 435ac25 Calendar/Reminders dates with no zone offset + b648aa7 Decisions, merged with origin as 7a12b34 and pushed 2026-11-17.
-- OpenCone 3.2 (separate repo `~/Documents/GitHub/OpenCone`, commit 4d3abee, pushed): Xcode Cloud build 27 SUCCEEDED and VALID, not attached. Its App Store Connect What's New looks copied from 3.1 (same 813 chars).
+- OpenCone 3.2: build 27 attached and WAITING_FOR_REVIEW since 2026-11-19 (OpenCone commits ccacaa9, 17b8b44, by the OpenCone session).
 - GitHub Releases published: v1.0, v2.0, v2.5, v2.7, v2.8, v2.9. Not done: v2.6 (build 41, commit 5b270d8), blocked by an old tag `v2.6.0` at 1e2edda; OpenCone 3.1 (build 25, eeec127), blocked by an old "Release 3.1"/tag `v3.1` at 04267d1. Replacing either needs Gunnar's yes. 3.0 gets a release once it is live.
 - China mainland: OpenResponses and OpenCone are `CANNOT_SELL` there, so the Security Assessment and AIGC rows stay "Missing Info". OpenIntelligence and OpenManual are sold there and need a decision by 2027-01-31.
 
@@ -25,10 +27,12 @@ Current step: a live check of 3.0 on a simulator with Gunnar's real key: one cha
 
 ## Working Set
 - `scripts/sim_openai_key.py` (new, untracked): `python3 scripts/sim_openai_key.py [device name or UDID, default "OpenResponses demo"] [--service openai-api-key]`. Reads the Keychain key, writes it as UserDefaults `openAIKey` plus `hasCompletedOnboarding` through `simctl spawn defaults import` on stdin, relaunches; the app's `KeychainService.migrateApiKeyFromUserDefaults` moves it into the Keychain. Prints "Key moved into the app's Keychain" on success. Refuses device names containing "tests".
-- `OpenResponses/Core/Services/ReviewPromptService.swift`, `OpenResponses/App/ContentView.swift` (`askForRatingWhenInFront`): the rating request under check.
-- `OpenResponses/Core/Models/DecisionsModels.swift`, `OpenResponses/Features/Settings/Views/DecisionsView.swift` (Settings > Advanced > Developer Operations > Decisions): the Decisions screen under check.
-- Demo simulator: "OpenResponses demo" E9842B71-095B-49D2-A72D-0E2FA9C7962B (iPhone 17 Pro, iOS 27.0), created 2026-11-19, booted, 3.0 Debug build installed from `/private/tmp/openresponses-derived/Build/Products/Debug-iphonesimulator/OpenResponses.app`. Its Keychain is empty.
-- Test simulator "OpenResponses tests" 7AFAC899 no longer exists; recreate before running tests.
+- `OpenResponses/Features/Settings/Views/SettingsHomeView.swift`: root list (`SettingsPage`, `SettingsRow`, `SettingsSearchIndex` of about 50 entries), `AccountPage`, `PrivacyPage`, the Tools page (`ToolsTab`, keeps the vector store and file pickers) and Request Options (`AdvancedTab`).
+- `OpenResponses/Features/Settings/Views/ModernResponseSettings.swift`: `ReasoningOptionsSection`, `CompactionSection`, `CodeRunningToolsSection`, `AgentOptionsSections`, `ImageGenerationOptionsRows`, `ModerationSection`, `CustomToolSections`, `SettingsToggleLabel`, `SettingsIconTile`.
+- `OpenResponsesUITests/OpenResponsesUITests.swift`: `testVoiceSettingsStayOpenFromSettings`, `testSettingsSearchOpensThePageThatHoldsAnOption`.
+- New Settings strings are not in `Localizable.xcstrings` yet (the catalog only gains keys when Xcode extracts them).
+- Demo simulator: "OpenResponses demo" E9842B71-095B-49D2-A72D-0E2FA9C7962B (iPhone 17 Pro, iOS 27.0), created 2026-11-19, booted, 3.0 Debug build installed from `/private/tmp/openresponses-derived/Build/Products/Debug-iphonesimulator/OpenResponses.app`. It holds Gunnar's key (put there by `scripts/sim_openai_key.py`).
+- Test simulator: "OpenResponses tests" 54DDDEDE-3B99-48F6-9A30-C65B825A6440 (iPhone 17 Pro, iOS 27.0), created 2026-11-19.
 
 ## Verification
 - 2026-11-17, `xcodebuild test ... -destination 'id=7AFAC899-0FF6-45C9-9F5A-5A441C4FA661' -only-testing:OpenResponsesTests` on 7a12b34 -> "Executed 384 tests, with 4 tests skipped and 0 failures", ** TEST SUCCEEDED **.
@@ -41,6 +45,8 @@ Current step: a live check of 3.0 on a simulator with Gunnar's real key: one cha
 - 2026-11-19, Decisions live (Settings > Advanced > Developer Operations > Decisions, the support-ticket example, gpt-6-luna): department billing 100%, asks_for_refund True 100%, urgency score 1.99 on 0-2 nearest High (99%), 441 input tokens, about $0.000044. The Decisions blocker is closed.
 
 ## Blockers / Unknowns
+- `testSettingsPassTheAccessibilityAudit` fails on the new Settings root: "Dynamic Type font sizes are partially unsupported" for the Assistant and "What the assistant can do" section headers and the Voice row (`SettingsHomeView.rootSections`). Tried: default, footnote and Label headers, `.accessibilityElement(children: .combine)` on `SettingsRow`, default vs plain button style; same four every time. Next idea: read the issue detail in the .xcresult (`xcrun xcresulttool get test-results tests --path <xcresult>`), or remove the Voice Button row in a trial run to see whether the headers clear.
+- `testChatScreenPassesTheAccessibilityAudit` and `testLargestTextSizeKeepsTheChatScreenReadable` fail on a "Failed fetchAppleReminders" step in the chat; probably a conversation the unit tests left in the same simulator. Check by running the UI tests alone on a fresh simulator.
 - None for 3.0 code: the rating sheet and Decisions were both seen working live on 2026-11-19. The Notion verification row "Live-check Decisions" (https://app.notion.com/p/41749a74d54f81069597c73426b1b265) can be marked done.
 - Async tool calls on GPT-6 Sol and Luna stay off until a live request settles whether "GPT-6 Astra and later models" includes them.
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.

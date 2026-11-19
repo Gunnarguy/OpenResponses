@@ -90,22 +90,35 @@ final class OpenResponsesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Hello from the UI test"].waitForExistence(timeout: 10), "the sent message is not shown")
     }
 
-    /// Regression (reported on a device 2026-09-28): the Voice row in Settings → Model opened its sheet, and
-    /// within seconds the sheet closed again.
-    func testVoiceSettingsStayOpenFromTheModelTab() throws {
+    /// Regression (reported on a device 2026-09-28): the Voice row in Settings opened its sheet, and within seconds
+    /// the sheet closed again. Since 3.1 the row is on the Settings root, not the old Model tab.
+    func testVoiceSettingsStayOpenFromSettings() throws {
         let app = launch()
         app.buttons["settingsButton"].tap()
-        let modelTab = app.segmentedControls.buttons["Model"]
-        XCTAssertTrue(modelTab.waitForExistence(timeout: 5))
-        modelTab.tap()
-        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Voice model, voice and instructions")).firstMatch
-        for _ in 0..<8 where !row.isHittable { app.swipeUp() }
+        let settingsBar = app.navigationBars["Settings"]
+        XCTAssertTrue(settingsBar.waitForExistence(timeout: 5))
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Voice")).firstMatch
+        for _ in 0..<6 where !row.isHittable { app.swipeUp() }
         XCTAssertTrue(row.isHittable, "the Voice row was not reached")
         row.tap()
         let voiceSettings = app.navigationBars["Voice Mode Settings"]
         XCTAssertTrue(voiceSettings.waitForExistence(timeout: 5), "the voice settings did not open")
         sleep(5)
         XCTAssertTrue(voiceSettings.exists, "the voice settings closed by themselves")
-        XCTAssertTrue(modelTab.exists, "Settings closed underneath the voice settings")
+        XCTAssertTrue(settingsBar.exists, "Settings closed underneath the voice settings")
+    }
+
+    /// Search finds an option by a word that is not in its name, and opens the page that holds it (3.1).
+    func testSettingsSearchOpensThePageThatHoldsAnOption() throws {
+        let app = launch()
+        app.buttons["settingsButton"].tap()
+        let search = app.searchFields["Search settings"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("pyodide")
+        let result = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Local Python")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5), "search did not list Local Python")
+        result.tap()
+        XCTAssertTrue(app.navigationBars["Tools"].waitForExistence(timeout: 5), "the Tools page did not open")
     }
 }

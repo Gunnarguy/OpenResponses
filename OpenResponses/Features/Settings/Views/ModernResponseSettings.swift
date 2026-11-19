@@ -1,20 +1,26 @@
 import SwiftUI
 
-struct ModernResponseSettings: View {
-    @EnvironmentObject private var viewModel: ChatViewModel
-    @AppStorage("realtime_model") private var voiceModel: String = CurrentModelCatalog.realtimeModel
-    /// Owned and presented by the enclosing Form (ModelTab). A `.sheet` attached to a Section inside a Form is
-    /// torn down whenever the Form redraws, which closed the voice settings within seconds (2026-09-28).
-    @Binding var showingVoiceSettings: Bool
+// The Responses API options from `ModernResponseOptions` (`Prompt.currentOptions`). Until 3.1 they all sat in one
+// "Current Responses capabilities" section at the bottom of Settings → Model, under the model card, which is where
+// Local Python, hosted shell, multi-agent and the API Workbench went unseen. Each group now sits on the page whose
+// name a person would look under; SettingsHomeView places them.
 
-    private var modern: Bool { CurrentModelCatalog.isModern(viewModel.activePrompt.openAIModel) }
+/// True when the selected model accepts the GPT-6 and GPT-5.6 options.
+@MainActor
+private func isModern(_ viewModel: ChatViewModel) -> Bool {
+    CurrentModelCatalog.isModern(viewModel.activePrompt.openAIModel)
+}
+
+/// Reasoning context and Pro mode. Settings → Model & Reasoning.
+struct ReasoningOptionsSection: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
 
     var body: some View {
-        Section("Current Responses capabilities") {
-            if modern {
-                Picker("Reasoning context", selection: $viewModel.activePrompt.currentOptions.reasoningContext) {
+        if isModern(viewModel) {
+            Section {
+                Picker("Reuse earlier reasoning", selection: $viewModel.activePrompt.currentOptions.reasoningContext) {
                     Text("Model default").tag("auto")
-                    Text("Current turn").tag("current_turn")
+                    Text("This turn only").tag("current_turn")
                     Text("All turns").tag("all_turns")
                 }
                 if CurrentModelCatalog.supportsPro(viewModel.activePrompt.openAIModel) {
@@ -23,149 +29,150 @@ struct ModernResponseSettings: View {
                         Text("Pro · more compute").tag("pro")
                     }
                 }
-                Toggle("Automatic context compaction", isOn: $viewModel.activePrompt.currentOptions.automaticCompaction)
+            } header: {
+                Text("Advanced reasoning")
+            } footer: {
+                Text("All turns lets the model build on its earlier thinking in this chat. Pro mode thinks harder and uses more tokens.")
+            }
+            .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+        }
+    }
+}
+
+/// Automatic context compaction. Settings → Response Format.
+struct CompactionSection: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
+        Section {
+            Toggle("Stream responses", isOn: $viewModel.activePrompt.enableStreaming)
+            Picker("When the chat gets too long", selection: $viewModel.activePrompt.truncationStrategy) {
+                Text("Stop with an error").tag("disabled")
+                Text("Drop the oldest messages").tag("auto")
+            }
+            if isModern(viewModel) {
+                Toggle("Compact long chats automatically", isOn: $viewModel.activePrompt.currentOptions.automaticCompaction)
                 if viewModel.activePrompt.currentOptions.automaticCompaction {
                     Stepper("Compact at \(viewModel.activePrompt.currentOptions.compactThreshold.formatted()) tokens",
                             value: $viewModel.activePrompt.currentOptions.compactThreshold, in: 10_000...250_000, step: 10_000)
                 }
-                Toggle("Load tools on demand", isOn: $viewModel.activePrompt.currentOptions.toolSearch)
-                Toggle("Hosted shell", isOn: $viewModel.activePrompt.currentOptions.hostedShell)
-                Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Local Python")
-                        Text("Runs on this device after you approve each run. Standard library only, no network.")
-                            .font(.caption)
-                            .foregroundStyle(Color.accessibleSecondaryText)
-                    }
-                }
-                Group {
-                    Toggle("Async lookups", isOn: $viewModel.activePrompt.currentOptions.asyncTools)
-                        .disabled(!CurrentModelCatalog.supportsAsyncTools(viewModel.activePrompt.openAIModel))
-                    Toggle("Programmatic tool calling", isOn: $viewModel.activePrompt.currentOptions.programmaticTools)
-                    Toggle("Multi-agent beta", isOn: $viewModel.activePrompt.currentOptions.multiAgent)
-                    if viewModel.activePrompt.currentOptions.multiAgent {
-                        Stepper("Up to \(viewModel.activePrompt.currentOptions.maxSubagents) active subagents", value: $viewModel.activePrompt.currentOptions.maxSubagents, in: 1...8)
-                    }
-                    Stepper("\(viewModel.activePrompt.currentOptions.multiAgent ? "Client tool calls" : "Tool rounds"): \(viewModel.activePrompt.currentOptions.maxToolRounds)", value: $viewModel.activePrompt.currentOptions.maxToolRounds, in: 1...32)
-                }
-                .disabled(viewModel.activePrompt.enableComputerUse || viewModel.activePrompt.backgroundMode)
-                Text("Async and programmatic execution apply to supported read-only lookups. Writes execute one at a time. Subagents share enabled tools and can increase token usage. Multi-agent runs use WebSocket and return each tool result as it finishes. These options apply to foreground requests with Computer Use turned off.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Tool search defers function and MCP schemas until needed. Shell commands run in an OpenAI container. Pro mode uses more tokens; all-turn reasoning reuses compatible prior reasoning.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text("Choose a GPT-6 or GPT-5.6 model for these capabilities.").foregroundStyle(.secondary)
             }
-            NavigationLink("API Workbench") { APIWorkbenchView() }
-        }
-        Section("Image generation") {
-            Picker("Image model", selection: $viewModel.activePrompt.imageGenerationModel) {
-                ForEach(CurrentModelCatalog.imageModels, id: \.self) { model in
-                    Text(CurrentModelCatalog.imageModelName(model)).tag(model)
-                }
-                if !CurrentModelCatalog.imageModels.contains(viewModel.activePrompt.imageGenerationModel) {
-                    Text(CurrentModelCatalog.imageModelName(viewModel.activePrompt.imageGenerationModel)).tag(viewModel.activePrompt.imageGenerationModel)
-                }
-            }
-            Picker("Action", selection: $viewModel.activePrompt.currentOptions.imageAction) {
-                Text("Automatic").tag("auto")
-                Text("Generate").tag("generate")
-                Text("Edit").tag("edit")
-            }
-            Stepper("Partial previews: \(viewModel.activePrompt.currentOptions.partialImages)",
-                    value: $viewModel.activePrompt.currentOptions.partialImages, in: 0...3)
-            Text("Transparent backgrounds use PNG or WebP. JPEG requests with transparency are sent as PNG.")
-                .font(.caption).foregroundStyle(.secondary)
+        } header: {
+            Text("Delivery and long chats")
+        } footer: {
+            Text("Streaming shows the answer as it is written. Compaction condenses earlier messages so a long chat keeps going.")
         }
         .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
-        .onChange(of: viewModel.activePrompt.imageGenerationModel) { _, model in
-            viewModel.activePrompt.imageGenerationQuality = CurrentModelCatalog.normalizedImageQuality(viewModel.activePrompt.imageGenerationQuality, model: model)
-            viewModel.saveActivePrompt()
-        }
+    }
+}
+
+/// Hosted shell and Local Python, the two code-running tools besides Code Interpreter. Settings → Tools.
+struct CodeRunningToolsSection: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
         Section {
-            Picker("Moderation", selection: $viewModel.activePrompt.currentOptions.moderationModel) {
-                Text("Off").tag("")
-                Text("omni-moderation-latest").tag("omni-moderation-latest")
-            }
-            if !viewModel.activePrompt.currentOptions.moderationModel.isEmpty {
-                Picker("Input policy", selection: $viewModel.activePrompt.currentOptions.moderationInputMode) {
-                    Text("Score").tag("score")
-                    Text("Block").tag("block")
+            if isModern(viewModel) {
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.localPython) {
+                    SettingsToggleLabel("Local Python", icon: "apple.terminal", tint: .green,
+                                        detail: "Runs Python the model writes on this iPhone, after you approve each run. Standard library only, no network, no files.")
                 }
-                Picker("Output policy", selection: $viewModel.activePrompt.currentOptions.moderationOutputMode) {
-                    Text("Score").tag("score")
-                    Text("Block").tag("block")
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.hostedShell) {
+                    SettingsToggleLabel("Hosted shell", icon: "terminal.fill", tint: .gray,
+                                        detail: "Lets the model run shell commands in an OpenAI container.")
                 }
+            } else {
+                Text("Local Python and the hosted shell need a GPT-6 or GPT-5.6 model. Choose one in Model & Reasoning.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
-        } header: { Text("Response moderation") } footer: {
-            Text("OpenAI moderates this response's input and output. Score reports flagged categories; Block stops a flagged response.")
+        } footer: {
+            Text("Local Python works offline on this iPhone. The hosted shell and Code Interpreter run on OpenAI's servers.")
         }
-        Section("Hosted tool options") {
-            Toggle("Web search: live web access", isOn: $viewModel.activePrompt.currentOptions.webSearchExternalAccess)
-            Picker("Code Interpreter memory", selection: $viewModel.activePrompt.currentOptions.codeInterpreterMemoryLimit) {
-                Text("Default").tag("")
-                ForEach(["1g", "4g", "16g", "64g"], id: \.self) { Text($0.uppercased().replacingOccurrences(of: "G", with: " GB")).tag($0) }
-            }
-            Toggle("File search: hybrid ranking", isOn: Binding(
-                get: { viewModel.activePrompt.currentOptions.hybridEmbeddingWeight != nil },
-                set: { enabled in
-                    viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = enabled ? 0.5 : nil
-                    viewModel.activePrompt.currentOptions.hybridTextWeight = enabled ? 0.5 : nil
-                }))
-            if let embedding = viewModel.activePrompt.currentOptions.hybridEmbeddingWeight {
-                Slider(value: Binding(get: { embedding }, set: {
-                    viewModel.activePrompt.currentOptions.hybridEmbeddingWeight = $0
-                    viewModel.activePrompt.currentOptions.hybridTextWeight = 1 - $0
-                }), in: 0...1, step: 0.1) { Text("Semantic weight") }
-                Text("Semantic \(Int(embedding * 100))% · keyword \(100 - Int(embedding * 100))%").font(.caption).foregroundStyle(.secondary)
-            }
-            Picker("Image input fidelity", selection: $viewModel.activePrompt.currentOptions.imageInputFidelity) {
-                Text("Model default").tag("")
-                Text("High").tag("high")
-                Text("Low").tag("low")
-            }
-            Stepper("JPEG/WebP compression: \(viewModel.activePrompt.currentOptions.imageOutputCompression.map { "\($0)" } ?? "default")",
-                    value: Binding(get: { viewModel.activePrompt.currentOptions.imageOutputCompression ?? 100 },
-                                   set: { viewModel.activePrompt.currentOptions.imageOutputCompression = $0 == 100 ? nil : $0 }),
-                    in: 0...100, step: 5)
-        }
+        .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+    }
+}
+
+/// How the model calls tools: choice, parallel calls, limits, tool search, async and programmatic calls,
+/// multi-agent and background mode. Settings → Agents & Tool Calling.
+struct AgentOptionsSections: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
         Section {
-            Button {
-                showingVoiceSettings = true
-            } label: {
-                LabeledContent("Voice model, voice and instructions", value: CurrentModelCatalog.supportedRealtimeModel(voiceModel))
+            Picker("Use tools", selection: $viewModel.activePrompt.toolChoice) {
+                Text("When useful").tag("auto")
+                Text("Always").tag("required")
+                Text("Never").tag("none")
             }
-        } header: { Text("Voice") } footer: {
-            Text("GPT Realtime 2.1 and its mini variant use the Realtime API; GPT-Live 1 uses the Live API. Changes apply to the next voice session.")
+            Toggle("Call several tools at once", isOn: $viewModel.activePrompt.parallelToolCalls)
+            Toggle("Limit tool calls", isOn: Binding(
+                get: { viewModel.activePrompt.maxToolCalls > 0 },
+                set: { viewModel.activePrompt.maxToolCalls = $0 ? 4 : 0 }
+            ))
+            if viewModel.activePrompt.maxToolCalls > 0 {
+                Stepper("At most \(viewModel.activePrompt.maxToolCalls) per answer",
+                        value: Binding(
+                            get: { max(viewModel.activePrompt.maxToolCalls, 1) },
+                            set: { viewModel.activePrompt.maxToolCalls = max(min($0, 32), 1) }
+                        ),
+                        in: 1...32)
+            }
+        } header: {
+            Text("Tool calling")
+        } footer: {
+            Text("Always makes the model call a tool before it answers. Never answers from the model alone.")
         }
-        Section("Custom tool") {
-            Toggle("Enable custom tool", isOn: $viewModel.activePrompt.enableCustomTool)
-            if viewModel.activePrompt.enableCustomTool {
-                TextField("Tool name", text: $viewModel.activePrompt.customToolName).textInputAutocapitalization(.never).autocorrectionDisabled()
-                TextField("What the tool does", text: $viewModel.activePrompt.customToolDescription, axis: .vertical)
-                if modern {
-                    Picker("Input format", selection: $viewModel.activePrompt.currentOptions.customToolFormat) {
-                        Text("JSON function").tag("function")
-                        Text("Free-form text").tag("text")
+
+        if isModern(viewModel) {
+            Section {
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.multiAgent) {
+                    SettingsToggleLabel("Multi-agent", icon: "person.3.fill", tint: .purple,
+                                        detail: "The model can start helper agents that work in parallel and share your enabled tools. Beta; uses more tokens.")
+                }
+                if viewModel.activePrompt.currentOptions.multiAgent {
+                    Stepper("Up to \(viewModel.activePrompt.currentOptions.maxSubagents) helpers at once",
+                            value: $viewModel.activePrompt.currentOptions.maxSubagents, in: 1...8)
+                }
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.toolSearch) {
+                    SettingsToggleLabel("Load tools on demand", icon: "magnifyingglass", tint: .blue,
+                                        detail: "Sends function and MCP tool definitions only when the model needs them, which saves tokens with many tools.")
+                }
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.asyncTools) {
+                    SettingsToggleLabel("Async lookups", icon: "arrow.triangle.branch", tint: .teal,
+                                        detail: "Read-only lookups run in the background while the model keeps going.")
+                }
+                .disabled(!CurrentModelCatalog.supportsAsyncTools(viewModel.activePrompt.openAIModel))
+                Toggle(isOn: $viewModel.activePrompt.currentOptions.programmaticTools) {
+                    SettingsToggleLabel("Programmatic tool calling", icon: "curlybraces", tint: .orange,
+                                        detail: "The model writes code that calls several read-only tools in one step.")
+                }
+                Stepper("\(viewModel.activePrompt.currentOptions.multiAgent ? "Client tool calls" : "Tool rounds"): \(viewModel.activePrompt.currentOptions.maxToolRounds)",
+                        value: $viewModel.activePrompt.currentOptions.maxToolRounds, in: 1...32)
+            } header: {
+                Text("Agents")
+            } footer: {
+                Text("These apply to foreground requests with Computer Use and Background Mode off. Async and programmatic calls cover read-only lookups; writes run one at a time.")
+            }
+            .disabled(viewModel.activePrompt.enableComputerUse || viewModel.activePrompt.backgroundMode)
+        }
+
+        Section {
+            Toggle(isOn: Binding(
+                get: { viewModel.activePrompt.backgroundMode },
+                set: { newValue in
+                    if newValue {
+                        viewModel.activePrompt.storeResponses = true
+                        viewModel.applyDraftStorePreference(true)
                     }
-                    .disabled(viewModel.activePrompt.enableComputerUse || viewModel.activePrompt.backgroundMode)
+                    viewModel.activePrompt.backgroundMode = newValue
                 }
-                if viewModel.activePrompt.currentOptions.customToolFormat != "text" || !modern {
-                    Text("Parameters schema").font(.caption).foregroundStyle(.secondary)
-                    JSONCodeEditor(text: $viewModel.activePrompt.customToolParametersJSON, label: "Function parameters JSON").font(.system(.caption, design: .monospaced)).frame(minHeight: 120)
-                }
-                Picker("Execution", selection: $viewModel.activePrompt.customToolExecutionType) {
-                    Text("Echo input").tag("echo")
-                    Text("Calculator").tag("calculator")
-                    Text("Webhook").tag("webhook")
-                }
-                if viewModel.activePrompt.customToolExecutionType == "webhook" {
-                    TextField("Webhook URL", text: $viewModel.activePrompt.customToolWebhookURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Text("Posts the tool input to this URL. Free-form text is sent as a JSON object with an input field. Webhooks run directly and are excluded from async/programmatic execution.").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("Echo and calculator run locally. Calculator accepts an expression field for JSON functions, or an arithmetic expression for text tools.").font(.caption).foregroundStyle(.secondary)
-                }
+            )) {
+                SettingsToggleLabel("Background mode", icon: "moon.zzz.fill", tint: .indigo,
+                                    detail: "Long tasks keep running on OpenAI's servers if you leave the app. Turns on Store on OpenAI.")
             }
+        } header: {
+            Text("Long tasks")
         }
         .onChange(of: viewModel.activePrompt.currentOptions.asyncTools) { _, enabled in
             if enabled { viewModel.activePrompt.currentOptions.programmaticTools = false }
@@ -175,6 +182,185 @@ struct ModernResponseSettings: View {
             if enabled { viewModel.activePrompt.currentOptions.asyncTools = false }
             viewModel.saveActivePrompt()
         }
-        .onDisappear { viewModel.saveActivePrompt() }
+        .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+    }
+}
+
+/// Image model, action, previews, input fidelity and compression. Settings → Tools → Image Generation.
+struct ImageGenerationOptionsRows: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
+        Picker("Image model", selection: $viewModel.activePrompt.imageGenerationModel) {
+            ForEach(CurrentModelCatalog.imageModels, id: \.self) { model in
+                Text(CurrentModelCatalog.imageModelName(model)).tag(model)
+            }
+            if !CurrentModelCatalog.imageModels.contains(viewModel.activePrompt.imageGenerationModel) {
+                Text(CurrentModelCatalog.imageModelName(viewModel.activePrompt.imageGenerationModel)).tag(viewModel.activePrompt.imageGenerationModel)
+            }
+        }
+        Picker("Size", selection: $viewModel.activePrompt.imageGenerationSize) {
+            Text("Automatic").tag("auto")
+            Text("Square 1024×1024").tag("1024x1024")
+            Text("Portrait 1024×1536").tag("1024x1536")
+            Text("Landscape 1536×1024").tag("1536x1024")
+        }
+        let qualities = CurrentModelCatalog.imageQualities(for: viewModel.activePrompt.imageGenerationModel)
+        Picker("Quality", selection: $viewModel.activePrompt.imageGenerationQuality) {
+            ForEach(qualities, id: \.self) { quality in
+                Text(quality == "xhigh" ? "X-High" : quality.capitalized).tag(quality)
+            }
+            if !qualities.contains(viewModel.activePrompt.imageGenerationQuality) {
+                Text(viewModel.activePrompt.imageGenerationQuality).tag(viewModel.activePrompt.imageGenerationQuality)
+            }
+        }
+        Picker("Action", selection: $viewModel.activePrompt.currentOptions.imageAction) {
+            Text("Automatic").tag("auto")
+            Text("Always generate").tag("generate")
+            Text("Edit the attached image").tag("edit")
+        }
+        Stepper("Previews while drawing: \(viewModel.activePrompt.currentOptions.partialImages)",
+                value: $viewModel.activePrompt.currentOptions.partialImages, in: 0...3)
+        Picker("Detail read from your images", selection: $viewModel.activePrompt.currentOptions.imageInputFidelity) {
+            Text("Model default").tag("")
+            Text("High").tag("high")
+            Text("Low").tag("low")
+        }
+        Stepper("JPEG/WebP compression: \(viewModel.activePrompt.currentOptions.imageOutputCompression.map { "\($0)" } ?? "default")",
+                value: Binding(get: { viewModel.activePrompt.currentOptions.imageOutputCompression ?? 100 },
+                               set: { viewModel.activePrompt.currentOptions.imageOutputCompression = $0 == 100 ? nil : $0 }),
+                in: 0...100, step: 5)
+            .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+            .onChange(of: viewModel.activePrompt.imageGenerationModel) { _, model in
+                viewModel.activePrompt.imageGenerationQuality = CurrentModelCatalog.normalizedImageQuality(viewModel.activePrompt.imageGenerationQuality, model: model)
+                viewModel.saveActivePrompt()
+            }
+    }
+}
+
+/// Response moderation. Settings → Privacy & Safety.
+struct ModerationSection: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
+        Section {
+            Picker("Moderation", selection: $viewModel.activePrompt.currentOptions.moderationModel) {
+                Text("Off").tag("")
+                Text("omni-moderation-latest").tag("omni-moderation-latest")
+            }
+            if !viewModel.activePrompt.currentOptions.moderationModel.isEmpty {
+                Picker("Your message", selection: $viewModel.activePrompt.currentOptions.moderationInputMode) {
+                    Text("Report only").tag("score")
+                    Text("Block if flagged").tag("block")
+                }
+                Picker("The answer", selection: $viewModel.activePrompt.currentOptions.moderationOutputMode) {
+                    Text("Report only").tag("score")
+                    Text("Block if flagged").tag("block")
+                }
+            }
+        } header: {
+            Text("Content moderation")
+        } footer: {
+            Text("OpenAI checks each message and answer. Report only lists flagged categories; Block stops a flagged response.")
+        }
+        .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
+    }
+}
+
+/// The custom function tool. Settings → Tools → Custom Tool.
+struct CustomToolSections: View {
+    @EnvironmentObject private var viewModel: ChatViewModel
+
+    var body: some View {
+        let modern = isModern(viewModel)
+        Section {
+            Toggle("Enable custom tool", isOn: $viewModel.activePrompt.enableCustomTool)
+        } footer: {
+            Text("Give the model one tool of your own: it echoes its input, does arithmetic, or posts to your webhook.")
+        }
+        if viewModel.activePrompt.enableCustomTool {
+            Section("Definition") {
+                TextField("Tool name", text: $viewModel.activePrompt.customToolName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("What the tool does", text: $viewModel.activePrompt.customToolDescription, axis: .vertical)
+                if modern {
+                    Picker("Input format", selection: $viewModel.activePrompt.currentOptions.customToolFormat) {
+                        Text("JSON function").tag("function")
+                        Text("Free-form text").tag("text")
+                    }
+                    .disabled(viewModel.activePrompt.enableComputerUse || viewModel.activePrompt.backgroundMode)
+                }
+            }
+            if viewModel.activePrompt.currentOptions.customToolFormat != "text" || !modern {
+                Section("Parameters schema") {
+                    JSONCodeEditor(text: $viewModel.activePrompt.customToolParametersJSON, label: "Function parameters JSON")
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(minHeight: 140)
+                }
+            }
+            Section {
+                Picker("When called", selection: $viewModel.activePrompt.customToolExecutionType) {
+                    Text("Echo the input").tag("echo")
+                    Text("Calculate").tag("calculator")
+                    Text("Post to a webhook").tag("webhook")
+                }
+                if viewModel.activePrompt.customToolExecutionType == "webhook" {
+                    TextField("Webhook URL", text: $viewModel.activePrompt.customToolWebhookURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                }
+            } header: {
+                Text("Execution")
+            } footer: {
+                if viewModel.activePrompt.customToolExecutionType == "webhook" {
+                    Text("Posts the tool input to this URL. Free-form text is sent as a JSON object with an input field. Webhooks are excluded from async and programmatic calls.")
+                } else {
+                    Text("Echo and Calculate run on this device. Calculate accepts an expression field for JSON functions, or an arithmetic expression for text tools.")
+                }
+            }
+        }
+    }
+}
+
+/// A toggle label with a colored icon tile, a name and one line saying what the setting does.
+struct SettingsToggleLabel: View {
+    let title: LocalizedStringKey
+    let icon: String
+    let tint: Color
+    let detail: LocalizedStringKey?
+
+    init(_ title: LocalizedStringKey, icon: String, tint: Color, detail: LocalizedStringKey? = nil) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        self.detail = detail
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SettingsIconTile(icon: icon, tint: tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(Color.accessibleSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+}
+
+/// The rounded colored square behind a Settings symbol, as in the system Settings app.
+struct SettingsIconTile: View {
+    let icon: String
+    let tint: Color
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 29
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: size * 0.55, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(tint.gradient, in: RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+            .accessibilityHidden(true)
     }
 }

@@ -1,1 +1,1 @@
-Every tool step now shows what it's doing: a spinner while it works, then Completed or Failed.  Tap Code Interpreter to see the Python it ran.
+New in 3.0: a Decisions screen for OpenAI's Decisions API, and tool steps that fill in while the model writes them.  Still your own key, and no account.

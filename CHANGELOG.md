@@ -2,6 +2,20 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
+## 3.1 — in development
+
+**Marketing version:** still 3.0 in the project until 3.0 ships (build 55 is the 3.0 archive and has none of this).
+
+### Changed
+
+- Settings is one list of named pages instead of five segmented tabs (General, Model, Tools, MCP, Advanced), at Gunnar's request on November 19, 2026 ("holy shit are some of the best options hidden"). Before, Local Python, the hosted shell, multi-agent, tool search, async and programmatic tool calls, moderation, the image options, the voice settings and the API Workbench all sat at the bottom of the Model tab under one "Current Responses capabilities" heading, below the model card, and Verbosity was there twice. Now:
+  - The root lists API Key, Model & Reasoning, Instructions, Response Format, Voice, Tools, Agents & Tool Calling, Connected Apps (MCP), Files & Vector Stores, Prompt Library, API Workbench, Decisions, Batch Jobs, Request Options, Privacy & Safety and About. Each row shows what is set now (for example "gpt-6-sol · Medium", "4 on", "Saved").
+  - A search field finds about 50 options by name or by a word in their description ("pyodide" finds Local Python) and opens the page that holds each one.
+  - Tools groups every tool by what it does (Search, Your documents, Run code, Create, Act for you, Other apps), each with an icon and one line saying what it does. Local Python and the hosted shell are next to Code Interpreter; Code Interpreter's memory, File Search's hybrid ranking and Web Search's live access sit under the tool they change; the Custom Tool has its own page.
+  - Agents & Tool Calling holds tool choice, parallel calls, the call limit, multi-agent, tool search, async and programmatic calls, tool rounds and Background Mode. Privacy & Safety holds Store on OpenAI, moderation, data-sharing consent and the safety identifier and prompt cache key. Truncation and streaming moved to Response Format.
+  - Options are named for what they do ("Use tools: When useful / Always / Never", "Answer length: Short / Medium / Long", "When the chat gets too long: Stop with an error / Drop the oldest messages"); the values sent to the API are unchanged, so saved presets load as before.
+- UI tests: the voice-sheet regression test opens Voice from the Settings root, and a new test searches "pyodide" and lands on Tools. Both pass, and the full unit suite ran 384 tests, 4 skipped, 0 failures on simulator 54DDDEDE (2026-11-19). Not passing yet: `testSettingsPassTheAccessibilityAudit` reports "Dynamic Type font sizes are partially unsupported" on the Assistant and "What the assistant can do" headers and on the Voice row's two texts; plain, footnote and Label headers and a combined row all gave the same four. The two chat-screen audits fail on a "Failed" fetchAppleReminders step in the chat they open, which this change does not touch; that conversation probably comes from the unit tests run first in the same simulator (not checked).
+
 ## 3.0 — in development
 
 **Marketing version:** 3.0.

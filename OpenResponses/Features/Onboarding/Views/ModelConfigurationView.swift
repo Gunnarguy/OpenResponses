@@ -2,432 +2,243 @@
 //  ModelConfigurationView.swift
 //  OpenResponses
 //
-//  Created to reduce complexity in SettingsView
+//  The model, instruction and response-shape controls, as Form sections. Settings shows each part on its own page
+//  (Model & Reasoning, Instructions, Response Format) instead of one long card, so each control sits under a name a
+//  person would look for.
 //
 
 import SwiftUI
 
 struct ModelConfigurationView: View {
+    enum Part {
+        /// Model picker, reasoning effort and summary, verbosity, temperature and top P.
+        case model
+        /// System and developer instructions.
+        case instructions
+        /// Text or JSON schema output and the response length limit.
+        case responseFormat
+    }
+
     @Binding var activePrompt: Prompt
     let openAIService: any OpenAIServiceProtocol
     let onSave: () -> Void
+    var part: Part = .model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        switch part {
+        case .model:
             modelSelectionSection
-            Divider()
-            systemInstructionsSection
-            developerInstructionsSection
-            Divider()
             modelParametersSection
-            responseSettingsSection
+        case .instructions:
+            instructionsSections
+        case .responseFormat:
+            responseFormatSections
         }
     }
+
+    private var compat: ModelCompatibilityService { .shared }
 
     // MARK: - Model Selection
 
     private var modelSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("AI Model")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
+        Section {
             DynamicModelSelector(
                 selectedModel: $activePrompt.openAIModel,
                 openAIService: openAIService
             )
             .onChange(of: activePrompt.openAIModel) { oldModel, newModel in
-                let compatibilityService = ModelCompatibilityService.shared
-                let supportsComputer = compatibilityService.isToolSupported(
-                    .computer,
-                    for: newModel,
-                    isStreaming: activePrompt.enableStreaming
-                )
-
-                if !supportsComputer && activePrompt.enableComputerUse {
-                    // Selecting a non-computer model should immediately disable the toggle
-                    activePrompt.enableComputerUse = false
-                    activePrompt.ultraStrictComputerUse = false
-                }
-
-                let supportsReasoning = compatibilityService
-                    .getCapabilities(for: newModel)?
-                    .supportsReasoningEffort == true
-                let previousSupportedReasoning = compatibilityService
-                    .getCapabilities(for: oldModel)?
-                    .supportsReasoningEffort == true
-
-                if supportsReasoning,
-                   !previousSupportedReasoning,
-                   let defaultReasoningEffort = compatibilityService.defaultReasoningEffort(for: newModel)
-                {
-                    activePrompt.reasoningEffort = defaultReasoningEffort
-                }
-
-                if supportsReasoning {
-                    activePrompt.reasoningEffort = CurrentModelCatalog.normalizedEffort(activePrompt.reasoningEffort, model: newModel)
-                }
-
-                if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
-                    activePrompt.includeReasoningContent = true
-                } else if !supportsReasoning && activePrompt.includeReasoningContent {
-                    activePrompt.includeReasoningContent = false
-                }
-
-                onSave()
+                applyModelChange(from: oldModel, to: newModel)
             }
 
-            modelInfoRow
-        }
-    }
-
-    @ViewBuilder
-    private var modelInfoRow: some View {
-        HStack {
-            Text("Current: \(activePrompt.openAIModel)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Spacer()
-
-            Button("Reset to Default") {
+            Button("Reset to Default Model") {
                 activePrompt.openAIModel = Prompt.defaultPrompt().openAIModel
                 activePrompt.enableComputerUse = false
                 onSave()
             }
-            .font(.caption)
-            .foregroundColor(.orange)
+        } header: {
+            Text("Model")
+        } footer: {
+            Text("Every chat request uses this model. Some tools and options below depend on it.")
         }
     }
 
-    // MARK: - System Instructions
-
-    private var systemInstructionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("System Instructions")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            Text("Guide the assistant's behavior and personality")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            TextEditor(text: $activePrompt.systemInstructions)
-                .frame(minHeight: 80)
-                .padding(.horizontal, 8)
-                .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.2))
-                )
-
-            systemInstructionsPlaceholder
+    private func applyModelChange(from oldModel: String, to newModel: String) {
+        let supportsComputer = compat.isToolSupported(.computer, for: newModel, isStreaming: activePrompt.enableStreaming)
+        if !supportsComputer && activePrompt.enableComputerUse {
+            // Selecting a non-computer model should immediately disable the toggle
+            activePrompt.enableComputerUse = false
+            activePrompt.ultraStrictComputerUse = false
         }
-    }
 
-    @ViewBuilder
-    private var systemInstructionsPlaceholder: some View {
-        if activePrompt.systemInstructions.isEmpty {
-            Text("e.g., 'You are a helpful and knowledgeable assistant.'")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .italic()
+        let supportsReasoning = compat.getCapabilities(for: newModel)?.supportsReasoningEffort == true
+        let previousSupportedReasoning = compat.getCapabilities(for: oldModel)?.supportsReasoningEffort == true
+
+        if supportsReasoning, !previousSupportedReasoning,
+           let defaultReasoningEffort = compat.defaultReasoningEffort(for: newModel)
+        {
+            activePrompt.reasoningEffort = defaultReasoningEffort
         }
-    }
-
-    // MARK: - Developer Instructions
-
-    private var developerInstructionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Developer Instructions")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            Text("Advanced model guidance (optional)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            TextEditor(text: $activePrompt.developerInstructions)
-                .frame(minHeight: 60)
-                .padding(.horizontal, 8)
-                .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.2))
-                )
+        if supportsReasoning {
+            activePrompt.reasoningEffort = CurrentModelCatalog.normalizedEffort(activePrompt.reasoningEffort, model: newModel)
         }
+        if supportsReasoning && !previousSupportedReasoning && !activePrompt.includeReasoningContent {
+            activePrompt.includeReasoningContent = true
+        } else if !supportsReasoning && activePrompt.includeReasoningContent {
+            activePrompt.includeReasoningContent = false
+        }
+        onSave()
     }
 
     // MARK: - Model Parameters
 
-    private var modelParametersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Model Parameters")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            modelParametersControls
-        }
-    }
-
     @ViewBuilder
-    private var modelParametersControls: some View {
-        if ModelCompatibilityService.shared.isParameterSupported("temperature", for: activePrompt.openAIModel, reasoningEffort: activePrompt.reasoningEffort) { 
-            temperatureControl
-        }
+    private var modelParametersSection: some View {
+        let model = activePrompt.openAIModel
+        let reasoning = compat.isParameterSupported("reasoning_effort", for: model)
+        let verbosity = compat.isParameterSupported("verbosity", for: model)
+        let temperature = compat.isParameterSupported("temperature", for: model, reasoningEffort: activePrompt.reasoningEffort)
+        let topP = compat.isParameterSupported("top_p", for: model, reasoningEffort: activePrompt.reasoningEffort)
 
-        if ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: activePrompt.openAIModel) {
-            reasoningEffortControl
-            modelParametersReasoningSummary
-        }
-
-        if ModelCompatibilityService.shared.isParameterSupported("verbosity", for: activePrompt.openAIModel) {
-            verbosityControl
-        }
-
-        if ModelCompatibilityService.shared.isParameterSupported("top_p", for: activePrompt.openAIModel, reasoningEffort: activePrompt.reasoningEffort) { 
-            topPControl
-        }
-    }
-
-    private var temperatureControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Temperature")
-                Spacer()
-                Text(String(format: "%.2f", activePrompt.temperature))
-                    .foregroundColor(.secondary)
-            }
-            .font(.subheadline)
-
-            Slider(value: $activePrompt.temperature, in: 0...2, step: 0.01)
-                .onChange(of: activePrompt.temperature) { _, _ in
-                    onSave()
+        if reasoning {
+            Section {
+                Picker("Effort", selection: $activePrompt.reasoningEffort) {
+                    ForEach(CurrentModelCatalog.reasoningEfforts(for: model), id: \.self) { option in
+                        Text(Self.effortName(option)).tag(option)
+                    }
                 }
-        }
-    }
+                .onChange(of: activePrompt.reasoningEffort) { _, _ in onSave() }
 
-    private var reasoningEffortControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Reasoning Effort")
-                Spacer()
-                Text(activePrompt.reasoningEffort)
-                    .foregroundColor(.secondary)
-            }
-            .font(.subheadline)
-
-            Picker("Reasoning Effort", selection: $activePrompt.reasoningEffort) {
-                ForEach(reasoningEffortOptions(for: activePrompt.openAIModel), id: \.self) { option in
-                    Text(optionDisplayName(option)).tag(option)
+                Picker("Show reasoning summary", selection: Binding(
+                    get: { ["auto", "concise", "detailed"].contains(activePrompt.reasoningSummary) ? activePrompt.reasoningSummary : "" },
+                    set: { activePrompt.reasoningSummary = $0 }
+                )) {
+                    Text("Off").tag("")
+                    Text("Automatic").tag("auto")
+                    Text("Concise").tag("concise")
+                    Text("Detailed").tag("detailed")
                 }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: activePrompt.reasoningEffort) { _, _ in
-                onSave()
+                .onChange(of: activePrompt.reasoningSummary) { _, _ in onSave() }
+            } header: {
+                Text("Reasoning")
+            } footer: {
+                Text("More effort thinks longer before answering: better on hard problems, slower and more tokens. The summary shows what the model thought about, when the model offers one.")
             }
         }
-    }
 
-    private var verbosityControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Verbosity")
-                Spacer()
-                Text(activePrompt.verbosity.capitalized)
-                    .foregroundColor(.secondary)
-            }
-            .font(.subheadline)
-
-            let options = ["low", "medium", "high"]
-            Picker("Verbosity", selection: $activePrompt.verbosity) {
-                ForEach(options, id: \.self) { option in
-                    Text(option.capitalized).tag(option)
+        if verbosity || temperature || topP {
+            Section {
+                if verbosity {
+                    Picker("Answer length", selection: $activePrompt.verbosity) {
+                        Text("Short").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("Long").tag("high")
+                        if !["low", "medium", "high"].contains(activePrompt.verbosity) {
+                            Text(activePrompt.verbosity.capitalized).tag(activePrompt.verbosity)
+                        }
+                    }
+                    .onChange(of: activePrompt.verbosity) { _, _ in onSave() }
+                }
+                if temperature {
+                    sliderRow("Temperature", value: $activePrompt.temperature, range: 0...2)
+                }
+                if topP {
+                    sliderRow("Top P", value: $activePrompt.topP, range: 0...1)
+                }
+            } header: {
+                Text("Style")
+            } footer: {
+                if temperature {
+                    Text("Temperature: lower is more predictable, higher is more varied. Top P narrows the words the model picks from.")
                 }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: activePrompt.verbosity) { _, _ in
-                onSave()
-            }
         }
     }
 
-    private func reasoningEffortOptions(for modelId: String) -> [String] {
-        CurrentModelCatalog.reasoningEfforts(for: modelId)
+    private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            LabeledContent(title, value: String(format: "%.2f", value.wrappedValue))
+            Slider(value: value, in: range, step: 0.01) { Text(title) }
+                .onChange(of: value.wrappedValue) { _, _ in onSave() }
+        }
     }
 
-    private func optionDisplayName(_ option: String) -> String {
+    static func effortName(_ option: String) -> String {
         switch option {
         case "none": return "None"
         case "minimal": return "Minimal"
-        case "low": return "Low"
-        case "medium": return "Medium"
-        case "high": return "High"
         case "xhigh": return "X-High"
-        case "max": return "Max"
         default: return option.capitalized
         }
     }
 
-    private var topPControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Top P")
-                Spacer()
-                Text(String(format: "%.2f", activePrompt.topP))
-                    .foregroundColor(.secondary)
-            }
-            .font(.subheadline)
-
-            Slider(value: $activePrompt.topP, in: 0...1, step: 0.01)
-                .onChange(of: activePrompt.topP) { _, _ in
-                    onSave()
-                }
-        }
-    }
+    // MARK: - Instructions
 
     @ViewBuilder
-    private var modelParametersReasoningSummary: some View {
-        if !activePrompt.reasoningSummary.isEmpty || ModelCompatibilityService.shared.isParameterSupported("reasoning_effort", for: activePrompt.openAIModel) {
-            reasoningSummaryField
+    private var instructionsSections: some View {
+        Section {
+            TextEditor(text: $activePrompt.systemInstructions)
+                .frame(minHeight: 140)
+                .accessibilityLabel("System instructions")
+        } header: {
+            Text("System instructions")
+        } footer: {
+            Text("Sent with every message: who the assistant is and how it should answer. Example: \"You are a concise assistant. Answer in plain English.\"")
+        }
+
+        Section {
+            TextEditor(text: $activePrompt.developerInstructions)
+                .frame(minHeight: 100)
+                .accessibilityLabel("Developer instructions")
+        } header: {
+            Text("Developer instructions")
+        } footer: {
+            Text("Optional. Rules the model weighs above the conversation, such as output formats or things to avoid.")
         }
     }
 
-    private var reasoningSummaryField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Reasoning Summary")
-                .font(.caption)
-                .foregroundColor(.secondary)
+    // MARK: - Response Format
 
-            Picker("Summary detail", selection: Binding(
-                get: { ["auto", "concise", "detailed"].contains(activePrompt.reasoningSummary) ? activePrompt.reasoningSummary : "" },
-                set: { activePrompt.reasoningSummary = $0 }
-            )) {
-                Text("Off").tag("")
-                Text("Automatic").tag("auto")
-                Text("Concise").tag("concise")
-                Text("Detailed").tag("detailed")
-            }
-                .onChange(of: activePrompt.reasoningSummary) { _, _ in
-                    onSave()
-                }
-
-            Text("Request a summary of the model’s reasoning. Availability depends on the selected model.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    // MARK: - Response Settings
-
-    private var responseSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Response Settings")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            textFormatTypePicker
-            verbosityPicker
-            maxOutputTokensControl
-
-            if activePrompt.textFormatType == "json_schema" {
-                jsonSchemaEditor
-            }
-        }
-    }
-
-    private var textFormatTypePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Text Format")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Picker("Text Format", selection: $activePrompt.textFormatType) {
+    @ViewBuilder
+    private var responseFormatSections: some View {
+        Section {
+            Picker("Output", selection: $activePrompt.textFormatType) {
                 Text("Text").tag("text")
                 Text("JSON Schema").tag("json_schema")
             }
             .pickerStyle(.segmented)
-            .onChange(of: activePrompt.textFormatType) { _, _ in
-                onSave()
-            }
-        }
-    }
+            .onChange(of: activePrompt.textFormatType) { _, _ in onSave() }
 
-    private var maxOutputTokensControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Max Output Tokens")
-                Spacer()
-                Text(activePrompt.maxOutputTokens > 0 ? String(activePrompt.maxOutputTokens) : "Auto")
-                    .foregroundColor(.secondary)
-            }
-            .font(.subheadline)
-
-            Toggle("Limit Response Length", isOn: Binding(
+            Toggle("Limit response length", isOn: Binding(
                 get: { activePrompt.maxOutputTokens > 0 },
                 set: { enabled in
                     activePrompt.maxOutputTokens = enabled ? 4096 : 0
                     onSave()
                 }
             ))
-            .font(.caption)
-
             if activePrompt.maxOutputTokens > 0 {
-                Stepper(
-                    "Tokens: \(activePrompt.maxOutputTokens)",
-                    value: $activePrompt.maxOutputTokens,
-                    in: 256...32768,
-                    step: 256
-                )
-                .font(.caption)
+                Stepper("Up to \(activePrompt.maxOutputTokens.formatted()) tokens",
+                        value: $activePrompt.maxOutputTokens, in: 256...32768, step: 256)
             }
+        } header: {
+            Text("Output")
+        } footer: {
+            Text("JSON Schema makes every answer valid JSON in the shape you define below.")
         }
-    }
 
-    private var verbosityPicker: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Verbosity")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Picker("Verbosity", selection: $activePrompt.verbosity) {
-                Text("Low").tag("low")
-                Text("Medium").tag("medium")
-                Text("High").tag("high")
-                Text("Auto").tag("auto")
+        if activePrompt.textFormatType == "json_schema" {
+            Section {
+                TextField("Schema name", text: $activePrompt.jsonSchemaName)
+                    .disableAutocorrection(true)
+                    .textInputAutocapitalization(.never)
+                TextField("Schema description", text: $activePrompt.jsonSchemaDescription)
+                Toggle("Strict validation", isOn: $activePrompt.jsonSchemaStrict)
+                JSONCodeEditor(text: $activePrompt.jsonSchemaContent, label: "Output JSON schema")
+                    .frame(minHeight: 160)
+            } header: {
+                Text("JSON Schema")
+            } footer: {
+                Text("A full JSON Schema definition, sent to the Responses API as written.")
             }
-            .pickerStyle(.segmented)
-            .onChange(of: activePrompt.verbosity) { _, _ in onSave() }
-        }
-    }
-
-    private var jsonSchemaEditor: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("JSON Schema")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            TextField("Schema Name", text: $activePrompt.jsonSchemaName)
-                .textFieldStyle(.roundedBorder)
-                .disableAutocorrection(true)
-                .textInputAutocapitalization(.never)
-
-            TextField("Schema Description", text: $activePrompt.jsonSchemaDescription)
-                .textFieldStyle(.roundedBorder)
-
-            Toggle("Strict Validation", isOn: $activePrompt.jsonSchemaStrict)
-                .font(.caption)
-
-            JSONCodeEditor(text: $activePrompt.jsonSchemaContent, label: "Output JSON schema")
-                .frame(minHeight: 140)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.2))
-                )
-
-            Text("Provide a full JSON Schema definition. We'll send it to the Responses API verbatim.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
         }
     }
 }

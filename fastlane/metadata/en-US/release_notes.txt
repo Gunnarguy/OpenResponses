@@ -20,7 +20,7 @@ CALENDAR AND REMINDERS
 
 ALSO
 
-• About has a Rate OpenResponses link that opens the App Store's review page.
+• Rating is Apple's own sheet, which can show up once per version after an answer finishes, and About has a Rate OpenResponses link that opens the App Store's review page.
 
 
 Still no account, still your own key, and your chat history stays on your phone.
