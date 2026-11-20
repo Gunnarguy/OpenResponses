@@ -73,17 +73,28 @@ nonisolated struct SharedInbox: Sendable {
         }
         // item.json last: a folder without it is a delivery still being written, and is skipped.
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(date.formatted(Self.timestampStyle))
+        }
         try encoder.encode(item).write(to: folder.appendingPathComponent("item.json"), options: .atomic)
         return item
     }
 
     /// Every complete delivery, oldest first, without removing anything.
+    /// ISO 8601 with milliseconds, so two deliveries in the same second still come back in the order they were made
+    /// (whole seconds tied, and the sort then returned them in either order).
+    static let timestampStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+
     func pending() -> [Delivery] {
         let fm = FileManager.default
         guard let folders = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            if let date = try? Date(text, strategy: Self.timestampStyle) { return date }
+            return try Date(text, strategy: .iso8601)
+        }
         var deliveries: [Delivery] = []
         for folder in folders where folder.hasDirectoryPath {
             guard let data = try? Data(contentsOf: folder.appendingPathComponent("item.json")),

@@ -348,7 +348,7 @@ struct PromptCacheOptions: Codable, Equatable {
         if let currentTTL = try? container.decode(String.self, forKey: .ttl) {
             ttl = currentTTL
         } else if (try? container.decode(Int.self, forKey: .ttl)) != nil {
-            // Older builds stored a numeric TTL. The current API supports only "30m".
+            // Older builds stored a numeric TTL; it becomes the default "30m" ("12h" is the other value, set in Request Options).
             ttl = "30m"
         } else {
             ttl = nil

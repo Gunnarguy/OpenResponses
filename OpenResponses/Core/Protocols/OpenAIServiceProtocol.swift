@@ -405,6 +405,19 @@ enum OpenAIServiceError: LocalizedError {
         }
     }
     
+    /// The error code OpenAI returns (HTTP 403, or in a stream's error) when its misalignment monitoring stops a
+    /// request. The guide says not to retry the blocked workflow automatically
+    /// (developers.openai.com/api/docs/guides/safety-checks/misalignment-monitoring, read 2026-11-20).
+    static let misalignmentCode = "misalignment_policy_violation"
+
+    /// What the chat shows when misalignment monitoring stopped a request.
+    static let misalignmentMessage = "⚠️ OpenAI stopped this request: its misalignment monitoring flagged what the model was doing (misalignment_policy_violation). OpenResponses doesn't retry it. Change the request or turn off tools before you send it again."
+
+    /// True when an error code or an error body names the misalignment stop.
+    static func isMisalignment(code: String?, message: String? = nil) -> Bool {
+        code == misalignmentCode || (message?.contains(misalignmentCode) ?? false)
+    }
+
     /// Converts a general Error into a specific OpenAIServiceError case.
     static func from(error: Error) -> OpenAIServiceError {
         if let serviceError = error as? OpenAIServiceError {

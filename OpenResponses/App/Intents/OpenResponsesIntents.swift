@@ -172,7 +172,12 @@ enum ShortcutAsk {
             }
         }
 
-        let service = service ?? AppContainer.shared.openAIService
+        // Its own service: a one-off request that must not record a chain the chat could mistake for its own.
+        let service = service ?? {
+            let oneOff = OpenAIService()
+            oneOff.recordsInstructionChains = false
+            return oneOff
+        }()
         let response = try await service.sendChatRequest(
             userMessage: trimmed,
             prompt: prompt,

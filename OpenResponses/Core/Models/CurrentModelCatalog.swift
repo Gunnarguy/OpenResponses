@@ -127,15 +127,33 @@ enum CurrentModelCatalog {
     nonisolated static var retiredModels: [String] { ModelCatalogStore.shared.catalog.retired.map(\.id) }
 
     /// Where a preset naming a retired model moves: the replacement of the longest matching retired entry, so
-    /// `gpt-5-mini-2025-08-07` follows `gpt-5-mini` rather than `gpt-5`, otherwise the default model.
+    /// `gpt-5-mini-2025-08-07` follows `gpt-5-mini` rather than `gpt-5`, then the catalog's `successors` for an
+    /// earlier model whose shutdown date has come near, otherwise the default model. Replacements are the ones on
+    /// OpenAI's deprecations page (read 2026-11-20).
     nonisolated static func replacement(for id: String) -> String {
-        let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let catalog = ModelCatalogStore.shared.catalog
+        if let replacement = retiredEntry(for: id)?.replacement { return replacement }
+        let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let successor = (catalog.successors ?? [:])
+            .filter { full == $0.key || full.hasPrefix($0.key + "-") }
+            .max { $0.key.count < $1.key.count }
+        return successor?.value ?? catalog.defaultModel
+    }
+
+    /// True when the documented replacement runs in pro reasoning mode (gpt-5-pro and o3-pro move to GPT-6.1 Sol with
+    /// `reasoning.mode: "pro"`).
+    nonisolated static func replacementUsesPro(for id: String) -> Bool {
+        retiredEntry(for: id)?.pro == true
+    }
+
+    /// The longest retired entry with a replacement that names this model or one of its dated snapshots.
+    nonisolated private static func retiredEntry(for id: String) -> ModelCatalog.Retired? {
+        let full = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         var match: ModelCatalog.Retired?
-        for entry in catalog.retired where entry.replacement != nil && (full == entry.id || full.hasPrefix(entry.id + "-")) {
+        for entry in ModelCatalogStore.shared.catalog.retired where entry.replacement != nil && (full == entry.id || full.hasPrefix(entry.id + "-")) {
             if entry.id.count > (match?.id.count ?? 0) { match = entry }
         }
-        return match?.replacement ?? catalog.defaultModel
+        return match
     }
 
     /// Retired when the catalog lists the model (or it is a dated snapshot or older variant of one), or when the
@@ -147,6 +165,33 @@ enum CurrentModelCatalog {
         return retiredModels.contains { name in
             [full, base].contains { $0 == name || ($0.hasPrefix(name + "-") && !isModern($0)) }
         } || full.contains("chat-latest") || store.isShuttingDown(full) || store.isShuttingDown(base)
+    }
+
+    /// Models that accept `service_tier: "ultrafast"`: "It supports GPT-6.2 Astra, GPT-6.2 Sol, GPT-6 Astra, and GPT-6.1
+    /// Sol" (Ultrafast guide, read 2026-11-20). The API reference's older line naming gpt-5.6-sol is out of date.
+    nonisolated static let ultrafastModels: Set<String> = ["gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol"]
+
+    /// The `service_tier` values a model accepts, in picker order. Auto and Standard (`default`) always; Fast on every
+    /// model (`priority` is its older name); Flex except on GPT-6.2 and later ("Flex is unavailable on GPT-6.2 Astra and
+    /// GPT-6.2 Sol, and we won't be adding it to future models", Flex guide); Ultrafast only on `ultrafastModels`.
+    nonisolated static func serviceTiers(for id: String) -> [String] {
+        let base = baseID(id)
+        var tiers = ["auto", "default"]
+        let isGPT62OrLater = isModern(base) && generation(base).map { ($0.major, $0.minor) >= (6, 2) } == true
+        if !isGPT62OrLater { tiers.append("flex") }
+        tiers.append("fast")
+        if ultrafastModels.contains(base) { tiers.append("ultrafast") }
+        return tiers
+    }
+
+    /// The `service_tier` to send, or nil to leave it out (the API then uses `auto`): nil for an empty value and for
+    /// a tier the model does not offer, which would otherwise fail with 400 "Invalid service_tier argument".
+    nonisolated static func requestServiceTier(_ tier: String, model: String) -> String? {
+        let value = tier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !value.isEmpty else { return nil }
+        let offered = serviceTiers(for: model)
+        if value == "priority" { return offered.contains("fast") ? "priority" : nil }
+        return offered.contains(value) ? value : nil
     }
 
     static func reasoningEfforts(for id: String) -> [String] {

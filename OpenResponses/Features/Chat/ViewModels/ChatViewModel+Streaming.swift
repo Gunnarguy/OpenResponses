@@ -196,6 +196,12 @@ extension ChatViewModel {
             }
         }
 
+        // Misalignment monitoring stopped the request: say so and never retry it (OpenAI's guide).
+        if OpenAIServiceError.isMisalignment(code: errorCode, message: errorMessage) {
+            stopAfterMisalignment(messageId: messageId)
+            return
+        }
+
         // Special handling for context_length_exceeded
         if errorCode == "context_length_exceeded" {
             AppLogger.log("💡 [Context Length] Conversation history too large - offering to start fresh", category: .openAI, level: .info)
@@ -223,6 +229,16 @@ extension ChatViewModel {
     }
 
     /// Handles "response.failed" events emitted when the server aborts the response.
+    /// Ends the turn after OpenAI's misalignment monitoring stopped it. No retry, and no tool round continues.
+    func stopAfterMisalignment(messageId: UUID) {
+        messages.append(ChatMessage(role: .system, text: OpenAIServiceError.misalignmentMessage))
+        isStreaming = false
+        streamingStatus = .idle
+        finalizeStreamingReasoning(for: messageId)
+        streamingMessageId = nil
+        isAwaitingComputerOutput = false
+    }
+
     private func handleResponseFailedChunk(_ chunk: StreamingEvent, messageId: UUID) {
         let errorMessage = chunk.response?.error?.message ?? "The request failed"
         let errorCode = chunk.response?.error?.code ?? "unknown"
@@ -238,6 +254,11 @@ extension ChatViewModel {
                     }
                 }
             }
+        }
+
+        if OpenAIServiceError.isMisalignment(code: errorCode, message: errorMessage) {
+            stopAfterMisalignment(messageId: messageId)
+            return
         }
 
         if attemptStreamingRetry(for: messageId, reason: errorMessage) {

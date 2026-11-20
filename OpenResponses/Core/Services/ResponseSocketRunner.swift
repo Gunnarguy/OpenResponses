@@ -113,6 +113,9 @@ final class ResponseSocketRunner {
                 }
                 if ["error", "response.inject.failed"].contains(type) {
                     let detail = event["error"] as? JSON ?? event
+                    if OpenAIServiceError.isMisalignment(code: detail["code"] as? String) {
+                        throw OpenAIServiceError.requestFailed(403, OpenAIServiceError.misalignmentCode)
+                    }
                     throw OpenAIServiceError.invalidRequest(detail["message"] as? String ?? "The tool injection failed. Completed tool work is retained; it was not retried.")
                 }
                 if ["response.completed", "response.incomplete", "response.failed"].contains(type) {
@@ -141,6 +144,9 @@ final class ResponseSocketRunner {
             if let terminal, injecting.isEmpty {
                 guard terminal["status"] as? String == "completed" else {
                     let detail = terminal["error"] as? JSON ?? terminal["incomplete_details"] as? JSON ?? [:]
+                    if OpenAIServiceError.isMisalignment(code: detail["code"] as? String) {
+                        throw OpenAIServiceError.requestFailed(403, OpenAIServiceError.misalignmentCode)
+                    }
                     throw OpenAIServiceError.invalidRequest(detail["message"] as? String ?? detail["reason"] as? String ?? "The multi-agent response did not complete.")
                 }
                 guard jobs.isEmpty, queue.isEmpty, ready.isEmpty else { throw OpenAIServiceError.invalidRequest("The response ended before all client-tool results were accepted. Completed work is retained.") }

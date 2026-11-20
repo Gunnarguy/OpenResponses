@@ -36,7 +36,8 @@ privacy policy at https://gunndamental.com/openresponses/privacy/ describes both
     {"id": "gpt-6.1-sol", "summary": "Near-Astra performance at a lower cost", "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"], "pro": true, "asyncTools": true, "released": "2026-09-29"}
   ],
   "earlier": ["gpt-5.5", "gpt-4o"],
-  "retired": [{"id": "gpt-5-mini", "replacement": "gpt-5.6-terra"}, {"id": "o1-pro"}]
+  "successors": {"gpt-4o": "gpt-6-luna"},
+  "retired": [{"id": "gpt-5-mini", "replacement": "gpt-6.1-terra"}, {"id": "gpt-5-pro", "replacement": "gpt-6.1-sol", "pro": true}, {"id": "o1-pro"}]
 }
 ```
 
@@ -47,7 +48,8 @@ privacy policy at https://gunndamental.com/openresponses/privacy/ describes both
 | `defaultModel` | Default for new presets, the API Workbench and onboarding. Existing presets keep their model (Notion Decision row). |
 | `current` | Menu order, top first. `summary` is the line under the name (1 to 80 characters). `reasoningEfforts` lists the values the model page gives, lowest first, from none, minimal, low, medium, high, xhigh, max. `pro` is `reasoning.mode: "pro"`; `asyncTools` is `async: true` on function and custom tools. |
 | `earlier` | Older models listed after the current ones. Their reasoning options come from rules in `CurrentModelCatalog`. |
-| `retired` | Hidden from every model list. A preset naming one, or a dated snapshot of one, moves to `replacement` (the longest matching entry wins), or to `defaultModel` when there is none. |
+| `successors` | Optional. For an `earlier` model whose shutdown OpenAI has announced: where its presets move once the account's GET /models gives a `shutdown_date` within 30 days (the longest matching key wins, so dated snapshots follow it). Added in 3.1 (revision 2). |
+| `retired` | Hidden from every model list. A preset naming one, or a dated snapshot of one, moves to `replacement` (the longest matching entry wins), then to the `successors` entry, then to `defaultModel`. `"pro": true` also switches the preset to `reasoning.mode: "pro"`, as the deprecations page names for gpt-5-pro and o3-pro. |
 
 Model IDs are lowercase letters, digits, dots and hyphens, and each appears once across `current`, `earlier` and
 `retired`. `ModelCatalog.problem()` enforces these rules, and the unit tests fail if the built-in file breaks them.

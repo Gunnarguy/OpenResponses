@@ -18,6 +18,12 @@ import SwiftUI // This should already be there for access to UI types
 
 /// A service class responsible for communicating with the OpenAI API.
 class OpenAIService: OpenAIServiceProtocol {
+    /// Whether requests record what their history holds in `InstructionsLedger`. Off for one-off requests that never
+    /// continue in the chat (Ask OpenResponses), so their new chains cannot be mistaken for a chat's.
+    var recordsInstructionChains = true
+    /// The ledger chained requests consult; a test can give the service its own.
+    var instructionsLedger = InstructionsLedger.shared
+
     private static let importantEventTypes: Set<String> = [
         "response.created", "response.completed", "response.failed",
         "response.image_generation_call.completed", "response.computer_call.completed",
@@ -645,9 +651,7 @@ class OpenAIService: OpenAIServiceProtocol {
         // Preserve existing behavior for non-computer requests: explicit user instructions override
         // the default assistant prompt and the dynamic tool guidance below.
         if !computerUseActive, !userInstructions.isEmpty, userInstructions != "You are a helpful assistant." {
-            // web_search filters accept allowed domains only, so blocked domains always travel as instructions.
-            let blocked = prompt.enableWebSearch ? sanitizedDomainList(from: prompt.webSearchBlockedDomains) : []
-            return blocked.isEmpty ? userInstructions : userInstructions + "\n\nWhen searching the web, avoid citing: \(blocked.joined(separator: ", "))."
+            return userInstructions
         }
 
         // Build dynamic instructions based on enabled tools
@@ -722,11 +726,6 @@ class OpenAIService: OpenAIServiceProtocol {
                 webGuidance.append("Focus on sources from: \(allowedDomains.joined(separator: ", ")).")
             }
 
-            let blockedDomains = sanitizedDomainList(from: prompt.webSearchBlockedDomains)
-            if !blockedDomains.isEmpty {
-                webGuidance.append("Avoid citing: \(blockedDomains.joined(separator: ", ")).")
-            }
-
             if !webGuidance.isEmpty {
                 instructions.append("\n\nWeb search guidance:\n" + webGuidance.joined(separator: " "))
             }
@@ -735,10 +734,15 @@ class OpenAIService: OpenAIServiceProtocol {
         return instructions.joined()
     }
 
+    /// The developer message that carries system instructions as the first input item (GPT-6.2 and later).
+    nonisolated static func instructionsMessage(_ text: String) -> [String: Any] {
+        ["role": "developer", "content": text]
+    }
+
     /// Builds the request dictionary from a Prompt object and other parameters.
     /// This function is the central point for constructing the JSON payload for the OpenAI API.
     /// It intelligently assembles input messages, tools, and parameters based on the `Prompt` settings and model compatibility.
-    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil) throws -> [String: Any] {
+    private func buildRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?, fileData: [Data]?, fileNames: [String]?, fileIds: [String]?, imageAttachments: [InputImage]?, audioAttachments: [InputAudio]?, previousResponseId: String?, conversationId: String?, stream: Bool, customInput: [[String: Any]]? = nil, recordInstructions: Bool = true) throws -> [String: Any] {
         try ResponseConfigurationValidation.validate(prompt)
         if prompt.currentOptions.mcpConnectionIDs != nil { _ = try MCPConnectionStore.shared.tools(prompt: prompt) }
         var requestObject = baseRequestMetadata(for: prompt, stream: stream)
@@ -759,12 +763,32 @@ class OpenAIService: OpenAIServiceProtocol {
             )
         }
 
+        var prependedContext = false
         if customInput == nil, previousResponseId == nil, conversationId == nil,
            let contextJSON = prompt.compactedInputJSON,
            let data = contextJSON.data(using: .utf8),
            let context = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
            let newInput = requestObject["input"] as? [[String: Any]] {
             requestObject["input"] = context + newInput
+            prependedContext = true
+        }
+
+        // GPT-6.2 and later: reusable instructions go first in `input` so they can be cached (InstructionsPlacement).
+        let (placement, historyHolds) = InstructionsPlacement.choose(
+            instructions: buildInstructions(prompt: prompt), model: prompt.openAIModel,
+            previousResponseId: previousResponseId, conversationId: conversationId,
+            replacesInput: customInput != nil || prependedContext,
+            carried: instructionsLedger.carriedInstructions(after: previousResponseId)
+        )
+        switch placement {
+        case .topLevel(let text): requestObject["instructions"] = text
+        case .developerMessage(let text):
+            requestObject["input"] = [Self.instructionsMessage(text)] + (requestObject["input"] as? [[String: Any]] ?? [])
+        case .carried, .none: break
+        }
+        if recordsInstructionChains, recordInstructions {
+            let parent = previousResponseId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            instructionsLedger.recordRequest(parent: parent?.isEmpty == false ? parent : nil, holds: historyHolds)
         }
 
         let (tools, forceImageToolChoice) = assembleTools(
@@ -994,10 +1018,6 @@ class OpenAIService: OpenAIServiceProtocol {
         ]
 
 
-        let instructions = buildInstructions(prompt: prompt)
-        if !instructions.isEmpty {
-            metadata["instructions"] = instructions
-        }
 
         if stream {
             metadata["stream"] = true
@@ -1114,10 +1134,13 @@ class OpenAIService: OpenAIServiceProtocol {
             configured["search_context_size"] = contextSize.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        // web_search filters accept allowed_domains only; blocked domains are expressed as instructions instead.
+        // `filters.allowed_domains` and `filters.blocked_domains`, up to 100 each, without http(s)://; subdomains are
+        // included (web search guide, read 2026-11-20; its own example sets both).
         let allowedDomains = sanitizedDomainList(from: prompt.webSearchAllowedDomains)
+        let blockedDomains = sanitizedDomainList(from: prompt.webSearchBlockedDomains)
         var filters: [String: Any] = [:]
         if !allowedDomains.isEmpty { filters["allowed_domains"] = allowedDomains }
+        if !blockedDomains.isEmpty { filters["blocked_domains"] = blockedDomains }
         if prompt.currentOptions.webSearchExternalAccess {
             configured.removeValue(forKey: "external_web_access")
         } else {
@@ -1158,10 +1181,23 @@ class OpenAIService: OpenAIServiceProtocol {
             return []
         }
 
+        var seen = Set<String>()
         return raw
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { OpenAIService.bareDomain(String($0)) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .prefix(100)
+            .map { $0 }
+    }
+
+    /// A domain as web search filters want it: no scheme, path, port or trailing dot, lowercased
+    /// ("https://Docs.Example.com/guide" becomes "docs.example.com").
+    nonisolated static func bareDomain(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let scheme = value.range(of: "://") { value = String(value[scheme.upperBound...]) }
+        if let end = value.firstIndex(where: { "/?#:".contains($0) }) { value = String(value[..<end]) }
+        while value.hasSuffix(".") { value.removeLast() }
+        return value
     }
 
     /// Adds optional background support for image generation requests.
@@ -2068,7 +2104,11 @@ class OpenAIService: OpenAIServiceProtocol {
 
         // Add missing parameters that exist in UI but weren't in request
         if compatibilityService.isParameterSupported("service_tier", for: prompt.openAIModel), !prompt.serviceTier.isEmpty {
-            parameters["service_tier"] = prompt.serviceTier
+            if let tier = CurrentModelCatalog.requestServiceTier(prompt.serviceTier, model: prompt.openAIModel) {
+                parameters["service_tier"] = tier
+            } else {
+                AppLogger.log("Omitting service_tier \(prompt.serviceTier): \(prompt.openAIModel) does not offer it", category: .openAI, level: .info)
+            }
         }
 
         if compatibilityService.isParameterSupported("top_logprobs", for: prompt.openAIModel, reasoningEffort: prompt.reasoningEffort), prompt.topLogprobs > 0 {

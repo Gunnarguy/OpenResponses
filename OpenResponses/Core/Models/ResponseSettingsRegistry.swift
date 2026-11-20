@@ -4,7 +4,7 @@ struct ResponseSettingsRegistry {
     static let all: [ResponseSettingDescriptor] = [
         ResponseSettingDescriptor(
             promptKeyPathName: "promptCacheOptions", apiField: "prompt_cache_options", group: .reasoning,
-            exposure: .advanced, title: "Prompt cache options", description: "Optional cache mode and 30-minute lifetime for supported models. Only configure writes for a reusable prefix of at least 1,024 tokens.", defaultValueDescription: "Omitted"
+            exposure: .advanced, title: "Prompt cache options", description: "Cache lifetime on GPT-5.6 and later: 30 minutes (default) or 12 hours. Caching needs a reused prefix of at least 1,024 tokens.", defaultValueDescription: "Omitted"
         ),
         ResponseSettingDescriptor(
             promptKeyPathName: "modernOptions", group: .reasoning, exposure: .advanced,

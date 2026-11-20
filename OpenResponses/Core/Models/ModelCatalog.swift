@@ -23,6 +23,8 @@ nonisolated struct ModelCatalog: Codable, Equatable, Sendable {
         let id: String
         /// Where a preset naming this model, or one of its dated snapshots, moves; the default model when absent.
         var replacement: String?
+        /// The replacement runs with `reasoning.mode: "pro"`, as the deprecations page names for gpt-5-pro and o3-pro.
+        var pro: Bool?
     }
 
     /// The only schema this version reads; a file with another number is ignored.
@@ -40,6 +42,10 @@ nonisolated struct ModelCatalog: Codable, Equatable, Sendable {
     let current: [Model]
     /// Earlier models, listed after the current ones.
     let earlier: [String]
+    /// Where presets naming an earlier model move once its shutdown date is near (the account's GET /models
+    /// `shutdown_date`), keyed by model ID: the replacements on OpenAI's deprecations page for models it has
+    /// announced but not yet shut down. A model missing here moves to the default model.
+    var successors: [String: String]?
     let retired: [Retired]
 
     /// Why the app cannot use this catalog, or nil when it can.
@@ -59,7 +65,8 @@ nonisolated struct ModelCatalog: Codable, Equatable, Sendable {
             guard (1...80).contains(model.summary.count) else { return "\(model.id): summary must be 1 to 80 characters" }
         }
         guard current.contains(where: { $0.id == defaultModel }) else { return "default model \(defaultModel) is not a current model" }
-        if let bad = retired.compactMap(\.replacement).first(where: { !Self.isValidID($0) }) { return "invalid replacement \(bad)" }
+        let replacements = retired.compactMap(\.replacement) + Array((successors ?? [:]).keys) + Array((successors ?? [:]).values)
+        if let bad = replacements.first(where: { !Self.isValidID($0) }) { return "invalid replacement \(bad)" }
         return nil
     }
 

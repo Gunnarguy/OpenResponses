@@ -207,6 +207,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testDeveloperInstructionsAppearBeforeUserMessage() {
         var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-6.1-sol" // GPT-6.2 puts the system instructions first (OpenAIAPIGapTests)
         prompt.developerInstructions = "Be concise."
 
         let request = buildRequest(prompt: prompt, message: "Summarize this")
@@ -306,6 +307,7 @@ final class OpenAIServiceTests: XCTestCase {
 
     func testAppleInstructionsExplainLocalTimeAndReminderCompletionDefault() {
         var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = "gpt-6.1-sol" // top-level instructions; GPT-6.2 sends them as a developer message
         prompt.enableAppleIntegrations = true
 
         let request = buildRequest(prompt: prompt)
@@ -827,8 +829,8 @@ final class OpenAIServiceTests: XCTestCase {
             XCTAssertNil(request["temperature"])
             XCTAssertTrue(((request["tools"] as? [[String: Any]]) ?? []).contains { $0["type"] as? String == "web_search" })
         }
-        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6-sol")
-        XCTAssertEqual(Prompt.defaultPrompt().openAIModel, "gpt-6-sol")
+        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6.2-sol")
+        XCTAssertEqual(Prompt.defaultPrompt().openAIModel, "gpt-6.2-sol")
         XCTAssertFalse(CurrentModelCatalog.supportsAsyncTools("gpt-6-sol"))
         XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools("gpt-6-astra-2026-09-03"))
     }
@@ -861,7 +863,7 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(account, ["gpt-7-luna", "gpt-6.2-sol", "gpt-6-sol"], "current general models only, newest first, no snapshots")
 
         let menu = CurrentModelCatalog.selectionModels(including: "gpt-6-sol", account: account)
-        XCTAssertEqual(Array(menu.prefix(3)), ["gpt-7-luna", "gpt-6.2-sol", "gpt-6.1-sol"])
+        XCTAssertEqual(Array(menu.prefix(3)), ["gpt-7-luna", "gpt-6.2-sol", "gpt-6.2-astra"])
         XCTAssertEqual(menu.filter { $0 == "gpt-6-sol" }.count, 1, "a model the catalog lists appears once")
         XCTAssertEqual(CurrentModelCatalog.selectionModels(including: "gpt-6-sol"), CurrentModelCatalog.recommended + CurrentModelCatalog.legacy)
     }
@@ -880,7 +882,7 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-7-sol"), CurrentModelCatalog.priority("gpt-6-sol"))
         XCTAssertGreaterThan(CurrentModelCatalog.priority("gpt-6-sol"), CurrentModelCatalog.priority("gpt-5.6-sol"))
         XCTAssertEqual(CurrentModelCatalog.family("gpt-6-luna-2026-09-22"), "gpt-6-luna")
-        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.2-sol"), "Current generation model")
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.8-sol"), "Current generation model")
         for retiring in ["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3"] {
             XCTAssertFalse(CurrentModelCatalog.legacy.contains(retiring), retiring)
         }
@@ -964,7 +966,7 @@ final class OpenAIServiceTests: XCTestCase {
         XCTAssertEqual(tool("web_search")?["external_web_access"] as? Bool, false)
         let filters = tool("web_search")?["filters"] as? [String: Any]
         XCTAssertEqual(filters?["allowed_domains"] as? [String], ["example.com"])
-        XCTAssertNil(filters?["blocked_domains"], "web_search filters accept allowed_domains only")
+        XCTAssertEqual(filters?["blocked_domains"] as? [String], ["blocked.example"])
         XCTAssertEqual((tool("code_interpreter")?["container"] as? [String: Any])?["memory_limit"] as? String, "4g")
         XCTAssertEqual(tool("image_generation")?["input_fidelity"] as? String, "high")
         XCTAssertEqual(tool("image_generation")?["output_compression"] as? Int, 80)
@@ -1004,9 +1006,11 @@ final class OpenAIServiceTests: XCTestCase {
         prompt.systemInstructions = "Answer as a travel agent."
         prompt.enableWebSearch = true
         prompt.webSearchBlockedDomains = "reddit.com, example.org"
-        let instructions = buildRequest(prompt: prompt)["instructions"] as? String ?? ""
-        XCTAssertTrue(instructions.hasPrefix("Answer as a travel agent."))
-        XCTAssertTrue(instructions.contains("avoid citing: reddit.com, example.org"))
+        prompt.openAIModel = "gpt-6-sol"
+        let built = buildRequest(prompt: prompt)
+        XCTAssertEqual(built["instructions"] as? String, "Answer as a travel agent.", "blocked domains are a web_search filter now")
+        let web = (built["tools"] as? [[String: Any]])?.first { $0["type"] as? String == "web_search" }
+        XCTAssertEqual((web?["filters"] as? [String: Any])?["blocked_domains"] as? [String], ["reddit.com", "example.org"])
 
         let request = OpenAIService.transcriptionRequest(audio: Data([1, 2, 3]), fileName: "voice-note.wav", apiKey: "test")
         XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/audio/transcriptions")
@@ -1223,5 +1227,163 @@ extension DecisionsTests {
         let image = try XCTUnwrap(renderer.uiImage)
         XCTAssertGreaterThan(image.size.height, 300)
         try XCTUnwrap(image.pngData()).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("decisions-answers.png"))
+    }
+}
+
+/// The November 2026 OpenAI gaps (docs/research/openai-api-gaps-2026-11.md), against the docs read 2026-11-20.
+final class OpenAIAPIGapTests: XCTestCase {
+    private var service: OpenAIService!
+
+    override func setUp() {
+        super.setUp()
+        service = OpenAIService()
+        service.instructionsLedger = InstructionsLedger()
+    }
+
+    override func tearDown() {
+        service = nil
+        super.tearDown()
+    }
+
+    private func request(_ prompt: Prompt, previous: String? = nil, conversation: String? = nil) -> [String: Any] {
+        service.testing_buildRequestObject(for: prompt, userMessage: "Hello", previousResponseId: previous, conversationId: conversation)
+    }
+
+    private func input(_ request: [String: Any]) -> [[String: Any]] { request["input"] as? [[String: Any]] ?? [] }
+
+    private func developerTexts(_ request: [String: Any]) -> [String] {
+        input(request).filter { $0["role"] as? String == "developer" }.compactMap { $0["content"] as? String }
+    }
+
+    private func prompt(model: String, instructions: String = "Answer as a travel agent.") -> Prompt {
+        var prompt = Prompt.defaultPrompt()
+        prompt.openAIModel = model
+        prompt.systemInstructions = instructions
+        return prompt
+    }
+
+    func testGPT62AndTerraAreCurrentAndGPT62SolIsTheDefault() {
+        XCTAssertEqual(Array(CurrentModelCatalog.recommended.prefix(3)), ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra"])
+        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6.2-sol")
+        for model in ["gpt-6.2-sol", "gpt-6.2-astra"] {
+            XCTAssertFalse(CurrentModelCatalog.reasoningEfforts(for: model).contains("none"), "\(model) rejects none")
+            XCTAssertEqual(CurrentModelCatalog.normalizedEffort("none", model: model), "low")
+            XCTAssertTrue(CurrentModelCatalog.supportsPro(model))
+            XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools(model))
+        }
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.1-terra"), ["none", "low", "medium", "high", "xhigh", "max"])
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6-sol"), "Complex coding and agentic work")
+        XCTAssertNil(ModelCatalogStore.builtIn.problem())
+    }
+
+    func testServiceTiersFollowTheModel() {
+        XCTAssertEqual(CurrentModelCatalog.serviceTiers(for: "gpt-6.2-sol"), ["auto", "default", "fast", "ultrafast"])
+        XCTAssertEqual(CurrentModelCatalog.serviceTiers(for: "gpt-6.2-astra-2026-11-17"), ["auto", "default", "fast", "ultrafast"])
+        XCTAssertEqual(CurrentModelCatalog.serviceTiers(for: "gpt-6.1-terra"), ["auto", "default", "flex", "fast"])
+        XCTAssertEqual(CurrentModelCatalog.serviceTiers(for: "gpt-6.1-sol"), ["auto", "default", "flex", "fast", "ultrafast"])
+        XCTAssertEqual(CurrentModelCatalog.serviceTiers(for: "gpt-6-luna"), ["auto", "default", "flex", "fast"])
+        XCTAssertFalse(CurrentModelCatalog.serviceTiers(for: "gpt-7-sol").contains("flex"), "no Flex on future models")
+
+        var flexOn62 = prompt(model: "gpt-6.2-sol")
+        flexOn62.serviceTier = "flex"
+        XCTAssertNil(request(flexOn62)["service_tier"], "a tier the model does not offer is left out")
+        var ultrafastOnSol = prompt(model: "gpt-6-sol")
+        ultrafastOnSol.serviceTier = "ultrafast"
+        XCTAssertNil(request(ultrafastOnSol)["service_tier"])
+        ultrafastOnSol.openAIModel = "gpt-6.1-sol"
+        XCTAssertEqual(request(ultrafastOnSol)["service_tier"] as? String, "ultrafast")
+        ultrafastOnSol.serviceTier = "priority"
+        XCTAssertEqual(request(ultrafastOnSol)["service_tier"] as? String, "priority")
+        ultrafastOnSol.serviceTier = "scale"
+        XCTAssertNil(request(ultrafastOnSol)["service_tier"], "scale is not a documented value")
+    }
+
+    func testPromptCacheLifetimeReachesTheRequest() {
+        var prompt = prompt(model: "gpt-6.2-sol")
+        prompt.promptCacheOptions = PromptCacheOptions(mode: "implicit", ttl: "12h")
+        let options = request(prompt)["prompt_cache_options"] as? [String: Any]
+        XCTAssertEqual(options?["ttl"] as? String, "12h")
+        XCTAssertEqual(options?["mode"] as? String, "implicit")
+    }
+
+    func testBlockedDomainsAreAWebSearchFilterNotInstructions() throws {
+        var prompt = prompt(model: "gpt-6-sol")
+        prompt.enableWebSearch = true
+        prompt.webSearchAllowedDomains = "https://Docs.Example.com/guide, nytimes.com"
+        prompt.webSearchBlockedDomains = "reddit.com, https://www.Example.org/path?q=1, reddit.com\nquora.com."
+        let built = request(prompt)
+        let tools = try XCTUnwrap(built["tools"] as? [[String: Any]])
+        let web = try XCTUnwrap(tools.first { $0["type"] as? String == "web_search" })
+        let filters = try XCTUnwrap(web["filters"] as? [String: Any])
+        XCTAssertEqual(filters["allowed_domains"] as? [String], ["docs.example.com", "nytimes.com"])
+        XCTAssertEqual(filters["blocked_domains"] as? [String], ["reddit.com", "www.example.org", "quora.com"])
+        XCTAssertFalse((built["instructions"] as? String ?? "").contains("reddit.com"))
+        XCTAssertEqual(OpenAIService.bareDomain(" HTTP://news.ycombinator.com:443/item "), "news.ycombinator.com")
+    }
+
+    func testGPT62SendsInstructionsAsTheFirstDeveloperMessage() {
+        var prompt = prompt(model: "gpt-6.2-sol")
+        prompt.developerInstructions = "Use metric units."
+        let built = request(prompt)
+        XCTAssertNil(built["instructions"], "GPT-6.2 would bill top-level instructions uncached on every turn")
+        XCTAssertEqual(input(built).first?["role"] as? String, "developer")
+        XCTAssertEqual(input(built).first?["content"] as? String, "Answer as a travel agent.")
+        XCTAssertEqual(developerTexts(built), ["Answer as a travel agent.", "Use metric units."])
+        XCTAssertEqual(input(built).last?["role"] as? String, "user")
+
+        let older = request(self.prompt(model: "gpt-6.1-sol"))
+        XCTAssertEqual(older["instructions"] as? String, "Answer as a travel agent.")
+        XCTAssertTrue(developerTexts(older).isEmpty)
+    }
+
+    func testChainedTurnsNeitherRepeatNorDropInstructions() {
+        let prompt = prompt(model: "gpt-6.2-sol")
+        _ = request(prompt)
+        service.instructionsLedger.link(parent: nil, child: "resp_1")
+
+        let second = request(prompt, previous: "resp_1")
+        XCTAssertNil(second["instructions"], "the developer message is already in the chained history")
+        XCTAssertTrue(developerTexts(second).isEmpty, "it is not sent again")
+        service.instructionsLedger.link(parent: "resp_1", child: "resp_2")
+        service.instructionsLedger.link(parent: "resp_2", child: "resp_3") // a tool round the app did not build
+        XCTAssertEqual(service.instructionsLedger.carriedInstructions(after: "resp_3"), "Answer as a travel agent.")
+
+        var edited = prompt
+        edited.systemInstructions = "Answer as a chef."
+        let changed = request(edited, previous: "resp_3")
+        XCTAssertEqual(changed["instructions"] as? String, InstructionsPlacement.updatedPrefix + "Answer as a chef.")
+
+        let unknown = request(prompt, previous: "resp_from_before_a_relaunch")
+        XCTAssertEqual(unknown["instructions"] as? String, "Answer as a travel agent.", "unknown history: never dropped")
+        let remote = request(prompt, conversation: "conv_1")
+        XCTAssertEqual(remote["instructions"] as? String, "Answer as a travel agent.")
+        XCTAssertTrue(developerTexts(remote).isEmpty)
+    }
+
+    func testPlacementWithReplacedInputStaysTopLevel() {
+        let choice = InstructionsPlacement.choose(instructions: "Be brief.", model: "gpt-6.2-sol", previousResponseId: nil,
+                                                  conversationId: nil, replacesInput: true, carried: nil)
+        XCTAssertEqual(choice.placement, .topLevel("Be brief."))
+        XCTAssertNil(choice.historyHolds)
+        XCTAssertTrue(InstructionsPlacement.placesTopLevelAfterInput("gpt-7-luna"))
+        XCTAssertFalse(InstructionsPlacement.placesTopLevelAfterInput("gpt-6.1-terra"))
+        XCTAssertFalse(InstructionsPlacement.placesTopLevelAfterInput("gpt-6.2-sol-audio"))
+    }
+
+    func testMisalignmentStopIsRecognizedAndNeverRetried() {
+        let body = #"{"error":{"type":"invalid_request_error","code":"misalignment_policy_violation","message":"Request stopped."}}"#
+        XCTAssertTrue(OpenAIServiceError.isMisalignment(code: nil, message: body))
+        XCTAssertTrue(OpenAIServiceError.isMisalignment(code: "misalignment_policy_violation"))
+        XCTAssertFalse(OpenAIServiceError.isMisalignment(code: "insufficient_quota", message: "Access denied"))
+        XCTAssertFalse(OpenAIServiceError.requestFailed(403, body).isRetriable)
+    }
+
+    @MainActor
+    func testChatShowsTheMisalignmentStop() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = ChatViewModel(storageService: ConversationStorageService(storageURL: directory), startBackgroundWork: false)
+        model.handleError(OpenAIServiceError.requestFailed(403, #"{"error":{"code":"misalignment_policy_violation"}}"#))
+        XCTAssertEqual(model.messages.last?.text, OpenAIServiceError.misalignmentMessage)
     }
 }

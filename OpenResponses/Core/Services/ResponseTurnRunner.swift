@@ -112,6 +112,9 @@ final class ResponseTurnRunner {
                 let type = event["type"] as? String ?? ""
                 if type == "error" {
                     let error = event["error"] as? JSON ?? event
+                    if OpenAIServiceError.isMisalignment(code: error["code"] as? String) {
+                        throw OpenAIServiceError.requestFailed(403, OpenAIServiceError.misalignmentCode)
+                    }
                     throw OpenAIServiceError.invalidRequest(error["message"] as? String ?? "The API stream failed.")
                 }
                 if type == "response.output_item.done", let item = event["item"] as? JSON {
@@ -135,6 +138,9 @@ final class ResponseTurnRunner {
             onCheckpoint(Result(response: response, replayInput: history, rounds: round + 1))
             guard response["status"] as? String == "completed" else {
                 let detail = response["error"] as? JSON ?? response["incomplete_details"] as? JSON ?? [:]
+                if OpenAIServiceError.isMisalignment(code: detail["code"] as? String) {
+                    throw OpenAIServiceError.requestFailed(403, OpenAIServiceError.misalignmentCode)
+                }
                 throw OpenAIServiceError.invalidRequest(detail["message"] as? String ?? detail["reason"] as? String ?? "The response did not complete.")
             }
             if calls.isEmpty { return Result(response: response, replayInput: history, rounds: round + 1) }

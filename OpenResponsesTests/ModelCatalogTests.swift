@@ -8,7 +8,7 @@ final class ModelCatalogTests: XCTestCase {
     private var directory: URL!
     private var defaults: UserDefaults!
     private let suite = "ModelCatalogTests"
-    private let gpt62 = ModelCatalog.Model(id: "gpt-6.2-sol", summary: "Test model", reasoningEfforts: ["low", "medium", "high"],
+    private let gpt62 = ModelCatalog.Model(id: "gpt-6.8-sol", summary: "Test model", reasoningEfforts: ["low", "medium", "high"],
                                            pro: false, asyncTools: true, released: "2026-10-01")
 
     /// Laid out like OpenAI's model pages (the GPT-6.1 Sol page on September 29, 2026), shortened.
@@ -55,9 +55,9 @@ final class ModelCatalogTests: XCTestCase {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "ModelCatalog", withExtension: "json"), "ModelCatalog.json must be in the app bundle")
         let catalog = try XCTUnwrap(ModelCatalog.decode(Data(contentsOf: url)))
         XCTAssertEqual(ModelCatalogStore.builtIn, catalog)
-        XCTAssertEqual(catalog.defaultModel, "gpt-6-sol")
+        XCTAssertEqual(catalog.defaultModel, "gpt-6.2-sol")
         XCTAssertEqual(CurrentModelCatalog.recommended, catalog.current.map(\.id))
-        XCTAssertEqual(CurrentModelCatalog.recommended.first, "gpt-6.1-sol")
+        XCTAssertEqual(CurrentModelCatalog.recommended.first, "gpt-6.2-sol")
         XCTAssertEqual(CurrentModelCatalog.legacy, catalog.earlier)
     }
 
@@ -91,20 +91,20 @@ final class ModelCatalogTests: XCTestCase {
 
     func testTheListInUseSetsTheMenusTheDefaultAndEachModelsSettings() {
         let builtIn = ModelCatalogStore.builtIn
-        ModelCatalogStore.shared.use(ModelCatalog(schema: 1, revision: 2, updated: "2026-10-01", notes: nil, defaultModel: "gpt-6.2-sol",
+        ModelCatalogStore.shared.use(ModelCatalog(schema: 1, revision: 2, updated: "2026-10-01", notes: nil, defaultModel: "gpt-6.8-sol",
                                                   current: [gpt62] + builtIn.current, earlier: builtIn.earlier,
                                                   retired: builtIn.retired + [.init(id: "gpt-4.5-preview", replacement: "gpt-6-luna")]))
-        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6.2-sol")
-        XCTAssertEqual(Prompt.defaultPrompt().openAIModel, "gpt-6.2-sol")
-        XCTAssertEqual(CurrentModelCatalog.selectionModels(including: "gpt-6-sol").first, "gpt-6.2-sol")
-        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.2-sol-2026-10-01"), ["low", "medium", "high"])
-        XCTAssertFalse(CurrentModelCatalog.supportsPro("gpt-6.2-sol"))
-        XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools("gpt-6.2-sol"))
-        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.2-sol"), "Test model")
+        XCTAssertEqual(CurrentModelCatalog.defaultModel, "gpt-6.8-sol")
+        XCTAssertEqual(Prompt.defaultPrompt().openAIModel, "gpt-6.8-sol")
+        XCTAssertEqual(CurrentModelCatalog.selectionModels(including: "gpt-6-sol").first, "gpt-6.8-sol")
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.8-sol-2026-10-01"), ["low", "medium", "high"])
+        XCTAssertFalse(CurrentModelCatalog.supportsPro("gpt-6.8-sol"))
+        XCTAssertTrue(CurrentModelCatalog.supportsAsyncTools("gpt-6.8-sol"))
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.8-sol"), "Test model")
         XCTAssertTrue(CurrentModelCatalog.isRetired("gpt-4.5-preview-2025-02-27"))
         XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-4.5-preview-2025-02-27"), "gpt-6-luna")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-mini-2025-08-07"), "gpt-5.6-terra", "the longest matching entry wins")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5.1-codex"), "gpt-6.2-sol", "no listed replacement: the default model")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-mini-2025-08-07"), "gpt-6.1-terra", "the longest matching entry wins")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5.1-codex"), "gpt-6.8-sol", "no listed replacement: the default model")
     }
 
     // MARK: - OpenAI's model pages
@@ -146,36 +146,36 @@ final class ModelCatalogTests: XCTestCase {
         let now = Date()
         let load: (URL) async throws -> (Data, URLResponse) = { url in
             requested.append(url.lastPathComponent)
-            let found = url.lastPathComponent == "gpt-6.2-sol.md"
-            let page = self.gpt61Page.replacingOccurrences(of: "gpt-6.1-sol", with: "gpt-6.2-sol")
+            let found = url.lastPathComponent == "gpt-6.8-sol.md"
+            let page = self.gpt61Page.replacingOccurrences(of: "gpt-6.1-sol", with: "gpt-6.8-sol")
             return (Data((found ? page : "Not found").utf8), self.response(url, found ? 200 : 404))
         }
 
-        let changed = await store.learnSettings(for: ["gpt-6.2-sol", "gpt-7-luna"], now: now, load: load)
+        let changed = await store.learnSettings(for: ["gpt-6.8-sol", "gpt-7-luna"], now: now, load: load)
         XCTAssertTrue(changed)
-        XCTAssertEqual(requested, ["gpt-6.2-sol.md", "gpt-7-luna.md"])
-        XCTAssertEqual(store.learnedModel("gpt-6.2-sol")?.reasoningEfforts, ["low", "medium", "high", "xhigh", "max"])
+        XCTAssertEqual(requested, ["gpt-6.8-sol.md", "gpt-7-luna.md"])
+        XCTAssertEqual(store.learnedModel("gpt-6.8-sol")?.reasoningEfforts, ["low", "medium", "high", "xhigh", "max"])
         XCTAssertNil(store.learnedModel("gpt-7-luna"), "a missing page leaves the fallback settings")
 
-        _ = await store.learnSettings(for: ["gpt-6.2-sol", "gpt-7-luna"], now: now.addingTimeInterval(86_400), load: load)
+        _ = await store.learnSettings(for: ["gpt-6.8-sol", "gpt-7-luna"], now: now.addingTimeInterval(86_400), load: load)
         XCTAssertEqual(requested.count, 2, "each page is read once a week at most")
 
         let relaunched = ModelCatalogStore(cacheDirectory: directory, defaults: defaults, restore: true, readsDocs: true)
-        XCTAssertEqual(relaunched.learnedModel("gpt-6.2-sol")?.summary, "Near-Astra performance for complex work at a lower cost")
+        XCTAssertEqual(relaunched.learnedModel("gpt-6.8-sol")?.summary, "Near-Astra performance for complex work at a lower cost")
 
-        _ = await relaunched.learnSettings(for: ["gpt-6.2-sol", "gpt-7-luna"], now: now.addingTimeInterval(8 * 86_400), load: load)
+        _ = await relaunched.learnSettings(for: ["gpt-6.8-sol", "gpt-7-luna"], now: now.addingTimeInterval(8 * 86_400), load: load)
         XCTAssertEqual(requested.count, 4, "read again after a week")
     }
 
     func testOfflineLookupsAreRetriedAndEachRefreshReadsAtMostThreePages() async {
         let store = ModelCatalogStore(cacheDirectory: directory, defaults: defaults, restore: true, readsDocs: true)
         var attempts = 0
-        let offline = await store.learnSettings(for: ["gpt-6.2-sol"]) { _ in
+        let offline = await store.learnSettings(for: ["gpt-6.8-sol"]) { _ in
             attempts += 1
             throw URLError(.notConnectedToInternet)
         }
         XCTAssertFalse(offline)
-        let serverError = await store.learnSettings(for: ["gpt-6.2-sol"]) { url in
+        let serverError = await store.learnSettings(for: ["gpt-6.8-sol"]) { url in
             attempts += 1
             return (Data(), self.response(url, 503))
         }
@@ -183,13 +183,13 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(attempts, 2, "nothing was recorded, so the next refresh tries again")
 
         var pages = 0
-        _ = await store.learnSettings(for: ["gpt-6.2-sol", "gpt-6.3-sol", "gpt-6.4-sol", "gpt-6.5-sol", "gpt-7-sol"]) { url in
+        _ = await store.learnSettings(for: ["gpt-6.8-sol", "gpt-6.3-sol", "gpt-6.4-sol", "gpt-6.5-sol", "gpt-7-sol"]) { url in
             pages += 1
             return (Data("Not found".utf8), self.response(url, 404))
         }
         XCTAssertEqual(pages, ModelCatalogStore.lookupsPerRefresh)
 
-        let shared = await ModelCatalogStore.shared.learnSettings(for: ["gpt-6.2-sol"]) { _ in
+        let shared = await ModelCatalogStore.shared.learnSettings(for: ["gpt-6.8-sol"]) { _ in
             XCTFail("the shared store never reads a page under unit tests")
             throw URLError(.cancelled)
         }
@@ -198,12 +198,12 @@ final class ModelCatalogTests: XCTestCase {
 
     func testSettingsFromAPageReachTheMenus() {
         let store = ModelCatalogStore.shared
-        store.remember(.init(model: gpt62, checked: Date()), for: "gpt-6.2-sol")
+        store.remember(.init(model: gpt62, checked: Date()), for: "gpt-6.8-sol")
         store.remember(.init(unsupported: true, checked: Date()), for: "gpt-6.3-sol")
-        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.2-sol"), ["low", "medium", "high"])
-        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.2-sol"), "Test model")
-        XCTAssertFalse(CurrentModelCatalog.supportsPro("gpt-6.2-sol"))
-        XCTAssertEqual(CurrentModelCatalog.currentAccountModels(["gpt-6.2-sol", "gpt-6.3-sol", "gpt-6-sol"]), ["gpt-6.2-sol", "gpt-6-sol"],
+        XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.8-sol"), ["low", "medium", "high"])
+        XCTAssertEqual(CurrentModelCatalog.description(for: "gpt-6.8-sol"), "Test model")
+        XCTAssertFalse(CurrentModelCatalog.supportsPro("gpt-6.8-sol"))
+        XCTAssertEqual(CurrentModelCatalog.currentAccountModels(["gpt-6.8-sol", "gpt-6.3-sol", "gpt-6-sol"]), ["gpt-6.8-sol", "gpt-6-sol"],
                        "a model whose page rules out the Responses API is left out")
         // A model with no page read yet uses the fallback: reasoning starts at low.
         XCTAssertEqual(CurrentModelCatalog.reasoningEfforts(for: "gpt-6.4-sol"), ["low", "medium", "high", "xhigh", "max"])

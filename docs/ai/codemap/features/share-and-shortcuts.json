@@ -4,12 +4,12 @@
   "name": "Share sheet, Shortcuts and the Mac",
   "aliases": ["Share sheet", "share extension", "Shortcuts", "Siri", "App Intents", "Ask OpenResponses", "New Chat in OpenResponses", "Action button", "SharedInbox", "App Group", "Mac Catalyst", "New Chat menu command", "Command-Return"],
   "purpose": "Gets text and files into the chat from outside it: the OpenResponsesShare extension and the New Chat shortcut write to SharedInbox in the App Group, and the app opens them as a new unsent chat when it becomes active. Ask OpenResponses answers one question in the background with a preset, with client-run tools off. Also the Mac Catalyst menu commands.",
-  "revision": "2b361da",
-  "verified_on": "2026-11-19",
+  "revision": "eb93a5f",
+  "verified_on": "2026-11-20",
   "entry_points": ["AskOpenResponsesIntent", "NewChatIntent", "ShareViewController", "OpenResponsesCommands"],
   "files": [
-    {"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "role": "primary", "blob": "68b9fa4ae249b45d52c74b177b833d7505481d1e"},
-    {"path": "OpenResponses/Core/Services/SharedInbox.swift", "role": "primary", "blob": "e5f59a7737051703d300e0a37ee71bcf67483fbc"},
+    {"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "role": "primary", "blob": "09e8afef4cf1df2ecc4d11eb95f0410d83472d32"},
+    {"path": "OpenResponses/Core/Services/SharedInbox.swift", "role": "primary", "blob": "04428b0638d6cc3c4cbc02ed85631c78109ba276"},
     {"path": "OpenResponsesShare/ShareViewController.swift", "role": "primary", "blob": "7158d7a7dfdc3fac6cd102c02373ff4ffa7c6063"},
     {"path": "OpenResponsesShare/Info.plist", "role": "primary", "blob": "49125bb814f184a70912fa4cbecec921484db77f"},
     {"path": "Config/OpenResponses.entitlements", "role": "primary", "blob": "cc0045653d8b56213c79e1b9da4a6e1ac42e2966"},
@@ -18,14 +18,14 @@
     {"path": "Config/OpenResponsesShare-mac.entitlements", "role": "primary", "blob": "89fc6b28e30cbb5dd04ee78e0ff98fabcc1d8931"},
     {"path": "OpenResponses/App/OpenResponsesApp.swift", "role": "shared", "blob": "a04676a663b8a172e998f00b1c3426772e14986a"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "a9f1a4ffc28c803a1a6c7e081185dfb5c8a82548"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e313bd714d9524556af49d4ae44230a38a14f70"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "a576c8d8ef792a37d2c8eec8b303ef12caf0c7bf"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"}
   ],
   "nodes": [
     {"id": "AskOpenResponsesIntent", "kind": "entry", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 97, "match": "struct AskOpenResponsesIntent: AppIntent {", "status": "VERIFIED"},
-    {"id": "NewChatIntent", "kind": "entry", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 216, "match": "struct NewChatIntent: AppIntent {", "status": "VERIFIED"},
-    {"id": "OpenResponsesShortcuts", "kind": "entry", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 253, "match": "struct OpenResponsesShortcuts: AppShortcutsProvider {", "status": "VERIFIED"},
+    {"id": "NewChatIntent", "kind": "entry", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 221, "match": "struct NewChatIntent: AppIntent {", "status": "VERIFIED"},
+    {"id": "OpenResponsesShortcuts", "kind": "entry", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 258, "match": "struct OpenResponsesShortcuts: AppShortcutsProvider {", "status": "VERIFIED"},
     {"id": "ShortcutAsk", "kind": "function", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 129, "match": "enum ShortcutAsk {", "status": "VERIFIED"},
     {"id": "ShortcutPromptStore", "kind": "service", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 47, "match": "enum ShortcutPromptStore {", "status": "VERIFIED"},
     {"id": "PresetEntity", "kind": "model", "path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 14, "match": "struct PresetEntity: AppEntity, Identifiable {", "status": "VERIFIED"},
@@ -34,14 +34,14 @@
     {"id": "ShareModel", "kind": "model", "path": "OpenResponsesShare/ShareViewController.swift", "line": 41, "match": "final class ShareModel: ObservableObject {", "status": "VERIFIED"},
     {"id": "OpenResponsesCommands", "kind": "entry", "path": "OpenResponses/App/OpenResponsesApp.swift", "line": 50, "match": "struct OpenResponsesCommands: Commands {", "status": "VERIFIED"},
     {"id": "ContentView.takeSharedInboxOnActive", "kind": "function", "path": "OpenResponses/App/ContentView.swift", "line": 69, "match": "if phase == .active { viewModel.takeSharedInbox() }", "status": "VERIFIED"},
-    {"id": "ChatViewModel.takeSharedInbox", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5570, "match": "func takeSharedInbox(_ inbox: SharedInbox = .shared) {", "status": "VERIFIED"},
+    {"id": "ChatViewModel.takeSharedInbox", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5583, "match": "func takeSharedInbox(_ inbox: SharedInbox = .shared) {", "status": "VERIFIED"},
     {"id": "ChatView.takeComposerDraft", "kind": "function", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 200, "match": "private func takeComposerDraft(_ draft: String?) {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "NewChatIntent", "to": "SharedInbox", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 245, "match": "try SharedInbox.shared.deliver(text: text ?? \"\", files: attached, source: \"shortcut\")"}]},
+    {"from": "NewChatIntent", "to": "SharedInbox", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 250, "match": "try SharedInbox.shared.deliver(text: text ?? \"\", files: attached, source: \"shortcut\")"}]},
     {"from": "ShareModel", "to": "SharedInbox", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesShare/ShareViewController.swift", "line": 122, "match": "try SharedInbox.shared.deliver(text: text, files: files, source: \"share\")"}]},
     {"from": "ContentView.takeSharedInboxOnActive", "to": "ChatViewModel.takeSharedInbox", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/ContentView.swift", "line": 69, "match": "if phase == .active { viewModel.takeSharedInbox() }"}]},
-    {"from": "ChatViewModel.takeSharedInbox", "to": "SharedInbox", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5572, "match": "let deliveries = inbox.pending()"}]}
+    {"from": "ChatViewModel.takeSharedInbox", "to": "SharedInbox", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5585, "match": "let deliveries = inbox.pending()"}]}
   ],
   "docs": [],
   "unknowns": ["Device builds need the App Group group.Gunndamental.OpenResponses registered: on 2026-11-20 Xcode was signed out and the App Store Connect API key failed xcodebuild authentication, so the share extension has run only in the simulator build.", "The Mac Catalyst build has been launched unsigned on this Mac; it has not been signed, sandboxed or submitted."],
@@ -53,15 +53,16 @@
       {"id": "test:AppCompletionTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 6, "match": "final class AppCompletionTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
-      {"from": "NewChatIntent", "type": "depends_on", "to": "SharedInbox", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 240, "match": "let attached: [(SharedInbox.File, Data)] = (files ?? []).map { file in"}]},
+      {"from": "NewChatIntent", "type": "depends_on", "to": "SharedInbox", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 245, "match": "let attached: [(SharedInbox.File, Data)] = (files ?? []).map { file in"}]},
       {"from": "SharedInbox", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 696, "match": "let inbox = SharedInbox(root: root)"}]},
       {"from": "ShortcutAsk", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 794, "match": "XCTAssertEqual(try ShortcutAsk.answerText(from: answered), \"Hello\\nthere\")"}]},
       {"from": "ShortcutError", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 798, "match": "XCTAssertTrue((error as? ShortcutError)?.message.contains(\"approval\") == true)"}]},
       {"from": "ShortcutPromptStore", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 763, "match": "let shortcut = ShortcutPromptStore.forShortcut(prompt)"}]},
       {"from": "ShortcutPromptStore", "type": "depends_on", "to": "feature:request-settings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 48, "match": "nonisolated static func savedPresets(_ defaults: UserDefaults = .standard) -> [Prompt] {"}], "note": "via Prompt"},
-      {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 142, "match": "guard defaults.integer(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey) >= AppFeatureFlags.aiDataSharingConsentVersion else {"}], "note": "via AppFeatureFlags, AppContainer"},
+      {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 142, "match": "guard defaults.integer(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey) >= AppFeatureFlags.aiDataSharingConsentVersion else {"}], "note": "via AppFeatureFlags"},
       {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:onboarding-keys", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 145, "match": "guard let key = KeychainService.shared.load(forKey: \"openAIKey\"), !key.isEmpty else {"}], "note": "via KeychainService"},
-      {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:request-settings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 149, "match": "let base: Prompt"}], "note": "via Prompt"}
+      {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:request-settings", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 149, "match": "let base: Prompt"}], "note": "via Prompt"},
+      {"from": "ShortcutAsk", "type": "depends_on", "to": "feature:chat-turn", "status": "INFERRED", "evidence": [{"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "line": 177, "match": "let oneOff = OpenAIService()"}], "note": "via OpenAIService"}
     ],
     "edges_omitted": 0
   }

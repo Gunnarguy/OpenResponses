@@ -368,6 +368,10 @@ class ChatViewModel: ObservableObject {
         get { activeConversation?.lastResponseId }
         set {
             guard var conversation = activeConversation else { return }
+            if let newValue, newValue != conversation.lastResponseId {
+                // Which system instructions the new response's history holds (GPT-6.2 instruction placement).
+                InstructionsLedger.shared.link(parent: conversation.lastResponseId, child: newValue)
+            }
             conversation.lastResponseId = newValue
             updateActiveConversation(conversation)
         }
@@ -1538,7 +1542,11 @@ class ChatViewModel: ObservableObject {
                             guard let text = message.text, !text.isEmpty else { return nil }
                             return ["role": message.role.rawValue, "content": text]
                         }
-                        body["input"] = history + ResponseTurnRunner.inputItems(body["input"])
+                        // A leading instructions message (GPT-6.2 and later) stays first, ahead of the replayed history.
+                        var input = ResponseTurnRunner.inputItems(body["input"])
+                        let lead = body["instructions"] == nil && InstructionsPlacement.placesTopLevelAfterInput(requestPrompt.openAIModel)
+                            && input.first?["role"] as? String == "developer" ? [input.removeFirst()] : []
+                        body["input"] = lead + history + input
                     }
                     retryContextByMessageId.removeValue(forKey: assistantMsgId)
                     managedResponseMessageId = assistantMsgId
@@ -3538,6 +3546,9 @@ class ChatViewModel: ObservableObject {
         guard CurrentModelCatalog.isRetired(prompt.openAIModel) else { return false }
         let replacement = CurrentModelCatalog.replacement(for: prompt.openAIModel)
         AppLogger.log("Moving retired model \(prompt.openAIModel) to \(replacement)", category: .openAI, level: .info)
+        if CurrentModelCatalog.replacementUsesPro(for: prompt.openAIModel), CurrentModelCatalog.supportsPro(replacement) {
+            prompt.currentOptions.reasoningMode = "pro"
+        }
         prompt.openAIModel = replacement
         return true
     }
@@ -5150,6 +5161,8 @@ class ChatViewModel: ObservableObject {
         case .requestFailed(let statusCode, let message):
             if statusCode == 401 {
                 userFriendlyText = "⚠️ Invalid API key. Please check your OpenAI API key in Settings."
+            } else if OpenAIServiceError.isMisalignment(code: nil, message: message) {
+                userFriendlyText = OpenAIServiceError.misalignmentMessage
             } else if statusCode == 403 {
                 userFriendlyText = "⚠️ Access denied. Your API key may not have the required permissions."
             } else if statusCode >= 500 {

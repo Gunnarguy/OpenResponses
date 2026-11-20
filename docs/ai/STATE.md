@@ -2,14 +2,20 @@
 
 Updated: 2026-11-20
 Branch/worktree: main in the repo root; the 3.1 commit below is local, not pushed (3.0 is in review and a push starts an Xcode Cloud archive). Untracked `.codex/config.toml` is an earlier session's; leave it.
-Last verified commit: 2b361da (3.1 work tested on top of it, 2026-11-20); earlier: 2b70581 (code tested on ab93bcb, 2026-11-19, simulator 54DDDEDE: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests passed, ** TEST SUCCEEDED **; 2b70581 changed store text and docs only)
+Last verified commit: eb93a5f (the OpenAI gap commit on top of it was tested as described under Verification)
 
 ## Objective
-3.1 (Gunnar, 2026-11-20: "Share sheet + Shortcuts", then "mac app too ... do literally EVERYTHING ... deep research the OpenAI and also apple APIs"): Shortcuts actions, the share sheet and a Mac Catalyst build are in the local 3.1 commit; next are the OpenAI API gaps in `docs/research/openai-api-gaps-2026-11.md` (new GPT-6.2 and 6.1 Terra models, GPT-6.2 instructions as a developer message, background completion windows, prompt cache 12h and diagnostics, streaming events, web search blocked domains, service tiers per model). Meanwhile 3.0 is in review.
+3.1 (Gunnar, 2026-11-20: "Share sheet + Shortcuts", then "mac app too ... do literally EVERYTHING ... deep research the OpenAI and also apple APIs"). Done locally: Shortcuts, the share sheet, a Mac Catalyst build (commit eb93a5f), then the top OpenAI API gaps (the commit after it): GPT-6.2 Astra and Sol and GPT-6.1 Terra with GPT-6.2 Sol as the default, GPT-6.2 instructions as a developer message, service tiers per model, a 12-hour cache lifetime, blocked domains as a filter, the deprecations page's replacements, and the misalignment stop. Still open from `docs/research/openai-api-gaps-2026-11.md`: background completion windows, cache diagnostics and breakpoints, streaming reasoning, code and shell events, and the rows marked open there. 3.0 is in review.
 
 Earlier objective: OpenResponses 3.0 is submitted with everything through November 19, 2026 (Settings redesign, Text Size, Connectors, large-text fixes, Decisions, rating sheet, tool-step arguments, Calendar dates). Next: watch review, and after it goes live bump MARKETING_VERSION.
 
 ## Status
+- 2026-11-20, OpenAI gaps (CHANGELOG 3.1; docs re-read 2026-11-20, summary in the gap report's Status section):
+  - `ModelCatalog.json` revision 2 adds a `successors` map and `"pro": true` on retired entries (`docs/model-catalog.md`).
+  - `InstructionsPlacement` and `InstructionsLedger` (`OpenResponses/Core/Services/InstructionsLedger.swift`) choose where the system instructions go. `ChatViewModel.lastResponseId`'s setter links each new response ID to its parent. Ask OpenResponses uses its own `OpenAIService` with `recordsInstructionChains = false`.
+  - `CurrentModelCatalog.serviceTiers`/`requestServiceTier` gate `service_tier`. The Request Options picker (`AdvancedTab`) lists the tiers per model and has a cache lifetime control.
+  - `OpenAIServiceError.isMisalignment` is checked in `handleError`, the stream error and `response.failed` handlers, and both runners.
+  - None of this was tried against the live API (this Mac's Bash cannot read the key).
 - 2026-11-20, 3.1 (local commit, see CHANGELOG 3.1 and `docs/share-shortcuts-mac.md`): App Intents `AskOpenResponsesIntent` and `NewChatIntent` with `OpenResponsesShortcuts`; share extension target `OpenResponsesShare` writing to `SharedInbox` in App Group `group.Gunndamental.OpenResponses`; `ChatViewModel.takeSharedInbox` opens it as an unsent new chat; Mac Catalyst on (`SUPPORTS_MACCATALYST = YES`, same bundle ID) with `Config/*-mac.entitlements`; menu commands New Chat and Settings; Command-Return sends. Research reports in `docs/research/`. Device build blocked on signing (Blockers).
 - 2026-11-19: pushed 2b70581; Xcode Cloud run 56 SUCCEEDED 17:52, build 56 VALID, attached to 3.0 (`python3 scripts/asc/release.py attach --go`, now pointed at 3.0) and submitted: submission c40d93aa-0d3c-4fda-ad72-4731bed170f5 WAITING_FOR_REVIEW, version 3.0 WAITING_FOR_REVIEW, release AFTER_APPROVAL. The first submit got 409 because the age rating lacked Apple's new required `socialMedia`; set `socialMedia`, `sharedLocation` and `datingAndRelationships` to false on app info e4cf1762 (the app has none of them; Apple's AgeRatingDeclarationUpdateRequest reference read 2026-11-20 UTC). `socialMediaAgeRestricted` left unset.
 - ASC 3.0 en-US read back equal to the repo: whatsNew = `fastlane/metadata/en-US/release_notes.txt`, promotionalText, description, keywords, and App Review notes = `fastlane/metadata/review_information/notes.txt`.
@@ -41,6 +47,9 @@ Earlier objective: OpenResponses 3.0 is submitted with everything through Novemb
 - Test simulator: "OpenResponses tests" 54DDDEDE-3B99-48F6-9A30-C65B825A6440 (iPhone 17 Pro, iOS 27.0), created 2026-11-19, text size set back to Large (the default).
 
 ## Verification
+- 2026-11-20, OpenAI gap work, `xcodebuild test ... -destination 'id=54DDDEDE-3B99-48F6-9A30-C65B825A6440' -only-testing:OpenResponsesTests` -> 401 tests, 398 passed, 3 skipped, 0 failed (xcresult summary; "Executed 401 tests, with 3 tests skipped and 0 failures"), including the 10 `OpenAIAPIGapTests`. An earlier run failed `testDeliveriesComeBackOldestFirstWithTheirFiles`: `SharedInbox` wrote whole-second dates, so two deliveries in one second came back in either order. It now writes milliseconds (`SharedInbox.timestampStyle`).
+- 2026-11-20, `bash scripts/ui_tests.sh` -> "Executed 7 tests, with 0 failures", ** TEST SUCCEEDED **. `python3 scripts/codemap.py check` -> 27 slices, 0 errors, 0 warnings. `python3 scripts/secret_scan.py` -> passed.
+- Not tried against the live API: the GPT-6.2 developer-message placement, tier gating, the 12h cache and the blocked-domain filter (this Mac's Bash cannot read an OpenAI key).
 - 2026-11-17, `xcodebuild test ... -destination 'id=7AFAC899-0FF6-45C9-9F5A-5A441C4FA661' -only-testing:OpenResponsesTests` on 7a12b34 -> "Executed 384 tests, with 4 tests skipped and 0 failures", ** TEST SUCCEEDED **.
 - 2026-11-17, `python3 scripts/codemap.py check` -> 0 errors, 0 warnings.
 - 2026-11-17, App Store Connect API: OpenResponses build 55 and OpenCone build 27 SUCCEEDED, processing VALID.
@@ -53,6 +62,7 @@ Earlier objective: OpenResponses 3.0 is submitted with everything through Novemb
 - 2026-11-19, Decisions live (Settings > Advanced > Developer Operations > Decisions, the support-ticket example, gpt-6-luna): department billing 100%, asks_for_refund True 100%, urgency score 1.99 on 0-2 nearest High (99%), 441 input tokens, about $0.000044. The Decisions blocker is closed.
 
 ## Blockers / Unknowns
+- GPT-6.2 instruction placement is unproven live: whether the API accepts the developer-first form with chained `previous_response_id` turns as the guide describes, and whether `filters` with both `allowed_domains` and `blocked_domains` is accepted (the guide's prose says "or", its example sets both). Verify with the next action's step 2, or a Workbench request.
 - Device and Cloud builds of 3.1 need the App Group and the extension's App ID registered. 2026-11-20: `scripts/ship_device.sh` failed with "No Accounts" (Xcode signed out) and, through `zsh -ic` with the App Store Connect key, "Authentication failed". Gunnar signs in to Xcode (Settings > Accounts, team Z3E334EXZD), then `zsh -ic scripts/ship_device.sh` registers both and installs. Until then the share extension has run only in the simulator build.
 - Mac: the Catalyst build ran unsigned; the menu commands were not seen working (the shell could not send keystrokes). Whether "Make this app available on Mac" (the iPad app on Apple silicon Macs) is on in App Store Connect is unknown.
 - Connectors: account sign-in and key connections were not tried against a live service in this change. OpenAI's own connectors (Gmail, Google Drive and the rest) are hidden until the app can sign in to them.
@@ -61,5 +71,5 @@ Earlier objective: OpenResponses 3.0 is submitted with everything through Novemb
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-After Gunnar signs in to Xcode: `zsh -ic scripts/ship_device.sh`, then share a web page from Safari to OpenResponses on the phone and open the app; the chat should open with the link in the message field. Then the OpenAI gaps, top rows of `docs/research/openai-api-gaps-2026-11.md` first. Separately, when 3.0 is live:
+After Gunnar signs in to Xcode: `zsh -ic scripts/ship_device.sh`, then on the phone: (1) share a web page from Safari to OpenResponses and open the app; the chat should open with the link in the message field; (2) send two chat turns on GPT-6.2 Sol and open the Request Inspector: the first request's `input` starts with a developer message holding the system prompt and has no top-level `instructions`, the second has neither; (3) set Flex on GPT-6.2 Sol and confirm the request has no `service_tier` and the answer arrives. Separately, when 3.0 is live:
 When App Store Connect shows 3.0 Ready for Distribution: `gh release edit v3.0 --latest`, change CHANGELOG's 3.0 heading to "released <date> (build 56)", and bump MARKETING_VERSION to 3.1 in all four lines of project.pbxproj (app and share extension) and create 3.1 in ASC before the next push to main. If review rejects, read the resolution center and fix on a commit from 2b361da, since local main now carries 3.1 work.

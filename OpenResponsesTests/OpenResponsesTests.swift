@@ -892,14 +892,25 @@ final class OpenAIModelTests: XCTestCase {
     }
 
     func testRetiredModelsMoveToOpenAIsDocumentedReplacements() {
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "o3"), "gpt-5.6-sol")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "o3-mini"), "gpt-5.6-sol")
+        // OpenAI's deprecations page, read 2026-11-20.
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "o3"), "gpt-6.1-sol")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "o3-mini"), "gpt-6.1-sol")
         XCTAssertEqual(CurrentModelCatalog.replacement(for: "o4-mini"), "gpt-5.6-terra")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-mini-2025-08-07"), "gpt-5.6-terra")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-nano"), "gpt-5.6-luna")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5"), "gpt-5.6-sol")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-mini-2025-08-07"), "gpt-6.1-terra")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5-nano"), "gpt-6-luna")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5"), "gpt-6.1-sol")
         XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-4.1-nano"), "gpt-5.6-luna")
-        XCTAssertEqual(CurrentModelCatalog.replacement(for: "computer-use-preview"), "gpt-6-sol")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "computer-use-preview"), "gpt-6.2-sol")
+        for pro in ["gpt-5-pro", "o3-pro-2025-06-10"] {
+            XCTAssertEqual(CurrentModelCatalog.replacement(for: pro), "gpt-6.1-sol", pro)
+            XCTAssertTrue(CurrentModelCatalog.replacementUsesPro(for: pro), pro)
+        }
+        XCTAssertFalse(CurrentModelCatalog.replacementUsesPro(for: "o3"))
+        // Announced shutdowns of earlier models: where presets move once GET /models gives the date.
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-4o-2024-08-06"), "gpt-6-luna")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-4.1-mini-2025-04-14"), "gpt-6-luna")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5.1"), "gpt-6-sol")
+        XCTAssertEqual(CurrentModelCatalog.replacement(for: "gpt-5.4-nano"), "gpt-6-luna")
     }
 
     func testDisplayNameIsTheAPIIdentifierAndRetiredModelsAreHidden() {

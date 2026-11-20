@@ -1259,7 +1259,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
     .background(Color(.systemGray6))
     .cornerRadius(8)
 
-                    Text("Up to 20 domains. Separate with commas. Omit http/https.")
+                    Text("Up to 100 domains in each list. Separate with commas. Subdomains are included.")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -1631,16 +1631,19 @@ private struct AdvancedTab: View {
         Form {
             Section {
                 Picker("Service tier", selection: $viewModel.activePrompt.serviceTier) {
-                    Text("Auto").tag("auto")
-                    Text("Standard").tag("default")
-                    Text("Flex · cheaper, slower").tag("flex")
-                    Text("Fast").tag("fast")
-                    Text("Ultrafast").tag("ultrafast")
+                    ForEach(tierOptions, id: \.self) { tier in
+                        Text(tierLabel(tier)).tag(tier)
+                    }
                 }
+                Picker("Prompt cache lifetime", selection: cacheLifetime) {
+                    Text("30 minutes").tag("30m")
+                    Text("12 hours").tag("12h")
+                }
+                .disabled(!supportsCacheOptions)
             } header: {
                 Text("Speed and cost")
             } footer: {
-                Text("Flex costs less and may queue. Fast and Ultrafast answer sooner at a higher price, on models that offer them.")
+                Text(speedAndCostFooter)
             }
 
             Section {
@@ -1670,6 +1673,72 @@ private struct AdvancedTab: View {
             }
         }
         .onDisappear { viewModel.saveActivePrompt() }
+    }
+
+    /// The tiers the selected model offers, plus the saved one if it does not offer it, so the picker still shows it.
+    private var tierOptions: [String] {
+        let offered = CurrentModelCatalog.serviceTiers(for: viewModel.activePrompt.openAIModel)
+        let saved = viewModel.activePrompt.serviceTier
+        return offered.contains(saved) || saved.isEmpty ? offered : offered + [saved]
+    }
+
+    private var savedTierIsOffered: Bool {
+        let saved = viewModel.activePrompt.serviceTier
+        return saved.isEmpty || CurrentModelCatalog.requestServiceTier(saved, model: viewModel.activePrompt.openAIModel) != nil
+    }
+
+    private func tierLabel(_ tier: String) -> String {
+        let name: String
+        switch tier {
+        case "auto": name = "Auto"
+        case "default": name = "Standard"
+        case "flex": name = "Flex · cheaper, slower"
+        case "fast", "priority": name = "Fast"
+        case "ultrafast": name = "Ultrafast"
+        default: name = tier.capitalized
+        }
+        return CurrentModelCatalog.serviceTiers(for: viewModel.activePrompt.openAIModel).contains(tier) || tier == "priority"
+            ? name : name + " · not on this model"
+    }
+
+    /// `prompt_cache_options` is accepted on GPT-5.6 and later.
+    private var supportsCacheOptions: Bool {
+        ModelCompatibilityService.shared.isParameterSupported("prompt_cache_options", for: viewModel.activePrompt.openAIModel)
+    }
+
+    /// `prompt_cache_options.ttl`: "30m" (the default, written at 1.25 times the input rate) or "12h" (2.5 times),
+    /// Responses API only (prompt caching guide, read 2026-11-20). 30 minutes clears the saved options.
+    private var cacheLifetime: Binding<String> {
+        Binding(
+            get: { viewModel.activePrompt.promptCacheOptions?.ttl == "12h" ? "12h" : "30m" },
+            set: { ttl in
+                var options = viewModel.activePrompt.promptCacheOptions ?? PromptCacheOptions(mode: "implicit")
+                if ttl == "12h" {
+                    options.ttl = "12h"
+                    viewModel.activePrompt.promptCacheOptions = options
+                } else if options.mode == "implicit" {
+                    viewModel.activePrompt.promptCacheOptions = nil
+                } else {
+                    options.ttl = nil
+                    viewModel.activePrompt.promptCacheOptions = options
+                }
+            }
+        )
+    }
+
+    private var speedAndCostFooter: String {
+        let model = viewModel.activePrompt.openAIModel
+        var lines = ["Flex costs less and may queue. Fast and Ultrafast answer sooner at a higher price. GPT-6.2 models have no Flex; Ultrafast is on GPT-6.2 Astra and Sol, GPT-6 Astra and GPT-6.1 Sol."]
+        if !savedTierIsOffered {
+            lines.append("\(tierLabel(viewModel.activePrompt.serviceTier).replacingOccurrences(of: " · not on this model", with: "")) isn't offered on \(model), so requests leave the tier out and OpenAI uses Auto.")
+        }
+        if viewModel.activePrompt.serviceTier == "ultrafast", CurrentModelCatalog.baseID(model).hasPrefix("gpt-6.2") {
+            lines.append("Ultrafast on GPT-6.2 costs 3 times Standard through February 28, 2027, and 6 times from March 1, 2027.")
+        }
+        lines.append(supportsCacheOptions
+            ? "A 12-hour cache keeps a reused prefix of 1,024 tokens or more for longer. Writing it costs 2.5 times the input rate instead of 1.25 times."
+            : "Cache lifetime needs GPT-5.6 or later.")
+        return lines.joined(separator: " ")
     }
 
     @ViewBuilder

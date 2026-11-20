@@ -6,6 +6,10 @@ Gap report between OpenAI's API as documented on developers.openai.com and what 
 - App behavior comes from grep over `OpenResponses/` (Swift sources) and `OpenResponses/Resources/ModelCatalog/ModelCatalog.json`, plus README.md, CHANGELOG.md (3.0 to 2.7), docs/api-refresh-2026-09.md and docs/ai/codemap/INDEX.md. "grep X: 0" means `grep -rn --include='*.swift' -F 'X' OpenResponses` returned no lines. Nothing was built or run.
 - The streaming events reference is 2.3 MB. Its event list was extracted from the `## event` headings; the per-event schemas were not read.
 
+## Status (2026-11-20)
+
+Closed in the 3.1 work (CHANGELOG 3.1, after the docs were read again on 2026-11-20): current models, GPT-6.2 `instructions` placement, prompt cache lifetime (the 30m or 12h control; breakpoints and diagnostics still open), web search blocked domains (the filter; `return_token_budget` and image results still open), service tier per model, retirement replacements, misalignment monitoring. Corrections from that reading: GPT-6.1 Terra has Flex and no Ultrafast; `scale` is not a documented `service_tier` value; a developer message in `input` stays in a `previous_response_id` chain while top-level instructions do not. Every other row below is still open.
+
 ## Gaps
 
 | Area | What OpenAI documents | What the app does today | Value to a developer using a mobile playground | Size |
