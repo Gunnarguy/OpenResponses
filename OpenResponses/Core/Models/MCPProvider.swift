@@ -24,6 +24,24 @@ struct MCPProvider: Identifiable, Hashable {
         }
     }
     var host: String { URL(string: serverURL)?.host ?? "OpenAI connector" }
+
+    /// A server address reduced to host and path, so "https://MCP.notion.com/mcp/" and
+    /// "https://mcp.notion.com/mcp" count as the same server. Empty for an empty address.
+    static func serverKey(_ address: String) -> String {
+        let text = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "" }
+        guard let components = URLComponents(string: text), let host = components.host?.lowercased() else { return text.lowercased() }
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        return host + path
+    }
+
+    /// The featured provider for a saved connection's server, if there is one.
+    static func featured(forServer address: String) -> MCPProvider? {
+        let key = serverKey(address)
+        guard !key.isEmpty else { return nil }
+        return featured.first { serverKey($0.serverURL) == key }
+    }
     var signInLabel: String {
         switch signIn {
         case .oauth: "Account sign-in"

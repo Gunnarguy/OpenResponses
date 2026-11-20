@@ -121,3 +121,19 @@ final class MCPApprovalUtilsTests: XCTestCase {
         XCTAssertEqual(text, expectedText)
     }
 }
+
+/// Connectors hides a service that already has an account, matching by server address.
+final class MCPProviderServerKeyTests: XCTestCase {
+    func testServerKeyIgnoresCaseSchemeAndTrailingSlash() {
+        XCTAssertEqual(MCPProvider.serverKey("https://MCP.notion.com/mcp/"), "mcp.notion.com/mcp")
+        XCTAssertEqual(MCPProvider.serverKey(" https://mcp.notion.com/mcp "), MCPProvider.serverKey("https://mcp.notion.com/mcp"))
+        XCTAssertNotEqual(MCPProvider.serverKey("https://mcp.notion.com/mcp"), MCPProvider.serverKey("https://mcp.notion.com/other"))
+        XCTAssertEqual(MCPProvider.serverKey(""), "")
+    }
+
+    func testFeaturedProviderIsFoundForASavedConnectionsServer() {
+        XCTAssertEqual(MCPProvider.featured(forServer: "https://mcp.notion.com/mcp/")?.id, "notion")
+        XCTAssertNil(MCPProvider.featured(forServer: "https://example.com/mcp"))
+        XCTAssertNil(MCPProvider.featured(forServer: ""))
+    }
+}

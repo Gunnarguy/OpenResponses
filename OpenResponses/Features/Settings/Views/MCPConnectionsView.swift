@@ -25,17 +25,24 @@ struct MCPConnectionsView: View {
 
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// Servers that already have an account here. They show under Connected, not again in the lists below;
+    /// a second account (another workspace) is added from the connected account's page.
+    private var connectedServers: Set<String> {
+        Set(store.connections.map { MCPProvider.serverKey($0.serverURL) }.filter { !$0.isEmpty })
+    }
+
     private var popular: [MCPProvider] {
+        let connected = connectedServers
         // OpenAI's own connectors (no server address) need a sign-in the app can't offer yet, so they stay out.
-        MCPProvider.featured.filter { !$0.serverURL.isEmpty }.filter {
+        return MCPProvider.featured.filter { !$0.serverURL.isEmpty && !connected.contains(MCPProvider.serverKey($0.serverURL)) }.filter {
             trimmedQuery.isEmpty || ($0.name + " " + $0.summary + " " + $0.category.rawValue).localizedCaseInsensitiveContains(trimmedQuery)
         }
     }
 
-    /// Registry servers that are not already in the popular list.
+    /// Registry servers that are neither in the popular list nor already connected.
     private var registryResults: [MCPProvider] {
-        let featuredURLs = Set(MCPProvider.featured.map(\.serverURL))
-        return registry.filter { !featuredURLs.contains($0.serverURL) }
+        let hidden = connectedServers.union(MCPProvider.featured.map { MCPProvider.serverKey($0.serverURL) })
+        return registry.filter { !hidden.contains(MCPProvider.serverKey($0.serverURL)) }
     }
 
     var body: some View {
@@ -74,7 +81,7 @@ struct MCPConnectionsView: View {
             } else {
                 Section("Popular") {
                     ForEach(popular) { providerButton($0) }
-                    if popular.isEmpty { Text("None of the popular services match.").foregroundStyle(.secondary) }
+                    if popular.isEmpty { Text("None of the popular services you haven't connected match.").foregroundStyle(.secondary) }
                 }
             }
 
@@ -416,9 +423,18 @@ struct MCPConnectionDetailView: View {
     @State private var showingDisconnect = false
     @State private var showingRename = false
     @State private var accountName = ""
+    @State private var addingAccount: MCPProvider?
     @AppStorage("exploreModeEnabled") private var demo = false
     @AppStorage(AppFeatureFlags.aiDataSharingConsentVersionKey) private var consentVersion = 0
     private var connection: MCPConnection? { store.connections.first { $0.id == id } }
+
+    /// The provider to add a second account with (another Notion workspace, say): the featured entry for this
+    /// server, or, for an account signed in from the registry, one built from the connection.
+    private func providerForAnotherAccount(_ connection: MCPConnection) -> MCPProvider? {
+        if let featured = MCPProvider.featured(forServer: connection.serverURL), !featured.serverURL.isEmpty { return featured }
+        guard connection.authentication == .oauth, !connection.serverURL.isEmpty else { return nil }
+        return MCPProvider(id: connection.providerID, name: connection.name, summary: "", category: .productivity, serverURL: connection.serverURL)
+    }
 
     var body: some View {
         Form {
@@ -442,6 +458,15 @@ struct MCPConnectionDetailView: View {
                         }
                     }
                     if let error = flow.error ?? error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+                }
+                if let provider = providerForAnotherAccount(connection) {
+                    Section {
+                        Button { addingAccount = provider } label: {
+                            Label("Connect Another \(provider.name) Account", systemImage: "person.crop.circle.badge.plus")
+                        }
+                    } footer: {
+                        Text("For another workspace or login. Each account is listed separately under Connected, and Rename Account tells them apart.")
+                    }
                 }
                 Section {
                     Toggle("Ask before running tools", isOn: Binding(
@@ -483,6 +508,9 @@ struct MCPConnectionDetailView: View {
             } else { ContentUnavailableView("Connection removed", systemImage: "link.badge.plus") }
         }
         .navigationTitle(connection?.name ?? "Connection").navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $addingAccount) { provider in
+            NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) }
+        }
         .onDisappear { task?.cancel(); flow.cancel(); loading = false }
         .onChange(of: demo) { _, enabled in if enabled { task?.cancel(); flow.cancel(); loading = false } }
         .alert("Before You Send", isPresented: $showingConsent) {
