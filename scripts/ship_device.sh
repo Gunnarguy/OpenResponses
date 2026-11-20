@@ -16,8 +16,8 @@ bundle="Gunndamental.OpenResponses"
 
 devices="$(xcrun devicectl list devices 2>/dev/null)"
 case "$want" in
-  iphone) udid="$(print -r -- "$devices" | awk '/available \(paired\)/ && /iPhone/ && /physical/ {for(i=1;i<=NF;i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')" ;;
-  ipad)   udid="$(print -r -- "$devices" | awk '/available \(paired\)/ && /iPad/ && /physical/ {for(i=1;i<=NF;i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')" ;;
+  iphone) udid="$(print -r -- "$devices" | awk '(/available \(paired\)/ || /[[:space:]]connected[[:space:]]/) && /iPhone/ && /physical/ {for(i=1;i<=NF;i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')" ;;
+  ipad)   udid="$(print -r -- "$devices" | awk '(/available \(paired\)/ || /[[:space:]]connected[[:space:]]/) && /iPad/ && /physical/ {for(i=1;i<=NF;i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')" ;;
   *)      udid="$want" ;;
 esac
 if [[ -z "${udid:-}" ]]; then
