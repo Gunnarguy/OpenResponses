@@ -27,11 +27,13 @@ if [[ -z "${udid:-}" ]]; then
 fi
 print "Device: $udid"
 
-# Signing in to Xcode is not required: with the App Store Connect API key exported by ~/.zshrc
-# (run this script through `zsh -ic` from a non-interactive shell) xcodebuild registers App IDs,
-# the App Group and profiles itself. The key's values are passed by path and ID, never printed.
+# Signing uses the Apple ID signed in to Xcode (Settings > Accounts), which registers the App IDs,
+# the App Group and the profiles. Measured 2026-11-20: passing the App Store Connect API key instead
+# made xcodebuild fail with "Authentication failed" and fall back to the wildcard profile, which has
+# no App Groups, although the key itself works for the API. So the key is passed only when asked:
+# SHIP_WITH_API_KEY=1 zsh -ic scripts/ship_device.sh. Its values go by path and ID, never printed.
 auth=()
-if [[ -n "${APP_STORE_CONNECT_API_KEY_PATH:-}" && -n "${APP_STORE_CONNECT_API_KEY_ID:-}" && -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]]; then
+if [[ "${SHIP_WITH_API_KEY:-0}" == 1 && -n "${APP_STORE_CONNECT_API_KEY_PATH:-}" && -n "${APP_STORE_CONNECT_API_KEY_ID:-}" && -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]]; then
   auth=(-authenticationKeyPath "$APP_STORE_CONNECT_API_KEY_PATH" -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID")
 fi
 
