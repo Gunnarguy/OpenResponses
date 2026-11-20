@@ -13,6 +13,7 @@ struct MCPConnectionsView: View {
     @State private var showingCustom = false
     @State private var showingNotionToken = false
     @State private var hasNotionToken = false
+    @State private var confirmingTokenRemoval = false
     @State private var registry: [MCPProvider] = []
     @State private var registryQuery: String?
     @State private var cursor: String?
@@ -114,6 +115,14 @@ struct MCPConnectionsView: View {
         }
         .sheet(isPresented: $showingCustom) { RemoteMCPSetupSheet().environmentObject(viewModel) }
         .sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { NotionConnectionView() }
+        .confirmationDialog("Remove the Notion integration token?", isPresented: $confirmingTokenRemoval, titleVisibility: .visible) {
+            Button("Remove Token", role: .destructive) {
+                _ = KeychainService.shared.delete(forKey: "notionApiKey")
+                refreshNotionToken()
+            }
+        } message: {
+            Text("Your Notion account stays connected. The token is deleted from this device's Keychain.")
+        }
         .task(id: viewModel.activePrompt.id) { migrateLegacy() }
         .task { refreshNotionToken(); if registry.isEmpty { loadRegistry(reset: true) } }
         .onChange(of: query) { _, _ in
@@ -166,15 +175,26 @@ struct MCPConnectionsView: View {
                     Image(systemName: "key.fill").font(.title2).foregroundStyle(.gray).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Notion (integration token)").font(.headline).foregroundStyle(.primary)
-                        Text("Saved by an earlier version. Notion in the list below signs in to your account instead.")
+                        Text(notionAccountConnected
+                             ? "Saved by an earlier version. Your Notion account above does the same job, so with both on the assistant gets two sets of Notion tools."
+                             : "Saved by an earlier version. Notion in the list below signs in to your account instead.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }.buttonStyle(.plain)
+            if notionAccountConnected {
+                Button("Remove Token", role: .destructive) { confirmingTokenRemoval = true }
+                    .font(.subheadline)
+            }
             Toggle("Use in this chat", isOn: $viewModel.activePrompt.enableNotionIntegration)
                 .font(.subheadline)
                 .onChange(of: viewModel.activePrompt.enableNotionIntegration) { _, _ in viewModel.saveActivePrompt() }
         }.padding(.vertical, 4)
+    }
+
+    /// A signed-in Notion account (Notion's hosted MCP server) replaces the old integration token.
+    private var notionAccountConnected: Bool {
+        store.connections.contains { MCPDiscoveryConfiguration.isNotionHosted($0.serverURL) && !$0.needsSignIn }
     }
 
     private func refreshNotionToken() {
