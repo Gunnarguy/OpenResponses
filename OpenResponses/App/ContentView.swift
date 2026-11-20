@@ -65,6 +65,11 @@ struct ContentView: View {
         // A request held because the app was not in front, or because the next answer had started, is made on return.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, reviewPrompt.wantsPrompt { askForRatingWhenInFront() }
+            // Text and files from the share sheet or the New Chat shortcut open as a new chat (3.1).
+            if phase == .active { viewModel.takeSharedInbox() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sharedInboxDidChange)) { _ in
+            viewModel.takeSharedInbox()
         }
         // The model menus list the account's newer models too, with settings from OpenAI's docs pages; one GET /models
         // per launch keeps them current.

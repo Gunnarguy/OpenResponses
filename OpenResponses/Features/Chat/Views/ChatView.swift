@@ -37,6 +37,11 @@ struct ChatView: View {
                 .safeAreaInset(edge: .bottom) {
                     bottomInset
                 }
+                // Shared text and the New Chat shortcut's text land in the message field (3.1).
+                .onChange(of: viewModel.composerDraft) { _, draft in
+                    takeComposerDraft(draft)
+                }
+                .onAppear { takeComposerDraft(viewModel.composerDraft) }
                 .onChange(of: viewModel.messages.count) { _, _ in
                     // Scroll to the bottom whenever a new message is added
                     if let lastMessage = viewModel.messages.last {
@@ -188,6 +193,15 @@ struct ChatView: View {
             aiSafetyNotice
                 .padding(.bottom, 8)
         }
+    }
+
+    /// Moves text handed over by `ChatViewModel.takeSharedInbox` into the field, replacing what was typed in the
+    /// previous chat, and focuses the field.
+    private func takeComposerDraft(_ draft: String?) {
+        guard let draft else { return }
+        userInput = draft
+        viewModel.composerDraft = nil
+        inputFocused = true
     }
 
     @ViewBuilder

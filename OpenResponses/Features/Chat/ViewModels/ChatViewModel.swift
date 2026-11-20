@@ -745,7 +745,7 @@ class ChatViewModel: ObservableObject {
         2. Go to **Settings** (top right).
         3. Paste your **OpenAI API Key**.
 
-        *Your key is stored securely in the iOS Keychain and is never shared with us.*
+        *Your key is stored securely in this device's Keychain and is never shared with us.*
         """
     }
 
@@ -5558,6 +5558,34 @@ class ChatViewModel: ObservableObject {
         pendingImageAttachments.removeAll()
         pendingFileData.removeAll()
         pendingFileNames.removeAll()
+    }
+
+    // MARK: - Share sheet and shortcuts (3.1)
+
+    /// Text for the message field that `ChatView` moves into its own field and then clears.
+    @Published var composerDraft: String?
+
+    /// Opens a new chat with everything waiting in `SharedInbox`: their text in the message field and their files
+    /// attached. Nothing is sent. While an answer is streaming the inbox waits for the next time the app comes forward.
+    func takeSharedInbox(_ inbox: SharedInbox = .shared) {
+        guard !isStreaming else { return }
+        let deliveries = inbox.pending()
+        guard !deliveries.isEmpty else { return }
+        createNewConversation()
+        clearPendingFileAttachments()
+        for delivery in deliveries {
+            for file in delivery.item.files {
+                guard let data = delivery.fileData[file.name] else { continue }
+                if file.kind == .image, let image = UIImage(data: data) {
+                    attachImages([image])
+                } else {
+                    pendingFileData.append(data)
+                    pendingFileNames.append(file.name)
+                }
+            }
+        }
+        composerDraft = SharedInbox.combinedText(deliveries)
+        inbox.remove(deliveries.map(\.item.id))
     }
 
     // MARK: - Attachment Helpers (used by ChatView)

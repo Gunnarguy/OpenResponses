@@ -4,7 +4,7 @@
   "name": "On-device browser and computer use",
   "aliases": ["On-device browser", "computer use", "live browser", "BrowserExecution", "ComputerService", "SafetyApprovalSheet", "Review required", "Approve & Continue", "Safety checks", "Strict Mode"],
   "purpose": "Provides sandboxed browser automation and capture loops for the assistant to interact with websites on-device.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["SafetyApprovalSheet", "SettingsHomeView", "ChatView"],
   "files": [
@@ -13,8 +13,8 @@
     {"path": "OpenResponses/Core/Services/BrowserDOM.swift", "role": "primary", "blob": "9bdaec8f9cf312d4b1fd5467324e3aa25de0603a"},
     {"path": "OpenResponses/Core/Models/ComputerModels.swift", "role": "primary", "blob": "2e4827d8aaf13e3df016ea412da9e4e2019805e7"},
     {"path": "OpenResponses/Features/Chat/Components/SafetyApprovalSheet.swift", "role": "primary", "blob": "f8207be6b43c6f47f6a19c3e47704e27a2396045"},
-    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
+    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "a576c8d8ef792a37d2c8eec8b303ef12caf0c7bf"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "16e80318eed1a82a1c5312f7cfd3595ff28b10cc"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
@@ -48,7 +48,7 @@
     {"id": "test:OpenResponsesComputerTests", "kind": "test", "path": "OpenResponsesTests/OpenResponsesTests.swift", "line": 473, "match": "    func testComputerServiceBuildsDirectSearchResultURLs() {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "ChatView", "type": "renders", "to": "SafetyApprovalSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 102, "match": "            SafetyApprovalSheet()"}]},
+    {"from": "ChatView", "type": "renders", "to": "SafetyApprovalSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 107, "match": "            SafetyApprovalSheet()"}]},
     {"from": "SafetyApprovalSheet", "type": "reads", "to": "ChatViewModel.pendingSafetyApproval", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/SafetyApprovalSheet.swift", "line": 17, "match": "            if let request = viewModel.pendingSafetyApproval {"}]},
     {"from": "SafetyApprovalSheet", "type": "calls", "to": "ChatViewModel.approveSafetyChecks", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/SafetyApprovalSheet.swift", "line": 89, "match": "                    viewModel.approveSafetyChecks()"}]},
     {"from": "SafetyApprovalSheet", "type": "calls", "to": "ChatViewModel.denySafetyChecks", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/SafetyApprovalSheet.swift", "line": 81, "match": "                    viewModel.denySafetyChecks()"}]},

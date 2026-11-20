@@ -17,6 +17,9 @@ final class OpenResponsesUITests: XCTestCase {
     }
 
     private func launch(_ extraArguments: [String] = []) -> XCUIApplication {
+        // The audits' frames and contrast samples assume portrait; on 2026-11-20 a simulator left in landscape (frames
+        // past x = 700 on a 402 pt wide phone) failed the chat audit on text that passes in portrait.
+        XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         // Launch arguments land in UserDefaults' argument domain, which @AppStorage and UserDefaults.standard read.
         app.launchArguments += ["-hasCompletedOnboarding", "YES", "-exploreModeEnabled", "YES"] + extraArguments

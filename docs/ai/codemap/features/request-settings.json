@@ -4,7 +4,7 @@
   "name": "Request Settings",
   "aliases": ["Presets", "request options", "Prompt", "settings registry", "playground panel", "Settings screens", "Preset Library", "Add preset", "Reset Prompt Settings", "Text Size", "app text size"],
   "purpose": "Manages presets and request options including Prompt persistence, preset library, PlaygroundSettingsPanel, Settings screens, and configuration validation.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["SettingsHomeView", "PlaygroundSettingsPanel"],
   "files": [
@@ -18,7 +18,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "primary", "blob": "16e80318eed1a82a1c5312f7cfd3595ff28b10cc"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "primary", "blob": "f1d0634442c902862c6d2b863703f76ad69e6f5c"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "435729bcd21de1d74ee995339b76d118a4616b6a"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
     {"path": "OpenResponsesTests/PromptPersistenceTests.swift", "role": "test", "blob": "03e608982f9be8a8e2104ac758b0d6bcbb5ffb6e"},
     {"path": "OpenResponsesTests/ResponseSettingsRegistryTests.swift", "role": "test", "blob": "490de415e9300ee60f0868aaa7e508d3ebfb41fc"},
     {"path": "OpenResponses/Features/Settings/Views/TextSizeSettings.swift", "role": "primary", "blob": "c3c3c6359c65dde5eb70bd7e53cb0f458ac232ed"}
@@ -117,6 +117,7 @@
       {"from": "ToolsTab", "type": "depends_on", "to": "CodeRunningToolsSection", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 828, "match": "CodeRunningToolsSection()"}]},
       {"from": "ToolsTab", "type": "depends_on", "to": "ImageGenerationOptionsRows", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 841, "match": "ImageGenerationOptionsRows()"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 8, "match": "var prompt = Prompt.defaultPrompt()"}]},
+      {"from": "PromptLibrary", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 779, "match": "let library = PromptLibrary(userDefaults: defaults)"}]},
       {"from": "ResponseConfigurationValidation", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 13, "match": "XCTAssertThrowsError(try ResponseConfigurationValidation.validate(prompt), content)"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 739, "match": "func buildPreviewRequestObject(for prompt: Prompt, userMessage: String?, attachments: [[String: Any]]?,"}]},
       {"from": "Prompt", "type": "tested_by", "to": "test:MCPSecretPersistenceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "line": 17, "match": "var prompt = Prompt.defaultPrompt()"}]},
@@ -131,9 +132,8 @@
       {"from": "Prompt", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 507, "match": "let prompt = Prompt.defaultPrompt()"}]},
       {"from": "Prompt", "type": "depends_on", "to": "feature:models", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/Prompt.swift", "line": 18, "match": "var modernOptions: ModernResponseOptions?"}], "note": "via ModernResponseOptions, CurrentModelCatalog"},
       {"from": "Prompt", "type": "depends_on", "to": "feature:onboarding-keys", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/Prompt.swift", "line": 79, "match": "if let authData = KeychainService.shared.load(forKey: key),"}], "note": "via KeychainService"},
-      {"from": "Prompt", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/Prompt.swift", "line": 270, "match": "enableMCPTool: AppFeatureFlags.isMCPAvailable,"}], "note": "via AppFeatureFlags"},
-      {"from": "PromptLibraryView", "type": "depends_on", "to": "feature:accessibility-localization", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 41, "match": "hint: AccessibilityUtils.Hint.addPreset,"}], "note": "via AccessibilityUtils"}
+      {"from": "Prompt", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/Prompt.swift", "line": 270, "match": "enableMCPTool: AppFeatureFlags.isMCPAvailable,"}], "note": "via AppFeatureFlags"}
     ],
-    "edges_omitted": 37
+    "edges_omitted": 38
   }
 }

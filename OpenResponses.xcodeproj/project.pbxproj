@@ -7,13 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0F0CF60C606249759EDA6905 /* ChatViewModelLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE44C8A6C09241A29724C883 /* ChatViewModelLifecycleTests.swift */; };
 		231DAC4EB17E473DB012CCE1 /* ModelCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */; };
+		28EF2797151B4B2595A98A0D /* AppleDateUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */; };
 		2945D95CC18D4633B8D3D065 /* LocalPythonRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */; };
 		39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */; };
-		0F0CF60C606249759EDA6905 /* ChatViewModelLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE44C8A6C09241A29724C883 /* ChatViewModelLifecycleTests.swift */; };
-		28EF2797151B4B2595A98A0D /* AppleDateUtilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */; };
 		6123040F55944460857DB121 /* AppCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E087B791B144CAB9EDAC80 /* AppCompletionTests.swift */; };
 		714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */; };
+		B019263C30B021EB000E5B0F /* OpenResponsesShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B019263230B021EB000E5B0F /* OpenResponsesShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */; };
 		B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */; };
 		B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */; };
@@ -37,6 +38,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		B019263A30B021EB000E5B0F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B06DB44B2E0FB40B00C7BDB3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B019263130B021EB000E5B0F;
+			remoteInfo = OpenResponsesShare;
+		};
 		B0D1A0B22F2F5C2C00A1B100 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = B06DB44B2E0FB40B00C7BDB3 /* Project object */;
@@ -53,13 +61,26 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B019263D30B021EB000E5B0F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B019263C30B021EB000E5B0F /* OpenResponsesShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogTests.swift; sourceTree = "<group>"; };
-		B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPythonRunnerTests.swift; sourceTree = "<group>"; };
 		0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSearchIndexTests.swift; sourceTree = "<group>"; };
 		8A19BF4A19E9ACCA8AD35631 /* AppLoggerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppLoggerTests.swift; sourceTree = "<group>"; };
 		A3983D3D9C2B4C218E6EE721 /* ResponseSettingsRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseSettingsRegistryTests.swift; sourceTree = "<group>"; };
 		A6E087B791B144CAB9EDAC80 /* AppCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCompletionTests.swift; sourceTree = "<group>"; };
+		B019263230B021EB000E5B0F /* OpenResponsesShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenResponsesShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenResponses.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0D1A0712F2F5C2C00A1B100 /* OpenResponsesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenResponsesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0D1A0812F2F5C2C00A1B100 /* OpenResponsesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenResponsesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -72,6 +93,8 @@
 		B0D1A0A52F2F5C2C00A1B100 /* OpenResponsesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITests.swift; sourceTree = "<group>"; };
 		B0D1A0A62F2F5C2C00A1B100 /* OpenResponsesUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenResponsesUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		B0D1A0A72F2F5C2C00A1B100 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B951748E3F0C4DB7969B5C85 /* LocalPythonRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPythonRunnerTests.swift; sourceTree = "<group>"; };
+		D2B6A0CA640F41EC8F17A802 /* ModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCatalogTests.swift; sourceTree = "<group>"; };
 		D6A7EA8254744DA9B02B60D9 /* AppleDateUtilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleDateUtilitiesTests.swift; sourceTree = "<group>"; };
 		D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPApprovalUtilsTests.swift; sourceTree = "<group>"; };
 		F3315B7A56258EDBFA71B5D4 /* OAuthCallbackValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthCallbackValidationTests.swift; sourceTree = "<group>"; };
@@ -88,25 +111,57 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-        C27C0A00A1164B22AADC0026 /* Info.plist excluded from app resources */ = {
-            isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-            membershipExceptions = (
-                Info.plist,
-            );
-            target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
-        };
+		B019264130B021EB000E5B0F /* Exceptions for "OpenResponsesShare" folder in "OpenResponsesShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B019263130B021EB000E5B0F /* OpenResponsesShare */;
+		};
+		B019264230B021EB000E5B0F /* Exceptions for "OpenResponses" folder in "OpenResponsesShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Core/Services/SharedInbox.swift,
+			);
+			target = B019263130B021EB000E5B0F /* OpenResponsesShare */;
+		};
+		C27C0A00A1164B22AADC0026 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B019263330B021EB000E5B0F /* OpenResponsesShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B019264130B021EB000E5B0F /* Exceptions for "OpenResponsesShare" folder in "OpenResponsesShare" target */,
+			);
+			path = OpenResponsesShare;
+			sourceTree = "<group>";
+		};
 		B06DB4552E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-            exceptions = (C27C0A00A1164B22AADC0026 /* Info.plist excluded from app resources */,);
+			exceptions = (
+				C27C0A00A1164B22AADC0026 /* Exceptions for "OpenResponses" folder in "OpenResponses" target */,
+				B019264230B021EB000E5B0F /* Exceptions for "OpenResponses" folder in "OpenResponsesShare" target */,
+			);
 			path = OpenResponses;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B019262F30B021EB000E5B0F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B06DB4502E0FB40B00C7BDB3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -135,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				B06DB4552E0FB40B00C7BDB3 /* OpenResponses */,
+				B019263330B021EB000E5B0F /* OpenResponsesShare */,
 				B06DB4542E0FB40B00C7BDB3 /* Products */,
 				B0D1A0782F2F5C2C00A1B100 /* OpenResponsesTests */,
 				B0D1A0882F2F5C2C00A1B100 /* OpenResponsesUITests */,
@@ -147,6 +203,7 @@
 				B06DB4532E0FB40B00C7BDB3 /* OpenResponses.app */,
 				B0D1A0712F2F5C2C00A1B100 /* OpenResponsesTests.xctest */,
 				B0D1A0812F2F5C2C00A1B100 /* OpenResponsesUITests.xctest */,
+				B019263230B021EB000E5B0F /* OpenResponsesShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -196,6 +253,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		B019263130B021EB000E5B0F /* OpenResponsesShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B019264030B021EB000E5B0F /* Build configuration list for PBXNativeTarget "OpenResponsesShare" */;
+			buildPhases = (
+				B019262E30B021EB000E5B0F /* Sources */,
+				B019262F30B021EB000E5B0F /* Frameworks */,
+				B019263030B021EB000E5B0F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B019263330B021EB000E5B0F /* OpenResponsesShare */,
+			);
+			name = OpenResponsesShare;
+			packageProductDependencies = (
+			);
+			productName = OpenResponsesShare;
+			productReference = B019263230B021EB000E5B0F /* OpenResponsesShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B06DB4522E0FB40B00C7BDB3 /* OpenResponses */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B06DB45E2E0FB40C00C7BDB3 /* Build configuration list for PBXNativeTarget "OpenResponses" */;
@@ -204,10 +283,12 @@
 				B06DB4502E0FB40B00C7BDB3 /* Frameworks */,
 				B06DB4512E0FB40B00C7BDB3 /* Resources */,
 				B04DEADB2F4F521400123456 /* Clear Extended Attributes */,
+				B019263D30B021EB000E5B0F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B019263B30B021EB000E5B0F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B06DB4552E0FB40B00C7BDB3 /* OpenResponses */,
@@ -262,9 +343,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					B019263130B021EB000E5B0F = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					B06DB4522E0FB40B00C7BDB3 = {
 						CreatedOnToolsVersion = 26.0;
 					};
@@ -295,11 +379,19 @@
 				B06DB4522E0FB40B00C7BDB3 /* OpenResponses */,
 				B0D1A0702F2F5C2C00A1B100 /* OpenResponsesTests */,
 				B0D1A0802F2F5C2C00A1B100 /* OpenResponsesUITests */,
+				B019263130B021EB000E5B0F /* OpenResponsesShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		B019263030B021EB000E5B0F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B06DB4512E0FB40B00C7BDB3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -387,6 +479,13 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B019262E30B021EB000E5B0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B06DB44F2E0FB40B00C7BDB3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -438,6 +537,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		B019263B30B021EB000E5B0F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B019263130B021EB000E5B0F /* OpenResponsesShare */;
+			targetProxy = B019263A30B021EB000E5B0F /* PBXContainerItemProxy */;
+		};
 		B0D1A0B02F2F5C2C00A1B100 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
@@ -451,6 +555,75 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		B019263E30B021EB000E5B0F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/OpenResponsesShare.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Config/OpenResponsesShare-mac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 39;
+				DEVELOPMENT_TEAM = Z3E334EXZD;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenResponsesShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenResponses;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Gunndamental.OpenResponses.OpenResponsesShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTS_MACCATALYST = YES;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B019263F30B021EB000E5B0F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/OpenResponsesShare.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Config/OpenResponsesShare-mac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 39;
+				DEVELOPMENT_TEAM = Z3E334EXZD;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenResponsesShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenResponses;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Gunndamental.OpenResponses.OpenResponsesShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTS_MACCATALYST = YES;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		B06DB45C2E0FB40C00C7BDB3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -578,6 +751,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/OpenResponses.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Config/OpenResponses-mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = Z3E334EXZD;
@@ -617,6 +792,8 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -630,6 +807,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/OpenResponses.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Config/OpenResponses-mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 39;
 				DEVELOPMENT_TEAM = Z3E334EXZD;
@@ -669,6 +848,8 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -780,6 +961,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B019264030B021EB000E5B0F /* Build configuration list for PBXNativeTarget "OpenResponsesShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B019263E30B021EB000E5B0F /* Debug */,
+				B019263F30B021EB000E5B0F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B06DB44E2E0FB40B00C7BDB3 /* Build configuration list for PBXProject "OpenResponses" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -95,7 +95,7 @@ struct AIDataSharingConsentSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             bullet("Nothing is sent until you tap Allow & Send.")
             bullet("Explore Demo stays offline and does not make OpenAI API calls.")
-            bullet("Your OpenAI API key is stored locally in the iOS Keychain.")
+            bullet("Your OpenAI API key is stored locally in this device's Keychain.")
         }
         .font(.footnote)
         .foregroundColor(.secondary)

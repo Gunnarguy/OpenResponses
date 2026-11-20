@@ -42,5 +42,25 @@ struct OpenResponsesApp: App {
                     }
                 }
         }
+        .commands { OpenResponsesCommands(chatViewModel: chatViewModel) }
+    }
+}
+
+/// Menu-bar commands on the Mac, which iPad shows as keyboard shortcuts (3.1).
+struct OpenResponsesCommands: Commands {
+    @ObservedObject var chatViewModel: ChatViewModel
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Chat") { chatViewModel.createNewConversation() }
+                .keyboardShortcut("n")
+                .disabled(chatViewModel.isStreaming)
+        }
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                NotificationCenter.default.post(name: NSNotification.Name("ShowFullSettings"), object: nil)
+            }
+            .keyboardShortcut(",")
+        }
     }
 }

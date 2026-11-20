@@ -4,7 +4,7 @@
   "name": "Notion integration",
   "aliases": ["Notion Integration", "Connect to Notion", "Existing Notion integration", "direct API tools", "token", "Notion workspaces", "NotionService", "Notion (integration token)"],
   "purpose": "Provides direct Notion API tools and token connection management alongside hosted MCP Notion.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["NotionConnectionView", "ChatViewModel.notionFunctions"],
   "files": [
@@ -14,11 +14,11 @@
     {"path": "OpenResponses/Core/ToolProviders/NotionProvider+Connect.swift", "role": "primary", "blob": "d5264689ffb9235f86ccc7e0630147a5e4c26a80"},
     {"path": "OpenResponses/Core/ToolProviders/NotionModels.swift", "role": "primary", "blob": "88f1126d70b6a69a2fe5d0a013ef70d0f032a616"},
     {"path": "OpenResponses/Features/Settings/Views/NotionConnectionView.swift", "role": "primary", "blob": "424796ae088da31ca25aaac3b60175dd5b08d656"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "b2da57cb516c8fcd2b75cdaf71862142e0cf28ca"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
-    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"},
+    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"},
     {"path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "role": "test", "blob": "fdacea5a395ef70925f0a86fdf261fb242a7b1aa"}
   ],
   "nodes": [

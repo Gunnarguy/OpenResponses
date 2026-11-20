@@ -1,13 +1,16 @@
 # Current State
 
-Updated: 2026-11-19
-Branch/worktree: main in the repo root, level with origin. Untracked `.codex/config.toml` is an earlier session's; leave it.
-Last verified commit: 2b70581 (code tested on ab93bcb, 2026-11-19, simulator 54DDDEDE: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests passed, ** TEST SUCCEEDED **; 2b70581 changed store text and docs only)
+Updated: 2026-11-20
+Branch/worktree: main in the repo root; the 3.1 commit below is local, not pushed (3.0 is in review and a push starts an Xcode Cloud archive). Untracked `.codex/config.toml` is an earlier session's; leave it.
+Last verified commit: 2b361da (3.1 work tested on top of it, 2026-11-20); earlier: 2b70581 (code tested on ab93bcb, 2026-11-19, simulator 54DDDEDE: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests passed, ** TEST SUCCEEDED **; 2b70581 changed store text and docs only)
 
 ## Objective
-OpenResponses 3.0 is submitted with everything through November 19, 2026 (Settings redesign, Text Size, Connectors, large-text fixes, Decisions, rating sheet, tool-step arguments, Calendar dates). Next: watch review, and after it goes live bump MARKETING_VERSION.
+3.1 (Gunnar, 2026-11-20: "Share sheet + Shortcuts", then "mac app too ... do literally EVERYTHING ... deep research the OpenAI and also apple APIs"): Shortcuts actions, the share sheet and a Mac Catalyst build are in the local 3.1 commit; next are the OpenAI API gaps in `docs/research/openai-api-gaps-2026-11.md` (new GPT-6.2 and 6.1 Terra models, GPT-6.2 instructions as a developer message, background completion windows, prompt cache 12h and diagnostics, streaming events, web search blocked domains, service tiers per model). Meanwhile 3.0 is in review.
+
+Earlier objective: OpenResponses 3.0 is submitted with everything through November 19, 2026 (Settings redesign, Text Size, Connectors, large-text fixes, Decisions, rating sheet, tool-step arguments, Calendar dates). Next: watch review, and after it goes live bump MARKETING_VERSION.
 
 ## Status
+- 2026-11-20, 3.1 (local commit, see CHANGELOG 3.1 and `docs/share-shortcuts-mac.md`): App Intents `AskOpenResponsesIntent` and `NewChatIntent` with `OpenResponsesShortcuts`; share extension target `OpenResponsesShare` writing to `SharedInbox` in App Group `group.Gunndamental.OpenResponses`; `ChatViewModel.takeSharedInbox` opens it as an unsent new chat; Mac Catalyst on (`SUPPORTS_MACCATALYST = YES`, same bundle ID) with `Config/*-mac.entitlements`; menu commands New Chat and Settings; Command-Return sends. Research reports in `docs/research/`. Device build blocked on signing (Blockers).
 - 2026-11-19: pushed 2b70581; Xcode Cloud run 56 SUCCEEDED 17:52, build 56 VALID, attached to 3.0 (`python3 scripts/asc/release.py attach --go`, now pointed at 3.0) and submitted: submission c40d93aa-0d3c-4fda-ad72-4731bed170f5 WAITING_FOR_REVIEW, version 3.0 WAITING_FOR_REVIEW, release AFTER_APPROVAL. The first submit got 409 because the age rating lacked Apple's new required `socialMedia`; set `socialMedia`, `sharedLocation` and `datingAndRelationships` to false on app info e4cf1762 (the app has none of them; Apple's AgeRatingDeclarationUpdateRequest reference read 2026-11-20 UTC). `socialMediaAgeRestricted` left unset.
 - ASC 3.0 en-US read back equal to the repo: whatsNew = `fastlane/metadata/en-US/release_notes.txt`, promotionalText, description, keywords, and App Review notes = `fastlane/metadata/review_information/notes.txt`.
 - GitHub release v3.0 published at 2b70581, not marked Latest (2.9 is still live): https://github.com/Gunnarguy/OpenResponses/releases/tag/v3.0. Mark it Latest when 3.0 is live.
@@ -50,10 +53,13 @@ OpenResponses 3.0 is submitted with everything through November 19, 2026 (Settin
 - 2026-11-19, Decisions live (Settings > Advanced > Developer Operations > Decisions, the support-ticket example, gpt-6-luna): department billing 100%, asks_for_refund True 100%, urgency score 1.99 on 0-2 nearest High (99%), 441 input tokens, about $0.000044. The Decisions blocker is closed.
 
 ## Blockers / Unknowns
+- Device and Cloud builds of 3.1 need the App Group and the extension's App ID registered. 2026-11-20: `scripts/ship_device.sh` failed with "No Accounts" (Xcode signed out) and, through `zsh -ic` with the App Store Connect key, "Authentication failed". Gunnar signs in to Xcode (Settings > Accounts, team Z3E334EXZD), then `zsh -ic scripts/ship_device.sh` registers both and installs. Until then the share extension has run only in the simulator build.
+- Mac: the Catalyst build ran unsigned; the menu commands were not seen working (the shell could not send keystrokes). Whether "Make this app available on Mac" (the iPad app on Apple silicon Macs) is on in App Store Connect is unknown.
 - Connectors: account sign-in and key connections were not tried against a live service in this change. OpenAI's own connectors (Gmail, Google Drive and the rest) are hidden until the app can sign in to them.
 - None for 3.0 code: the rating sheet and Decisions were both seen working live on 2026-11-19. The Notion verification row "Live-check Decisions" (https://app.notion.com/p/41749a74d54f81069597c73426b1b265) can be marked done.
 - Async tool calls on GPT-6 Sol and Luna stay off until a live request settles whether "GPT-6 Astra and later models" includes them.
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-When App Store Connect shows 3.0 Ready for Distribution: `gh release edit v3.0 --latest`, change CHANGELOG's 3.0 heading to "released <date> (build 56)", and bump MARKETING_VERSION to 3.1 in both lines of project.pbxproj (and create 3.1 in ASC) before the next push to main. If review rejects, read the resolution center and fix.
+After Gunnar signs in to Xcode: `zsh -ic scripts/ship_device.sh`, then share a web page from Safari to OpenResponses on the phone and open the app; the chat should open with the link in the message field. Then the OpenAI gaps, top rows of `docs/research/openai-api-gaps-2026-11.md` first. Separately, when 3.0 is live:
+When App Store Connect shows 3.0 Ready for Distribution: `gh release edit v3.0 --latest`, change CHANGELOG's 3.0 heading to "released <date> (build 56)", and bump MARKETING_VERSION to 3.1 in all four lines of project.pbxproj (app and share extension) and create 3.1 in ASC before the next push to main. If review rejects, read the resolution center and fix on a commit from 2b361da, since local main now carries 3.1 work.

@@ -2,6 +2,24 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
+## 3.1 — in development
+
+**Marketing version:** still 3.0 in the project; it moves to 3.1 (in the app and the share extension, four `MARKETING_VERSION` lines) once 3.0 is live. Not pushed: 3.0 is in review and a push to `main` starts an Xcode Cloud archive. Detail: [docs/share-shortcuts-mac.md](docs/share-shortcuts-mac.md).
+
+- **Shortcuts and Siri.** "Ask OpenResponses" sends a question with a saved preset (or the current settings) and an optional image, PDF or text file, and returns the answer as text without opening the app. It asks for the same Allow & Send consent as the chat and turns off the tools the app runs itself (browser, local Python, function and custom tools, Calendar, Reminders, Contacts, direct Notion tools, multi-agent). "New Chat in OpenResponses" opens a new chat with text in the message field and files attached, unsent. Both work from iOS 17, from Siri, Spotlight, the Action button and the Shortcuts app.
+- **Share sheet.** OpenResponses appears in the share sheet for text, a web link, up to 10 images and up to 10 files. Add a question, tap Save, and the next time the app comes forward it opens a new chat with all of it in place. Nothing is sent from the sheet. The extension and the app share an App Group (`group.Gunndamental.OpenResponses`).
+- **Mac.** The app builds for the Mac with Mac Catalyst on the same bundle ID (universal purchase), with a sandboxed Mac entitlements file. File > New Chat (Command-N), Settings (Command-comma), and Command-Return sends from any hardware keyboard, iPad included.
+- **Wording.** The welcome card, the consent sheet and the demo text say "this device's Keychain" instead of "the iOS Keychain".
+- **For agents.** `scripts/ship_device.sh` builds, installs and launches on a paired iPhone or iPad. CLAUDE.md gains Verify and Ship sections. The `platform-audit` skill reruns the OpenAI and Apple documentation audit; the first one is `docs/research/openai-api-gaps-2026-11.md` and `docs/research/apple-platform-2026-11.md`.
+
+### Verification
+
+- 2026-11-20, `xcodebuild test ... -destination 'id=54DDDEDE-3B99-48F6-9A30-C65B825A6440' -only-testing:OpenResponsesTests`: 392 tests, 388 passed, 4 skipped, 0 failed (result bundle summary), including the 8 new `SharedInboxAndShortcutTests`.
+- 2026-11-20, `bash scripts/ui_tests.sh`: 7 UI tests, 0 failures (** TEST SUCCEEDED **), after the tests started locking portrait: a simulator left in landscape had failed the chat audit on contrast.
+- The simulator build embeds `OpenResponsesShare.appex`; `Metadata.appintents` lists `AskOpenResponsesIntent`, `NewChatIntent` and 2 App Shortcuts.
+- Mac Catalyst: compiled unsigned and launched on this Mac (onboarding and the chat screen drew). The menu commands were not seen working.
+- Not done: a device build. The App Group must be registered first; on 2026-11-20 Xcode was signed out ("No Accounts") and xcodebuild rejected the App Store Connect API key for provisioning ("Authentication failed").
+
 ## 3.0 — submitted November 19, 2026 (build 56)
 
 **Marketing version:** 3.0. Submitted for review November 19, 2026 as build 56, the Xcode Cloud run 56 archive of commit `2b70581`, which replaced build 55 (commit 7a12b34) on the 3.0 version: build 55 had the Decisions, rating, tool-step and Calendar work below but none of the Settings, Text Size, Connectors and large-text work, which was first written up as 3.1 and was folded into 3.0 at Gunnar's word the same day ("ensure ASC metadata is now reflecting EVERYTHING"). App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt).

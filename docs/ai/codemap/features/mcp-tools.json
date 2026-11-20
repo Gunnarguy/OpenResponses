@@ -4,8 +4,8 @@
   "name": "MCP tool discovery and approval",
   "aliases": ["tool discovery", "tool call approval", "MCP approval", "discovery catalog", "Discover Tools", "Refresh Tools", "Browse Tools & Choose Access", "Approve", "Reject"],
   "purpose": "Discovers available MCP tools via MCPDiscoveryService probe stream and handles tool execution approvals during chat.",
-  "revision": "b648aa7",
-  "verified_on": "2026-11-17",
+  "revision": "2b361da",
+  "verified_on": "2026-11-19",
   "entry_points": ["MCPApprovalView", "ChatViewModel.respondToMCPApproval"],
   "files": [
     {"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "role": "primary", "blob": "c01d14ba1238a3b97e5370376b6e7653aa75be11"},
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Core/Utilities/MCPApprovalUtils.swift", "role": "primary", "blob": "d510b837bcaff6985e206320cc19eb6eda65cbe5"},
     {"path": "OpenResponses/Features/Chat/Views/MCPApprovalView.swift", "role": "primary", "blob": "45fcde7e7e0f9eaed8c7647027bfb012678cf497"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+MCP.swift", "role": "primary", "blob": "9320969b876556c6f511b5e646ca8f19f90679c3"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "e842e8e1c1e41af1647f73d5c2163879751782c7"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
@@ -44,7 +44,7 @@
     {"from": "MCPApprovalUtils", "type": "tested_by", "to": "StreamingEventDecodingTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 523, "match": "let payload = MCPApprovalUtils.buildMCPApprovalResponsePayload("}]},
     {"from": "MCPDiscoveryStream", "type": "tested_by", "to": "StreamingEventDecodingTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 917, "match": "final class MCPDiscoveryTests: XCTestCase {"}]},
     {"from": "MCPDiscoveryService", "type": "tested_by", "to": "StreamingEventDecodingTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1091, "match": "let service = MCPDiscoveryService(timeout: 0.04, keyProvider: { \"fixture\" }, transport: harness.open)"}]},
-    {"from": "mcp-connections#MCPConnectionDetailView", "type": "calls", "to": "MCPDiscoveryService", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 404, "match": "let result = try await MCPDiscoveryService.shared.discover(store.configuration(id: id, includeAllTools: true), forceRefresh: true)"}], "note": "the Discover Tools button on a connection's detail screen (line 352)"},
+    {"from": "mcp-connections#MCPConnectionDetailView", "type": "calls", "to": "MCPDiscoveryService", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 494, "match": "let result = try await MCPDiscoveryService.shared.discover(store.configuration(id: id, includeAllTools: true), forceRefresh: true)"}], "note": "the Discover Tools button on a connection's detail screen (line 352)"},
     {"from": "MCPDiscoveryService", "type": "reads", "to": "models#CurrentModelCatalog.utilityModel", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 146, "match": "[\"model\": CurrentModelCatalog.utilityModel,"}], "note": "probe model is gpt-6-luna"},
     {"from": "MCPDiscoveryService", "type": "reads", "to": "keychain:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 218, "match": "keyProvider: @escaping () -> String? = { KeychainService.shared.load(forKey: \"openAIKey\") }"}]},
     {"from": "MCPDiscoveryService", "type": "calls", "to": "openai:/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 280, "match": "var request = URLRequest(url: URL(string: \"https://api.openai.com/v1/responses\")!)"}]},
@@ -58,7 +58,7 @@
     {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "openai:/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2844, "match": "var request = URLRequest(url: apiURL)"}]}
   ],
   "docs": [
-    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "Discovery runs from a connection's detail screen through `MCPDiscoveryService`; the remote setup sheet only signs in.", "claim": "Discovery runs from a connection's detail screen; the remote setup sheet only signs in.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 404, "match": "MCPDiscoveryService.shared.discover("}, "note": "Corrected in the document on 2026-09-28. MCPDiscoverySection.swift (MCPDiscoverySection, MCPToolCatalogView) is still not instantiated anywhere; UNMAPPED.md lists it."},
+    {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "Discovery runs from a connection's detail screen through `MCPDiscoveryService`; the remote setup sheet only signs in.", "claim": "Discovery runs from a connection's detail screen; the remote setup sheet only signs in.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 494, "match": "MCPDiscoveryService.shared.discover("}, "note": "Corrected in the document on 2026-09-28. MCPDiscoverySection.swift (MCPDiscoverySection, MCPToolCatalogView) is still not instantiated anywhere; UNMAPPED.md lists it."},
     {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "and a 32-token output cap on `gpt-6-luna`", "claim": "The discovery probe runs on gpt-6-luna.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "line": 29, "match": "nonisolated static let utilityModel = \"gpt-6-luna\""}, "note": "Corrected in the document on 2026-09-28."}
   ],
   "unknowns": ["MCPDiscoverySection.swift declares MCPDiscoverySection, MCPToolCatalogView and MCPDiscoveryViewModel; none is instantiated outside that file (live scan, comments and strings excluded). Discovery is reached through MCPConnectionDetailView in MCPConnectionsView.swift instead.", "MCPApprovalUtils (MCPApprovalUtils.swift line 8) is named only by its declaration and tests (MCPApprovalUtilsTests, StreamingEventDecodingTests); the app's approval path does not call it (codemap.py refs MCPApprovalUtils, confirmed 2026-09-28). ChatViewModel implements its own buildMCPApprovalResponsePayload (ChatViewModel.swift line 3389)."],

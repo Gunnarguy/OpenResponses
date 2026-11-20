@@ -4,7 +4,7 @@
   "name": "MCP connections",
   "aliases": ["Connections", "Connect Apps & Accounts", "Add Custom Server", "Connected Accounts", "Available Apps", "Account sign-in", "catalog", "OAuth sign-in", "Keychain storage"],
   "purpose": "Manages MCP provider connections, OAuth account sign-in via ASWebAuthenticationSession, and securely stores credentials in the Keychain.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["MCPConnectionsView", "MCPConnectorGalleryView", "RemoteMCPSetupSheet"],
   "files": [
@@ -24,7 +24,7 @@
     {"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "role": "shared", "blob": "977035ea83a3140ae2f6e4ebbdff8f3a04dd35ed"},
     {"path": "OpenResponses/Info.plist", "role": "shared", "blob": "85cc905ce33a62232305f57ea19e8e12345ed66b"},
     {"path": "OpenResponsesTests/MCPSecretPersistenceTests.swift", "role": "test", "blob": "98df26d042f4476529f98e4433c9dcc2ab1a1ae8"},
-    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"}
+    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"}
   ],
   "nodes": [
     {"id": "MCPConnectionsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 8, "match": "struct MCPConnectionsView: View {", "status": "VERIFIED"},

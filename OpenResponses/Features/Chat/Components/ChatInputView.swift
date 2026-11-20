@@ -198,6 +198,8 @@ struct ChatInputView: View {
             .frame(width: sendButtonSize, height: sendButtonSize)
         }
         .disabled(!canSend)
+        // Command-Return sends from a hardware keyboard on iPad and on the Mac (3.1).
+        .keyboardShortcut(.return, modifiers: .command)
         .accessibilityConfiguration(
             label: "Send message",
             hint: AccessibilityUtils.Hint.sendButton,

@@ -677,3 +677,142 @@ extension MCPAuthorizationTests {
         XCTAssertEqual(restored.connections.first?.name, "Work workspace")
     }
 }
+
+// MARK: - Share sheet and shortcuts (3.1)
+
+@MainActor
+final class SharedInboxAndShortcutTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("inbox-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func testDeliveriesComeBackOldestFirstWithTheirFiles() throws {
+        let inbox = SharedInbox(root: root)
+        let first = try inbox.deliver(
+            text: "Summarize this",
+            files: [(.init(name: "notes.txt", kind: .file), Data("a".utf8)), (.init(name: "notes.txt", kind: .file), Data("b".utf8))],
+            source: "share"
+        )
+        Thread.sleep(forTimeInterval: 0.01)
+        _ = try inbox.deliver(text: "https://example.com", source: "share")
+
+        let pending = inbox.pending()
+        XCTAssertEqual(pending.map(\.item.text), ["Summarize this", "https://example.com"])
+        XCTAssertEqual(pending[0].item.files.map(\.name), ["notes.txt", "notes 2.txt"], "a second file with the same name is renamed, not overwritten")
+        XCTAssertEqual(pending[0].fileData["notes 2.txt"], Data("b".utf8))
+        XCTAssertEqual(SharedInbox.combinedText(pending), "Summarize this\n\nhttps://example.com")
+
+        inbox.remove([first.id])
+        XCTAssertEqual(inbox.pending().map(\.item.text), ["https://example.com"])
+    }
+
+    func testAFolderWithoutItemJSONIsStillBeingWrittenAndIsSkipped() throws {
+        let inbox = SharedInbox(root: root)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(UUID().uuidString), withIntermediateDirectories: true)
+        XCTAssertTrue(inbox.pending().isEmpty)
+    }
+
+    func testFileNamesCannotEscapeTheirFolder() {
+        XCTAssertEqual(SharedInbox.safeName("../../secret"), "file-..-..-secret")
+        XCTAssertEqual(SharedInbox.safeName("item.json"), "file-item.json")
+        XCTAssertEqual(SharedInbox.safeName("Report.pdf"), "Report.pdf")
+    }
+
+    func testTakingTheInboxOpensANewChatWithTheTextAndFiles() throws {
+        let inbox = SharedInbox(root: root)
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).pngData { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        try inbox.deliver(
+            text: "What is in these?",
+            files: [(.init(name: "photo.png", kind: .image), png), (.init(name: "doc.pdf", kind: .file), Data("%PDF".utf8))],
+            source: "share"
+        )
+        let storage = root.appendingPathComponent("conversations", isDirectory: true)
+        let viewModel = ChatViewModel(storageService: ConversationStorageService(storageURL: storage), startBackgroundWork: false)
+        let before = viewModel.conversations.count
+        viewModel.takeSharedInbox(inbox)
+
+        XCTAssertEqual(viewModel.conversations.count, before + 1)
+        XCTAssertEqual(viewModel.composerDraft, "What is in these?")
+        XCTAssertEqual(viewModel.pendingImageAttachments.count, 1)
+        XCTAssertEqual(viewModel.pendingFileNames, ["doc.pdf"])
+        XCTAssertTrue(inbox.pending().isEmpty, "the inbox is emptied once the chat has the items")
+        XCTAssertTrue(viewModel.messages.isEmpty, "nothing is sent")
+    }
+
+    func testShortcutsTurnOffToolsTheAppRunsItself() {
+        var prompt = Prompt.defaultPrompt()
+        prompt.enableComputerUse = true
+        prompt.enableCustomTool = true
+        prompt.enableAppleIntegrations = true
+        prompt.enableNotionIntegration = true
+        prompt.enableWebSearch = true
+        prompt.enableStreaming = true
+        var options = prompt.currentOptions
+        options.localPython = true
+        options.multiAgent = true
+        prompt.currentOptions = options
+
+        let shortcut = ShortcutPromptStore.forShortcut(prompt)
+        XCTAssertFalse(shortcut.enableComputerUse)
+        XCTAssertFalse(shortcut.enableCustomTool)
+        XCTAssertFalse(shortcut.enableAppleIntegrations)
+        XCTAssertFalse(shortcut.enableNotionIntegration)
+        XCTAssertFalse(shortcut.enableStreaming)
+        XCTAssertFalse(shortcut.currentOptions.localPython)
+        XCTAssertFalse(shortcut.currentOptions.multiAgent)
+        XCTAssertTrue(shortcut.enableWebSearch, "tools OpenAI runs stay as the preset has them")
+        XCTAssertEqual(shortcut.openAIModel, prompt.openAIModel)
+    }
+
+    func testPresetsAreReadFromWhereThePresetLibrarySavesThem() throws {
+        let suite = "shortcut-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let library = PromptLibrary(userDefaults: defaults)
+        var preset = Prompt.defaultPrompt()
+        preset.name = "Code review"
+        library.addPrompt(preset)
+
+        let presets = ShortcutPromptStore.savedPresets(defaults)
+        XCTAssertEqual(presets.map(\.name), ["Code review"])
+        XCTAssertEqual(ShortcutPromptStore.currentSettings(defaults).openAIModel, Prompt.defaultPrompt().openAIModel, "no saved settings falls back to the defaults")
+    }
+
+    func testAnswerTextJoinsOutputTextAndExplainsAnEmptyAnswer() throws {
+        func decode(_ json: String) throws -> OpenAIResponse {
+            try JSONDecoder().decode(OpenAIResponse.self, from: Data(json.utf8))
+        }
+        let answered = try decode(#"{"id":"r1","output":[{"id":"rs","type":"reasoning","summary":[]},{"id":"m1","type":"message","content":[{"type":"output_text","text":"Hello"},{"type":"output_text","text":"there"}]}]}"#)
+        XCTAssertEqual(try ShortcutAsk.answerText(from: answered), "Hello\nthere")
+
+        let approval = try decode(#"{"id":"r2","output":[{"id":"a1","type":"mcp_approval_request"}]}"#)
+        XCTAssertThrowsError(try ShortcutAsk.answerText(from: approval)) { error in
+            XCTAssertTrue((error as? ShortcutError)?.message.contains("approval") == true)
+        }
+
+        let cut = try decode(#"{"id":"r3","output":[],"incomplete_details":{"reason":"max_output_tokens"}}"#)
+        XCTAssertThrowsError(try ShortcutAsk.answerText(from: cut)) { error in
+            XCTAssertTrue((error as? ShortcutError)?.message.contains("max_output_tokens") == true)
+        }
+    }
+
+    func testAskRefusesBeforeConsentWithoutSendingAnything() async throws {
+        let suite = "shortcut-consent-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        do {
+            _ = try await ShortcutAsk.run(question: "hi", presetID: nil, attachment: nil, defaults: defaults)
+            XCTFail("expected the consent error")
+        } catch let error as ShortcutError {
+            XCTAssertTrue(error.message.contains("Allow & Send"))
+        }
+    }
+}

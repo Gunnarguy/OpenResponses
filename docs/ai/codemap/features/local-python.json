@@ -4,7 +4,7 @@
   "name": "Local Python",
   "aliases": ["run_python", "Pyodide", "Python on this device", "Run Python?", "Don't Run", "Local Python toggle"],
   "purpose": "Runs Python the model writes on the device with bundled Pyodide in a sandboxed web view, after the user approves each run; standard library only, no network or files.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["CodeRunningToolsSection", "PythonRunApprovalSheet"],
   "files": [
@@ -19,8 +19,8 @@
     {"path": "OpenResponses/Resources/Pyodide/pyodide-lock.json", "role": "primary", "blob": "b439be1d2bfdd91bcbd51d7fc9c38482ea1caaa9"},
     {"path": "OpenResponsesTests/LocalPythonRunnerTests.swift", "role": "test", "blob": "d5deedd4c928721d5c06a0daeb3246a815c1922d"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
-    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
-    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
+    {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "19d9c5d6af1c626e48c09f819bdd0febfcad7a13"},
+    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "a576c8d8ef792a37d2c8eec8b303ef12caf0c7bf"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "f1d0634442c902862c6d2b863703f76ad69e6f5c"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "435729bcd21de1d74ee995339b76d118a4616b6a"}
   ],
@@ -46,7 +46,7 @@
     {"from": "ChatViewModel.runPythonTool", "type": "reads", "to": "options:localPython", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 13, "match": "guard activePrompt.currentOptions.localPython else { return \"Error: Local Python is turned off in Settings.\" }"}]},
     {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "ChatViewModel.requestPythonRun", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 19, "match": "guard await requestPythonRun(arguments.code) else {"}]},
     {"from": "ChatViewModel.runPythonTool", "type": "calls", "to": "LocalPythonRunner.run", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+LocalPython.swift", "line": 24, "match": "let result = await LocalPythonRunner.shared.run(arguments.code)"}]},
-    {"from": "chat-ui#ChatView", "type": "renders", "to": "PythonRunApprovalSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 93, "match": "PythonRunApprovalSheet(request: request) { approved in viewModel.resolvePythonRun(approved: approved) }"}]},
+    {"from": "chat-ui#ChatView", "type": "renders", "to": "PythonRunApprovalSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 98, "match": "PythonRunApprovalSheet(request: request) { approved in viewModel.resolvePythonRun(approved: approved) }"}]},
     {"from": "LocalPythonRunner", "type": "depends_on", "to": "PythonRuntimeSchemeHandler", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 124, "match": "configuration.setURLSchemeHandler(PythonRuntimeSchemeHandler(), forURLScheme: Self.scheme)"}]},
     {"from": "LocalPythonRunner", "type": "configures", "to": "config:pythonContentRules", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 127, "match": "if let rules { configuration.userContentController.add(rules) }"}]},
     {"from": "LocalPythonRunner", "type": "reads", "to": "file:python-runner.html", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/LocalPythonRunner.swift", "line": 132, "match": "view.load(URLRequest(url: URL(string: \"\\(Self.scheme)://runtime/python-runner.html\")!))"}]},

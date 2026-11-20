@@ -4,7 +4,7 @@
   "name": "Batch jobs",
   "aliases": ["Batch Jobs", "Batch API Jobs", "Submit New Batch Job", "Upload JSONL Batch", "Active and Historical Batches", "Save Results", "Save Errors"],
   "purpose": "Manages OpenAI Batch jobs: JSONL input upload, job creation, status polling, cancellation, and download of complete result and error files to disk.",
-  "revision": "6b656a4",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["SettingsHomeView.batchJobsLink"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "16e80318eed1a82a1c5312f7cfd3595ff28b10cc"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "4ed8aad53ff9184875d2ff8b6ceb3a803aad1522"},
     {"path": "OpenResponses/Core/Services/ResourcePagination.swift", "role": "shared", "blob": "5d478f1f4155dd12568fd28109a3ce3ec71610c2"},
-    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"}
+    {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"}
   ],
   "nodes": [
     {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 11, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},

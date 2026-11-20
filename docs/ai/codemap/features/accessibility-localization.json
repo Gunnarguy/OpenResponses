@@ -4,18 +4,18 @@
   "name": "Accessibility and Localization",
   "aliases": ["Message input", "Send message", "Stop streaming", "Add preset", "Edit mode", "API Key", "Type your message here to chat with the AI assistant"],
   "purpose": "Accessibility helpers, hints, identifiers, UI test hooks, localized string catalog, and Info.plist privacy build descriptions.",
-  "revision": "829cc65",
+  "revision": "2b361da",
   "verified_on": "2026-11-19",
   "entry_points": ["AccessibilityUtils", "View.accessibilityConfiguration", "LocalizableStrings"],
   "files": [
     {"path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "role": "primary", "blob": "707636b13ee1865e9f55ae612ee7c4e372e677cb"},
-    {"path": "OpenResponses/Resources/Localization/Localizable.xcstrings", "role": "primary", "blob": "3567e6b2891e5fe94b46657b08be37b13f40fec8"},
-    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "3aebd1d62f983ae226c77e2b7e71c2db64546e93"},
-    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "ac7b8c32739a6814bfd0a40704b6093f23024d7b"},
-    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
+    {"path": "OpenResponses/Resources/Localization/Localizable.xcstrings", "role": "primary", "blob": "8bbdf14b4953dcf3c576242539845ce5f3fb6e88"},
+    {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "be45b829294c3317887ad852b9103531c78f8c07"},
+    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "837e6dbf74ba09ee7acaa54a67ef844de5682c5c"},
+    {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "a576c8d8ef792a37d2c8eec8b303ef12caf0c7bf"},
     {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "16e80318eed1a82a1c5312f7cfd3595ff28b10cc"},
     {"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "role": "shared", "blob": "227f8db5ee65672addc9af464d50d20610e9f6df"},
-    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "56b90d8969a074f6ec6e5f031ac608e20b82f245"},
+    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "a57a37eed065a5bf5ce6c0f9da782ec246b6f0db"},
     {"path": "scripts/ui_tests.sh", "role": "shared", "blob": "848190c93e102a52938e9c438f40e205b3c1c63d"}
   ],
   "nodes": [
@@ -26,22 +26,22 @@
     {"id": "AccessibilityConfigurationModifier", "kind": "util", "path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "line": 111, "match": "struct AccessibilityConfigurationModifier: ViewModifier {", "status": "VERIFIED"},
     {"id": "PromptLibraryView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 4, "match": "struct PromptLibraryView: View {", "status": "VERIFIED"},
     {"id": "LocalizableStrings", "kind": "resource", "path": "OpenResponses/Resources/Localization/Localizable.xcstrings", "line": 2, "match": "  \"sourceLanguage\" : \"en\",", "status": "VERIFIED"},
-    {"id": "INFOPLIST_KEY_NSCameraUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 593, "match": "\t\t\t\tINFOPLIST_KEY_NSCameraUsageDescription = \"Used to take photos and send them to the assistant for analysis.\";", "status": "VERIFIED"},
-    {"id": "INFOPLIST_KEY_NSMicrophoneUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 598, "match": "\t\t\t\tINFOPLIST_KEY_NSMicrophoneUsageDescription = \"Required to record voice input and hold Realtime AI conversations.\";", "status": "VERIFIED"},
-    {"id": "INFOPLIST_KEY_NSPhotoLibraryUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 599, "match": "\t\t\t\tINFOPLIST_KEY_NSPhotoLibraryUsageDescription = \"Used to pick photos or screenshots for assistant help.\";", "status": "VERIFIED"},
-    {"id": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 591, "match": "\t\t\t\tINFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";", "status": "VERIFIED"},
-    {"id": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 600, "match": "\t\t\t\tINFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";", "status": "VERIFIED"},
+    {"id": "INFOPLIST_KEY_NSCameraUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 768, "match": "\t\t\t\tINFOPLIST_KEY_NSCameraUsageDescription = \"Used to take photos and send them to the assistant for analysis.\";", "status": "VERIFIED"},
+    {"id": "INFOPLIST_KEY_NSMicrophoneUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 773, "match": "\t\t\t\tINFOPLIST_KEY_NSMicrophoneUsageDescription = \"Required to record voice input and hold Realtime AI conversations.\";", "status": "VERIFIED"},
+    {"id": "INFOPLIST_KEY_NSPhotoLibraryUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 774, "match": "\t\t\t\tINFOPLIST_KEY_NSPhotoLibraryUsageDescription = \"Used to pick photos or screenshots for assistant help.\";", "status": "VERIFIED"},
+    {"id": "INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 766, "match": "\t\t\t\tINFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = \"Used to read and manage calendar events when you ask the assistant.\";", "status": "VERIFIED"},
+    {"id": "INFOPLIST_KEY_NSRemindersFullAccessUsageDescription", "kind": "config", "path": "OpenResponses.xcodeproj/project.pbxproj", "line": 775, "match": "\t\t\t\tINFOPLIST_KEY_NSRemindersFullAccessUsageDescription = \"Used to read and manage reminders when you ask the assistant.\";", "status": "VERIFIED"},
     {"id": "test:OpenResponsesUITests", "kind": "test", "path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 13, "match": "final class OpenResponsesUITests: XCTestCase {", "status": "VERIFIED"},
     {"id": "Color.accessibleSecondaryText", "kind": "util", "path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "line": 94, "match": "static let accessibleSecondaryText = Color(uiColor: UIColor { traits in", "status": "VERIFIED", "note": "At least 4.5:1 contrast in both appearances; `.secondary` measures about 3.5:1 on white."},
-    {"id": "OpenResponsesUITests.audit", "kind": "test", "path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 44, "match": "private func audit(_ app: XCUIApplication, _ types: XCUIAccessibilityAuditType = .all, screen: String) throws {", "status": "VERIFIED", "note": "performAccessibilityAudit on chat, settings, conversations and the largest text size; skips 'nearly passed' warnings and navigation-bar chrome. Run with scripts/ui_tests.sh (fresh install)."}
+    {"id": "OpenResponsesUITests.audit", "kind": "test", "path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 47, "match": "private func audit(_ app: XCUIApplication, _ types: XCUIAccessibilityAuditType = .all, screen: String) throws {", "status": "VERIFIED", "note": "performAccessibilityAudit on chat, settings, conversations and the largest text size; skips 'nearly passed' warnings and navigation-bar chrome. Run with scripts/ui_tests.sh (fresh install)."}
   ],
   "edges": [
     {"from": "chat-ui:ChatInputView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 183, "match": "                    identifier: AccessibilityUtils.Identifier.chatInput"}]},
     {"from": "chat-ui:ChatInputView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 182, "match": "                    hint: AccessibilityUtils.Hint.chatInput,"}]},
     {"from": "chat-ui:ChatInputView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 100, "match": "                .accessibilityConfiguration("}]},
-    {"from": "chat-ui:ChatView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 258, "match": "                    identifier: AccessibilityUtils.Identifier.stopStreamingButton"}]},
-    {"from": "chat-ui:ChatView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 257, "match": "                    hint: AccessibilityUtils.Hint.stopStreaming,"}]},
-    {"from": "chat-ui:ChatView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 255, "match": "                .accessibilityConfiguration("}]},
+    {"from": "chat-ui:ChatView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 272, "match": "                    identifier: AccessibilityUtils.Identifier.stopStreamingButton"}]},
+    {"from": "chat-ui:ChatView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 271, "match": "                    hint: AccessibilityUtils.Hint.stopStreaming,"}]},
+    {"from": "chat-ui:ChatView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 269, "match": "                .accessibilityConfiguration("}]},
     {"from": "PromptLibraryView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 42, "match": "                        identifier: AccessibilityUtils.Identifier.addPresetButton"}]},
     {"from": "PromptLibraryView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 41, "match": "                        hint: AccessibilityUtils.Hint.addPreset,"}]},
     {"from": "PromptLibraryView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 39, "match": "                    .accessibilityConfiguration("}]},
@@ -49,8 +49,8 @@
     {"from": "onboarding-keys:SettingsHomeView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 505, "match": "        hint: AccessibilityUtils.Hint.apiKeyField,"}]},
     {"from": "onboarding-keys:SettingsHomeView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 504, "match": "    .accessibilityConfiguration("}]},
     {"from": "View.accessibilityConfiguration", "to": "AccessibilityConfigurationModifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "line": 62, "match": "            .modifier(AccessibilityConfigurationModifier("}]},
-    {"from": "AccessibilityUtils", "to": "test:OpenResponsesUITests", "type": "tested_by", "status": "INFERRED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 23, "match": "        app.launch()"}], "note": "the UI test launches the app; no assertion names an accessibility identifier"},
-    {"from": "AccessibilityUtils", "type": "tested_by", "to": "test:OpenResponsesUITests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 61, "match": "func testChatScreenPassesTheAccessibilityAudit() throws {"}]}
+    {"from": "AccessibilityUtils", "to": "test:OpenResponsesUITests", "type": "tested_by", "status": "INFERRED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 26, "match": "        app.launch()"}], "note": "the UI test launches the app; no assertion names an accessibility identifier"},
+    {"from": "AccessibilityUtils", "type": "tested_by", "to": "test:OpenResponsesUITests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 64, "match": "func testChatScreenPassesTheAccessibilityAudit() throws {"}]}
   ],
   "docs": [
     {"path": "docs/AccessibilityAudit.md", "section": "Top", "quote": "# Accessibility Audit Checklist", "claim": "Accessibility checklist is provided.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "line": 4, "match": "enum AccessibilityUtils {"}, "note": "Checklist guides accessibility implementation in the app via utils."}
