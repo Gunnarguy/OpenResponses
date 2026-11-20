@@ -333,9 +333,14 @@ struct SettingsToggleLabel: View {
         self.detail = detail
     }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            SettingsIconTile(icon: icon, tint: tint)
+            // The tile is decoration; at the accessibility text sizes its width is better spent on the words.
+            if !dynamicTypeSize.isAccessibilitySize {
+                SettingsIconTile(icon: icon, tint: tint)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let detail {

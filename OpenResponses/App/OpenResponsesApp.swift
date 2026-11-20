@@ -22,6 +22,7 @@ struct OpenResponsesApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(chatViewModel)
+                .appTextSize()
                 .onChange(of: scenePhase) { _, phase in
                     guard phase != .active else { return }
                     if storageBackgroundTask == .invalid {

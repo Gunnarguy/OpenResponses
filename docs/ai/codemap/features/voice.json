@@ -4,7 +4,7 @@
   "name": "Voice mode",
   "aliases": ["realtime", "live", "gpt-live-1", "InlineVoiceView", "VoiceModeView", "VoiceModeSettingsSheet", "Start Voice Mode", "Voice Mode Settings", "Voice Barge-In", "Separate voice session"],
   "purpose": "Realtime bi-directional audio sessions using GPT-Live or GPT-Realtime over WebSockets.",
-  "revision": "2b0ee98",
+  "revision": "6b656a4",
   "verified_on": "2026-11-19",
   "entry_points": ["InlineVoiceView", "ChatInputView", "VoiceModeSettingsSheet"],
   "files": [
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
-    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "f5a0ea12161444fa8a2771c5fa9d2b47fa9d2754"},
+    {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "f1d0634442c902862c6d2b863703f76ad69e6f5c"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "435729bcd21de1d74ee995339b76d118a4616b6a"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "bc0e1305da829a0e996024c13c7499e5c1314d0c"}

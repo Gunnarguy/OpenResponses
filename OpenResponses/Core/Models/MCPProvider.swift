@@ -28,7 +28,7 @@ struct MCPProvider: Identifiable, Hashable {
         switch signIn {
         case .oauth: "Account sign-in"
         case .publicAccess: "No account needed"
-        case .providerSetup: "Provider setup required"
+        case .providerSetup: "Sign-in or key"
         case .automatic: "Sign-in checked when connecting"
         }
     }
@@ -54,6 +54,7 @@ struct MCPProvider: Identifiable, Hashable {
         .init(id: "vercel", name: "Vercel", summary: "Inspect projects and deployments.", category: .cloud, serverURL: "https://mcp.vercel.com", signIn: .providerSetup, registryName: "com.vercel/vercel-mcp"),
         .init(id: "supabase", name: "Supabase", summary: "Explore projects, databases, and development tools.", category: .data, serverURL: "https://mcp.supabase.com/mcp", documentationURL: "https://supabase.com/docs/guides/getting-started/mcp"),
         .init(id: "neon", name: "Neon", summary: "Work with Postgres projects and development branches.", category: .data, serverURL: "https://mcp.neon.tech/mcp", documentationURL: "https://neon.com/docs/ai/neon-mcp-server"),
+        .init(id: "github", name: "GitHub", summary: "Work with repositories, issues, pull requests, and code.", category: .development, serverURL: "https://api.githubcopilot.com/mcp/", signIn: .providerSetup, registryName: "io.github.github/github-mcp-server"),
         .init(id: "posthog", name: "PostHog", summary: "Explore product analytics and experiments.", category: .development, serverURL: "https://mcp.posthog.com/mcp", registryName: "io.github.PostHog/mcp"),
         .init(id: "sentry", name: "Sentry", summary: "Investigate errors, performance, and project issues.", category: .development, serverURL: "https://mcp.sentry.dev/mcp", documentationURL: "https://mcp.sentry.dev/"),
         .init(id: "amplitude", name: "Amplitude", summary: "Work with product analytics and insights.", category: .development, serverURL: "https://mcp.amplitude.com/mcp", registryName: "com.amplitude/mcp-server"),

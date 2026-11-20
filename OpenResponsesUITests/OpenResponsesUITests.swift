@@ -30,7 +30,13 @@ final class OpenResponsesUITests: XCTestCase {
     /// Texts the audit misreads. In Settings → Explore Mode, SwiftUI reports each button Label's title frame
     /// starting at the icon's x (34 pt) while the title is drawn from about 75 pt, so the audit calls the text
     /// clipped and partly unscaled. A screenshot on 2026-09-28 (iOS 27.0 simulator) showed both rows whole.
-    private let knownLabelFrameQuirks: Set<String> = ["Start Demo", "Exit Demo"]
+    ///
+    /// The Settings root's section headers below the first screenful ("Assistant", "What the assistant can do")
+    /// are reported as "Dynamic Type font sizes are partially unsupported" with the frame of the system's
+    /// full-width header container, whatever the header holds: a String, a Label, an HStack of icon and text,
+    /// and an explicit .subheadline font all gave the same report. A screenshot on 2026-11-19 (iOS 27.0
+    /// simulator, Accessibility Large) showed both headers grown, the second wrapping to two lines.
+    private let knownLabelFrameQuirks: Set<String> = ["Start Demo", "Exit Demo", "Assistant", "What the assistant can do"]
 
     /// Runs the audit and fails once with every issue found, so one run lists all of them. Recorded but not
     /// failed: "nearly passed" contrast warnings, system navigation-bar chrome the app does not draw, and the

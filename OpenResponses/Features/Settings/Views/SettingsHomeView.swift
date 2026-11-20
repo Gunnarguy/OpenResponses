@@ -18,6 +18,7 @@ struct SettingsHomeView: View {
     @State private var hasApiKey = false
     @State private var showingPromptLibrary = false
     @State private var showingVoiceSettings = false
+    @AppStorage(AppTextSize.storageKey) private var textSizeSetting = AppTextSize.system
     @State private var showingAbout = false
     @State private var resetConfirm = false
     @State private var showingFiles = false
@@ -107,7 +108,7 @@ struct SettingsHomeView: View {
             }
             .buttonStyle(.plain)
         } header: {
-            Label("Assistant", systemImage: "sparkles")
+            SettingsSectionHeader("Assistant", icon: "sparkles")
         }
 
         Section {
@@ -119,7 +120,7 @@ struct SettingsHomeView: View {
             }
             if AppFeatureFlags.isMCPAvailable {
                 NavigationLink(value: SettingsPage.connections) {
-                    SettingsRow("Connected Apps (MCP)", icon: "link", tint: .cyan, value: nil)
+                    SettingsRow("Connectors", icon: "link", tint: .cyan, value: connectorSummary(viewModel.activePrompt))
                 }
             }
             Button { showingFiles = true } label: {
@@ -127,7 +128,7 @@ struct SettingsHomeView: View {
             }
             .buttonStyle(.plain)
         } header: {
-            Label("What the assistant can do", systemImage: "wrench.and.screwdriver")
+            SettingsSectionHeader("What the assistant can do", icon: "wrench.and.screwdriver")
         } footer: {
             Text("Tools let the assistant search the web, read your files, run code, draw images, use your calendar and more.")
         }
@@ -147,7 +148,7 @@ struct SettingsHomeView: View {
                 Text("Restore the model, instructions, tools and options to their defaults. Your API key, conversations and voice choice are kept.")
             }
         } header: {
-            Label("Presets", systemImage: "bookmark")
+            SettingsSectionHeader("Presets", icon: "bookmark")
         }
 
         Section {
@@ -164,7 +165,7 @@ struct SettingsHomeView: View {
                 SettingsRow("Request Options", icon: "slider.horizontal.3", tint: .gray, value: serviceTierName)
             }
         } header: {
-            Label("Developer", systemImage: "hammer")
+            SettingsSectionHeader("Developer", icon: "hammer")
         } footer: {
             Text("Send any API request by hand, ask yes-or-no and scoring questions, run batches, and choose what each response includes.")
         }
@@ -172,6 +173,9 @@ struct SettingsHomeView: View {
         Section {
             NavigationLink(value: SettingsPage.privacy) {
                 SettingsRow("Privacy & Safety", icon: "hand.raised.fill", tint: .blue, value: prompt.storeResponses ? "Stored on OpenAI" : "Not stored")
+            }
+            NavigationLink(value: SettingsPage.textSize) {
+                SettingsRow("Text Size", icon: "textformat.size", tint: .blue, value: AppTextSize.summary(textSizeSetting))
             }
             Button { showingAbout = true } label: {
                 SettingsRow("About, Licenses & Rating", icon: "info.circle.fill", tint: .gray, value: nil)
@@ -309,12 +313,13 @@ struct SettingsHomeView: View {
             Form { AgentOptionsSections() }
                 .navigationTitle("Agents & Tool Calling")
                 .onDisappear { viewModel.saveActivePrompt() }
-        case .connections: MCPConnectionsView(viewModel: viewModel).navigationTitle("Connected Apps")
+        case .connections: MCPConnectionsView(viewModel: viewModel)
         case .workbench: APIWorkbenchView()
         case .decisions: DecisionsView()
         case .batch: BatchJobsView()
         case .developer: AdvancedTab().navigationTitle("Request Options")
         case .privacy: PrivacyPage()
+        case .textSize: TextSizeSettingsView()
         case .voice, .about, .promptLibrary, .files: EmptyView()
         }
     }
@@ -326,7 +331,7 @@ enum SettingsPage: Hashable {
     case tools, customTool, agents, connections, files
     case promptLibrary
     case workbench, decisions, batch, developer
-    case privacy, about
+    case privacy, textSize, about
 }
 
 /// A Settings row: colored icon tile, name, and the current value in gray on the right.
@@ -343,19 +348,64 @@ struct SettingsRow: View {
         self.value = value
     }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            SettingsIconTile(icon: icon, tint: tint)
-            Text(title).foregroundStyle(.primary)
-            Spacer(minLength: 8)
-            if let value {
-                Text(value)
-                    .foregroundStyle(Color.accessibleSecondaryText)
-                    .multilineTextAlignment(.trailing)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At the accessibility text sizes one line has room for a word or two, so the icon goes and the
+                // value sits under the title; side by side they broke words into pieces ("Op / en / AI").
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).foregroundStyle(.primary)
+                    if let value {
+                        Text(value).foregroundStyle(Color.accessibleSecondaryText)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 12) {
+                    SettingsIconTile(icon: icon, tint: tint)
+                    Text(title).foregroundStyle(.primary)
+                    Spacer(minLength: 8)
+                    if let value {
+                        Text(value)
+                            .foregroundStyle(Color.accessibleSecondaryText)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
             }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// "2 of 3 on": how many saved connections this chat uses.
+@MainActor
+func connectorSummary(_ prompt: Prompt) -> String {
+    let all = MCPConnectionStore.shared.connections
+    guard !all.isEmpty else { return "None yet" }
+    let ids = Set(prompt.currentOptions.mcpConnectionIDs ?? [])
+    let on = prompt.enableMCPTool ? all.filter { ids.contains($0.id) }.count : 0
+    return "\(on) of \(all.count) on"
+}
+
+/// A root section header. The Form's own header style stops growing before the largest text sizes (the
+/// accessibility audit reported "Dynamic Type font sizes are partially unsupported" on 2026-11-19), so the
+/// header sets a text style that scales the whole way. An HStack rather than a Label: the audit misreads a
+/// Label's text frame (see knownLabelFrameQuirks in the UI tests).
+struct SettingsSectionHeader: View {
+    let title: LocalizedStringKey
+    let icon: String
+    init(_ title: LocalizedStringKey, icon: String) { self.title = title; self.icon = icon }
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).accessibilityHidden(true)
+            Text(title)
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(Color.accessibleSecondaryText)
+        .textCase(nil)
     }
 }
 
@@ -397,6 +447,7 @@ struct SettingsSearchIndex {
         Entry(title: "Stream Responses", location: "Response Format", page: .responseFormat, keywords: "streaming live typing"),
         Entry(title: "Compact Long Chats", location: "Response Format", page: .responseFormat, keywords: "compaction context long truncation"),
         Entry(title: "Voice", location: "Voice", page: .voice, keywords: "realtime live audio speak talk voice"),
+        Entry(title: "Text Size", location: "Text Size", page: .textSize, keywords: "font text size bigger smaller larger dynamic type readable zoom"),
         Entry(title: "Web Search", location: "Tools", page: .tools, keywords: "internet browse search domains location"),
         Entry(title: "File Search", location: "Tools", page: .tools, keywords: "vector store documents rag hybrid"),
         Entry(title: "Code Interpreter", location: "Tools", page: .tools, keywords: "python sandbox charts memory"),
@@ -405,9 +456,9 @@ struct SettingsSearchIndex {
         Entry(title: "Image Generation", location: "Tools", page: .tools, keywords: "draw picture image size quality"),
         Entry(title: "Computer Use", location: "Tools", page: .tools, keywords: "browser click automate"),
         Entry(title: "Apple Calendar, Reminders and Contacts", location: "Tools", page: .tools, keywords: "calendar reminders contacts events apple"),
-        Entry(title: "Notion", location: "Connected Apps", page: .connections, keywords: "notion mcp"),
+        Entry(title: "Notion", location: "Connectors", page: .connections, keywords: "notion mcp connector sign in"),
         Entry(title: "Custom Tool", location: "Tools", page: .customTool, keywords: "function webhook calculator echo"),
-        Entry(title: "Connected Apps (MCP)", location: "Connected Apps", page: .connections, keywords: "mcp connectors servers remote"),
+        Entry(title: "Connectors", location: "Connectors", page: .connections, keywords: "mcp connectors connected apps servers remote registry integrations linear slack github figma"),
         Entry(title: "Files & Vector Stores", location: "Files", page: .files, keywords: "upload files vector stores manage"),
         Entry(title: "Multi-agent", location: "Agents & Tool Calling", page: .agents, keywords: "subagents agents helpers parallel"),
         Entry(title: "Load Tools on Demand", location: "Agents & Tool Calling", page: .agents, keywords: "tool search defer"),
@@ -611,9 +662,7 @@ private struct PrivacyPage: View {
 
 private struct ToolsTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
-    @State private var showingNotionQuickConnect = false
     @State private var showingFileManager = false
-    @State private var hasNotionIntegrationToken: Bool = false
     @AppStorage("hasShownComputerUseDisclosure") private var hasShownComputerUseDisclosure = false
     @State private var showComputerUseDisclosure = false
     @State private var showWebSearchAdvanced = false
@@ -823,36 +872,23 @@ private struct ToolsTab: View {
             Section {
                 if AppFeatureFlags.isMCPAvailable {
                     NavigationLink(value: SettingsPage.connections) {
-                        SettingsRow("Connected Apps (MCP)", icon: "link", tint: .cyan, value: nil)
-                    }
-                }
-                if hasNotionIntegrationToken {
-                    DisclosureGroup("Existing Notion integration") {
-                        Toggle("Enable Legacy Notion Tools", isOn: $viewModel.activePrompt.enableNotionIntegration)
-                        Button("Manage Existing Integration Key") { showingNotionQuickConnect = true }
-                        Text("Your direct Notion integration is kept. Connected Apps has the hosted Notion sign-in.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        SettingsRow("Connectors", icon: "link", tint: .cyan, value: connectorSummary(viewModel.activePrompt))
                     }
                 }
             } header: {
                 Text("Other apps")
             } footer: {
-                Text("Sign in to Notion, GitHub and other services so the assistant can use them.")
+                Text("Connect Notion, Linear, Slack, Figma and thousands of other services so the assistant can use them.")
             }
         }
-        .sheet(isPresented: $showingNotionQuickConnect) { NotionConnectionView() }
         .sheet(isPresented: $showingFileManager) {
             FileManagerView().environmentObject(viewModel)
         }
         .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
         .onDisappear { viewModel.saveActivePrompt() }
         .onAppear {
-            refreshNotionTokenStatus()
             loadVectorStores()
             loadFiles()
-        }
-        .onChange(of: showingNotionQuickConnect) { _, isPresented in
-            if !isPresented { refreshNotionTokenStatus() }
         }
         .onChange(of: viewModel.activePrompt.enableFileSearch) { _, enabled in
             if enabled, availableVectorStores.isEmpty { loadVectorStores() }
@@ -1500,14 +1536,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
 
     // MARK: - Helper Methods
 
-    private func refreshNotionTokenStatus() {
-        let tokenAvailable = KeychainService.shared.load(forKey: "notionApiKey")?.isEmpty == false
-        hasNotionIntegrationToken = tokenAvailable
-        if !tokenAvailable, viewModel.activePrompt.enableNotionIntegration {
-            viewModel.activePrompt.enableNotionIntegration = false
-            viewModel.saveActivePrompt()
-        }
-    }
+
 
     private func loadVectorStores() {
         guard !isLoadingVectorStores else { return }

@@ -1,138 +1,184 @@
 import SwiftUI
 import Combine
 
-/// One account library, shared across prompts. A prompt stores only the IDs it uses.
+/// Settings → Connectors. One account library, shared across prompts; a prompt stores only the IDs it uses.
+/// The page opens on the popular services, grouped by kind, and below them the whole public MCP Registry,
+/// loaded page by page as the list scrolls. Typing searches both at once. Adding a server by its address
+/// is the last row, for anything that is in neither.
 struct MCPConnectionsView: View {
     @ObservedObject var viewModel: ChatViewModel
     @ObservedObject private var store = MCPConnectionStore.shared
     @State private var query = ""
-    @State private var category: MCPProvider.Category?
     @State private var selectedProvider: MCPProvider?
     @State private var showingCustom = false
+    @State private var showingNotionToken = false
+    @State private var hasNotionToken = false
     @State private var registry: [MCPProvider] = []
-    @State private var registryQuery = ""
+    @State private var registryQuery: String?
     @State private var cursor: String?
+    @State private var reachedEnd = false
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
     @State private var error: String?
     @AppStorage("exploreModeEnabled") private var demo = false
 
-    private var providers: [MCPProvider] {
-        MCPProvider.featured.filter {
-            (category == nil || $0.category == category) && (query.isEmpty ||
-                ($0.name + " " + $0.summary).localizedCaseInsensitiveContains(query))
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var popular: [MCPProvider] {
+        // OpenAI's own connectors (no server address) need a sign-in the app can't offer yet, so they stay out.
+        MCPProvider.featured.filter { !$0.serverURL.isEmpty }.filter {
+            trimmedQuery.isEmpty || ($0.name + " " + $0.summary + " " + $0.category.rawValue).localizedCaseInsensitiveContains(trimmedQuery)
         }
+    }
+
+    /// Registry servers that are not already in the popular list.
+    private var registryResults: [MCPProvider] {
+        let featuredURLs = Set(MCPProvider.featured.map(\.serverURL))
+        return registry.filter { !featuredURLs.contains($0.serverURL) }
     }
 
     var body: some View {
         List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Bring your apps into chat").font(.title3.bold())
-                    Text("Connect an account, then choose which apps this chat can use.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-                if demo {
-                    Label("Demo Mode · browsing the catalog is offline", systemImage: "sparkles")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if let error = store.storageError ?? error {
-                    Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange)
+            if let error = store.storageError ?? error {
+                Section { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange) }
+            }
+
+            if !store.connections.isEmpty || hasNotionToken {
+                Section {
+                    ForEach(store.connections) { connection in
+                        connectionRow(connection)
+                    }
+                    if hasNotionToken { notionTokenRow }
+                    if !missingIDs.isEmpty {
+                        Button("Remove unavailable connections from this chat") {
+                            let missing = Set(missingIDs)
+                            viewModel.activePrompt.currentOptions.mcpConnectionIDs?.removeAll { missing.contains($0) }
+                            viewModel.saveActivePrompt()
+                        }
+                    }
+                } header: { Text("Connected") } footer: {
+                    Text("Accounts stay connected when switched off. The assistant asks before it uses a tool, unless you change that in a connection.")
                 }
             }
 
-            Section {
-                if store.connections.isEmpty {
-                    Label("No connected accounts yet", systemImage: "person.crop.circle.badge.plus")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(store.connections) { connection in
-                    VStack(alignment: .leading, spacing: 10) {
-                        NavigationLink {
-                            MCPConnectionDetailView(id: connection.id, viewModel: viewModel)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: connection.needsSignIn ? "person.crop.circle.badge.exclamationmark" : "link.circle.fill")
-                                    .font(.title2).foregroundStyle(connection.needsSignIn ? .orange : .blue)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(connection.name).font(.headline)
-                                    Text(connection.needsSignIn ? "Sign in again" : connection.authentication == .oauth ? "Account connected" : "Server saved")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
+            if trimmedQuery.isEmpty {
+                ForEach(MCPProvider.Category.allCases, id: \.self) { category in
+                    let items = popular.filter { $0.category == category }
+                    if !items.isEmpty {
+                        Section(category.rawValue) {
+                            ForEach(items) { providerButton($0) }
                         }
-                        Toggle("Use in this chat", isOn: Binding(
-                            get: { viewModel.activePrompt.enableMCPTool && (viewModel.activePrompt.currentOptions.mcpConnectionIDs ?? []).contains(connection.id) },
-                            set: { enabled in setActive(connection.id, enabled: enabled) }
-                        )).font(.subheadline).disabled(connection.needsSignIn)
-                    }.padding(.vertical, 4)
-                }
-                if !missingIDs.isEmpty {
-                    Button("Remove unavailable connections from this chat") {
-                        let missing = Set(missingIDs)
-                        viewModel.activePrompt.currentOptions.mcpConnectionIDs?.removeAll { missing.contains($0) }
-                        viewModel.saveActivePrompt()
                     }
                 }
-            } header: { Text("Your connections") } footer: {
-                if !store.connections.isEmpty { Text("Accounts stay connected when switched off. Tool calls ask for approval by default.") }
+            } else {
+                Section("Popular") {
+                    ForEach(popular) { providerButton($0) }
+                    if popular.isEmpty { Text("None of the popular services match.").foregroundStyle(.secondary) }
+                }
             }
 
             Section {
-                TextField("Search apps and services", text: $query)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .accessibilityIdentifier("mcp.catalog.search")
-                Picker("Category", selection: $category) {
-                    Text("All apps").tag(nil as MCPProvider.Category?)
-                    ForEach(MCPProvider.Category.allCases, id: \.self) { Text($0.rawValue).tag(Optional($0)) }
+                if demo {
+                    Button {
+                        demo = false; viewModel.exploreModeEnabled = false
+                        loadRegistry(reset: true)
+                    } label: { Label("Leave Demo Mode to browse the registry", systemImage: "globe") }
                 }
-                ForEach(providers) { provider in
-                    Button { selectedProvider = provider } label: { MCPProviderRow(provider: provider) }
-                        .buttonStyle(.plain)
+                ForEach(registryResults) { providerButton($0) }
+                if searching {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if !demo && !reachedEnd && registryQuery != nil {
+                    // Scrolling to this row loads the next page.
+                    ProgressView().frame(maxWidth: .infinity).onAppear { loadRegistry() }
                 }
-                if providers.isEmpty { Text("No featured apps match this search.").foregroundStyle(.secondary) }
-            } header: { Text("Explore apps · \(MCPProvider.featured.count)") } footer: {
-                Text("Account sign-in opens the provider’s login. Some providers must approve OpenResponses before sign-in becomes available.")
+                if !searching && !demo && reachedEnd && registryResults.isEmpty {
+                    Text(trimmedQuery.isEmpty ? "The registry has no servers to show." : "No servers in the registry match “\(trimmedQuery)”.")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text(trimmedQuery.isEmpty ? "Everything in the MCP Registry" : "MCP Registry")
+            } footer: {
+                Text("The public MCP Registry lists remote servers from many publishers. Anyone can list a server, so check the publisher and address before you connect. Servers that only run on a computer are left out.")
             }
 
             Section {
-                Button {
-                    if demo { demo = false; viewModel.exploreModeEnabled = false }
-                    searchRegistry()
-                } label: {
-                    Label(demo ? "Leave Demo & Search the Registry" : "Search the MCP Registry", systemImage: "globe")
-                }.disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || searching)
-                if searching { ProgressView("Searching remote servers…") }
-                ForEach(registry) { provider in
-                    Button { selectedProvider = provider } label: { MCPProviderRow(provider: provider) }
-                        .buttonStyle(.plain)
-                }
-                if !registryQuery.isEmpty && !searching && registry.isEmpty {
-                    Text("No supported remote servers found for “\(registryQuery)”.").foregroundStyle(.secondary)
-                }
-                if cursor != nil && !searching {
-                    Button("Load more servers") { searchRegistry(nextPage: true) }
-                }
-            } header: { Text("Find more connections") } footer: {
-                Text("Searches the public MCP Registry for remote HTTPS servers. Listings are supplied by publishers; check the publisher and server address before connecting. Local packages cannot run on iPhone.")
-            }
-
-            Section {
-                Button { showingCustom = true } label: { Label("Add a Custom Server", systemImage: "plus") }
+                Button { showingCustom = true } label: { Label("Add a Server by Address", systemImage: "plus") }
+            } footer: {
+                Text("For a server that isn't listed: paste its https address, and add a key if it needs one.")
             }
         }
-        .navigationTitle("Connections")
+        .searchable(text: $query, prompt: "Search connectors")
+        .navigationTitle("Connectors")
         .sheet(item: $selectedProvider) { provider in
             NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) }
         }
         .sheet(isPresented: $showingCustom) { RemoteMCPSetupSheet().environmentObject(viewModel) }
+        .sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { NotionConnectionView() }
         .task(id: viewModel.activePrompt.id) { migrateLegacy() }
+        .task { refreshNotionToken(); if registry.isEmpty { loadRegistry(reset: true) } }
         .onChange(of: query) { _, _ in
-            searchTask?.cancel(); searchTask = nil; searching = false
-            registry = []; cursor = nil; registryQuery = ""
+            // Wait for a pause in typing, then search the registry with what was typed.
+            searchTask?.cancel()
+            searchTask = Task {
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled else { return }
+                loadRegistry(reset: true)
+            }
         }
         .onChange(of: demo) { _, enabled in if enabled { searchTask?.cancel(); searching = false } }
         .onDisappear { searchTask?.cancel(); searching = false }
+    }
+
+    private func providerButton(_ provider: MCPProvider) -> some View {
+        Button { selectedProvider = provider } label: { MCPProviderRow(provider: provider) }
+            .buttonStyle(.plain)
+    }
+
+    private func connectionRow(_ connection: MCPConnection) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            NavigationLink {
+                MCPConnectionDetailView(id: connection.id, viewModel: viewModel)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: connection.needsSignIn ? "person.crop.circle.badge.exclamationmark" : "link.circle.fill")
+                        .font(.title2).foregroundStyle(connection.needsSignIn ? .orange : .blue)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(connection.name).font(.headline)
+                        Text(connection.needsSignIn ? "Sign in again" : connection.authentication == .oauth ? "Account connected" : "Server saved")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Toggle("Use in this chat", isOn: Binding(
+                get: { viewModel.activePrompt.enableMCPTool && (viewModel.activePrompt.currentOptions.mcpConnectionIDs ?? []).contains(connection.id) },
+                set: { enabled in setActive(connection.id, enabled: enabled) }
+            )).font(.subheadline).disabled(connection.needsSignIn)
+        }.padding(.vertical, 4)
+    }
+
+    /// A Notion integration token saved by an older version. It keeps working; new Notion connections use
+    /// the Notion row in the list, which signs in to the account.
+    private var notionTokenRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button { showingNotionToken = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "key.fill").font(.title2).foregroundStyle(.gray).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Notion (integration token)").font(.headline).foregroundStyle(.primary)
+                        Text("Saved by an earlier version. Notion in the list below signs in to your account instead.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }.buttonStyle(.plain)
+            Toggle("Use in this chat", isOn: $viewModel.activePrompt.enableNotionIntegration)
+                .font(.subheadline)
+                .onChange(of: viewModel.activePrompt.enableNotionIntegration) { _, _ in viewModel.saveActivePrompt() }
+        }.padding(.vertical, 4)
+    }
+
+    private func refreshNotionToken() {
+        hasNotionToken = !(KeychainService.shared.load(forKey: "notionApiKey") ?? "").isEmpty
     }
 
     private var missingIDs: [UUID] {
@@ -152,24 +198,30 @@ struct MCPConnectionsView: View {
         do { try viewModel.setMCPConnection(id, enabled: enabled) }
         catch { self.error = error.localizedDescription }
     }
-    private func searchRegistry(nextPage: Bool = false) {
-        searchTask?.cancel()
-        let text = nextPage ? registryQuery : query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let next = nextPage ? cursor : nil
-        if !nextPage { registry = []; cursor = nil }
-        registryQuery = text; searching = true; error = nil
-        searchTask = Task {
+
+    /// Loads the next registry page for the current search (or for no search, which lists every server).
+    private func loadRegistry(reset: Bool = false) {
+        guard !demo else { return }
+        let text = trimmedQuery
+        if reset {
+            registry = []; cursor = nil; reachedEnd = false; registryQuery = text; error = nil
+        } else {
+            guard !searching, !reachedEnd, registryQuery == text else { return }
+        }
+        let next = cursor
+        searching = true
+        Task {
             do {
                 let page = try await MCPRegistryService.search(text, cursor: next)
-                try Task.checkCancellation()
+                guard registryQuery == text else { return }
                 let existing = Set(registry.map(\.id))
                 registry.append(contentsOf: page.providers.filter { !existing.contains($0.id) })
-                cursor = page.nextCursor == next ? nil : page.nextCursor
+                cursor = page.nextCursor
+                reachedEnd = page.nextCursor == nil || page.nextCursor == next
             } catch {
-                guard !Task.isCancelled else { return }
-                self.error = "The registry could not be reached. Your saved connections are still available."
+                if registryQuery == text { self.error = "The registry could not be reached. Your connections still work." }
             }
-            searching = false
+            if registryQuery == text { searching = false }
         }
     }
 }
@@ -183,7 +235,7 @@ private struct MCPProviderRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(provider.name).font(.headline)
                 Text(provider.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                Text(provider.signInLabel).font(.caption2).foregroundStyle(provider.signIn == .providerSetup ? .orange : .secondary)
+                Text(provider.signInLabel).font(.caption2).foregroundStyle(.secondary)
             }
             Spacer(minLength: 2)
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
@@ -235,6 +287,22 @@ struct MCPProviderDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var flow = MCPConnectFlow()
     @AppStorage("exploreModeEnabled") private var demo = false
+    @State private var showingKey = false
+    @State private var token = ""
+    @State private var keyError: String?
+
+    private func connectWithKey() {
+        if demo { demo = false; viewModel.exploreModeEnabled = false }
+        keyError = nil
+        do {
+            // The store sends it as "Authorization: Bearer …", with or without the word Bearer typed.
+            let connection = try MCPConnectionStore.shared.addAPIKey(name: provider.name, serverURL: provider.serverURL,
+                                                                     header: "Authorization", token: token)
+            try viewModel.setMCPConnection(connection.id, enabled: true)
+            token = ""
+            dismiss()
+        } catch { keyError = error.localizedDescription }
+    }
 
     var body: some View {
         Form {
@@ -251,11 +319,33 @@ struct MCPProviderDetailView: View {
                     Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     Text("\(connection.name) is ready to use in this chat. You can manage its tools and permissions from Your connections.")
                     Button("Done") { dismiss() }
-                } else if provider.signIn == .providerSetup {
-                    Label("Provider setup required", systemImage: "building.2.crop.circle")
-                    Text("This provider requires OpenResponses to be registered or approved before account sign-in can be offered. A login button becomes available once that provider setup is complete.")
-                    Text("This is setup for the app developer or workspace administrator. You do not need to find and paste an OAuth access token.")
+                } else if provider.signIn == .providerSetup && provider.serverURL.isEmpty {
+                    Label("Not available here yet", systemImage: "building.2.crop.circle")
+                    Text("OpenAI runs this connector, and it needs a sign-in that OpenResponses can't offer yet.")
                         .font(.callout).foregroundStyle(.secondary)
+                } else if provider.signIn == .providerSetup && !flow.busy {
+                    // Some providers only let apps they've approved use account sign-in. Trying costs nothing:
+                    // if it's refused, a key or token from the provider's settings works instead.
+                    Button {
+                        if demo { demo = false; viewModel.exploreModeEnabled = false }
+                        flow.connect(provider: MCPProvider(id: provider.id, name: provider.name, summary: provider.summary,
+                            category: provider.category, serverURL: provider.serverURL, signIn: .automatic)) {
+                            try viewModel.setMCPConnection($0.id, enabled: true)
+                        }
+                    } label: {
+                        Label("Try Signing In to \(provider.name)", systemImage: "person.crop.circle.badge.checkmark")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }.buttonStyle(.borderedProminent).padding(.vertical, 4)
+                    Text("\(provider.name) may only allow sign-in from apps it has approved. If sign-in is refused, connect with a key or token from your \(provider.name) settings below.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    DisclosureGroup("Connect with a key or token", isExpanded: $showingKey) {
+                        SecureField("Key or token", text: $token)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        Button("Connect with This Key") { connectWithKey() }
+                            .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Text("Sent as the Authorization header. Stored in this iPhone's Keychain.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 } else if flow.busy {
                     ProgressView(flow.progress)
                     Button("Cancel Sign-in", role: .cancel) { flow.cancel() }
@@ -271,7 +361,7 @@ struct MCPProviderDetailView: View {
                         "A secure browser window opens the provider’s login. Choose your account and approve the access you want to grant.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                if let error = flow.error {
+                if let error = flow.error ?? keyError {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
             } header: { Text("Connect your account") }

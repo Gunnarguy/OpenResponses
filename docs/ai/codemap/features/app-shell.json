@@ -4,11 +4,11 @@
   "name": "App shell",
   "aliases": ["OpenResponses", "About", "Privacy Policy", "Support (GitHub)", "License", "Third-Party Software", "Compact Context", "Done", "Save conversations", "launch", "root navigation", "Rate OpenResponses", "rating request", "requestReview", "App Store review"],
   "purpose": "App launch, root navigation, dependency injection, scene lifecycle persistence, URL scheme handling, network monitoring, and the App Store rating request (Apple's requestReview sheet after a finished answer, and the Rate OpenResponses link in About).",
-  "revision": "2b0ee98",
+  "revision": "6b656a4",
   "verified_on": "2026-11-19",
   "entry_points": ["OpenResponsesApp", "ContentView"],
   "files": [
-    {"path": "OpenResponses/App/OpenResponsesApp.swift", "role": "primary", "blob": "3bf293c143908f410d4a0ba6af8f0f40eeed4312"},
+    {"path": "OpenResponses/App/OpenResponsesApp.swift", "role": "primary", "blob": "de12ec92169f895a6f9940bc90c93c1aabba5722"},
     {"path": "OpenResponses/App/AppContainer.swift", "role": "primary", "blob": "8de97398dae25cca705649f293bb2295e58ab0bc"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "primary", "blob": "a1a2a38356331a31538748bb8a79c669db77328f"},
     {"path": "OpenResponses/Core/Utilities/AppFeatureFlags.swift", "role": "primary", "blob": "8f240797a03ff2921cfe789471dc9fb660087c1f"},
@@ -25,7 +25,7 @@
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "714129842b01acf2170ec2bdbcb18a7d43f1f6ad"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "46e8c201cc8beb01bccc5eb6b0cb5591039fa8a8"},
-    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "322106908800ba904cb0059ca0ee82de1b97f9af"},
+    {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "56b90d8969a074f6ec6e5f031ac608e20b82f245"},
     {"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "role": "test", "blob": "88410dde98a1fdb36c9a1b9ab0db6aec8c02c627"}
   ],
   "nodes": [
@@ -58,7 +58,7 @@
     {"from": "OpenResponsesApp", "type": "calls", "to": "AppContainer", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/OpenResponsesApp.swift", "line": 14, "match": "    @StateObject private var chatViewModel = AppContainer.shared.makeChatViewModel()"}], "note": "Instantiates root ChatViewModel."},
     {"from": "OpenResponsesApp", "type": "calls", "to": "KeychainService.migrateApiKeyFromUserDefaults", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/OpenResponsesApp.swift", "line": 18, "match": "        KeychainService.shared.migrateApiKeyFromUserDefaults()"}], "note": "Migrates API key on app launch."},
     {"from": "OpenResponsesApp", "type": "renders", "to": "ContentView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/OpenResponsesApp.swift", "line": 23, "match": "            ContentView()"}], "note": "Renders root view inside WindowGroup."},
-    {"from": "OpenResponsesApp", "type": "calls", "to": "ChatViewModel.flushConversationStorage", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/OpenResponsesApp.swift", "line": 36, "match": "                        await chatViewModel.flushConversationStorage()"}], "note": "Flushes conversation storage on inactive/background scenePhase."},
+    {"from": "OpenResponsesApp", "type": "calls", "to": "ChatViewModel.flushConversationStorage", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/App/OpenResponsesApp.swift", "line": 37, "match": "                        await chatViewModel.flushConversationStorage()"}], "note": "Flushes conversation storage on inactive/background scenePhase."},
     {"from": "ChatViewModel.flushConversationStorage", "type": "calls", "to": "ConversationStorageService.flushPendingSaves", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3717, "match": "        await storageService.flushPendingSaves()"}], "note": "Delegates save flush to storage service."},
     {"from": "ConversationStorageService.flushPendingSaves", "type": "writes", "to": "file:conversation-json", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/ConversationStorageService.swift", "line": 157, "match": "        try data.write(to: fileURL, options: .atomic)"}], "note": "Writes serialized conversation JSON to disk atomically."},
     {"from": "KeychainService.migrateApiKeyFromUserDefaults", "type": "reads", "to": "defaults:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/KeychainService.swift", "line": 140, "match": "        if let apiKeyFromUserDefaults = UserDefaults.standard.string(forKey: userDefaultsKey) {"}], "note": "Reads legacy key from UserDefaults."},

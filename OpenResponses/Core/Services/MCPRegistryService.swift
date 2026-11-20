@@ -6,7 +6,9 @@ enum MCPRegistryService {
     struct Page { let providers: [MCPProvider]; let nextCursor: String? }
     static func search(_ query: String, cursor: String? = nil) async throws -> Page {
         var components = URLComponents(string: "https://registry.modelcontextprotocol.io/v0.1/servers")!
-        components.queryItems = [URLQueryItem(name: "search", value: query), URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "version", value: "latest")]
+        // With no search term the registry lists every server, a page at a time (checked 2026-11-19).
+        components.queryItems = [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "version", value: "latest")]
+        if !query.isEmpty { components.queryItems?.append(URLQueryItem(name: "search", value: query)) }
         if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
         var request = URLRequest(url: components.url!)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
