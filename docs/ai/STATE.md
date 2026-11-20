@@ -1,7 +1,7 @@
 # Current State
 
 Updated: 2026-11-20
-Branch/worktree: main in the repo root; the 3.1 commit below is local, not pushed (3.0 is in review and a push starts an Xcode Cloud archive). Untracked `.codex/config.toml` is an earlier session's; leave it.
+Branch/worktree: main in the repo root; 3.1 work is pushed to origin/main (2026-11-20, at Gunnar's word) with `[ci skip]` on the head commit, so Xcode Cloud started no archive; the next push without `[ci skip]` archives 3.1, so bump MARKETING_VERSION first. Untracked `.codex/config.toml` is an earlier session's; leave it.
 Last verified commit: bd41279
 
 ## Objective
