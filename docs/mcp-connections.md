@@ -2,7 +2,7 @@
 
 Updated September 8, 2026. This document covers the account sign-in redesign added after the original headless discovery work. The older discovery engine remains in use; the connection setup and account model have changed substantially.
 
-## Since 3.1: the Connectors page
+## Since 3.0: the Connectors page
 
 Settings → Connectors (formerly Connected Apps) opens on the popular services, grouped by category, with nothing to type. Below them, **Everything in the MCP Registry** lists every remote server in the public registry, a page of 100 at a time as the list scrolls (the registry lists all servers when no search term is sent; checked November 19, 2026, when 94 of the first 100 were remote). The search field filters the popular list and, after a pause in typing, searches the registry with the same words. Adding a server by its address is the last row.
 
@@ -79,7 +79,7 @@ Approval cards resolve opaque labels to account names. When multiple accounts ar
 
 A prompt with no `mcpConnectionIDs` field keeps its legacy request behavior until migration. Opening Connections imports its saved remote or OpenAI connector configuration, including approval policy, allowed tools and headers. The import is idempotent for that prompt. After the secure record is saved, the prompt references its account ID and clears any inline header value. Existing legacy Keychain entries are retained so other saved configurations are not destructively rewritten.
 
-An explicitly empty account-ID array means the prompt uses the account library with no selected accounts; it does not fall back to a previously configured remote. Since 3.1, a direct Notion integration key saved by an earlier version shows on the Connectors page as **Notion (integration token)**, with its own **Use in this chat** switch and a button to manage or remove the key; the Tools page no longer has a Notion section. New Notion connections go through hosted MCP account sign-in, as the Notion row in the list. The direct Notion API integration and hosted Notion MCP have different credentials and are not interchangeable.
+An explicitly empty account-ID array means the prompt uses the account library with no selected accounts; it does not fall back to a previously configured remote. Since 3.0, a direct Notion integration key saved by an earlier version shows on the Connectors page as **Notion (integration token)**, with its own **Use in this chat** switch and a button to manage or remove the key; the Tools page no longer has a Notion section. New Notion connections go through hosted MCP account sign-in, as the Notion row in the list. The direct Notion API integration and hosted Notion MCP have different credentials and are not interchangeable.
 
 Custom servers default to **Account sign-in**. Public servers and explicitly supported API-key authentication remain advanced choices. Hosted Notion rejects the API-key option. The app removes the old OAuth Playground/token-copying tutorials and placeholder community-server addresses from the normal connection screens.
 

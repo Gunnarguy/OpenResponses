@@ -1,1 +1,1 @@
-New in 3.0: a Decisions screen for OpenAI's Decisions API, and tool steps that fill in while the model writes them.  Still your own key, and no account.
+New in 3.0: Settings you can search, Connectors for any remote MCP server, a Decisions screen, and tool steps that fill in as the model writes them.

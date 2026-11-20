@@ -4,7 +4,7 @@
 
 ## 3.0 (in development)
 
-- [x] Decisions screen (Settings → Advanced → Developer Operations → Decisions) and an API Workbench "Create decision" endpoint for `POST /v1/decisions`, with unit tests (November 13, 2026).
+- [x] Decisions screen (Settings → Decisions (under Developer)) and an API Workbench "Create decision" endpoint for `POST /v1/decisions`, with unit tests (November 13, 2026).
 - [x] A function call's step shows its arguments while they stream (October 19, 2026).
 - [x] Calendar and Reminders accept a date or time with no time-zone offset (October 21 to 23, 2026).
 - [x] App Store rating request with Apple's `requestReview` sheet, and a "Rate OpenResponses" link in About (November 14, 2026).

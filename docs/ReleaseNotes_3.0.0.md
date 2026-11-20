@@ -1,6 +1,17 @@
 # OpenResponses 3.0 release notes
 
-Version 3.0 was created in App Store Connect on October 19, 2026. Its code was pushed on November 17, 2026 (`7a12b34`, Xcode Cloud run 55), and nothing is submitted yet. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
+Version 3.0 was created in App Store Connect on October 19, 2026. Its first code was pushed on November 17, 2026 (`7a12b34`, Xcode Cloud run 55). On November 19, 2026, at Gunnar's word, the work first written up as 3.1 (the Settings redesign, Text Size, Connectors and the large-text fixes) was folded into 3.0, and the push that day replaces build 55 with the next Xcode Cloud build. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
+
+## Settings, Text Size, Connectors, large text (added November 19, 2026)
+
+| Before | 3.0 |
+| --- | --- |
+| Five segmented tabs; Local Python, the hosted shell, multi-agent, tool search, moderation, voice and the API Workbench sat at the bottom of the Model tab | One list of named pages, each row showing its current value, and a search over about 50 options (`SettingsHomeView`, `SettingsSearchIndex`) |
+| Text size followed the iPhone only | Settings → Text Size: Same as iPhone, or one of the twelve system sizes for this app, applied as a window trait override so sheets follow it (`TextSizeSettings.swift`) |
+| Connected Apps: a featured list behind a category picker, a "Search the MCP Registry" button, and "Provider setup required" services with no button | Connectors: popular services by kind plus the registry's remote servers paged as the list scrolls, searched while typing; Try Signing In and Connect with a key or token for every listed service; GitHub's official server; Notion as one connector (`MCPConnectionsView`) |
+| At Accessibility XXXL: "Op / en / AI" in Settings rows, "fet / c…" and "Fai / led" in tool steps, "Welcome…" in onboarding, "Mes…" in the message field | Stacked layouts at the accessibility sizes; both chat-screen audits and the Settings audit pass |
+
+Verified on simulator 54DDDEDE (iOS 27.0), November 19, 2026: 384 unit tests, 3 skipped, 0 failures; all 8 UI tests pass. Not tried: account sign-in or a key connection against a live service.
 
 ## Tool steps
 
@@ -26,7 +37,7 @@ OpenAI's Decisions API (`POST /v1/decisions`) is generally available: it returns
 
 | Where | What it does |
 | --- | --- |
-| Settings → Advanced → Developer Operations → Decisions (`DecisionsView`) | Text input and an optional photo (sent as a JPEG data URL, at most 1,536 pixels on its longest side). Up to 400 questions: yes or no (`predicate`, a probability), choice (2 to 255 unique values, a probability each) and score (2 to 10 ordered levels; the score is a probability-weighted average of the level numbers). Answers show as bars with their confidence; a refusal and an unknown answer type are shown, not dropped. The footer shows input tokens, cached tokens and the cost. Three examples and Copy Request JSON are in the ⋯ menu. Questions are saved on the device (UserDefaults `decisionsQuestions.v1`); the input and photo are not. The same data-sharing consent as the Workbench, and offline in Demo Mode. |
+| Settings → Decisions (under Developer) (`DecisionsView`) | Text input and an optional photo (sent as a JPEG data URL, at most 1,536 pixels on its longest side). Up to 400 questions: yes or no (`predicate`, a probability), choice (2 to 255 unique values, a probability each) and score (2 to 10 ordered levels; the score is a probability-weighted average of the level numbers). Answers show as bars with their confidence; a refusal and an unknown answer type are shown, not dropped. The footer shows input tokens, cached tokens and the cost. Three examples and Copy Request JSON are in the ⋯ menu. Questions are saved on the device (UserDefaults `decisionsQuestions.v1`); the input and photo are not. The same data-sharing consent as the Workbench, and offline in Demo Mode. |
 | API Workbench → Create decision | `POST /decisions` with the support-ticket example. |
 | `scripts/decisions_probe.sh [Keychain service]` | One live call with the same example; the key goes from the Keychain to curl on stdin. |
 

@@ -1,28 +1,19 @@
 OpenResponses 3.0 is a native developer playground for the OpenAI Responses API. It requires no separate OpenResponses account. Explore Demo is offline; live testing requires an authorized OpenAI API key with model/tool access and bills that account. Any reviewer API credential must be supplied privately in App Store Connect, not in public metadata.
-
 The key is stored in iOS Keychain and sent to OpenAI for authentication. Before the first live request, the app presents its data-sharing notice and requires Allow & Send. Selected prompts, attachments and tool results are transmitted for processing; local history and optional remote storage are separate.
-
-New in 3.0 (no new permissions or data collection; one new OpenAI endpoint with the same key):
-• Decisions (Settings → Advanced → Developer Operations → Decisions): the user writes text or adds a photo and asks yes-or-no, choice or score questions. The app sends one POST /v1/decisions request to OpenAI's gpt-6-luna and shows a probability bar for each answer. The photo comes from the system photo picker, which needs no photo-library permission. The same first-send notice applies, and Explore Demo stays offline.
-• The API Workbench has a "Create decision" endpoint.
-• A function call's step under an answer fills in its arguments while the model writes them.
-• Calendar and Reminders accept a date or time without a time-zone offset, read in the device's time zone.
-• After a finished answer the app may show Apple's rating sheet; About has a Rate link.
-
-In the app since 2.9: each tool step shows a spinner while it runs and Completed or Failed when it ends, and tapping a step shows what it did.
-
-In the app since 2.8: Local Python (Settings → Model, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, CPython compiled to WebAssembly, MPL-2.0) ships in the app bundle; no code or packages are downloaded or installed. It runs in a WKWebView whose content rules block every load except the bundled runtime: Python standard library only, no network, no file access, a fresh namespace each run, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
-
+New in 3.0 (no new permissions):
+• Settings is one searchable list of pages instead of five tabs. Settings → Text Size sets a text size for this app only (default: same as iPhone).
+• Settings → Decisions (under Developer) calls OpenAI's Decisions API (POST /v1/decisions, gpt-6-luna). Tap Ask on the example support message to see a probability for each answer. An optional photo comes from the system photo picker, which needs no photo-library permission.
+• The app asks for a rating with Apple's own requestReview sheet, at most once per version, after a chat answer finishes; never at launch, in Explore Demo or from a button. About → Rate OpenResponses opens the App Store review page.
+• Settings → Connectors lists popular MCP servers and the remote servers in the public MCP Registry (registry.modelcontextprotocol.io). Sign-in uses the iOS system browser. For a service that does not allow sign-in from this app, the user can paste a key or token from that service's own settings; it is stored in the Keychain and sent to OpenAI's hosted MCP as the Authorization header only when that connection is used. Tool calls ask for approval by default.
+• Tool steps show a tool call's arguments while the model writes them. Calendar and Reminders accept times without a time-zone offset.
+In the app since 2.8: Local Python (Settings → Tools → Run code, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, MPL-2.0) ships in the app bundle; nothing is downloaded or installed. It runs in a WKWebView that blocks every load except the bundled runtime: standard library only, no network, no file access, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
 Suggested review:
 1. Explore Demo, then configure an authorized test key for live requests.
 2. Select an account-available model, send a greeting, accept the first-send notice and inspect streaming, activity and request details.
 3. Send a follow-up and switch chats; existing history should remain available.
 4. Turn on Code Interpreter, ask for a pie chart of a few numbers, and tap the Code Interpreter step under the answer to see its code.
 5. Try Web Search and inspect sources. Attach a small file and observe vector-store indexing if using file search.
-6. Open Settings → Model → API Workbench to inspect raw requests, events, exports, token counting and compaction.
-7. Open Settings → Advanced → Developer Operations → Decisions and tap Ask on the example support message to see three answers with their probabilities.
-8. Open voice mode, grant microphone access and speak for multiple turns. Settings → Model → Voice switches between GPT Realtime 2.1 and GPT-Live 1.
-
-Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. DOM/screenshot actions share cancellation, deadlines and action limits. API-provided safety prompts may be denied; not every action has a separate approval.
-
-MCP setup/discovery uses OpenAI-hosted MCP; the endpoint and server authentication may be sent to OpenAI so it can connect. Supported providers use the iOS system browser for sign-in, and monday.com, Airtable, Intercom and Vercel return through https://gunzino.me/openresponses/oauth/callback.html, a static page that forwards the result to the app's openresponses:// callback. Apple Calendar/Reminders/Contacts and Notion are optional and require their own permissions or credentials.
+6. In Settings, search "pyodide" to find Local Python; open Settings → API Workbench to inspect raw requests, events, exports, token counting and compaction.
+7. Open voice mode, grant microphone access and speak for multiple turns. Settings → Voice switches between GPT Realtime 2.1 and GPT-Live 1.
+Computer Use is opt-in and operates an on-device WKWebView, with no separate local-network browser bridge. Actions share cancellation, deadlines and action limits.
+MCP setup/discovery uses OpenAI-hosted MCP; the endpoint and server authentication may be sent to OpenAI so it can connect. monday.com, Airtable, Intercom and Vercel sign-in returns through https://gunzino.me/openresponses/oauth/callback.html, a static page that forwards the result to the app's openresponses:// callback. Apple Calendar/Reminders/Contacts are optional and require their own permissions.

@@ -4,11 +4,11 @@
 
 ## New in 2.8
 
-- **Local Python** (Settings → Model, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, CPython compiled to WebAssembly, MPL-2.0) ships in the app bundle; no code or packages are downloaded or installed (Guideline 2.5.2). It runs in a WKWebView whose content rules block every load except the bundled runtime: standard library only, no network, no file access, a fresh namespace each run, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
+- **Local Python** (Settings → Tools → Run code, with a GPT-6 or GPT-5.6 model selected). The assistant can write Python; a sheet shows the code and nothing runs until the user taps Run. The interpreter (Pyodide 314.0.7, CPython compiled to WebAssembly, MPL-2.0) ships in the app bundle; no code or packages are downloaded or installed (Guideline 2.5.2). It runs in a WKWebView whose content rules block every load except the bundled runtime: standard library only, no network, no file access, a fresh namespace each run, 30-second limit. Try: "use Python to find the 30th Fibonacci number".
 - **GPT-6.1 Sol** in the model menus. Models OpenAI adds later are listed from the account's GET /models list; their reasoning options are read from the model's public page on developers.openai.com as text data.
 - **Search by meaning** in Conversations, with Apple's on-device sentence embeddings; nothing leaves the device.
 - **MCP sign-in** for monday.com, Airtable, Intercom and Vercel returns through https://gunzino.me/openresponses/oauth/callback.html, a static page that forwards the result to the app's callback.
-- **Voice**: GPT-Live 1 stops when the user talks over it (headphones, Voice Barge-In on); Settings → Model → Voice no longer closes itself.
+- **Voice**: GPT-Live 1 stops when the user talks over it (headphones, Voice Barge-In on); Settings → Voice no longer closes itself.
 
 ## Access and data sharing
 
@@ -25,8 +25,8 @@ The OpenAI key is stored in the iOS Keychain and sent to OpenAI to authenticate 
 5. Inspect the request/response details and export a test conversation that contains no private information.
 6. Enable hosted Web Search and make a simple public-information request. Inspect the returned source/citation links.
 7. Attach a small document. In a vector-store workflow, observe indexing until ready; upload success alone is not search readiness.
-8. Open **Settings → Model → API Workbench**. Inspect a template and raw JSON response. The Workbench also exposes token counting, compaction, known-conversation inspection and background-response management.
-9. Open **Settings → Advanced → Developer Operations → Decisions** (3.0). Tap **Ask** on the example support message. It sends one `POST /v1/decisions` request with three questions to `gpt-6-luna` and shows a probability bar for each answer. An optional photo comes from the system photo picker, which needs no photo-library permission.
+8. Open **Settings → API Workbench**. Inspect a template and raw JSON response. The Workbench also exposes token counting, compaction, known-conversation inspection and background-response management.
+9. Open **Settings → Decisions (under Developer)** (3.0). Tap **Ask** on the example support message. It sends one `POST /v1/decisions` request with three questions to `gpt-6-luna` and shows a probability bar for each answer. An optional photo comes from the system photo picker, which needs no photo-library permission.
 
 ## Voice
 

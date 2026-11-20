@@ -5,7 +5,7 @@ It started as the successor to OpenAssistant, my app for OpenAI's older Assistan
 PICK A MODEL AND SEE WHAT IT DOES
 
 • GPT-6.1 Sol, GPT-6 Sol, Astra and Luna, the GPT-5.6 family, and older models your key can still use. When OpenAI releases a new one, it shows up in the menu on its own, with its settings read from OpenAI's docs.
-• Reasoning from None to Max where the model takes it, Pro mode, verbosity, context compaction and the rest of the request settings, all in one place.
+• Reasoning from None to Max where the model takes it, Pro mode, verbosity, context compaction and the rest of the request settings, each on a page Settings search can find.
 • Replies stream in as they're written, with the reasoning summaries the API sends, token use, and the full request and response a tap away.
 • Save setups as presets, attach photos and documents, export conversations, and search your chats by what they're about, not just the exact words.
 
@@ -14,8 +14,8 @@ THE TOOLS THE API HAS
 • Web search with sources, Code Interpreter, file search over your own vector stores, and image generation and editing with GPT Image 2.5, up to Max quality.
 • Voice conversations with GPT Realtime 2.1 or GPT-Live 1, with mute, and with headphones and Voice Barge-In on you can talk over it to cut it off.
 • A browser the model can drive, inside the app, with Stop, time limits and action limits.
-• MCP connections. Sign in to supported apps or add a server by address, look through the tools it offers, and approve tool calls unless you turn that off.
-• Calendar, Reminders, Contacts and Notion, only when you turn them on.
+• Connectors for MCP servers. Start from the popular ones like GitHub, Notion and Linear or any remote server in the public MCP Registry, sign in or use a key, look through the tools it offers, and approve tool calls unless you turn that off.
+• Calendar, Reminders and Contacts, only when you turn them on.
 • Local Python. The model writes it, you read it, you tap Run, and it runs on your phone. Standard library, no internet, 30 seconds a run.
 
 API WORKBENCH
