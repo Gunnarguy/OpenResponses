@@ -36,136 +36,28 @@ struct ChatInputView: View {
         !trimmedText.isEmpty
     }
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            // Attachment menu button - shows popover near the paperclip
-            Menu {
-                Button {
-                    onTakePhoto()
-                } label: {
-                    Label("Take Photo", systemImage: "camera")
-                }
-
-                Button {
-                    onSelectPhotos()
-                } label: {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
-                }
-
-                Button {
-                    onSelectFiles()
-                } label: {
-                    Label("Choose Files", systemImage: "folder")
-                }
-            } label: {
-                Image(systemName: "paperclip")
-                    .foregroundColor(.secondary)
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                    .padding(buttonPadding)
-            }
-            .accessibilityShowsLargeContentViewer()
-            .accessibilityConfiguration(
-                label: "Attach files or photos",
-                hint: AccessibilityUtils.Hint.fileAttachButton
-            )
-
-            // Vector Store file upload button (smart context-aware)
-            if let onVectorStoreUpload = onVectorStoreUpload {
-                VectorStoreUploadButton(
-                    action: onVectorStoreUpload,
-                    vectorStoreCount: vectorStoreCount,
-                    fileSearchEnabled: fileSearchEnabled
-                )
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .accessibilityShowsLargeContentViewer()
-            }
-
-            // Audio recording button
-            if let onAudioRecorded = onAudioRecorded {
-                Button(action: {
-                    if voiceRecorder.isRecording {
-                        voiceRecorder.stopRecording()
-                    } else {
-                        voiceRecorder.requestPermission { granted in
-                            if granted {
-                                voiceRecorder.startRecording { data in
-                                    if let data = data {
-                                        onAudioRecorded(data)
-                                    }
-                                }
-                            } else {
-                                showingAudioError = true
-                            }
-                        }
-                    }
-                }) {
-                    Image(systemName: voiceRecorder.isRecording ? "stop.circle.fill" : "mic")
-                        .foregroundColor(voiceRecorder.isRecording ? .red : .secondary)
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        .padding(buttonPadding)
-                }
-                .accessibilityShowsLargeContentViewer()
-                .alert("Microphone Access Required", isPresented: $showingAudioError) {
-                    Button("OK", role: .cancel) { }
-                } message: {
-                    Text("Please enable microphone access in Settings to use voice input.")
-                }
-            }
-
-            // Voice mode button
-            if let onStartVoiceMode = onStartVoiceMode {
-                Button(action: {
-                    onStartVoiceMode()
-                }) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 20))
-                        .foregroundColor(.accentColor)
-                        .padding(buttonPadding)
-                }
-                .accessibilityShowsLargeContentViewer()
-                .accessibilityConfiguration(
-                    label: "Start Voice Mode",
-                    hint: "Start real-time voice conversation"
-                )
-            }
-
-            TextField("Message", text: $text, axis: .vertical)
-                .lineLimit(1...6)
-                .textFieldStyle(.plain)
-                .focused(isFocused)
-                .submitLabel(.send)
-                .onSubmit {
-                    if canSend {
-                        onSend()
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At these sizes the field shared its line with four buttons and showed only "Mes…"
+                // (2026-11-19), so it gets the full width and the buttons sit under it.
+                VStack(alignment: .leading, spacing: 6) {
+                    messageField
+                    HStack(alignment: .bottom, spacing: 10) {
+                        accessoryButtons
+                        Spacer(minLength: 0)
+                        sendButton
                     }
                 }
-                .textInputAutocapitalization(.sentences)
-                .disableAutocorrection(false)
-                .padding(.vertical, 6)
-                .accessibilityConfiguration(
-                    label: "Message input",
-                    hint: AccessibilityUtils.Hint.chatInput,
-                    identifier: AccessibilityUtils.Identifier.chatInput
-                )
-
-            Button(action: {
-                onSend()
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(canSend ? Color.accentColor : Color.secondary.opacity(0.15))
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(canSend ? .white : .secondary)
+            } else {
+                HStack(alignment: .bottom, spacing: 10) {
+                    accessoryButtons
+                    messageField
+                    sendButton
                 }
-                .frame(width: sendButtonSize, height: sendButtonSize)
             }
-            .disabled(!canSend)
-            .accessibilityConfiguration(
-                label: "Send message",
-                hint: AccessibilityUtils.Hint.sendButton,
-                identifier: AccessibilityUtils.Identifier.sendButton
-            )
         }
         .padding(.all, containerPadding)
         .background(
@@ -175,6 +67,141 @@ struct ChatInputView: View {
         .overlay(
             RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+    @ViewBuilder
+    private var accessoryButtons: some View {
+        // Attachment menu button - shows popover near the paperclip
+        Menu {
+            Button {
+                onTakePhoto()
+            } label: {
+                Label("Take Photo", systemImage: "camera")
+            }
+
+            Button {
+                onSelectPhotos()
+            } label: {
+                Label("Photo Library", systemImage: "photo.on.rectangle")
+            }
+
+            Button {
+                onSelectFiles()
+            } label: {
+                Label("Choose Files", systemImage: "folder")
+            }
+        } label: {
+            Image(systemName: "paperclip")
+                .foregroundColor(.secondary)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .padding(buttonPadding)
+        }
+        .accessibilityShowsLargeContentViewer()
+        .accessibilityConfiguration(
+            label: "Attach files or photos",
+            hint: AccessibilityUtils.Hint.fileAttachButton
+        )
+
+        // Vector Store file upload button (smart context-aware)
+        if let onVectorStoreUpload = onVectorStoreUpload {
+            VectorStoreUploadButton(
+                action: onVectorStoreUpload,
+                vectorStoreCount: vectorStoreCount,
+                fileSearchEnabled: fileSearchEnabled
+            )
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .accessibilityShowsLargeContentViewer()
+        }
+
+        // Audio recording button
+        if let onAudioRecorded = onAudioRecorded {
+            Button(action: {
+                if voiceRecorder.isRecording {
+                    voiceRecorder.stopRecording()
+                } else {
+                    voiceRecorder.requestPermission { granted in
+                        if granted {
+                            voiceRecorder.startRecording { data in
+                                if let data = data {
+                                    onAudioRecorded(data)
+                                }
+                            }
+                        } else {
+                            showingAudioError = true
+                        }
+                    }
+                }
+            }) {
+                Image(systemName: voiceRecorder.isRecording ? "stop.circle.fill" : "mic")
+                    .foregroundColor(voiceRecorder.isRecording ? .red : .secondary)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                    .padding(buttonPadding)
+            }
+            .accessibilityShowsLargeContentViewer()
+            .alert("Microphone Access Required", isPresented: $showingAudioError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Please enable microphone access in Settings to use voice input.")
+            }
+        }
+
+        // Voice mode button
+        if let onStartVoiceMode = onStartVoiceMode {
+            Button(action: {
+                onStartVoiceMode()
+            }) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 20))
+                    .foregroundColor(.accentColor)
+                    .padding(buttonPadding)
+            }
+            .accessibilityShowsLargeContentViewer()
+            .accessibilityConfiguration(
+                label: "Start Voice Mode",
+                hint: "Start real-time voice conversation"
+            )
+        }
+    }
+
+    private var messageField: some View {
+        TextField("Message", text: $text, axis: .vertical)
+            .lineLimit(1...6)
+            .textFieldStyle(.plain)
+            .focused(isFocused)
+            .submitLabel(.send)
+            .onSubmit {
+                if canSend {
+                    onSend()
+                }
+            }
+            .textInputAutocapitalization(.sentences)
+            .disableAutocorrection(false)
+            .padding(.vertical, 6)
+            .accessibilityConfiguration(
+                label: "Message input",
+                hint: AccessibilityUtils.Hint.chatInput,
+                identifier: AccessibilityUtils.Identifier.chatInput
+            )
+    }
+
+    private var sendButton: some View {
+        Button(action: {
+            onSend()
+        }) {
+            ZStack {
+                Circle()
+                    .fill(canSend ? Color.accentColor : Color.secondary.opacity(0.15))
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(canSend ? .white : .secondary)
+            }
+            .frame(width: sendButtonSize, height: sendButtonSize)
+        }
+        .disabled(!canSend)
+        .accessibilityConfiguration(
+            label: "Send message",
+            hint: AccessibilityUtils.Hint.sendButton,
+            identifier: AccessibilityUtils.Identifier.sendButton
         )
     }
 }

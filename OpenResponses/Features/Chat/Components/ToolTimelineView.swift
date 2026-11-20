@@ -15,6 +15,43 @@ struct ToolTimelineView: View {
 struct ToolExecutionCard: View {
     let event: ToolExecutionTimeline
     @State private var isExpanded = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 16
+
+    private var icon: some View {
+        Image(systemName: iconName)
+            .font(.subheadline)
+            .foregroundColor(statusColor)
+            .accessibilityHidden(true)
+    }
+
+    private var name: some View {
+        Text(event.displayName)
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundColor(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var status: some View {
+        if event.status == .running {
+            ProgressView()
+                .controlSize(.mini)
+        } else {
+            // The icon carries the status color; the word stays readable on the fill.
+            Text(statusText)
+                .font(.caption2)
+                .foregroundStyle(Color.accessibleSecondaryText)
+        }
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.down")
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            .accessibilityHidden(true)
+    }
 
     var iconName: String {
         switch event.toolType {
@@ -63,35 +100,31 @@ struct ToolExecutionCard: View {
                     isExpanded.toggle()
                 }
             }) {
-                HStack(spacing: 8) {
-                    Image(systemName: iconName)
-                        .foregroundColor(statusColor)
-                        .frame(width: 16, alignment: .center)
-                    
-                    Text(event.displayName)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    
-                    Spacer()
-                    
-                    if event.status == .running {
-                        ProgressView()
-                            .controlSize(.mini)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        // One line has room for a word or two at these sizes, so the status goes under the
+                        // name; side by side they broke into "fet / c…" and "Fai / led" (2026-11-19).
+                        VStack(alignment: .leading, spacing: 4) {
+                            name
+                            // No tool icon here: at these sizes it pushed the status to "Fail / ed", and the
+                            // word itself says what the icon's color did.
+                            HStack(spacing: 8) {
+                                status
+                                Spacer(minLength: 0)
+                                chevron
+                            }
+                        }
                     } else {
-                        // The icon carries the status color; the word stays readable on the fill.
-                        Text(statusText)
-                            .font(.caption2)
-                            .foregroundStyle(Color.accessibleSecondaryText)
+                        HStack(spacing: 8) {
+                            icon.frame(width: iconWidth, alignment: .center)
+                            name
+                            Spacer()
+                            status
+                            chevron
+                        }
                     }
-                    
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(Color(UIColor.tertiarySystemFill))

@@ -23,6 +23,13 @@ This changelog records implemented application behavior. Version 2.6 includes co
   - Notion is one more connector: the Tools page's "Existing Notion integration" section is gone, and a Notion integration token saved by an earlier version shows on the Connectors page as "Notion (integration token)", with its own Use in this chat switch.
   - The root row and its Tools-page link show how many connections this chat uses ("1 of 2 on", or "None yet").
 
+- At the accessibility text sizes (Gunnar, November 19, 2026: "fix those"):
+  - A tool step in the chat puts its status under the name and leaves out the tool icon. Before, at Accessibility XXXL it read "fet / c…" and "Fai / led" with the icon spilling out of its 16-point box.
+  - Onboarding pages scroll when their text is taller than the page, and the AI notice and terms under them scroll in their own area. Before, they were cut to "Welcome…", "Experience t…" and "AI-generated content can be inc…".
+  - The chat's floating Details button has a capsule background, so it no longer sits directly on message text.
+  - The message field gets its own line with its buttons under it. Before, it shared one line with four buttons and showed "Mes…".
+  - Both chat-screen audits now pass, including `testLargestTextSizeKeepsTheChatScreenReadable`.
+
 ### Added
 
 - Text Size (Settings → Text Size), at Gunnar's request on November 19, 2026: "Same as iPhone" by default, or any of the twelve system sizes on a slider, for OpenResponses only. It is applied as a trait on the app's windows, so sheets such as Settings follow it; a SwiftUI `.dynamicTypeSize` on the root view did not reach them (seen the same day). Checked on simulator 54DDDEDE with the phone at Accessibility XXXL and the app at Default: the chat and Settings both drew at the default size.
@@ -31,7 +38,7 @@ This changelog records implemented application behavior. Version 2.6 includes co
 
 - Unit suite: 384 tests, 3 skipped, 0 failures. UI tests `testSettingsPassTheAccessibilityAudit`, `testSettingsSearchOpensThePageThatHoldsAnOption` and `testVoiceSettingsStayOpenFromSettings` pass.
 - The Settings audit passes with the "Assistant" and "What the assistant can do" headers added to the test's known audit quirks. The audit reports them as "Dynamic Type font sizes are partially unsupported" against the frame of the system's full-width header container, whatever the header holds (a String, a Label, an icon and text, an explicit font), while a screenshot at Accessibility Large showed both headers grown, the second wrapping to two lines.
-- Not run: the two chat-screen audits, which failed before this change on a "Failed" fetchAppleReminders step in the chat they open. A screenshot at Accessibility XXXL shows that step's name and status clipped ("fet / c…", "Fai / led"), so the failure is real and is not only leftover state. Account sign-in and key connection to a live service were not tried.
+- Account sign-in and key connection to a live service were not tried.
 
 ## 3.0 — in development
 

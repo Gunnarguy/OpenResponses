@@ -93,8 +93,11 @@ struct ActivityToggleButton: View {
                 Text("Details")
             }
             .font(.caption)
+            .padding(.horizontal, 10)
             .frame(minHeight: 44) // Apple's minimum tap target
-            .contentShape(Rectangle())
+            // The chat scrolls under this button; the capsule keeps it from sitting on message text.
+            .background(.regularMaterial, in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(visibility.isVisible ? "Hide details" : "Show details")

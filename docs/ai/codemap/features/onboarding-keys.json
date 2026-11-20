@@ -4,11 +4,11 @@
   "name": "Onboarding and Keys",
   "aliases": ["Welcome to OpenResponses", "Get Started", "Next", "Back", "Explore Demo", "Start Explore Demo", "Connect OpenAI", "Add API Key", "OpenAI API Key", "Demo Mode", "Before You Send", "Allow & Send", "Cancel", "Read Privacy Policy", "Onboarding", "API key storage", "Explore demo mode", "data-sharing consent", "consent", "keys"],
   "purpose": "Onboarding walkthrough, Keychain storage for OpenAI credentials, offline Explore Demo mode, and first-send data sharing consent gate.",
-  "revision": "6b656a4",
+  "revision": "829cc65",
   "verified_on": "2026-11-19",
   "entry_points": ["OnboardingView", "ExploreModeWelcomeSheet", "AIDataSharingConsentSheet"],
   "files": [
-    {"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "role": "primary", "blob": "665f6880fee18a16659b00a1b95fbc936f9b98a8"},
+    {"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "role": "primary", "blob": "6fa9d1f4deeeaa67bfaaf69161d6b73daee5b145"},
     {"path": "OpenResponses/Features/Onboarding/Views/ExploreModeWelcomeSheet.swift", "role": "primary", "blob": "6ff806d051069289c7ed0ec4a377abf20e598c6c"},
     {"path": "OpenResponses/Features/Onboarding/Views/ModelConfigurationView.swift", "role": "primary", "blob": "ead599c9ed5984d99ef54ded4239ab515639d266"},
     {"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "role": "primary", "blob": "5c0317a44cdd08aa368e6e0241c2fc232e0adc67"},
@@ -30,7 +30,7 @@
     {"id": "ChatViewModel.setExploreModeEnabled", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 437, "match": "    func setExploreModeEnabled(_ enabled: Bool) {", "status": "VERIFIED", "note": "Updates Explore Demo state and persists preference."},
     {"id": "ChatViewModel.approveAIDataSharingConsent", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 543, "match": "    func approveAIDataSharingConsent() {", "status": "VERIFIED", "note": "Records consent grant and continues pending request."},
     {"id": "keychain:openAIKey", "kind": "state", "path": "OpenResponses/Core/Services/KeychainService.swift", "line": 129, "match": "        let keychainKey = \"openAIKey\"", "status": "VERIFIED", "note": "Stored OpenAI API key in iOS Keychain."},
-    {"id": "defaults:hasCompletedOnboarding", "kind": "state", "path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 87, "match": "                            UserDefaults.standard.set(true, forKey: \"hasCompletedOnboarding\")", "status": "VERIFIED", "note": "UserDefaults flag set upon finishing onboarding."},
+    {"id": "defaults:hasCompletedOnboarding", "kind": "state", "path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 95, "match": "                            UserDefaults.standard.set(true, forKey: \"hasCompletedOnboarding\")", "status": "VERIFIED", "note": "UserDefaults flag set upon finishing onboarding."},
     {"id": "defaults:exploreModeEnabled", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 439, "match": "        UserDefaults.standard.set(enabled, forKey: exploreModeDefaultsKey)", "status": "VERIFIED", "note": "UserDefaults boolean for offline Explore Demo."},
     {"id": "defaults:aiDataSharingConsentVersion", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 545, "match": "        UserDefaults.standard.set(AppFeatureFlags.aiDataSharingConsentVersion, forKey: AppFeatureFlags.aiDataSharingConsentVersionKey)", "status": "VERIFIED", "note": "UserDefaults integer storing approved consent version."},
     {"id": "AppFeatureFlags", "kind": "config", "path": "OpenResponses/Core/Utilities/AppFeatureFlags.swift", "line": 8, "match": "    static let aiDataSharingConsentVersion = 2", "status": "VERIFIED", "note": "Current version requirement for AI data sharing consent."},
@@ -38,7 +38,7 @@
     {"id": "test:ChatViewModelLifecycleTests", "kind": "test", "path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 239, "match": "        viewModel.approveAIDataSharingConsent()", "status": "VERIFIED", "note": "Tests consent approval and request unblocking."}
   ],
   "edges": [
-    {"from": "OnboardingView", "type": "writes", "to": "defaults:hasCompletedOnboarding", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 87, "match": "                            UserDefaults.standard.set(true, forKey: \"hasCompletedOnboarding\")"}], "note": "Saves onboarding completion flag."},
+    {"from": "OnboardingView", "type": "writes", "to": "defaults:hasCompletedOnboarding", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 95, "match": "                            UserDefaults.standard.set(true, forKey: \"hasCompletedOnboarding\")"}], "note": "Saves onboarding completion flag."},
     {"from": "ExploreModeWelcomeSheet", "type": "reads", "to": "keychain:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/ExploreModeWelcomeSheet.swift", "line": 12, "match": "        let key = KeychainService.shared.load(forKey: \"openAIKey\")"}], "note": "Checks for existing API key."},
     {"from": "ExploreModeWelcomeSheet", "type": "calls", "to": "ChatViewModel.startExploreDemoConversation", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/ExploreModeWelcomeSheet.swift", "line": 36, "match": "                            viewModel.startExploreDemoConversation()"}], "note": "Starts demo conversation."},
     {"from": "ChatViewModel.startExploreDemoConversation", "type": "calls", "to": "ChatViewModel.setExploreModeEnabled", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 445, "match": "        setExploreModeEnabled(true)"}], "note": "Enables Explore Demo mode."},
@@ -74,7 +74,7 @@
       {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 7, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
-      {"from": "OnboardingView", "type": "depends_on", "to": "KeychainService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 7, "match": "private let keychainService = KeychainService.shared"}]},
+      {"from": "OnboardingView", "type": "depends_on", "to": "KeychainService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/OnboardingView.swift", "line": 8, "match": "private let keychainService = KeychainService.shared"}]},
       {"from": "ExploreModeWelcomeSheet", "type": "depends_on", "to": "KeychainService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Onboarding/Views/ExploreModeWelcomeSheet.swift", "line": 12, "match": "let key = KeychainService.shared.load(forKey: \"openAIKey\")"}]},
       {"from": "KeychainService", "type": "tested_by", "to": "test:AppCompletionTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 268, "match": "_ = KeychainService.shared.save(value: \"test-key\", forKey: \"openAIKey\")"}]},
       {"from": "KeychainService", "type": "tested_by", "to": "test:ChatViewModelLifecycleTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 13, "match": "_ = KeychainService.shared.save(value: \"test-key\", forKey: \"openAIKey\")"}]},

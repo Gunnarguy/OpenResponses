@@ -4,8 +4,8 @@
   "name": "Diagnostics",
   "aliases": ["Request Inspector", "Activity Feed", "Debug Console", "API Inspector", "API Request Preview", "Validation Warnings"],
   "purpose": "Diagnostics: logging and credential/URL redaction, in-app analytics records, live activity feed, request payload inspection, and debug console.",
-  "revision": "b648aa7",
-  "verified_on": "2026-11-17",
+  "revision": "829cc65",
+  "verified_on": "2026-11-19",
   "entry_points": ["RequestInspectorView", "ActivityFeedView"],
   "files": [
     {"path": "OpenResponses/App/AppLogger.swift", "role": "primary", "blob": "894359b9497264bc01e990a2bc3eab989ceda14c"},
@@ -13,7 +13,7 @@
     {"path": "OpenResponses/Features/DebugTools/Views/DebugConsoleView.swift", "role": "primary", "blob": "d62d4d54484b30204b920463a389e83cdca75c2b"},
     {"path": "OpenResponses/Features/DebugTools/Views/APIInspectorView.swift", "role": "primary", "blob": "fba4dd72bb0ab64f26d2b589cadc1b8f1967fe55"},
     {"path": "OpenResponses/Features/Chat/Components/RequestInspectorView.swift", "role": "primary", "blob": "2512cc1435440b24f829a0e653dc38d643997e2e"},
-    {"path": "OpenResponses/Features/Conversations/Views/ActivityFeedView.swift", "role": "primary", "blob": "94629b7ae05eea03ee2272beaa93879befaa36d1"},
+    {"path": "OpenResponses/Features/Conversations/Views/ActivityFeedView.swift", "role": "primary", "blob": "1dfe7a468132af983ff81f3eb9563a7ce71e3579"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "primary", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
     {"path": "OpenResponsesTests/AppLoggerTests.swift", "role": "test", "blob": "24f9d38c628f8ed71d0d8986dac68ce77d890a81"},
     {"path": "OpenResponsesTests/URLRedactionTests.swift", "role": "test", "blob": "a266d28248dc860e3c833a74b6e8250a6ae5d7a5"}

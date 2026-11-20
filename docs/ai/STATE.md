@@ -1,8 +1,8 @@
 # Current State
 
 Updated: 2026-11-19
-Branch/worktree: main in the repo root. Local commits 45be8d2, 060afd3, 2b0ee98, 6b656a4 and this session's 3.1 commit (all [ci skip]) are not pushed; push only at Gunnar's word. Untracked: `.codex/config.toml` (an earlier session's; leave it).
-Last verified commit: 6b656a4 (the 3.1 working tree on top of it was tested 2026-11-19 on simulator 54DDDEDE: "Executed 384 tests, with 3 tests skipped and 0 failures", the three Settings UI tests passed, ** TEST SUCCEEDED **)
+Branch/worktree: main in the repo root. Local commits 45be8d2, 060afd3, 2b0ee98, 6b656a4, 829cc65 and the large-text fix commit after it (all [ci skip]) are not pushed; push only at Gunnar's word. Untracked `.codex/config.toml` is an earlier session's; leave it.
+Last verified commit: 829cc65 (the large-text fixes on top of it passed the full run on 54DDDEDE, 2026-11-19: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests including both chat-screen audits and the largest-text audit passed, ** TEST SUCCEEDED **)
 
 ## Objective
 Get OpenResponses 3.0 submitted. Xcode Cloud build 55 (commit 7a12b34) SUCCEEDED and is VALID in App Store Connect but is not attached to the 3.0 version. Attaching it, pasting the What's New (`fastlane/metadata/en-US/release_notes.txt`, 1,294 chars) and submitting are Gunnar's.
@@ -49,7 +49,6 @@ Release-note style (Gunnar, 2026-11-19: match OpenIntelligence's ASC release not
 - 2026-11-19, Decisions live (Settings > Advanced > Developer Operations > Decisions, the support-ticket example, gpt-6-luna): department billing 100%, asks_for_refund True 100%, urgency score 1.99 on 0-2 nearest High (99%), 441 input tokens, about $0.000044. The Decisions blocker is closed.
 
 ## Blockers / Unknowns
-- The chat-screen audits (`testChatScreenPassesTheAccessibilityAudit`, `testLargestTextSizeKeepsTheChatScreenReadable`) fail on a real defect: at Accessibility XXXL the tool-step row in the chat clips its name and status ("fet / c…", "Fai / led"), and the onboarding pages truncate ("Welcome…", "Experience t…"). Seen in screenshots on 54DDDEDE, 2026-11-19. Fix: stack that row's name and status at accessibility sizes, as `SettingsRow` does.
 - Connectors: account sign-in and key connections were not tried against a live service in this change. OpenAI's own connectors (Gmail, Google Drive and the rest) are hidden until the app can sign in to them.
 - None for 3.0 code: the rating sheet and Decisions were both seen working live on 2026-11-19. The Notion verification row "Live-check Decisions" (https://app.notion.com/p/41749a74d54f81069597c73426b1b265) can be marked done.
 - Async tool calls on GPT-6 Sol and Luna stay off until a live request settles whether "GPT-6 Astra and later models" includes them.

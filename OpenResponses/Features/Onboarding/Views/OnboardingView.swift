@@ -3,6 +3,7 @@ import SwiftUI
 struct OnboardingView: View {
     @Binding var isPresented: Bool
     @State private var currentPage = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private let keychainService = KeychainService.shared
 
@@ -58,15 +59,22 @@ struct OnboardingView: View {
                     }
                 }
 
-                VStack(spacing: 8) {
-                    Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
+                // At the accessibility text sizes this text is taller than the space left, so it scrolls
+                // instead of being cut to "AI-generated content can be inc…" (seen 2026-11-19).
+                ScrollView {
+                    VStack(spacing: 8) {
+                        Text("AI-generated content can be incorrect or outdated. Double-check important information and avoid sharing sensitive data.")
 
-                    Text("By using this app, you agree to the [Terms of Use (EULA)](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) and confirm you are 17+.")
+                        Text("By using this app, you agree to the [Terms of Use (EULA)](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) and confirm you are 17+.")
+                    }
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal)
                 }
-.font(.footnote)
-    .foregroundColor(.secondary)
-    .multilineTextAlignment(.center)
-    .padding(.horizontal)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 150 : 110)
 
                 // Action buttons
                 HStack(spacing: 16) {
@@ -108,7 +116,7 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal)
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 16 : 40)
         }
         .background(.ultraThinMaterial)
     }
@@ -123,33 +131,39 @@ struct OnboardingPage {
 
 struct OnboardingPageView: View {
     let page: OnboardingPage
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: 40) {
-            Spacer()
+        // Centered while it fits; scrolls once large text makes it taller than the page. Before, the title and
+        // description were cut to "Welcome…" and "Experience t…" at the accessibility sizes (2026-11-19).
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: dynamicTypeSize.isAccessibilitySize ? 20 : 40) {
+                    Image(systemName: page.imageName)
+                        .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 56 : 80, weight: .light))
+                        .foregroundStyle(page.color.gradient)
+                        .symbolEffect(.pulse.wholeSymbol, options: .repeating)
+                        .accessibilityHidden(true)
 
-            // Icon
-            Image(systemName: page.imageName)
-                .font(.system(size: 80, weight: .light))
-                .foregroundStyle(page.color.gradient)
-                .symbolEffect(.pulse.wholeSymbol, options: .repeating)
+                    VStack(spacing: 16) {
+                        Text(page.title)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
 
-            // Content
-            VStack(spacing: 16) {
-                Text(page.title)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
-
-                Text(page.description)
-                    .font(.title3)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(nil)
+                        Text(page.description)
+                            .font(.title3)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 16 : 40)
+                }
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
-            .padding(.horizontal, 40)
-
-            Spacer()
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 }

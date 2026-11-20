@@ -4,7 +4,7 @@
   "name": "Voice mode",
   "aliases": ["realtime", "live", "gpt-live-1", "InlineVoiceView", "VoiceModeView", "VoiceModeSettingsSheet", "Start Voice Mode", "Voice Mode Settings", "Voice Barge-In", "Separate voice session"],
   "purpose": "Realtime bi-directional audio sessions using GPT-Live or GPT-Realtime over WebSockets.",
-  "revision": "6b656a4",
+  "revision": "829cc65",
   "verified_on": "2026-11-19",
   "entry_points": ["InlineVoiceView", "ChatInputView", "VoiceModeSettingsSheet"],
   "files": [
@@ -13,7 +13,7 @@
     {"path": "OpenResponses/Features/Chat/Views/VoiceModeView.swift", "role": "primary", "blob": "81c63f85180faff57f1fba09d4f28a8bddb24d56"},
     {"path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "role": "primary", "blob": "f8a4f6af8c3b9286878c33b082a2f09f6869bbd8"},
     {"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "role": "primary", "blob": "3d9c226724349bcd26c3fca5c88a95d7bb0a12a6"},
-    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "62b5f1c402de996029a8e6d44edc973c06275c14"},
+    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "ac7b8c32739a6814bfd0a40704b6093f23024d7b"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "cbf8be80104cfb2fdaa2bde2d8aac62ef20179d9"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "8a9f1bd60708c8c31d9a6f90b0a4729afe6104b9"},
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "f1d0634442c902862c6d2b863703f76ad69e6f5c"},
@@ -52,7 +52,7 @@
   "edges": [
     {"from": "ChatView", "type": "renders", "to": "InlineVoiceView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 233, "match": "                InlineVoiceView(isPresented: $showingVoiceMode)"}]},
     {"from": "ChatView", "type": "renders", "to": "ChatInputView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 263, "match": "            ChatInputView("}]},
-    {"from": "ChatInputView", "type": "calls", "to": "InlineVoiceView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 118, "match": "                    onStartVoiceMode()"}], "note": "Waveform button triggers onStartVoiceMode callback that displays InlineVoiceView"},
+    {"from": "ChatInputView", "type": "calls", "to": "InlineVoiceView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 151, "match": "                    onStartVoiceMode()"}], "note": "Waveform button triggers onStartVoiceMode callback that displays InlineVoiceView"},
     {"from": "InlineVoiceView", "type": "calls", "to": "RealtimeService.connect", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 129, "match": "        service.connect("}]},
     {"from": "InlineVoiceView", "type": "reads", "to": "defaults:realtime_model", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 14, "match": "    @AppStorage(\"realtime_model\") private var realtimeModel: String = \"gpt-realtime-2.1\""}]},
     {"from": "InlineVoiceView", "type": "reads", "to": "defaults:realtime_voice", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 15, "match": "    @AppStorage(\"realtime_voice\") private var voice: String = \"alloy\""}]},
