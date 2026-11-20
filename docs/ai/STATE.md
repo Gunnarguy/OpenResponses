@@ -1,13 +1,17 @@
 # Current State
 
 Updated: 2026-11-19
-Branch/worktree: main in the repo root. Local commits 45be8d2, 060afd3, 2b0ee98, 6b656a4, 829cc65 and the large-text fix commit after it (all [ci skip]) are not pushed; push only at Gunnar's word. Untracked `.codex/config.toml` is an earlier session's; leave it.
-Last verified commit: 829cc65 (the large-text fixes on top of it passed the full run on 54DDDEDE, 2026-11-19: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests including both chat-screen audits and the largest-text audit passed, ** TEST SUCCEEDED **)
+Branch/worktree: main in the repo root, level with origin. Untracked `.codex/config.toml` is an earlier session's; leave it.
+Last verified commit: 2b70581 (code tested on ab93bcb, 2026-11-19, simulator 54DDDEDE: "Executed 384 tests, with 3 tests skipped and 0 failures", all 8 UI tests passed, ** TEST SUCCEEDED **; 2b70581 changed store text and docs only)
 
 ## Objective
-Ship OpenResponses 3.0 with everything done through November 19, 2026 (Gunnar: "Commit and push for review, GitHub release 3.0 matched ... ensure ASC metadata is now reflecting EVERYTHING"). The 3.1 work (Settings redesign, Text Size, Connectors, large-text fixes) is folded into 3.0 in CHANGELOG, store text and review notes. The push of November 19 starts Xcode Cloud run 56; its build replaces build 55 on the 3.0 version, then 3.0 is submitted and GitHub release v3.0 is published from the same text.
+OpenResponses 3.0 is submitted with everything through November 19, 2026 (Settings redesign, Text Size, Connectors, large-text fixes, Decisions, rating sheet, tool-step arguments, Calendar dates). Next: watch review, and after it goes live bump MARKETING_VERSION.
 
 ## Status
+- 2026-11-19: pushed 2b70581; Xcode Cloud run 56 SUCCEEDED 17:52, build 56 VALID, attached to 3.0 (`python3 scripts/asc/release.py attach --go`, now pointed at 3.0) and submitted: submission c40d93aa-0d3c-4fda-ad72-4731bed170f5 WAITING_FOR_REVIEW, version 3.0 WAITING_FOR_REVIEW, release AFTER_APPROVAL. The first submit got 409 because the age rating lacked Apple's new required `socialMedia`; set `socialMedia`, `sharedLocation` and `datingAndRelationships` to false on app info e4cf1762 (the app has none of them; Apple's AgeRatingDeclarationUpdateRequest reference read 2026-11-20 UTC). `socialMediaAgeRestricted` left unset.
+- ASC 3.0 en-US read back equal to the repo: whatsNew = `fastlane/metadata/en-US/release_notes.txt`, promotionalText, description, keywords, and App Review notes = `fastlane/metadata/review_information/notes.txt`.
+- GitHub release v3.0 published at 2b70581, not marked Latest (2.9 is still live): https://github.com/Gunnarguy/OpenResponses/releases/tag/v3.0. Mark it Latest when 3.0 is live.
+- Not updated: App Store screenshots and previews still show the 2.9 Settings tabs.
 - 3.0 = a6c5507 rating request + 435ac25 Calendar/Reminders dates with no zone offset + b648aa7 Decisions, merged with origin as 7a12b34 and pushed 2026-11-17.
 - OpenCone 3.2: build 27 attached and WAITING_FOR_REVIEW since 2026-11-19 (OpenCone commits ccacaa9, 17b8b44, by the OpenCone session).
 - GitHub Releases published: v1.0, v2.0, v2.5, v2.7, v2.8, v2.9. Not done: v2.6 (build 41, commit 5b270d8), blocked by an old tag `v2.6.0` at 1e2edda; OpenCone 3.1 (build 25, eeec127), blocked by an old "Release 3.1"/tag `v3.1` at 04267d1. Replacing either needs Gunnar's yes. 3.0 gets a release once it is live.
@@ -52,4 +56,4 @@ Ship OpenResponses 3.0 with everything done through November 19, 2026 (Gunnar: "
 - The Notion token in test.env was printed into a session log on 2026-09-24; Gunnar should rotate it.
 
 ## Exact Next Action
-Gunnar attaches build 55 to the 3.0 version in App Store Connect, pastes `fastlane/metadata/en-US/release_notes.txt` as What's New, and submits. Then push the local [ci skip] commits at his word.
+When App Store Connect shows 3.0 Ready for Distribution: `gh release edit v3.0 --latest`, change CHANGELOG's 3.0 heading to "released <date> (build 56)", and bump MARKETING_VERSION to 3.1 in both lines of project.pbxproj (and create 3.1 in ASC) before the next push to main. If review rejects, read the resolution center and fix.

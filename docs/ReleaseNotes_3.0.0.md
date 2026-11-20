@@ -1,6 +1,6 @@
 # OpenResponses 3.0 release notes
 
-Version 3.0 was created in App Store Connect on October 19, 2026. Its first code was pushed on November 17, 2026 (`7a12b34`, Xcode Cloud run 55). On November 19, 2026, at Gunnar's word, the work first written up as 3.1 (the Settings redesign, Text Size, Connectors and the large-text fixes) was folded into 3.0, and the push that day replaces build 55 with the next Xcode Cloud build. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
+Version 3.0 was created in App Store Connect on October 19, 2026. Its first code was pushed on November 17, 2026 (`7a12b34`, Xcode Cloud run 55). On November 19, 2026, at Gunnar's word, the work first written up as 3.1 (the Settings redesign, Text Size, Connectors and the large-text fixes) was folded into 3.0, and that day's push (`2b70581`, Xcode Cloud run 56) became build 56, which replaced build 55 and was submitted for review the same evening. GitHub release: https://github.com/Gunnarguy/OpenResponses/releases/tag/v3.0. The App Store What's New text is [release_notes.txt](../fastlane/metadata/en-US/release_notes.txt). The details and their tests are in [CHANGELOG.md](../CHANGELOG.md) under 3.0.
 
 ## Settings, Text Size, Connectors, large text (added November 19, 2026)
 

@@ -2,9 +2,9 @@
 
 This changelog records implemented application behavior. Version 2.6 includes committed development after the last 2.5 source state and the September working-tree additions. Release dates below are documentation/verification dates, not inferred App Store publication dates.
 
-## 3.0 — in development
+## 3.0 — submitted November 19, 2026 (build 56)
 
-**Marketing version:** 3.0. Ships as the Xcode Cloud archive of the push made November 19, 2026, which replaces build 55 (commit 7a12b34) on the 3.0 version: build 55 had the Decisions, rating, tool-step and Calendar work below but none of the Settings, Text Size, Connectors and large-text work, which was first written up as 3.1 and was folded into 3.0 at Gunnar's word the same day ("ensure ASC metadata is now reflecting EVERYTHING"). App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt).
+**Marketing version:** 3.0. Submitted for review November 19, 2026 as build 56, the Xcode Cloud run 56 archive of commit `2b70581`, which replaced build 55 (commit 7a12b34) on the 3.0 version: build 55 had the Decisions, rating, tool-step and Calendar work below but none of the Settings, Text Size, Connectors and large-text work, which was first written up as 3.1 and was folded into 3.0 at Gunnar's word the same day ("ensure ASC metadata is now reflecting EVERYTHING"). App Store text: [release_notes.txt](fastlane/metadata/en-US/release_notes.txt).
 
 ### Added
 
