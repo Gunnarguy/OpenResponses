@@ -55,7 +55,8 @@ extension NSColor {
     static var secondarySystemGroupedBackground: NSColor { .controlBackgroundColor }
     static var tertiarySystemFill: NSColor { .quaternaryLabelColor }
     static var separator: NSColor { .separatorColor }
-    static var systemGray: NSColor { .systemGray }
+    // AppKit has its own systemGray; declaring one here shadowed it and made every gray below call itself until the
+    // stack overflowed (Xcode Cloud run 58's "infinite recursion" warning, 2026-11-22).
     static var systemGray3: NSColor { NSColor.systemGray.withAlphaComponent(0.6) }
     static var systemGray6: NSColor { .controlBackgroundColor }
     static var systemGray5: NSColor { NSColor.systemGray.withAlphaComponent(0.25) }

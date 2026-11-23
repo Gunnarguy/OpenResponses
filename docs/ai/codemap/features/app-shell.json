@@ -4,7 +4,7 @@
   "name": "App shell",
   "aliases": ["OpenResponses", "About", "Privacy Policy", "Support (GitHub)", "License", "Third-Party Software", "Compact Context", "Done", "Save conversations", "launch", "root navigation", "Rate OpenResponses", "rating request", "requestReview", "App Store review"],
   "purpose": "App launch, root navigation, dependency injection, scene lifecycle persistence, URL scheme handling, network monitoring, and the App Store rating request (Apple's requestReview sheet after a finished answer, and the Rate OpenResponses link in About).",
-  "revision": "7a8e389",
+  "revision": "aaac67f",
   "verified_on": "2026-11-22",
   "entry_points": ["OpenResponsesApp", "ContentView"],
   "files": [
@@ -27,7 +27,7 @@
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"},
     {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "5bb878a5fed36b71b46ffae9721e5ed1862c278b"},
     {"path": "OpenResponsesUITests/OpenResponsesUITestsLaunchTests.swift", "role": "test", "blob": "88410dde98a1fdb36c9a1b9ab0db6aec8c02c627"},
-    {"path": "OpenResponses/Core/Utilities/PlatformCompat.swift", "role": "primary", "blob": "e2183fb85754b7223228bae0441c0e3f66f56d55"}
+    {"path": "OpenResponses/Core/Utilities/PlatformCompat.swift", "role": "primary", "blob": "6a96f5f42ca85506deafef948493ec16989dcd3e"}
   ],
   "nodes": [
     {"id": "OpenResponsesApp", "kind": "entry", "path": "OpenResponses/App/OpenResponsesApp.swift", "line": 11, "match": "struct OpenResponsesApp: App {", "status": "VERIFIED", "note": "Main application entry point and scenePhase handler."},
@@ -98,7 +98,7 @@
     "nodes": [
       {"id": "OpenResponsesCommands", "kind": "model", "path": "OpenResponses/App/OpenResponsesApp.swift", "line": 75, "match": "struct OpenResponsesCommands: Commands {", "status": "VERIFIED"},
       {"id": "ShareSheet", "kind": "view", "path": "OpenResponses/App/ContentView.swift", "line": 286, "match": "struct ShareSheet: UIViewControllerRepresentable {", "status": "VERIFIED"},
-      {"id": "UIPasteboard", "kind": "model", "path": "OpenResponses/Core/Utilities/PlatformCompat.swift", "line": 78, "match": "enum UIPasteboard {", "status": "VERIFIED"},
+      {"id": "UIPasteboard", "kind": "model", "path": "OpenResponses/Core/Utilities/PlatformCompat.swift", "line": 79, "match": "enum UIPasteboard {", "status": "VERIFIED"},
       {"id": "test:ChatViewModelLifecycleTests", "kind": "test", "path": "OpenResponsesTests/ChatViewModelLifecycleTests.swift", "line": 6, "match": "final class ChatViewModelLifecycleTests: XCTestCase {", "status": "VERIFIED"},
       {"id": "test:DateFormattingTests", "kind": "test", "path": "OpenResponsesTests/DateFormattingTests.swift", "line": 4, "match": "final class DateFormattingTests: XCTestCase {", "status": "VERIFIED"}
     ],
