@@ -4,7 +4,7 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "4a33242",
+  "revision": "00adb4a",
   "verified_on": "2026-11-23",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
@@ -22,7 +22,7 @@
     {"path": "OpenResponses/Features/Chat/ViewModels/ManagedResponsePresentation.swift", "role": "shared", "blob": "6063db0a5ab62fa8ccdb8f21e6500996c12b1287"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
     {"path": "OpenResponsesTests/StreamingTerminationTests.swift", "role": "test", "blob": "24264432f19b9d2547aa6dbca2cfdb8f203e6c81"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "9381828a1f7a0ced9f9166576c7abe8cbf4d3ff1"},
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "fbdbc4a32658709c39fc92b3cb769378660fec09"}
   ],
   "nodes": [

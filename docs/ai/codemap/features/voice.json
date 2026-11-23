@@ -4,7 +4,7 @@
   "name": "Voice mode",
   "aliases": ["realtime", "live", "gpt-live-1", "InlineVoiceView", "VoiceModeView", "VoiceModeSettingsSheet", "Start Voice Mode", "Voice Mode Settings", "Voice Barge-In", "Separate voice session"],
   "purpose": "Realtime bi-directional audio sessions using GPT-Live or GPT-Realtime over WebSockets.",
-  "revision": "4a33242",
+  "revision": "00adb4a",
   "verified_on": "2026-11-23",
   "entry_points": ["InlineVoiceView", "ChatInputView", "VoiceModeSettingsSheet"],
   "files": [
@@ -19,7 +19,7 @@
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "206b58a8f4eabae11e3cef29b746bc8474a71f4a"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "9381828a1f7a0ced9f9166576c7abe8cbf4d3ff1"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},

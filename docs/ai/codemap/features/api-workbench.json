@@ -4,7 +4,7 @@
   "name": "API Workbench",
   "aliases": ["API Workbench", "Run request", "Stop connection", "Export request draft", "Count input tokens", "Delete this resource?", "Replace the current request?"],
   "purpose": "Provides a developer workbench to construct and send raw API requests over HTTP, SSE, and WebSockets with Keychain draft persistence and DELETE confirmation.",
-  "revision": "4a33242",
+  "revision": "00adb4a",
   "verified_on": "2026-11-23",
   "entry_points": ["SettingsHomeView.workbenchLink", "APIWorkbenchView"],
   "files": [
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Core/Services/APIWorkbenchDraftStore.swift", "role": "primary", "blob": "69daf996f314a9859f63af8ebb1fcf4cacd9868f"},
     {"path": "OpenResponses/Features/Chat/Components/JSONCodeEditor.swift", "role": "primary", "blob": "85b5306c240066dbb9ac4144cc69f7feed6af896"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "9381828a1f7a0ced9f9166576c7abe8cbf4d3ff1"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"}
   ],
   "nodes": [
     {"id": "SettingsHomeView.workbenchLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 499, "match": "case .workbench: APIWorkbenchView()", "status": "VERIFIED"},

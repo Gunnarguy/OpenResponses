@@ -4,7 +4,7 @@
   "name": "Voice Notes",
   "aliases": ["microphone button", "transcribe", "gpt-transcribe", "message field", "audio", "Microphone Access Required", "Allow & Send", "Before You Send", "Voice Note"],
   "purpose": "Records voice notes using the microphone button and transcribes them with gpt-transcribe into the message input field after data-sharing consent.",
-  "revision": "4a33242",
+  "revision": "00adb4a",
   "verified_on": "2026-11-23",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Features/Chat/Components/AttachmentPills.swift", "role": "shared", "blob": "40cc8a959440cba2c76a1599a3e155025da025f9"},
     {"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "role": "shared", "blob": "09f670dd8615b2c6ffb5475e44efb1d2b63f32a7"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "9381828a1f7a0ced9f9166576c7abe8cbf4d3ff1"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},
