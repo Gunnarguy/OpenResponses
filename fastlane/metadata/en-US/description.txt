@@ -4,7 +4,7 @@ It started as the successor to OpenAssistant, my app for OpenAI's older Assistan
 
 PICK A MODEL AND SEE WHAT IT DOES
 
-• GPT-6.1 Sol, GPT-6 Sol, Astra and Luna, the GPT-5.6 family, and older models your key can still use. When OpenAI releases a new one, it shows up in the menu on its own, with its settings read from OpenAI's docs.
+• GPT-6.2 Sol and Astra, GPT-6.1 Sol and Terra, GPT-6 Sol, Astra and Luna, the GPT-5.6 family, and older models your key can still use. When OpenAI releases a new one, it shows up in the menu on its own, with its settings read from OpenAI's docs.
 • Reasoning from None to Max where the model takes it, Pro mode, verbosity, context compaction and the rest of the request settings, each on a page Settings search can find.
 • Replies stream in as they're written, with the reasoning summaries the API sends, token use, and the full request and response a tap away.
 • Save setups as presets, attach photos and documents, export conversations, and search your chats by what they're about, not just the exact words.
@@ -22,10 +22,14 @@ API WORKBENCH
 
 For when you'd rather write the request yourself. Edit the raw JSON, send it over HTTP, streaming or WebSocket, watch every event come back, and export the whole response. It also counts tokens, compacts context, and manages conversations, files, vector stores, containers and batch jobs. Anything that deletes asks first.
 
+OUTSIDE THE CHAT
+
+Ask OpenResponses a question from Siri, Spotlight, the Action button or the Shortcuts app and get the answer back as text, or share text, links, images and files into a new chat from any app's share sheet. Those, and a 12-hour prompt cache, come with OpenResponses Pro, a one-time purchase. Everything else in the app is free.
+
 A few things worth knowing before you download it:
 
 • There's no OpenResponses account. You need your own OpenAI API key, and what you use is billed to your OpenAI account.
-• Your key stays in the iOS Keychain and only ever goes to OpenAI.
+• Your key stays in this device's Keychain and only ever goes to OpenAI.
 • Explore Demo lets you look around without a key, and it sends nothing.
 • Before your first live request, the app shows what gets sent to OpenAI and waits for you to say yes.
 • It runs on iPhone and iPad with iOS 17 or later.

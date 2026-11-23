@@ -1,50 +1,44 @@
-3.0 puts every setting where you can find it, connects to a lot more apps, and shows you what the model is sending to a tool while it's still writing it.
+3.1 adds GPT-6.2, brings OpenResponses outside the chat with Shortcuts, Siri and the share sheet, and adds OpenResponses Pro, a one-time purchase for those.
 
 
-SETTINGS
+GPT-6.2
 
-• Settings is one list of pages instead of five tabs, and each row shows what it's set to now, like the model and its reasoning effort or how many tools are on.
+• GPT-6.2 Sol is the default for new presets, and GPT-6.2 Astra and GPT-6.1 Terra are in every model menu.  Your existing presets keep the model they have.
 
-• Search finds about 50 options by name or by what they do, so typing "pyodide" takes you straight to Local Python.
+• On GPT-6.2 your system prompt goes in as the first message of the chat instead of as top-level instructions, so the API can cache it and you aren't billed full price for it on every turn.
 
-• Local Python, the hosted shell, multi-agent, tool search, moderation, voice and the API Workbench each have their own page.  Before, they were all at the bottom of the Model tab under one heading.
+• Request Options only offers the service tiers the model actually has.  A saved tier the model doesn't have gets left out of the request instead of failing.
 
-• Text Size is new.  Leave it on Same as iPhone, or pick a size just for this app.
-
-• At the biggest text sizes, Settings, tool steps, the welcome screens and the message field keep whole words now instead of splitting them up or cutting them off.
+• Presets on models OpenAI is retiring move to the replacements on OpenAI's deprecations page, like gpt-5 and o3 to GPT-6.1 Sol.
 
 
-CONNECTORS
+SHORTCUTS, SIRI AND THE SHARE SHEET
 
-• Connected Apps is now Connectors.  It opens on the popular services, grouped by what they do, with the remote servers from the public MCP Registry listed under them, and search covers both as you type.
+• "Ask OpenResponses" sends a question with one of your presets and an optional image, PDF or text file, and gives you the answer as text without opening the app.  It works from Siri, Spotlight, the Action button and the Shortcuts app.
 
-• Services that have to approve an app before you can sign in used to have no button at all.  Now you can try signing in, and if that's refused, connect with a key or token from that service's settings.
+• "New Chat in OpenResponses" opens a new chat with your text and files already in it, unsent.
 
-• GitHub's official server is in the list.
-
-• Notion is a connector like the rest.  If you added a Notion integration token in an earlier version, it shows up there as its own connection.
+• OpenResponses is in the share sheet for text, links, up to 10 images and up to 10 files.  Add a question, tap Save, and the next time you open the app it's all in a new chat.  Nothing gets sent from the share sheet.
 
 
-TOOL STEPS
+OPENRESPONSES PRO
 
-• When the model calls one of the app's own tools, like the browser, Calendar, Reminders, Contacts, Local Python or your Custom tool, its step fills in the arguments as the model writes them.  Before, the step stayed empty until the whole call had come in.  Tap the step to see them.
+• Shortcuts and Siri, the share sheet and the new 12-hour prompt cache are part of OpenResponses Pro, a one-time $4.99 purchase with no subscription.  Everything that was already in the app stays free, and so do the new models and fixes, and you keep using your own OpenAI key.
 
-
-DECISIONS
-
-• There's a new Decisions screen in Settings, under Developer, for OpenAI's Decisions API.  You write some text or add a photo, ask it yes or no, pick-one or score questions, and it gives you back how likely each answer is instead of a written reply.  It runs on GPT-6 Luna, and you only pay for the input, at $0.10 per million tokens.
-
-• The API Workbench has a Create decision endpoint too, so you can send the raw request yourself.
-
-
-CALENDAR AND REMINDERS
-
-• Events and reminders get added when the model leaves the time zone off a time, which it does a lot.  In 2.9 those failed, twelve out of twelve on one photographed schedule.  Now a time with no zone is read in your phone's time zone.
+• It's in Settings, with Buy and Restore Purchases.
 
 
 ALSO
 
-• Rating is Apple's own sheet, which can show up once per version after an answer finishes, and About has a Rate OpenResponses link that opens the App Store's review page.
+• Request Options has a 12-hour prompt cache lifetime next to the usual 30 minutes.
+
+• Web search's blocked domains go to the API as a real filter now instead of a sentence in the instructions.
+
+• When OpenAI's misalignment monitoring stops a request, the chat tells you so and doesn't keep retrying it.
+
+• Connectors stops listing a service you've already signed in to, and if you still have an old Notion integration token next to a signed-in Notion account, it offers to remove the token.
+
+• Web search sources that embed other content on their page load now instead of showing "Navigation blocked".
 
 
 Still no account, still your own key, and your chat history stays on your phone.

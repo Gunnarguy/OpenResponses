@@ -1,1 +1,1 @@
-New in 3.0: Settings you can search, Connectors for any remote MCP server, a Decisions screen, and tool steps that fill in as the model writes them.
+New in 3.1: GPT-6.2, Shortcuts and Siri, the share sheet, and OpenResponses Pro, a one-time purchase for them.
