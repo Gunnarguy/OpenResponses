@@ -37,9 +37,11 @@ Price: USD 4.99 (Gunnar, 2026-11-21), chosen after the session data below. Chang
 
 `Config/OpenResponsesPro.storekit` holds the product at USD 4.99. `ProAccessTests` (end of `OpenResponsesTests/OpenAIServiceTests.swift`) loads it with `SKTestSession(contentsOf:)`, buys, checks the unlock and the shared flag, refunds and checks the lock. To try the sheet by hand in Xcode: Product > Scheme > Edit Scheme > Run > Options > StoreKit Configuration > `OpenResponsesPro.storekit`. The shared scheme does not set it, so a build from the command line asks the real App Store.
 
-## App Store Connect: drafted, not created
+## App Store Connect: created 2026-11-22
 
-Creating the product is outward-facing, so it waits for Gunnar's yes. Fields to enter (Monetization > In-App Purchases > +):
+Created through the App Store Connect API at Gunnar's word (2026-11-22: "Yes, create it"): In-App Purchase id `6838132013`, en-US localization, a USD 4.99 manual price in the USA base territory (proceeds USD 4.24; Apple equalizes the other territories), and availability in all 175 territories with new territories on. Read back: state `MISSING_METADATA`, which the review screenshot below clears. API reference read on developer.apple.com 2026-11-22; the `${local-id}` form for the inline price comes from OpenIntelligence's `scripts/schedule_sale.py`.
+
+Still needed before 3.1 is submitted: the App Review screenshot (the Pro sheet), and attaching the product to the 3.1 version. The fields as entered:
 
 | Field | Value |
 | --- | --- |
