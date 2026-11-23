@@ -1481,6 +1481,13 @@ final class ProAccessTests: XCTestCase {
                 }
             }
             let latest = await Transaction.latest(for: ProAccess.productID)
+            // No record at all, not even in StoreKit's own Transaction.latest, means the test host can't see the
+            // StoreKit test environment, not that ProStore misread it. That happens when the app is built with
+            // CODE_SIGNING_ALLOWED=NO (reproduced 2026-11-23: fails unsigned every time, passes signed, CI run
+            // 45094038015). CI signs ad hoc for this reason.
+            if seen.isEmpty, latest == nil {
+                throw XCTSkip("StoreKit testing sees no transactions in this test host; build it signed (ad hoc is enough)")
+            }
             XCTFail("No Pro entitlement after buying \(transaction.productID): currentEntitlements=\(seen), latest=\(String(describing: latest))")
         }
         XCTAssertTrue(store.isPro)
@@ -1489,8 +1496,9 @@ final class ProAccessTests: XCTestCase {
         XCTAssertTrue(checked)
 
         try session.refundTransaction(identifier: UInt(transaction.id))
-        // As with the purchase, the refund reaches currentEntitlements a moment later.
-        for _ in 0..<100 where store.isPro {
+        // As with the purchase, the refund reaches currentEntitlements a moment later. Up to 30 s: inside the full
+        // suite an ad hoc signed run once still showed the refunded purchase after 10 s (2026-11-23).
+        for _ in 0..<300 where store.isPro {
             await store.refresh()
             if store.isPro { try await Task.sleep(nanoseconds: 100_000_000) }
         }

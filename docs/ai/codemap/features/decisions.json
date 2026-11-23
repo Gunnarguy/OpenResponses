@@ -4,8 +4,8 @@
   "name": "Decisions",
   "aliases": ["Decisions", "Decisions API", "Ask", "Add Question", "Yes or no", "Choice", "Score", "Create decision", "Copy Request JSON", "Levels, lowest first"],
   "purpose": "A playground for POST /v1/decisions on gpt-6-luna: shared text and image input, predicate, choice and score questions, and answers shown as probability bars with token usage and cost.",
-  "revision": "7a8e389",
-  "verified_on": "2026-11-22",
+  "revision": "4a33242",
+  "verified_on": "2026-11-23",
   "entry_points": ["SettingsHomeView.decisionsLink", "APIWorkbenchView.Endpoint.decision"],
   "files": [
     {"path": "OpenResponses/Core/Models/DecisionsModels.swift", "role": "primary", "blob": "6e56b717c6499772f4d163cd6894f54d7789eebe"},
@@ -14,7 +14,7 @@
     {"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "role": "shared", "blob": "804bc6de063b49bbcb6921aa81498bb753611e64"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
     {"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "role": "shared", "blob": "977035ea83a3140ae2f6e4ebbdff8f3a04dd35ed"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "96a906bb0c568391ee0d320bc0a03260a5a0086f"},
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "9381828a1f7a0ced9f9166576c7abe8cbf4d3ff1"},
     {"path": "scripts/decisions_probe.sh", "role": "shared", "blob": "696908f4c4451022c9e5a0d34a3a7a6a95163c7b"}
   ],
   "nodes": [
