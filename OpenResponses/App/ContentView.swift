@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
     @ObservedObject private var reviewPrompt = ReviewPromptService.shared
+    @ObservedObject private var proStore = ProStore.shared
     @State private var showingSettings = false
     @State private var showingConversationList = false
     @State private var showingShareSheet = false
@@ -66,11 +67,14 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, reviewPrompt.wantsPrompt { askForRatingWhenInFront() }
             // Text and files from the share sheet or the New Chat shortcut open as a new chat (3.1).
-            if phase == .active { viewModel.takeSharedInbox() }
+            if phase == .active { viewModel.takeSharedInbox(); showPendingPaywall() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sharedInboxDidChange)) { _ in
             viewModel.takeSharedInbox()
+            showPendingPaywall()
         }
+        // OpenResponses Pro (3.1): StoreKit listens for transactions from launch.
+        .task { proStore.start() }
         // The model menus list the account's newer models too, with settings from OpenAI's docs pages; one GET /models
         // per launch keeps them current.
         .task { await viewModel.refreshAccountModels() }
@@ -101,6 +105,15 @@ struct ContentView: View {
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(items: [viewModel.exportConversationText()])
         }
+        // Settings presents its own paywall while it is open; this one covers the chat screen and shortcuts.
+        .sheet(item: Binding(get: { showingSettings ? nil : proStore.paywall }, set: { proStore.paywall = $0 })) { feature in
+            ProPaywallView(store: proStore, feature: feature)
+        }
+    }
+
+    /// A locked shortcut (New Chat) asks for the paywall through the App Group; show it once the app is in front.
+    private func showPendingPaywall() {
+        if let feature = ProAccess.takePendingPaywall(), !proStore.isPro { proStore.showPaywall(feature) }
     }
 
     /// Hands the rating request to StoreKit two seconds after the answer landed, and only while the app is in front

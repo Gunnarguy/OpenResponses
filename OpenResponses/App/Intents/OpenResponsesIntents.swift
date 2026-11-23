@@ -120,6 +120,9 @@ struct AskOpenResponsesIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+        // Shortcuts are part of OpenResponses Pro (3.1). The message says how to unlock it, so the shortcut never
+        // fails without a reason.
+        guard await ProStore.checkUnlocked() else { throw ShortcutError(ProAccess.Feature.shortcuts.lockedMessage) }
         let answer = try await ShortcutAsk.run(question: question, presetID: preset?.id, attachment: attachment)
         return .result(value: answer, dialog: "\(answer)")
     }
@@ -242,6 +245,12 @@ struct NewChatIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // Without OpenResponses Pro (3.1) the app still opens, on the Pro sheet, instead of on the new chat.
+        guard await ProStore.checkUnlocked() else {
+            ProAccess.requestPaywall(.shortcuts)
+            NotificationCenter.default.post(name: .sharedInboxDidChange, object: nil)
+            return .result()
+        }
         let attached: [(SharedInbox.File, Data)] = (files ?? []).map { file in
             let isImage = file.type?.conforms(to: .image) == true
                 || UTType(filenameExtension: (file.filename as NSString).pathExtension)?.conforms(to: .image) == true

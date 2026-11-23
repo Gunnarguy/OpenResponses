@@ -4,8 +4,8 @@
   "name": "Notion integration",
   "aliases": ["Notion Integration", "Connect to Notion", "Existing Notion integration", "direct API tools", "token", "Notion workspaces", "NotionService", "Notion (integration token)"],
   "purpose": "Provides direct Notion API tools and token connection management alongside hosted MCP Notion.",
-  "revision": "eb93a5f",
-  "verified_on": "2026-11-20",
+  "revision": "457a9fe",
+  "verified_on": "2026-11-22",
   "entry_points": ["NotionConnectionView", "ChatViewModel.notionFunctions"],
   "files": [
     {"path": "OpenResponses/Core/Services/NotionService.swift", "role": "primary", "blob": "f55937632aad718ea556e847810d1cc0e8412e77"},
@@ -15,7 +15,7 @@
     {"path": "OpenResponses/Core/ToolProviders/NotionModels.swift", "role": "primary", "blob": "88f1126d70b6a69a2fe5d0a013ef70d0f032a616"},
     {"path": "OpenResponses/Features/Settings/Views/NotionConnectionView.swift", "role": "primary", "blob": "424796ae088da31ca25aaac3b60175dd5b08d656"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e313bd714d9524556af49d4ae44230a38a14f70"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "35db17c7657cf4b44367c55a14bf3b68cad9bfc5"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "3011d3eabe63d5f3c25de997f77349a99c37ec0a"},
     {"path": "OpenResponses/Core/Models/Prompt.swift", "role": "shared", "blob": "da617af0c36bf5bac505604cedea1fee3ede2bd9"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"},
@@ -37,7 +37,7 @@
     {"id": "notion:https://api.notion.com/v1/search", "kind": "integration", "path": "OpenResponses/Core/Services/NotionService.swift", "line": 59, "match": "let data = try await performRequest(endpoint: \"/search\", method: \"POST\", body: body)", "status": "VERIFIED"},
     {"id": "test:AppCompletionTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 6, "match": "final class AppCompletionTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "test:FunctionOutputSummarizerTests", "kind": "test", "path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "line": 4, "match": "final class FunctionOutputSummarizerTests: XCTestCase {", "status": "VERIFIED"},
-    {"id": "MCPConnectionsView.notionTokenRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 162, "match": "private var notionTokenRow: some View {", "status": "VERIFIED", "note": "the legacy Notion integration token, shown as a connection"}
+    {"id": "MCPConnectionsView.notionTokenRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 178, "match": "private var notionTokenRow: some View {", "status": "VERIFIED", "note": "the legacy Notion integration token, shown as a connection"}
   ],
   "edges": [
     {"from": "NotionConnectionView", "type": "calls", "to": "NotionConnectionViewModel", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/NotionConnectionView.swift", "line": 7, "match": "@StateObject private var viewModel = NotionConnectionViewModel()"}]},
@@ -55,10 +55,10 @@
     {"from": "OpenAIService.buildTools", "type": "reads", "to": "keychain:notionApiKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 1491, "match": "let hasNotionToken = KeychainService.shared.load(forKey: \"notionApiKey\")?.isEmpty == false"}]},
     {"from": "NotionService", "type": "tested_by", "to": "test:AppCompletionTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/AppCompletionTests.swift", "line": 261, "match": "let result = NotionService.shared.compactSearchResult([\"results\": items, \"has_more\": true, \"next_cursor\": \"next\"], maxResults: 12)"}]},
     {"from": "ChatViewModel.notionFunctions", "type": "tested_by", "to": "test:FunctionOutputSummarizerTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/FunctionOutputSummarizerTests.swift", "line": 7, "match": "let summary = FunctionOutputSummarizer.failureSummary(functionName: \"getNotionDatabase\", rawOutput: raw)"}], "note": "the summarizer test uses a Notion function name; it does not exercise the Notion tools"},
-    {"from": "MCPConnectionsView.notionTokenRow", "type": "renders", "to": "NotionConnectionView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 116, "match": ".sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { NotionConnectionView() }"}]}
+    {"from": "MCPConnectionsView.notionTokenRow", "type": "renders", "to": "NotionConnectionView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 124, "match": ".sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { NotionConnectionView() }"}]}
   ],
   "docs": [
-    {"path": "docs/mcp-connections.md", "section": "Tokens", "quote": "a direct Notion integration key saved by an earlier version shows on the Connectors page as **Notion (integration token)**", "claim": "The legacy Notion token is shown and managed as one row on the Connectors page.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 168, "match": "Text(\"Notion (integration token)\").font(.headline).foregroundStyle(.primary)"}, "note": "Tools page Notion section removed in 3.1."}
+    {"path": "docs/mcp-connections.md", "section": "Tokens", "quote": "a direct Notion integration key saved by an earlier version shows on the Connectors page as **Notion (integration token)**", "claim": "The legacy Notion token is shown and managed as one row on the Connectors page.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 184, "match": "Text(\"Notion (integration token)\").font(.headline).foregroundStyle(.primary)"}, "note": "Tools page Notion section removed in 3.1."}
   ],
   "unknowns": [],
   "related": ["mcp-connections", "mcp-tools"],

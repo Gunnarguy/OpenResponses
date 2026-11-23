@@ -4,8 +4,8 @@
   "name": "Voice mode",
   "aliases": ["realtime", "live", "gpt-live-1", "InlineVoiceView", "VoiceModeView", "VoiceModeSettingsSheet", "Start Voice Mode", "Voice Mode Settings", "Voice Barge-In", "Separate voice session"],
   "purpose": "Realtime bi-directional audio sessions using GPT-Live or GPT-Realtime over WebSockets.",
-  "revision": "eb93a5f",
-  "verified_on": "2026-11-20",
+  "revision": "457a9fe",
+  "verified_on": "2026-11-22",
   "entry_points": ["InlineVoiceView", "ChatInputView", "VoiceModeSettingsSheet"],
   "files": [
     {"path": "OpenResponses/Core/Services/RealtimeService.swift", "role": "primary", "blob": "a9bbc7666b125ccbc5cde87956cc5fa53a06ef0d"},
@@ -19,7 +19,7 @@
     {"path": "OpenResponses/Features/Settings/Views/ModernResponseSettings.swift", "role": "shared", "blob": "f1d0634442c902862c6d2b863703f76ad69e6f5c"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "016a41bd7a8d1848682895a2dd71885445880f38"}
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "075df5831456e6202b5f491ca2347a2a5e404a55"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},
@@ -27,7 +27,7 @@
     {"id": "InlineVoiceView", "kind": "view", "path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 3, "match": "struct InlineVoiceView: View {", "status": "VERIFIED"},
     {"id": "VoiceModeView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/VoiceModeView.swift", "line": 3, "match": "struct VoiceModeView: View {", "status": "VERIFIED"},
     {"id": "VoiceModeSettingsSheet", "kind": "view", "path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "line": 3, "match": "struct VoiceModeSettingsSheet: View {", "status": "VERIFIED"},
-    {"id": "SettingsHomeView.voiceRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 55, "match": ".sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }", "status": "VERIFIED"},
+    {"id": "SettingsHomeView.voiceRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 56, "match": ".sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }", "status": "VERIFIED"},
     {"id": "RealtimeService", "kind": "service", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 18, "match": "final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableObject {", "status": "VERIFIED"},
     {"id": "RealtimeService.connect", "kind": "function", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 121, "match": "    func connect(model: String = \"gpt-realtime-2.1\", voice: String = \"alloy\", instructions: String? = nil, modalities: String = \"audio,text\") {", "status": "VERIFIED"},
     {"id": "RealtimePCMEncoder", "kind": "util", "path": "OpenResponses/Core/Services/RealtimeAudioPipeline.swift", "line": 5, "match": "final class RealtimePCMEncoder {", "status": "VERIFIED"},
@@ -44,7 +44,7 @@
     {"id": "openai:realtime", "kind": "integration", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 127, "match": "        guard var url = URLComponents(string: live ? \"wss://api.openai.com/v1/live/sessions\" : \"wss://api.openai.com/v1/realtime\") else { return }", "status": "VERIFIED"},
     {"id": "openai:live_sessions", "kind": "integration", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 127, "match": "        guard var url = URLComponents(string: live ? \"wss://api.openai.com/v1/live/sessions\" : \"wss://api.openai.com/v1/realtime\") else { return }", "status": "VERIFIED"},
     {"id": "test:RealtimeAudioPipelineTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 7, "match": "final class RealtimeAudioPipelineTests: XCTestCase {", "status": "VERIFIED"},
-    {"id": "test:OpenAIServiceRealtimeTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 916, "match": "    func testLiveSessionsStartWithSessionStartAndMapOntoVoiceEvents() {", "status": "VERIFIED"},
+    {"id": "test:OpenAIServiceRealtimeTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 918, "match": "    func testLiveSessionsStartWithSessionStartAndMapOntoVoiceEvents() {", "status": "VERIFIED"},
     {"id": "LiveInterruptionGate", "kind": "util", "path": "OpenResponses/Core/Services/RealtimeAudioPipeline.swift", "line": 124, "match": "struct LiveInterruptionGate {", "status": "VERIFIED", "note": "GPT-Live sends no speech-started event. With barge-in on and output on headphones or Bluetooth, 0.18 s of caller speech during assistant playback pauses the player; if Live sends at least 0.3 s of audio in the next 0.6 s playback resumes, otherwise the queued audio is discarded. Thresholds are unmeasured on a device (2.8)."},
     {"id": "RealtimeService.applyInterruption", "kind": "function", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 462, "match": "private func applyInterruption(_ action: LiveInterruptionGate.Action) {", "status": "VERIFIED"},
     {"id": "RealtimeService.isPrivateOutput", "kind": "function", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 95, "match": "nonisolated static func isPrivateOutput(_ ports: [AVAudioSession.Port]) -> Bool {", "status": "VERIFIED", "note": "Headphones, Bluetooth A2DP, HFP or LE only; the built-in speaker would feed the assistant's voice back into the microphone."}
@@ -72,13 +72,13 @@
     {"from": "VoiceModeSettingsSheet", "type": "reads", "to": "defaults:realtime_barge_in", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "line": 10, "match": "    @AppStorage(\"realtime_barge_in\") private var bargeIn: Bool = false"}]},
     {"from": "VoiceModeSettingsSheet", "type": "writes", "to": "defaults:realtime_barge_in", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "line": 61, "match": "                    Toggle(\"Voice Barge-In\", isOn: $bargeIn)"}]},
     {"from": "VoiceModeSettingsSheet", "type": "calls", "to": "RealtimeService", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "line": 62, "match": "                        .onChange(of: bargeIn) { _, enabled in RealtimeService.shared.setBargeInEnabled(enabled) }"}]},
-    {"from": "SettingsHomeView.voiceRow", "type": "renders", "to": "VoiceModeSettingsSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 55, "match": ".sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }"}], "note": "The Model tab's Form presents it; the Voice row in ModernResponseSettings sets the binding. Until 2026-09-28 the sheet hung off a Section inside the Form and closed within seconds of opening (UI test testVoiceSettingsStayOpenFromTheModelTab)."},
+    {"from": "SettingsHomeView.voiceRow", "type": "renders", "to": "VoiceModeSettingsSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 56, "match": ".sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }"}], "note": "The Model tab's Form presents it; the Voice row in ModernResponseSettings sets the binding. Until 2026-09-28 the sheet hung off a Section inside the Form and closed within seconds of opening (UI test testVoiceSettingsStayOpenFromTheModelTab)."},
     {"from": "VoiceModeView", "type": "renders", "to": "VoiceModeSettingsSheet", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeView.swift", "line": 251, "match": "            VoiceModeSettingsSheet()"}]},
     {"from": "VoiceModeView", "type": "calls", "to": "RealtimeService.connect", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeView.swift", "line": 239, "match": "            service.connect("}]},
     {"from": "ChatViewModel.addRealtimeTranscript", "type": "calls", "to": "feature:conversations", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 6735, "match": "            self.messages = updated"}], "note": "updates messages, which the conversation save path persists"},
     {"from": "RealtimePCMEncoder", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 10, "match": "        let encoder = try XCTUnwrap(RealtimePCMEncoder(inputFormat: format))"}]},
     {"from": "RealtimePlaybackState", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 31, "match": "        var state = RealtimePlaybackState()"}]},
-    {"from": "RealtimeService", "type": "tested_by", "to": "test:OpenAIServiceRealtimeTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 917, "match": "        XCTAssertTrue(RealtimeService.isLiveModel(\"gpt-live-1\"))"}]},
+    {"from": "RealtimeService", "type": "tested_by", "to": "test:OpenAIServiceRealtimeTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 919, "match": "        XCTAssertTrue(RealtimeService.isLiveModel(\"gpt-live-1\"))"}]},
     {"from": "RealtimeService", "type": "calls", "to": "LiveInterruptionGate", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 382, "match": "applyInterruption(interruptionGate.microphone(level: level, at: now, assistantAudible: !playback.buffers.isEmpty))"}]},
     {"from": "RealtimeService", "type": "reads", "to": "defaults:realtime_barge_in", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 381, "match": "if isLive, currentBargeIn, outputIsPrivate, !isMicrophoneMuted {"}], "note": "The Live interruption gate runs only with barge-in on."},
     {"from": "RealtimeService.applyInterruption", "type": "calls", "to": "RealtimePlaybackState", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 472, "match": "playback.delay(by: now - holdStartedAt)"}]},
@@ -94,7 +94,7 @@
     "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "RealtimeServiceDelegate", "kind": "model", "path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 5, "match": "protocol RealtimeServiceDelegate: AnyObject {", "status": "VERIFIED"},
-      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 11, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
+      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 13, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
       {"from": "RealtimeService", "type": "depends_on", "to": "RealtimePlaybackState", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/RealtimeService.swift", "line": 30, "match": "private var playback = RealtimePlaybackState()"}]},
@@ -106,7 +106,7 @@
       {"from": "VoiceModeSettingsSheet", "type": "depends_on", "to": "RealtimeService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/VoiceModeSettingsSheet.swift", "line": 12, "match": "let voices = RealtimeService.supportedVoices"}]},
       {"from": "InlineVoiceView", "type": "depends_on", "to": "RealtimeService", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 5, "match": "@StateObject private var service = RealtimeService.shared"}]},
       {"from": "InlineVoiceView", "type": "depends_on", "to": "VoiceModeDelegateWrapper", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/InlineVoiceView.swift", "line": 11, "match": "@State private var delegateWrapper = VoiceModeDelegateWrapper()"}]},
-      {"from": "RealtimeService", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 917, "match": "XCTAssertTrue(RealtimeService.isLiveModel(\"gpt-live-1\"))"}]},
+      {"from": "RealtimeService", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 919, "match": "XCTAssertTrue(RealtimeService.isLiveModel(\"gpt-live-1\"))"}]},
       {"from": "LiveInterruptionGate", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 95, "match": "var gate = LiveInterruptionGate()"}]},
       {"from": "RealtimePCMEncoder", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 10, "match": "let encoder = try XCTUnwrap(RealtimePCMEncoder(inputFormat: format))"}]},
       {"from": "RealtimePlaybackState", "type": "tested_by", "to": "test:RealtimeAudioPipelineTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 31, "match": "var state = RealtimePlaybackState()"}]},

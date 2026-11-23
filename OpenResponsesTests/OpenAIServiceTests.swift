@@ -7,6 +7,8 @@
 import XCTest
 import UIKit
 import SwiftUI
+import StoreKit
+import StoreKitTest
 
 final class OpenAIServiceTests: XCTestCase {
     private var service: OpenAIService!
@@ -1301,9 +1303,17 @@ final class OpenAIAPIGapTests: XCTestCase {
     func testPromptCacheLifetimeReachesTheRequest() {
         var prompt = prompt(model: "gpt-6.2-sol")
         prompt.promptCacheOptions = PromptCacheOptions(mode: "implicit", ttl: "12h")
+        // The 12-hour lifetime is part of OpenResponses Pro (3.1); without Pro it is left out of the request.
+        let before = ProAccess.isUnlocked
+        defer { ProAccess.record(unlocked: before) }
+        ProAccess.record(unlocked: true)
         let options = request(prompt)["prompt_cache_options"] as? [String: Any]
         XCTAssertEqual(options?["ttl"] as? String, "12h")
         XCTAssertEqual(options?["mode"] as? String, "implicit")
+        ProAccess.record(unlocked: false)
+        let locked = request(prompt)["prompt_cache_options"] as? [String: Any]
+        XCTAssertNil(locked?["ttl"], "without Pro the 12-hour lifetime is not sent")
+        XCTAssertEqual(locked?["mode"] as? String, "implicit")
     }
 
     func testBlockedDomainsAreAWebSearchFilterNotInstructions() throws {
@@ -1385,5 +1395,105 @@ final class OpenAIAPIGapTests: XCTestCase {
         let model = ChatViewModel(storageService: ConversationStorageService(storageURL: directory), startBackgroundWork: false)
         model.handleError(OpenAIServiceError.requestFailed(403, #"{"error":{"code":"misalignment_policy_violation"}}"#))
         XCTAssertEqual(model.messages.last?.text, OpenAIServiceError.misalignmentMessage)
+    }
+}
+
+/// OpenResponses Pro (3.1): the entitlement rules, the shared state the share extension reads, the locked 12-hour
+/// cache, and a purchase and a refund through StoreKit's test environment with `Config/OpenResponsesPro.storekit`.
+@MainActor
+final class ProAccessTests: XCTestCase {
+    private var suite: UserDefaults!
+    private let suiteName = "ProAccessTests"
+
+    override func setUp() {
+        super.setUp()
+        suite = UserDefaults(suiteName: suiteName)
+        suite.removePersistentDomain(forName: suiteName)
+    }
+
+    override func tearDown() {
+        suite.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    func testOnlyAnUnrevokedProTransactionUnlocks() {
+        XCTAssertFalse(ProAccess.isEntitled([]))
+        XCTAssertFalse(ProAccess.isEntitled([.init(productID: "Gunndamental.OpenResponses.other", revoked: false)]))
+        XCTAssertFalse(ProAccess.isEntitled([.init(productID: ProAccess.productID, revoked: true)]))
+        XCTAssertTrue(ProAccess.isEntitled([.init(productID: ProAccess.productID, revoked: false)]))
+    }
+
+    func testRecordedStateAndPendingPaywallRoundTrip() {
+        ProAccess.record(unlocked: true, in: suite)
+        XCTAssertTrue(suite.bool(forKey: ProAccess.unlockedKey))
+        XCTAssertNil(ProAccess.takePendingPaywall(from: suite))
+        ProAccess.requestPaywall(.shortcuts, in: suite)
+        XCTAssertEqual(ProAccess.takePendingPaywall(from: suite), .shortcuts)
+        XCTAssertNil(ProAccess.takePendingPaywall(from: suite), "A request is shown once")
+    }
+
+    func testTwelveHourCacheNeedsPro() {
+        XCTAssertNil(ProAccess.allowedCacheTTL("12h", unlocked: false), "Without Pro the request uses OpenAI's default")
+        XCTAssertEqual(ProAccess.allowedCacheTTL("12h", unlocked: true), "12h")
+        XCTAssertEqual(ProAccess.allowedCacheTTL("30m", unlocked: false), "30m")
+        XCTAssertNil(ProAccess.allowedCacheTTL(nil, unlocked: true))
+    }
+
+    func testLockedMessagesSayHowToUnlock() {
+        for feature in ProAccess.Feature.allCases {
+            XCTAssertTrue(feature.lockedMessage.contains("Settings > OpenResponses Pro"), feature.rawValue)
+            XCTAssertTrue(feature.lockedMessage.contains(feature.title), feature.rawValue)
+        }
+    }
+
+    func testPurchaseUnlocksAndRefundLocksAgain() async throws {
+        let config = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Config/OpenResponsesPro.storekit")
+        let session = try SKTestSession(contentsOf: config)
+        session.disableDialogs = true
+        session.clearTransactions()
+        let store = ProStore.shared
+        let before = ProAccess.isUnlocked
+        defer { session.clearTransactions(); ProAccess.record(unlocked: before) }
+
+        let products = try await Product.products(for: [ProAccess.productID])
+        let product = try XCTUnwrap(products.first)
+        XCTAssertEqual(product.type, .nonConsumable)
+        XCTAssertEqual(product.displayName, "OpenResponses Pro")
+
+        await store.refresh()
+        XCTAssertFalse(store.isPro)
+        XCTAssertFalse(ProAccess.isUnlocked, "The locked state is recorded for the share extension")
+
+        let transaction = try await session.buyProduct(identifier: ProAccess.productID)
+        // StoreKit can deliver the entitlement a moment after buyProduct returns.
+        for _ in 0..<20 where !store.isPro {
+            await store.refresh()
+            if !store.isPro { try await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        if !store.isPro {
+            var seen: [String] = []
+            for await result in Transaction.currentEntitlements {
+                switch result {
+                case .verified(let t): seen.append("verified \(t.productID) revoked=\(t.revocationDate != nil)")
+                case .unverified(let t, let error): seen.append("unverified \(t.productID): \(error)")
+                }
+            }
+            let latest = await Transaction.latest(for: ProAccess.productID)
+            XCTFail("No Pro entitlement after buying \(transaction.productID): currentEntitlements=\(seen), latest=\(String(describing: latest))")
+        }
+        XCTAssertTrue(store.isPro)
+        XCTAssertTrue(ProAccess.isUnlocked, "The unlocked state is recorded for the share extension")
+        let checked = await ProStore.checkUnlocked()
+        XCTAssertTrue(checked)
+
+        try session.refundTransaction(identifier: UInt(transaction.id))
+        // As with the purchase, the refund reaches currentEntitlements a moment later.
+        for _ in 0..<20 where store.isPro {
+            await store.refresh()
+            if store.isPro { try await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        XCTAssertFalse(store.isPro, "A refunded purchase leaves the current entitlements")
+        XCTAssertFalse(ProAccess.isUnlocked)
     }
 }

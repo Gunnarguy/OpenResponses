@@ -4,8 +4,8 @@
   "name": "Chat UI",
   "aliases": ["Chat", "Message", "Take Photo", "Photo Library", "Choose Files", "Start Voice Mode", "Stop streaming", "Copy", "Share", "Delete", "Report Issue", "Open in Safari", "Chat screen", "messages", "input bar", "status bar", "links", "images"],
   "purpose": "Chat screen composition, message streaming, attachment and camera pickers, input bar actions, playground status bar and link rendering.",
-  "revision": "eb93a5f",
-  "verified_on": "2026-11-20",
+  "revision": "457a9fe",
+  "verified_on": "2026-11-22",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "primary", "blob": "a576c8d8ef792a37d2c8eec8b303ef12caf0c7bf"},
@@ -17,13 +17,13 @@
     {"path": "OpenResponses/Features/Chat/Components/EnhancedImageView.swift", "role": "primary", "blob": "da1829c68f4804ce3cafe30cf20531a54ff43761"},
     {"path": "OpenResponses/Core/Utilities/URLDetector.swift", "role": "primary", "blob": "bcfa6371537ab295ce1af63aae53144a705f9ab2"},
     {"path": "OpenResponses/Core/Utilities/Optional+StringHelpers.swift", "role": "primary", "blob": "e74e580507e2d5d06f5ff9b2a221024d7cd7f0e5"},
-    {"path": "OpenResponses/Features/DebugTools/Views/WebContentView.swift", "role": "primary", "blob": "5cdb83a3e8341d0c336e86a4b42a1563b665e997"},
+    {"path": "OpenResponses/Features/DebugTools/Views/WebContentView.swift", "role": "primary", "blob": "6e43c5be4231578712795500a051539d29f2da36"},
     {"path": "OpenResponses/Features/DebugTools/Views/WebContentTestView.swift", "role": "primary", "blob": "c8b92494e19624827012136d884dd253467ba623"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e313bd714d9524556af49d4ae44230a38a14f70"},
     {"path": "OpenResponses/Core/Services/VoiceRecorderService.swift", "role": "shared", "blob": "c426b498cdb1fa6dd636d36597d6f0f3710cd84d"},
     {"path": "OpenResponsesTests/URLDetectorTests.swift", "role": "test", "blob": "c5535b222210dbd7a78212f506d360c6ac88ff7e"},
     {"path": "OpenResponsesTests/OptionalStringHelpersTests.swift", "role": "test", "blob": "d4886558d6800897ec393e05fb6bb5890a5ab53d"},
-    {"path": "OpenResponsesTests/WebContentNavigationPolicyTests.swift", "role": "test", "blob": "9778ae18c43901c4af02217035f92d662c3a5aa4"},
+    {"path": "OpenResponsesTests/WebContentNavigationPolicyTests.swift", "role": "test", "blob": "c6e608b22f6282ccc2d89154b36f2b9658527ce6"},
     {"path": "OpenResponsesTests/OpenResponsesTests.swift", "role": "test", "blob": "f653abeedd35fb66677ff11e74db7ad85e7b4a9c"}
   ],
   "nodes": [

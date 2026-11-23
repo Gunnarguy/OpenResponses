@@ -22,6 +22,7 @@ struct SettingsHomeView: View {
     @State private var showingAbout = false
     @State private var resetConfirm = false
     @State private var showingFiles = false
+    @ObservedObject private var proStore = ProStore.shared
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -55,6 +56,7 @@ struct SettingsHomeView: View {
         .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
         .sheet(isPresented: $showingAbout) { AboutView() }
         .sheet(isPresented: $showingFiles) { FileManagerView().environmentObject(viewModel) }
+        .sheet(item: $proStore.paywall) { feature in ProPaywallView(store: proStore, feature: feature) }
     }
 
     private func refreshKeyStatus() {
@@ -181,6 +183,19 @@ struct SettingsHomeView: View {
                 SettingsRow("About, Licenses & Rating", icon: "info.circle.fill", tint: .gray, value: nil)
             }
             .buttonStyle(.plain)
+        }
+
+        Section {
+            Button { proStore.message = nil; proStore.paywall = .shortcuts } label: {
+                SettingsRow("OpenResponses Pro", icon: proStore.isPro ? "checkmark.seal.fill" : "sparkles",
+                            tint: proStore.isPro ? .green : .purple, value: proStore.isPro ? "Unlocked" : "Shortcuts, Share")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.pro")
+        } footer: {
+            Text(proStore.isPro
+                 ? "Shortcuts and Siri, the share sheet and the 12-hour prompt cache are unlocked on this Apple Account."
+                 : "A one-time purchase for Shortcuts and Siri, the share sheet and the 12-hour prompt cache. Everything else stays free.")
         }
     }
 
@@ -1622,6 +1637,7 @@ Text("Location helps refine local search results (restaurants, events, etc.)")
 
 private struct AdvancedTab: View {
     @EnvironmentObject private var viewModel: ChatViewModel
+    @ObservedObject private var proStore = ProStore.shared
 
     private var modelCaps: ModelCompatibilityService.ModelCapabilities? {
         ModelCompatibilityService.shared.getCapabilities(for: viewModel.activePrompt.openAIModel)
@@ -1637,7 +1653,11 @@ private struct AdvancedTab: View {
                 }
                 Picker("Prompt cache lifetime", selection: cacheLifetime) {
                     Text("30 minutes").tag("30m")
-                    Text("12 hours").tag("12h")
+                    if proStore.isPro {
+                        Text("12 hours").tag("12h")
+                    } else {
+                        Label("12 hours (Pro)", systemImage: "lock.fill").tag("12h")
+                    }
                 }
                 .disabled(!supportsCacheOptions)
             } header: {
@@ -1710,8 +1730,13 @@ private struct AdvancedTab: View {
     /// Responses API only (prompt caching guide, read 2026-11-20). 30 minutes clears the saved options.
     private var cacheLifetime: Binding<String> {
         Binding(
-            get: { viewModel.activePrompt.promptCacheOptions?.ttl == "12h" ? "12h" : "30m" },
+            get: { ProAccess.allowedCacheTTL(viewModel.activePrompt.promptCacheOptions?.ttl, unlocked: proStore.isPro) == "12h" ? "12h" : "30m" },
             set: { ttl in
+                // The 12-hour lifetime is part of OpenResponses Pro (3.1): picking it without Pro shows the paywall.
+                if ttl == "12h", !proStore.isPro {
+                    proStore.showPaywall(.longCache)
+                    return
+                }
                 var options = viewModel.activePrompt.promptCacheOptions ?? PromptCacheOptions(mode: "implicit")
                 if ttl == "12h" {
                     options.ttl = "12h"

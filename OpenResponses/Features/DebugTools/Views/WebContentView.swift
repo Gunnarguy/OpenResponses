@@ -222,16 +222,20 @@ struct WebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            let policy = evaluatePolicy(for: url, navigationType: navigationAction.navigationType)
+            let policy = evaluatePolicy(for: url, navigationType: navigationAction.navigationType,
+                                        isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true)
             decisionHandler(policy)
         }
 
         // Testable core navigation policy decision logic
-        func evaluatePolicy(for url: URL, navigationType: WKNavigationType) -> WKNavigationActionPolicy {
+        /// `isMainFrame` is false for a page's own iframes. Those are still held to http and https, but a blocked one
+        /// (an `about:srcdoc` or `data:` frame, which most news pages have) is dropped quietly: setting the error there
+        /// replaced the whole source preview with "Navigation blocked" although the page itself loaded (seen 2026-11-22).
+        func evaluatePolicy(for url: URL, navigationType: WKNavigationType, isMainFrame: Bool = true) -> WKNavigationActionPolicy {
             // Enforce strict HTTP/HTTPS URL scheme policy on all navigations and redirections
             let scheme = url.scheme?.lowercased() ?? ""
             guard scheme == "http" || scheme == "https" || (scheme == "about" && url.absoluteString == "about:blank") else {
-                parent.error = "Navigation blocked: URL scheme '\(scheme)' is not allowed."
+                if isMainFrame { parent.error = "Navigation blocked: URL scheme '\(scheme)' is not allowed." }
                 return .cancel
             }
 

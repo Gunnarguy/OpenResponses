@@ -4,8 +4,8 @@
   "name": "MCP tool discovery and approval",
   "aliases": ["tool discovery", "tool call approval", "MCP approval", "discovery catalog", "Discover Tools", "Refresh Tools", "Browse Tools & Choose Access", "Approve", "Reject"],
   "purpose": "Discovers available MCP tools via MCPDiscoveryService probe stream and handles tool execution approvals during chat.",
-  "revision": "700cec7",
-  "verified_on": "2026-11-20",
+  "revision": "457a9fe",
+  "verified_on": "2026-11-22",
   "entry_points": ["MCPApprovalView", "ChatViewModel.respondToMCPApproval"],
   "files": [
     {"path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "role": "primary", "blob": "c01d14ba1238a3b97e5370376b6e7653aa75be11"},
@@ -16,7 +16,7 @@
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+MCP.swift", "role": "primary", "blob": "9320969b876556c6f511b5e646ca8f19f90679c3"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "1e313bd714d9524556af49d4ae44230a38a14f70"},
     {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "e842e8e1c1e41af1647f73d5c2163879751782c7"},
-    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "35db17c7657cf4b44367c55a14bf3b68cad9bfc5"},
+    {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "3011d3eabe63d5f3c25de997f77349a99c37ec0a"},
     {"path": "OpenResponses/Core/Services/KeychainService.swift", "role": "shared", "blob": "2df6d2b79cac74a1cdd6efccfa41ddc930d8cfd5"},
     {"path": "OpenResponsesTests/MCPApprovalUtilsTests.swift", "role": "test", "blob": "dd62e7cf79f77a250aa7c6bd02de55b493df1915"},
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"}
@@ -31,8 +31,8 @@
     {"id": "ChatViewModel+MCP", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel+MCP.swift", "line": 3, "match": "extension ChatViewModel {", "status": "VERIFIED"},
     {"id": "ChatViewModel.respondToMCPApproval", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3368, "match": "func respondToMCPApproval(approvalRequestId: String, approve: Bool, reason: String?, messageId: UUID) {", "status": "VERIFIED"},
     {"id": "ChatViewModel.buildMCPApprovalResponsePayload", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3454, "match": "func buildMCPApprovalResponsePayload(approvalRequestId: String, approve: Bool, reason: String?) -> [String: Any] {", "status": "VERIFIED"},
-    {"id": "OpenAIService.streamMCPApprovalResponse", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2851, "match": "func streamMCPApprovalResponse(", "status": "VERIFIED"},
-    {"id": "keychain:openAIKey", "kind": "persistence", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2860, "match": "guard let apiKey = KeychainService.shared.load(forKey: \"openAIKey\"), !apiKey.isEmpty else {", "status": "VERIFIED"},
+    {"id": "OpenAIService.streamMCPApprovalResponse", "kind": "function", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2852, "match": "func streamMCPApprovalResponse(", "status": "VERIFIED"},
+    {"id": "keychain:openAIKey", "kind": "persistence", "path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2861, "match": "guard let apiKey = KeychainService.shared.load(forKey: \"openAIKey\"), !apiKey.isEmpty else {", "status": "VERIFIED"},
     {"id": "openai:/responses", "kind": "integration", "path": "OpenResponses/Core/Services/MCPDiscoveryService.swift", "line": 280, "match": "var request = URLRequest(url: URL(string: \"https://api.openai.com/v1/responses\")!)", "status": "VERIFIED"},
     {"id": "MCPApprovalUtilsTests", "kind": "test", "path": "OpenResponsesTests/MCPApprovalUtilsTests.swift", "line": 4, "match": "final class MCPApprovalUtilsTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "StreamingEventDecodingTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 151, "match": "final class StreamingEventDecodingTests: XCTestCase {", "status": "VERIFIED"}
@@ -53,9 +53,9 @@
     {"from": "MessageBubbleView", "type": "calls", "to": "ChatViewModel.respondToMCPApproval", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 107, "match": "viewModel.respondToMCPApproval("}]},
     {"from": "ChatViewModel.respondToMCPApproval", "type": "calls", "to": "ChatViewModel.buildMCPApprovalResponsePayload", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3410, "match": "let approvalResponse = self.buildMCPApprovalResponsePayload("}]},
     {"from": "ChatViewModel.respondToMCPApproval", "type": "calls", "to": "OpenAIService.streamMCPApprovalResponse", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 3419, "match": "let stream = self.api.streamMCPApprovalResponse("}]},
-    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "reads", "to": "keychain:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2860, "match": "guard let apiKey = KeychainService.shared.load(forKey: \"openAIKey\"), !apiKey.isEmpty else {"}]},
-    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "feature:mcp-connections", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2865, "match": "try await MCPConnectionStore.shared.prepare(prompt: prompt)"}], "note": "Prepares active MCP connections before streaming approval response"},
-    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "openai:/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2884, "match": "var request = URLRequest(url: apiURL)"}]}
+    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "reads", "to": "keychain:openAIKey", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2861, "match": "guard let apiKey = KeychainService.shared.load(forKey: \"openAIKey\"), !apiKey.isEmpty else {"}]},
+    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "feature:mcp-connections", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2866, "match": "try await MCPConnectionStore.shared.prepare(prompt: prompt)"}], "note": "Prepares active MCP connections before streaming approval response"},
+    {"from": "OpenAIService.streamMCPApprovalResponse", "type": "calls", "to": "openai:/responses", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Services/OpenAIService.swift", "line": 2885, "match": "var request = URLRequest(url: apiURL)"}]}
   ],
   "docs": [
     {"path": "docs/mcp-discovery.md", "section": "Implementation", "quote": "Discovery runs from a connection's detail screen through `MCPDiscoveryService`; the remote setup sheet only signs in.", "claim": "Discovery runs from a connection's detail screen; the remote setup sheet only signs in.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Features/Settings/Views/MCPConnectionsView.swift", "line": 542, "match": "MCPDiscoveryService.shared.discover("}, "note": "Corrected in the document on 2026-09-28. MCPDiscoverySection.swift (MCPDiscoverySection, MCPToolCatalogView) is still not instantiated anywhere; UNMAPPED.md lists it."},

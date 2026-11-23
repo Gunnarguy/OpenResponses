@@ -54,6 +54,8 @@ final class ShareModel: ObservableObject {
     @Published var skipped: [String] = []
     @Published var saved = false
     @Published var errorMessage: String?
+    /// OpenResponses Pro (3.1) unlocks this sheet. The app records the purchase in the App Group; this process only reads it.
+    let isUnlocked = ProAccess.isUnlocked
 
     var finish: () -> Void = {}
     var cancel: () -> Void = {}
@@ -116,6 +118,7 @@ final class ShareModel: ObservableObject {
     }
 
     func save() {
+        guard isUnlocked else { errorMessage = ProAccess.Feature.shareSheet.lockedMessage; return }
         let note = question.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = ([note] + texts).filter { !$0.isEmpty }.joined(separator: "\n\n")
         do {
@@ -160,7 +163,15 @@ struct ShareView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if model.saved {
+                if !model.isUnlocked {
+                    Section {
+                        Label("OpenResponses Pro", systemImage: "lock.fill")
+                            .font(.headline)
+                        Text(ProAccess.Feature.shareSheet.lockedMessage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if model.saved {
                     Section {
                         Label("Saved for a new chat", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -203,7 +214,11 @@ struct ShareView: View {
             .navigationTitle("OpenResponses")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if model.saved {
+                if !model.isUnlocked {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { model.cancel() }
+                    }
+                } else if model.saved {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { model.finish() }
                     }

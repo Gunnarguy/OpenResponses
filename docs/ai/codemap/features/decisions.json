@@ -4,21 +4,21 @@
   "name": "Decisions",
   "aliases": ["Decisions", "Decisions API", "Ask", "Add Question", "Yes or no", "Choice", "Score", "Create decision", "Copy Request JSON", "Levels, lowest first"],
   "purpose": "A playground for POST /v1/decisions on gpt-6-luna: shared text and image input, predicate, choice and score questions, and answers shown as probability bars with token usage and cost.",
-  "revision": "eb93a5f",
-  "verified_on": "2026-11-20",
+  "revision": "457a9fe",
+  "verified_on": "2026-11-22",
   "entry_points": ["SettingsHomeView.decisionsLink", "APIWorkbenchView.Endpoint.decision"],
   "files": [
     {"path": "OpenResponses/Core/Models/DecisionsModels.swift", "role": "primary", "blob": "6e56b717c6499772f4d163cd6894f54d7789eebe"},
     {"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "role": "primary", "blob": "6081c8582c3a87a76114b80bb9870caa35848fc9"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "ac68016926136ba01df533c85aaec27cb32c4d98"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "045985d8fe32501a854221a89d7db3529bf1abc0"},
     {"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "role": "shared", "blob": "3459938fe7fcc79e160be0bc6fc7708da3be4815"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
     {"path": "OpenResponses/Core/Services/ResponsesAPIClient.swift", "role": "shared", "blob": "977035ea83a3140ae2f6e4ebbdff8f3a04dd35ed"},
-    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "016a41bd7a8d1848682895a2dd71885445880f38"},
+    {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "075df5831456e6202b5f491ca2347a2a5e404a55"},
     {"path": "scripts/decisions_probe.sh", "role": "shared", "blob": "696908f4c4451022c9e5a0d34a3a7a6a95163c7b"}
   ],
   "nodes": [
-    {"id": "SettingsHomeView.decisionsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 318, "match": "case .decisions: DecisionsView()", "status": "VERIFIED"},
+    {"id": "SettingsHomeView.decisionsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 333, "match": "case .decisions: DecisionsView()", "status": "VERIFIED"},
     {"id": "DecisionsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 7, "match": "struct DecisionsView: View {", "status": "VERIFIED"},
     {"id": "DecisionQuestionEditor", "kind": "view", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 354, "match": "struct DecisionQuestionEditor: View {", "status": "VERIFIED"},
     {"id": "DecisionsView.requestRun", "kind": "function", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 208, "match": "    private func requestRun() {", "status": "VERIFIED"},
@@ -32,10 +32,10 @@
     {"id": "APIWorkbenchView.Endpoint.decision", "kind": "model", "path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 49, "match": "        case decision = \"Create decision\"", "status": "VERIFIED"},
     {"id": "defaults:decisionsQuestions.v1", "kind": "persistence", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 10, "match": "    @AppStorage(\"decisionsQuestions.v1\") private var savedQuestions = Data()", "status": "VERIFIED"},
     {"id": "openai:/decisions", "kind": "integration", "path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 219, "match": "        return DecisionsResult(json: try await ResponsesAPIClient().json(path: \"/decisions\", body: request.body))", "status": "VERIFIED"},
-    {"id": "test:DecisionsTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1082, "match": "final class DecisionsTests: XCTestCase {", "status": "VERIFIED"}
+    {"id": "test:DecisionsTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1084, "match": "final class DecisionsTests: XCTestCase {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "SettingsHomeView.decisionsLink", "to": "DecisionsView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 318, "match": "case .decisions: DecisionsView()"}]},
+    {"from": "SettingsHomeView.decisionsLink", "to": "DecisionsView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 333, "match": "case .decisions: DecisionsView()"}]},
     {"from": "DecisionsView", "to": "DecisionQuestionEditor", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 105, "match": "                DecisionQuestionEditor(question: $request.questions[index])"}]},
     {"from": "DecisionsView.requestRun", "to": "DecisionsService", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 230, "match": "                let answer = try await DecisionsService().run(snapshot)"}]},
     {"from": "DecisionsService", "to": "openai:/decisions", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 219, "match": "        return DecisionsResult(json: try await ResponsesAPIClient().json(path: \"/decisions\", body: request.body))"}]},
@@ -43,8 +43,8 @@
     {"from": "DecisionsRequest", "to": "CurrentModelCatalog.decisionsModel", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 23, "match": "        return [\"model\": CurrentModelCatalog.decisionsModel, \"input\": inputValue,"}]},
     {"from": "DecisionsView", "to": "defaults:decisionsQuestions.v1", "type": "writes", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 131, "match": "            savedQuestions = (try? JSONEncoder().encode(questions)) ?? Data()"}]},
     {"from": "APIWorkbenchView.Endpoint.decision", "to": "DecisionsRequest", "type": "configures", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/APIWorkbenchView.swift", "line": 141, "match": "            case .decision: return DecisionsRequest.example.body"}]},
-    {"from": "DecisionsRequest", "to": "test:DecisionsTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1084, "match": "        let body = DecisionsRequest.example.body"}]},
-    {"from": "DecisionsResult", "to": "test:DecisionsTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1158, "match": "        let result = DecisionsResult(json: json)"}]}
+    {"from": "DecisionsRequest", "to": "test:DecisionsTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1086, "match": "        let body = DecisionsRequest.example.body"}]},
+    {"from": "DecisionsResult", "to": "test:DecisionsTests", "type": "tested_by", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1160, "match": "        let result = DecisionsResult(json: json)"}]}
   ],
   "docs": [],
   "unknowns": ["Not yet sent to the live API from the app: scripts/decisions_probe.sh is the live check, run by Gunnar with his own Keychain key."],
@@ -56,7 +56,7 @@
       {"id": "DecisionOption", "kind": "model", "path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 100, "match": "nonisolated struct DecisionOption: Codable, Equatable, Identifiable, Sendable {", "status": "VERIFIED"},
       {"id": "QuestionRow", "kind": "view", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 265, "match": "private struct QuestionRow: View {", "status": "VERIFIED"},
       {"id": "AnswerView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 283, "match": "struct AnswerView: View {", "status": "VERIFIED"},
-      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 11, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
+      {"id": "test:OpenAIServiceTests", "kind": "test", "path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 13, "match": "final class OpenAIServiceTests: XCTestCase {", "status": "VERIFIED"}
     ],
     "edges": [
       {"from": "DecisionsView", "type": "depends_on", "to": "DecisionsRequest", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 12, "match": "@State private var request = DecisionsRequest.example"}]},
@@ -72,12 +72,12 @@
       {"from": "DecisionQuestionEditor", "type": "depends_on", "to": "DecisionQuestionKind", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 361, "match": "ForEach(DecisionQuestionKind.allCases, id: \\.self) { Text($0.title).tag($0) }"}]},
       {"from": "DecisionQuestionEditor", "type": "depends_on", "to": "DecisionOption", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 384, "match": "question.options.append(DecisionOption(value: \"\"))"}]},
       {"from": "DecisionQuestionEditor", "type": "depends_on", "to": "DecisionsRequest", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 388, "match": ".disabled(question.options.count >= (question.kind == .choice ? DecisionsRequest.choiceRange : DecisionsRequest.levelRange).upperBound)"}]},
-      {"from": "AnswerView", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1221, "match": "AnswerView(answer: answer, question: questions.indices.contains(index) ? questions[index] : nil)"}]},
-      {"from": "DecisionOption", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1130, "match": "XCTAssertEqual(problem([DecisionQuestion(kind: .choice, instructions: \"?\", options: [DecisionOption(value: \"a\")])]),"}]},
-      {"from": "DecisionQuestion", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1102, "match": "questions: [DecisionQuestion(kind: .predicate, instructions: \"Is it damaged?\")])"}]},
-      {"from": "DecisionsRequest", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1084, "match": "let body = DecisionsRequest.example.body"}]},
-      {"from": "DecisionsResult", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1158, "match": "let result = DecisionsResult(json: json)"}]},
-      {"from": "DecisionsView", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1186, "match": "let url = try XCTUnwrap(DecisionsView.dataURL(for: image))"}]},
+      {"from": "AnswerView", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1223, "match": "AnswerView(answer: answer, question: questions.indices.contains(index) ? questions[index] : nil)"}]},
+      {"from": "DecisionOption", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1132, "match": "XCTAssertEqual(problem([DecisionQuestion(kind: .choice, instructions: \"?\", options: [DecisionOption(value: \"a\")])]),"}]},
+      {"from": "DecisionQuestion", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1104, "match": "questions: [DecisionQuestion(kind: .predicate, instructions: \"Is it damaged?\")])"}]},
+      {"from": "DecisionsRequest", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1086, "match": "let body = DecisionsRequest.example.body"}]},
+      {"from": "DecisionsResult", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1160, "match": "let result = DecisionsResult(json: json)"}]},
+      {"from": "DecisionsView", "type": "tested_by", "to": "test:OpenAIServiceTests", "status": "INFERRED", "evidence": [{"path": "OpenResponsesTests/OpenAIServiceTests.swift", "line": 1188, "match": "let url = try XCTUnwrap(DecisionsView.dataURL(for: image))"}]},
       {"from": "DecisionsRequest", "type": "depends_on", "to": "feature:models", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 23, "match": "return [\"model\": CurrentModelCatalog.decisionsModel, \"input\": inputValue,"}], "note": "via CurrentModelCatalog"},
       {"from": "DecisionsService", "type": "depends_on", "to": "feature:native-runner", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/DecisionsModels.swift", "line": 219, "match": "return DecisionsResult(json: try await ResponsesAPIClient().json(path: \"/decisions\", body: request.body))"}], "note": "via ResponsesAPIClient"},
       {"from": "DecisionsView", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/DecisionsView.swift", "line": 9, "match": "@AppStorage(AppFeatureFlags.aiDataSharingConsentVersionKey) private var consentVersion = 0"}], "note": "via AppFeatureFlags"},

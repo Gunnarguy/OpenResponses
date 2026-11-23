@@ -2155,7 +2155,8 @@ class OpenAIService: OpenAIServiceProtocol {
         // Prompt Cache Options
         if compatibilityService.isParameterSupported("prompt_cache_options", for: prompt.openAIModel), let cacheOptions = prompt.promptCacheOptions {
             var cacheDict: [String: Any] = ["mode": cacheOptions.mode]
-            if let ttl = cacheOptions.ttl {
+            // A saved 12-hour lifetime needs OpenResponses Pro (3.1); without it OpenAI's default applies.
+            if let ttl = ProAccess.allowedCacheTTL(cacheOptions.ttl) {
                 cacheDict["ttl"] = ttl
             }
             parameters["prompt_cache_options"] = cacheDict
