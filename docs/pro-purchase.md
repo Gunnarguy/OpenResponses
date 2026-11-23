@@ -39,9 +39,9 @@ Price: USD 4.99 (Gunnar, 2026-11-21), chosen after the session data below. Chang
 
 ## App Store Connect: created 2026-11-22
 
-Created through the App Store Connect API at Gunnar's word (2026-11-22: "Yes, create it"): In-App Purchase id `6838132013`, en-US localization, a USD 4.99 manual price in the USA base territory (proceeds USD 4.24; Apple equalizes the other territories), and availability in all 175 territories with new territories on. Read back: state `MISSING_METADATA`, which the review screenshot below clears. API reference read on developer.apple.com 2026-11-22; the `${local-id}` form for the inline price comes from OpenIntelligence's `scripts/schedule_sale.py`.
+Created through the App Store Connect API at Gunnar's word (2026-11-22: "Yes, create it"): In-App Purchase id `6838132013`, en-US localization, a USD 4.99 manual price in the USA base territory (proceeds USD 4.24; Apple equalizes the other territories), and availability in all 175 territories with new territories on. Review screenshot (Gunnar, 2026-11-22: "Yes, capture it"): the Pro sheet showing "Unlock for $4.99", run from Xcode with the scheme's StoreKit file on the iPhone 17 Pro Max simulator, saved as `docs/releases/v3.1/screenshots/pro-review-iphone.png` and uploaded (asset state COMPLETE). Read back after it: state `READY_TO_SUBMIT`. API reference read on developer.apple.com 2026-11-22; the `${local-id}` form for the inline price comes from OpenIntelligence's `scripts/schedule_sale.py`.
 
-Still needed before 3.1 is submitted: the App Review screenshot (the Pro sheet), and attaching the product to the 3.1 version. The fields as entered:
+Still needed: attach the product to the 3.1 version when 3.1 is submitted (a first In-App Purchase goes to review with a new app version). The fields as entered:
 
 | Field | Value |
 | --- | --- |
