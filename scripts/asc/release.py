@@ -1,17 +1,21 @@
 """OpenResponses release steps for the version being prepared (mirrors OpenManual's asc_attach.py and asc_submit.py). Run through `zsh -ic` from this folder; set VERSION below for each release.
   status          run, builds, attached build, version state, open submissions, purchases
   wait RUN        poll until Xcode Cloud run RUN finished and its build is VALID (or failed); prints changes only
-  attach --go     attach the newest VALID 3.0 build
+  attach --go     attach the newest VALID build of MARKETING
   submit --go     create or reuse a review submission, add the version, submit
 """
 import sys, time
 sys.path.insert(0, sys.path[0])
 from asc import call
-APP, VERSION, PRODUCT = "6757338355", "4d37e25a-abb9-4a0c-a98b-b26853b58bc0", "02676c39-e39d-49e8-af7f-412bc7c32473"
+APP, VERSION, PRODUCT = "6757338355", "1e4281fc-a6c5-4870-a02b-bd98bc82667e", "02676c39-e39d-49e8-af7f-412bc7c32473"
+MARKETING = "3.1"  # 3.0 was 4d37e25a-abb9-4a0c-a98b-b26853b58bc0
+# A first In-App Purchase goes to App Review with the app version: its draft version is a second item in the same review
+# submission (App Store Connect API 4.4.1 "Working with In-App Purchase versions", read 2026-11-22).
+IAP_VERSIONS = ["b572ee50-953d-4d19-87c3-87b7675d3cc9"]  # OpenResponses Pro (In-App Purchase 6838132013), version 1
 OPEN = {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW", "UNRESOLVED_ISSUES"}
 
 def builds():
-    return call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=3.0&sort=-uploadedDate&limit=4")["data"]
+    return call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]={MARKETING}&sort=-uploadedDate&limit=4")["data"]
 
 def run_state(number):
     for r in call("GET", f"/v1/ciProducts/{PRODUCT}/buildRuns?sort=-number&limit=4")["data"]:
@@ -42,8 +46,8 @@ elif cmd == "wait":
             break
         time.sleep(60)
 elif cmd == "attach":
-    valid = call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]=3.0&filter[processingState]=VALID&sort=-uploadedDate&limit=1")["data"]
-    newest = valid[0]; print("newest valid 3.0 build:", newest["attributes"]["version"])
+    valid = call("GET", f"/v1/builds?filter[app]={APP}&filter[preReleaseVersion.version]={MARKETING}&filter[processingState]=VALID&sort=-uploadedDate&limit=1")["data"]
+    newest = valid[0]; print(f"newest valid {MARKETING} build:", newest["attributes"]["version"])
     if not go: sys.exit("dry run; add --go")
     call("PATCH", f"/v1/appStoreVersions/{VERSION}/relationships/build", {"data": {"type": "builds", "id": newest["id"]}})
     print("now attached:", call("GET", f"/v1/appStoreVersions/{VERSION}/build")["data"]["attributes"]["version"])
@@ -52,8 +56,10 @@ elif cmd == "submit":
     att = call("GET", f"/v1/appStoreVersions/{VERSION}/build").get("data")
     print(f"version {v['versionString']} {v['appStoreState']}; attached build {att['attributes']['version'] if att else None}")
     if not att: sys.exit("no build attached")
-    pending = [p for p in call("GET", f"/v1/apps/{APP}/inAppPurchasesV2?limit=20")["data"] if p["attributes"].get("state") != "APPROVED"]
-    if pending: sys.exit(f"purchases not approved: {[p['attributes'].get('productId') for p in pending]}")
+    for p in call("GET", f"/v1/apps/{APP}/inAppPurchasesV2?limit=20")["data"]:
+        print("purchase", p["attributes"].get("productId"), p["attributes"].get("state"))
+    for iv in IAP_VERSIONS:
+        print("purchase version", iv, call("GET", f"/v1/inAppPurchaseVersions/{iv}")["data"]["attributes"].get("state"))
     subs = call("GET", f"/v1/apps/{APP}/reviewSubmissions?filter[platform]=IOS&limit=10")["data"]
     open_subs = [s for s in subs if s["attributes"].get("state") in OPEN]
     if v["appStoreState"] not in ("PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED"):
@@ -68,6 +74,12 @@ elif cmd == "submit":
             "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub_id}},
             "appStoreVersion": {"data": {"type": "appStoreVersions", "id": VERSION}}}}})
         print("added the version item")
+    for iv in IAP_VERSIONS:
+        if not any((i["relationships"].get("inAppPurchaseVersion", {}).get("data") or {}).get("id") == iv for i in items):
+            call("POST", "/v1/reviewSubmissionItems", {"data": {"type": "reviewSubmissionItems", "relationships": {
+                "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": sub_id}},
+                "inAppPurchaseVersion": {"data": {"type": "inAppPurchaseVersions", "id": iv}}}}})
+            print("added the purchase version item", iv)
     call("PATCH", f"/v1/reviewSubmissions/{sub_id}", {"data": {"type": "reviewSubmissions", "id": sub_id, "attributes": {"submitted": True}}})
     time.sleep(4)
     s = call("GET", f"/v1/reviewSubmissions/{sub_id}")["data"]["attributes"]
