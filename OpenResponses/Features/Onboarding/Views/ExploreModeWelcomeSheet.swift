@@ -83,10 +83,10 @@ struct ExploreModeWelcomeSheet: View {
                 .padding()
             }
             .navigationTitle("Welcome")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .interactiveDismissDisabled(isRequiredFirstRunGate)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     if !isRequiredFirstRunGate {
                         Button("Close") { dismiss() }
                     }

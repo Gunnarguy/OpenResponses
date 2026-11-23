@@ -86,12 +86,18 @@ struct ChatStatusBar: View {
         .background(Color.secondary.opacity(0.05))
         .font(.caption)
         .sheet(isPresented: $showingRequestInspector) {
-            RequestInspectorView(userMessage: "Preview")
-                .environmentObject(viewModel)
+            Group {
+                RequestInspectorView(userMessage: "Preview")
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 680, height: 720)
         }
         .sheet(isPresented: $showingSettings) {
-            PlaygroundSettingsPanel()
-                .environmentObject(viewModel)
+            Group {
+                PlaygroundSettingsPanel()
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 560, height: 680)
         }
     }
     
@@ -129,6 +135,9 @@ struct ChatStatusBar: View {
             .foregroundColor(modelColor)
             .cornerRadius(6)
         }
+        #if os(macOS)
+        .buttonStyle(.plain) // draw the colored chip as written, not as a Mac pop-up button
+        #endif
         .accessibilityLabel("Model")
         .accessibilityValue(CurrentModelCatalog.spokenName(for: viewModel.activePrompt.openAIModel))
     }

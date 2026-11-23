@@ -1,6 +1,27 @@
 import SwiftUI
 import PhotosUI
 
+#if os(macOS)
+import AppKit
+
+/// The Mac picks images with the Open panel over the key window.
+enum MacImagePicker {
+    @MainActor static func present(limit: Int = 10, onImagesSelected: @escaping ([NSImage]) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = limit > 1
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Attach"
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK else { return }
+            let images = panel.urls.prefix(limit).compactMap { NSImage(contentsOf: $0) }
+            if !images.isEmpty { onImagesSelected(Array(images)) }
+        }
+        if let window = NSApplication.shared.keyWindow { panel.beginSheetModal(for: window, completionHandler: handle) }
+        else { panel.begin(completionHandler: handle) }
+    }
+}
+#else
 /// A SwiftUI wrapper for PHPickerViewController that allows users to select images
 struct ImagePickerView: UIViewControllerRepresentable {
     let onImagesSelected: ([UIImage]) -> Void
@@ -128,6 +149,9 @@ struct SelectedImagesView: View {
 }
 
 /// Preview provider for testing
+#endif
+
+#if !os(macOS)
 struct ImagePickerView_Previews: PreviewProvider {
     static var previews: some View {
         VStack {
@@ -150,3 +174,4 @@ nonisolated final class ImagePickerContainer: @unchecked Sendable {
         lock.unlock()
     }
 }
+#endif

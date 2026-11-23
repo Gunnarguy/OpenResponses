@@ -78,7 +78,7 @@ struct ProPaywallView: View {
                 }
             }
             .navigationTitle("Pro")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

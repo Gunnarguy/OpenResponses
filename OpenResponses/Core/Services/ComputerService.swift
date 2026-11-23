@@ -1,7 +1,9 @@
 import Foundation
 import WebKit
 import Combine
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct JavaScriptResult: @unchecked Sendable {
     let value: Any?
@@ -22,6 +24,10 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
     // Track attach lifecycle to avoid noisy logs and enable automatic retry when a key window appears.
     private var hasLoggedNoKeyWindow: Bool = false
     private var attachObservers: [NSObjectProtocol] = []
+    #if os(macOS)
+    /// The Mac has no shared key window to slip a view into; the browser renders in its own off-screen window.
+    private var macHostWindow: NSWindow?
+    #endif
     private var didAttachToWindow: Bool {
         webView?.superview != nil
     }
@@ -159,10 +165,12 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView = WKWebView(frame: webViewFrame, configuration: configuration)
         webView?.navigationDelegate = self
         webView?.uiDelegate = self
+        #if !os(macOS)
         webView?.isOpaque = false
         webView?.backgroundColor = .white
         webView?.scrollView.backgroundColor = .white
         webView?.scrollView.isScrollEnabled = true
+        #endif
         // Keep the installed WebKit version in the user agent instead of spoofing an old OS.
 
         // Attempt immediate attach; if not possible, set up observers to retry when app/window becomes active.
@@ -183,6 +191,19 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
             return
         }
 
+        #if os(macOS)
+        let window = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: 440, height: 956),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.ignoresMouseEvents = true
+        window.isExcludedFromWindowsMenu = true
+        window.collectionBehavior = [.transient, .ignoresCycle, .stationary]
+        window.contentView = webView
+        window.orderFrontRegardless()
+        macHostWindow = window
+        AppLogger.log("✅ [WebView Setup] WebView hosted in an off-screen window", category: .general, level: .info)
+        unregisterAttachObservers()
+        #else
         // Try to find key window prioritizing active foreground scenes
         let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let foregroundActiveScenes = windowScenes.filter { $0.activationState == .foregroundActive }
@@ -211,12 +232,14 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
                 AppLogger.log("⚠️ [WebView Setup] No key window available yet - will retry when the app/window becomes active", category: .general, level: .warning)
             }
         }
+        #endif
     }
 
     /// Register observers to retry attaching when the app becomes active or a window becomes key.
     private func registerAttachObservers() {
         // Avoid duplicate observers
         if !attachObservers.isEmpty { return }
+        #if !os(macOS)
         let center = NotificationCenter.default
         let didBecomeActive = center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self = self else { return }
@@ -231,6 +254,7 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
             Task { @MainActor in self.attachToWindowHierarchy() }
         }
         attachObservers.append(contentsOf: [didBecomeActive, didConnectScene, windowBecameKey])
+        #endif
     }
 
     /// Unregister attach observers once we have successfully attached or when deinitializing.
@@ -826,7 +850,11 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func takeScreenshot() async throws -> String? {
         try Task.checkCancellation()
         guard let webView else { throw ComputerUseError.webViewNotAvailable }
+        #if os(macOS)
+        webView.layoutSubtreeIfNeeded()
+        #else
         webView.layoutIfNeeded()
+        #endif
         let config = WKSnapshotConfiguration()
         config.afterScreenUpdates = true
         config.snapshotWidth = NSNumber(value: 440)
@@ -842,6 +870,23 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
                         // WKSnapshotConfiguration uses points; PNG encodes device pixels (3x on
                         // modern iPhones). Match the tool's 440 x 956 coordinate space exactly.
                         let size = CGSize(width: 440, height: 956)
+                        #if os(macOS)
+                        // A 1x bitmap of exactly 440 x 956 pixels; Retina backing would double it.
+                        guard let source = image.cgImage,
+                              let context = CGContext(data: nil, width: 440, height: 956, bitsPerComponent: 8, bytesPerRow: 0,
+                                                      space: CGColorSpaceCreateDeviceRGB(),
+                                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+                            finish(.failure(ComputerUseError.screenshotFailed)); return
+                        }
+                        context.setFillColor(CGColor(gray: 1, alpha: 1))
+                        context.fill(CGRect(origin: .zero, size: size))
+                        context.interpolationQuality = .high
+                        context.draw(source, in: CGRect(origin: .zero, size: size))
+                        let normalized = context.makeImage().map { NSImage(cgImage: $0) }
+                        guard let data = normalized?.pngData(), !data.isEmpty else {
+                            finish(.failure(ComputerUseError.screenshotFailed)); return
+                        }
+                        #else
                         let format = UIGraphicsImageRendererFormat()
                         format.scale = 1
                         format.opaque = true
@@ -853,6 +898,7 @@ class ComputerService: NSObject, WKNavigationDelegate, WKUIDelegate {
                         guard let data = normalized.pngData(), !data.isEmpty else {
                             finish(.failure(ComputerUseError.screenshotFailed)); return
                         }
+                        #endif
                         finish(.success(data.base64EncodedString()))
                     }
                 }
@@ -1143,7 +1189,13 @@ private extension ComputerService {
     /// Determines whether the service should automatically attach a WebView.
     /// We disable auto-attach when running inside XCTest to avoid simulator crashes during CI.
     nonisolated static func shouldAutoAttachWebView() -> Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        #if os(macOS)
+        // On the Mac the browser lives in its own off-screen window; make it only when computer use runs, so no
+        // window exists at launch besides the app's own (2026-11-22: an early one kept the main window from opening).
+        return false
+        #else
+        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        #endif
     }
 }
 

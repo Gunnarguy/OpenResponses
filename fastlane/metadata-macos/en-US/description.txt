@@ -1,0 +1,37 @@
+OpenResponses is OpenAI's API on your Mac, iPhone and iPad, with nothing hidden. Bring your own API key and it shows you the request before it goes out, the events as they stream back, and every tool call along the way. It's for people who build with OpenAI's models, or who just want to see what the newest ones actually do before writing any code.
+
+It started as the successor to OpenAssistant, my app for OpenAI's older Assistants API, and talks straight to OpenAI's Responses API with no server of mine in between.
+
+PICK A MODEL AND SEE WHAT IT DOES
+
+• GPT-6.2 Sol and Astra, GPT-6.1 Sol and Terra, GPT-6 Sol, Astra and Luna, the GPT-5.6 family, and older models your key can still use. When OpenAI releases a new one, it shows up in the menu on its own, with its settings read from OpenAI's docs.
+• Reasoning from None to Max where the model takes it, Pro mode, verbosity, context compaction and the rest of the request settings, each on a page Settings search can find.
+• Replies stream in as they're written, with the reasoning summaries the API sends, token use, and the full request and response a tap away.
+• Save setups as presets, attach photos and documents, export conversations, and search your chats by what they're about, not just the exact words.
+
+THE TOOLS THE API HAS
+
+• Web search with sources, Code Interpreter, file search over your own vector stores, and image generation and editing with GPT Image 2.5, up to Max quality.
+• Voice conversations with GPT Realtime 2.1 or GPT-Live 1, with mute, and with headphones and Voice Barge-In on you can talk over it to cut it off.
+• A browser the model can drive, inside the app, with Stop, time limits and action limits.
+• Connectors for MCP servers. Start from the popular ones like GitHub, Notion and Linear or any remote server in the public MCP Registry, sign in or use a key, look through the tools it offers, and approve tool calls unless you turn that off.
+• Calendar, Reminders and Contacts, only when you turn them on.
+• Local Python. The model writes it, you read it, you click Run, and it runs on your Mac. Standard library, no internet, 30 seconds a run.
+
+API WORKBENCH
+
+For when you'd rather write the request yourself. Edit the raw JSON, send it over HTTP, streaming or WebSocket, watch every event come back, and export the whole response. It also counts tokens, compacts context, and manages conversations, files, vector stores, containers and batch jobs. Anything that deletes asks first.
+
+OUTSIDE THE CHAT
+
+Ask OpenResponses a question from Siri, Spotlight or the Shortcuts app and get the answer back as text, and on iPhone and iPad share text, links, images and files into a new chat from any app's share sheet. Those, and a 12-hour prompt cache, come with OpenResponses Pro, a one-time purchase that covers the Mac, iPhone and iPad. Everything else in the app is free.
+
+A few things worth knowing before you download it:
+
+• There's no OpenResponses account. You need your own OpenAI API key, and what you use is billed to your OpenAI account.
+• Your key stays in this device's Keychain and only ever goes to OpenAI.
+• Explore Demo lets you look around without a key, and it sends nothing.
+• Before your first live request, the app shows what gets sent to OpenAI and waits for you to say yes.
+• It runs on the Mac with macOS 14 Sonoma or later, and on iPhone and iPad with iOS 17 or later. Buying OpenResponses Pro on one covers the others.
+
+One last thing. This shows you what OpenAI's models do, and they can be wrong, sometimes confidently. Check anything that matters before you act on it.

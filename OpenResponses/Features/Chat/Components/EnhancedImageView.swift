@@ -7,7 +7,11 @@ struct EnhancedImageView: View {
     @State private var showFullscreen = false
     @State private var lastSavedPath: String? = nil
     private var maxDisplayWidth: CGFloat {
+        #if os(macOS)
+        480
+        #else
         min(UIScreen.main.bounds.width * 0.70, 360)
+        #endif
     }
     
     /// Reconstructs the UIImage to ensure it has a valid CGImage for robust rendering
@@ -22,11 +26,19 @@ struct EnhancedImageView: View {
               let reconstructed = UIImage(data: data) else {
             // Fallback: create a simple placeholder if reconstruction fails
             let size = CGSize(width: max(image.size.width, 100), height: max(image.size.height, 100))
+            #if os(macOS)
+            let fill = UIColor.systemGray4.cgColor
+            return renderPlatformImage(size: size) { context in
+                context.setFillColor(fill)
+                context.fill(CGRect(origin: .zero, size: size))
+            }
+            #else
             let renderer = UIGraphicsImageRenderer(size: size)
             return renderer.image { context in
                 UIColor.systemGray4.setFill()
                 context.fill(CGRect(origin: .zero, size: size))
             }
+            #endif
         }
         
         return reconstructed
@@ -78,7 +90,7 @@ struct EnhancedImageView: View {
                 .onTapGesture {
                     showFullscreen = true
                 }
-                .fullScreenCover(isPresented: $showFullscreen) {
+                .platformFullScreenCover(isPresented: $showFullscreen) {
                     FullscreenImageView(image: displayImage, isPresented: $showFullscreen)
                 }
                 .accessibilityLabel("Generated image")

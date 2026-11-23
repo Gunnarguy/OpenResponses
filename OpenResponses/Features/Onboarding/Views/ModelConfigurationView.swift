@@ -229,7 +229,7 @@ struct ModelConfigurationView: View {
             Section {
                 TextField("Schema name", text: $activePrompt.jsonSchemaName)
                     .disableAutocorrection(true)
-                    .textInputAutocapitalization(.never)
+                    .platformCapitalization(.never)
                 TextField("Schema description", text: $activePrompt.jsonSchemaDescription)
                 Toggle("Strict validation", isOn: $activePrompt.jsonSchemaStrict)
                 JSONCodeEditor(text: $activePrompt.jsonSchemaContent, label: "Output JSON schema")

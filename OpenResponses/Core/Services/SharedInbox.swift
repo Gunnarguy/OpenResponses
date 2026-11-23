@@ -44,9 +44,13 @@ nonisolated struct SharedInbox: Sendable {
     /// The inbox the app and the share extension share, or the app-only fallback.
     static var shared: SharedInbox {
         let fm = FileManager.default
+        #if !os(macOS)
+        // On the Mac a group container URL comes back even where the sandbox refuses it, and the Mac app has no
+        // share extension, so it always uses its own Application Support folder.
         if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) {
             return SharedInbox(root: group.appendingPathComponent("Inbox", isDirectory: true))
         }
+        #endif
         let support = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
             ?? fm.temporaryDirectory
         return SharedInbox(root: support.appendingPathComponent("Inbox", isDirectory: true))
@@ -54,7 +58,11 @@ nonisolated struct SharedInbox: Sendable {
 
     /// True when the share extension can reach this inbox.
     static var isSharedWithExtensions: Bool {
+        #if os(macOS)
+        false
+        #else
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) != nil
+        #endif
     }
 
     /// Writes one delivery. `files` pairs each file's description with its bytes.

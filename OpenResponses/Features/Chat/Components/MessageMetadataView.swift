@@ -134,8 +134,10 @@ struct MessageMetadataView: View {
         }
         
         // Haptic feedback
+        #if !os(macOS)
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
+        #endif
     }
 }
 

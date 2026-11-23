@@ -37,7 +37,7 @@ struct PythonRunApprovalSheet: View {
             }
             .padding()
             .navigationTitle("Run Python?")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
         }
         .presentationDetents([.medium, .large])
     }

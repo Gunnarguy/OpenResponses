@@ -475,7 +475,7 @@ class ChatViewModel: ObservableObject {
     }
 
     private func exploreDemoWelcomeText() -> String {
-        return "Hi! I’m a demo assistant. I can’t call the OpenAI API yet (no key configured), but you can explore the app’s UI and what it *can* do.\n\nTry asking things like:\n• \"Write a SwiftUI view for a settings screen\"\n• \"Summarize a PDF\" (attach a file once you add a key)\n• \"Use web search to find today’s news\"\n• \"Connect Notion\"\n\nWhen you’re ready: Settings → General → paste your OpenAI API key."
+        return "Hi! I’m a demo assistant. I can’t call the OpenAI API yet (no key configured), but you can explore the app’s UI and what it *can* do.\n\nTry asking things like:\n• \"Write a SwiftUI view for a settings screen\"\n• \"Summarize a PDF\" (attach a file once you add a key)\n• \"Use web search to find today’s news\"\n• \"Connect Notion\"\n\nWhen you’re ready: Settings → OpenAI API Key → paste your key."
     }
 
     private func isMissingOpenAIKey() -> Bool {
@@ -557,7 +557,7 @@ class ChatViewModel: ObservableObject {
         messages.append(
             ChatMessage(
                 role: .system,
-                text: "No data was sent to OpenAI. You can review the notice in Settings → General and try again whenever you’re ready.",
+                text: "No data was sent to OpenAI. You can review the notice in Settings → Privacy & Safety and try again whenever you’re ready.",
                 images: nil
             )
         )
@@ -1231,7 +1231,7 @@ class ChatViewModel: ObservableObject {
 
         // If there is no API key and Explore Demo is not enabled, avoid making a request that will fail.
         if isMissingOpenAIKey(), !exploreModeEnabled {
-            let guidance = "🔑 No OpenAI API key is configured. Open Settings → General to add one, or enable Explore Demo (offline) to try the UI without API calls."
+            let guidance = "🔑 No OpenAI API key is configured. Open Settings → OpenAI API Key to add one, or enable Explore Demo (offline) to try the UI without API calls."
             if messages.last?.text != guidance {
                 messages.append(ChatMessage(role: .system, text: guidance))
             }

@@ -94,17 +94,20 @@ struct DynamicModelSelector: View {
             }
         }
         .sheet(isPresented: $showModelPicker) {
-            let usingFallback = availableModels.isEmpty && !isLoading
-            let modelsToShow: [OpenAIModel] = usingFallback
-                ? fallbackModels.map { OpenAIModel(id: $0, object: "model", created: 0, ownedBy: "openai") }
-                : availableModels
-            NavigationStack {
-                ModelPickerView(
-                    selectedModel: $selectedModel,
-                    models: modelsToShow,
-                    isOffline: usingFallback
-                )
+            Group {
+                let usingFallback = availableModels.isEmpty && !isLoading
+                let modelsToShow: [OpenAIModel] = usingFallback
+                    ? fallbackModels.map { OpenAIModel(id: $0, object: "model", created: 0, ownedBy: "openai") }
+                    : availableModels
+                NavigationStack {
+                    ModelPickerView(
+                        selectedModel: $selectedModel,
+                        models: modelsToShow,
+                        isOffline: usingFallback
+                    )
+                }
             }
+            .macSheetFrame(width: 560, height: 620)
         }
     }
 
@@ -219,7 +222,7 @@ struct ModelPickerView: View {
                 ForEach(filtered.filter { !CurrentModelCatalog.isModern($0.id) }) { model in modelRow(model) }
             }
             Section("Model ID") {
-                TextField("Enter a model or snapshot ID", text: $customModel).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("Enter a model or snapshot ID", text: $customModel).platformCapitalization(.never).autocorrectionDisabled()
                 Button("Use model ID") {
                     selectedModel = customModel.trimmingCharacters(in: .whitespacesAndNewlines)
                     dismiss()

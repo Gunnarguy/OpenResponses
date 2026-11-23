@@ -285,7 +285,7 @@ struct PlaygroundSettingsPanel: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -295,8 +295,11 @@ struct PlaygroundSettingsPanel: View {
             }
         }
         .sheet(isPresented: $showingExportView) {
-            ConversationExportView()
-                .environmentObject(viewModel)
+            Group {
+                ConversationExportView()
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 620, height: 640)
         }
     }
 
@@ -308,8 +311,10 @@ struct PlaygroundSettingsPanel: View {
         viewModel.activePrompt.topP = 1.0
 
         // Haptic feedback
+        #if !os(macOS)
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
+        #endif
     }
 
     private func reasoningEffortOptions(for modelId: String) -> [String] {

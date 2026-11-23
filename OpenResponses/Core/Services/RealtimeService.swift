@@ -92,10 +92,12 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
 
     /// Outputs the microphone does not pick up. On the built-in speaker the assistant's own voice would read as
     /// the caller cutting in, so the Live interruption gate stays off there.
+    #if !os(macOS)
     nonisolated static func isPrivateOutput(_ ports: [AVAudioSession.Port]) -> Bool {
         let privatePorts: Set<AVAudioSession.Port> = [.headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE]
         return !ports.isEmpty && ports.allSatisfy { privatePorts.contains($0) }
     }
+    #endif
 
     /// First client event on a Live socket. The session is audio-only; Live manages turn-taking itself.
     nonisolated static func liveStartEvent(model: String, voice: String, instructions: String) -> [String: Any] {
@@ -150,11 +152,17 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             Task { @MainActor in
                 guard let self, self.connectionGeneration == generation else { return }
+                #if os(macOS)
+                guard granted else { self.reportError("Microphone access is off. Turn it on for OpenResponses in System Settings > Privacy & Security > Microphone."); return }
+                #else
                 guard granted else { self.reportError("Microphone access is disabled. Enable it in iOS Settings for OpenResponses."); return }
+                #endif
                 do {
+                    #if !os(macOS)
                     let audio = AVAudioSession.sharedInstance()
                     try audio.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
                     try audio.setActive(true)
+                    #endif
                     var request = URLRequest(url: endpoint)
                     request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
                     let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
@@ -214,7 +222,9 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         session?.invalidateAndCancel(); session = nil
         currentState = "Disconnected"
         if wasActive { delegate?.realtimeServiceDidDisconnect() }
+        #if !os(macOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     private func send(_ event: [String: Any]) {
@@ -361,7 +371,13 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         try output.start()
         player.play()
         // Route changes restart the engines through AVAudioEngineConfigurationChange, which re-reads this.
+        #if os(macOS)
+        // The Mac has no audio session route to read; treat the output as the speaker, so the interruption gate
+        // stays off as it does on an iPhone's speaker.
+        outputIsPrivate = false
+        #else
         outputIsPrivate = Self.isPrivateOutput(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType))
+        #endif
         for engine in [inputEngine, output] {
             configurationObservers.append(NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
                 Task { @MainActor in
@@ -405,9 +421,14 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
         if !playerNode.isPlaying, !interruptionGate.isHolding { playerNode.play() }
         interruptionGate.outputAudio(duration: Double(buffer.frameLength) / 24_000)
         let now = ProcessInfo.processInfo.systemUptime
+        #if os(macOS)
+        let latency = playerNode.engine?.outputNode.presentationLatency ?? 0
+        #else
         let audio = AVAudioSession.sharedInstance()
+        let latency = audio.outputLatency + audio.ioBufferDuration
+        #endif
         let token = playback.enqueue(frames: Int(buffer.frameLength), level: RealtimePCMEncoder.level(data), itemID: itemID,
-                                     contentIndex: contentIndex, now: now, latency: audio.outputLatency + audio.ioBufferDuration)
+                                     contentIndex: contentIndex, now: now, latency: latency)
         // Increment tracking before scheduling; all completions return to this same actor.
         playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
@@ -492,6 +513,9 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
     }
 
     private func observeAudioInterruptions() {
+        #if os(macOS)
+        // macOS has no audio session interruptions; route changes still restart the engines.
+        #else
         interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
             let type = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let options = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
@@ -508,6 +532,7 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
                 } else { self.disconnect() }
             }
         }
+        #endif
     }
 
     private func scheduleAudioRestart() {
@@ -519,7 +544,9 @@ final class RealtimeService: NSObject, URLSessionWebSocketDelegate, ObservableOb
             do {
                 try await Task.sleep(nanoseconds: 250_000_000)
                 guard let self, self.connectionGeneration == generation else { return }
+                #if !os(macOS)
                 try AVAudioSession.sharedInstance().setActive(true)
+                #endif
                 try self.startAudioEngines()
                 self.audioAccumulator.removeAll()
                 if !self.isLive { self.send(["type": "input_audio_buffer.clear"]) }

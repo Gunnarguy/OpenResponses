@@ -1,12 +1,15 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 /// A SwiftUI view that wraps the `UIDocumentPickerViewController` to allow users to select documents.
 /// This struct conforms to `UIViewControllerRepresentable` to bridge the UIKit view controller
 /// into the SwiftUI view hierarchy.
 /// 
 /// **Now enhanced with FileConverterService integration for universal file type support!**
-struct DocumentPicker: UIViewControllerRepresentable {
+struct DocumentPicker {
     /// A binding to an array of `Data` objects, which will be populated with the contents of the selected files.
     @Binding var selectedFileData: [Data]
     /// A binding to an array of `String` objects for the filenames.
@@ -14,10 +17,8 @@ struct DocumentPicker: UIViewControllerRepresentable {
     /// Optional callback for conversion status feedback
     var onConversionStatus: ((String) -> Void)? = nil
 
-    /// Creates the `UIDocumentPickerViewController` instance.
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        // Allow ALL content types - FileConverterService will handle validation and conversion
-        let supportedTypes: [UTType] = [
+    // Allow ALL content types - FileConverterService will handle validation and conversion
+    static let supportedTypes: [UTType] = [
             .pdf,
             .text,
             .plainText,
@@ -34,30 +35,35 @@ struct DocumentPicker: UIViewControllerRepresentable {
             .data, // Catch-all for binary files
             .content // Catch-all for any content
         ]
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: supportedTypes, asCopy: true)
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = true
-        return picker
-    }
 
-    /// Updates the view controller. This is not needed for the document picker.
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-
-    /// Creates the coordinator that will handle delegate callbacks from the `UIDocumentPickerViewController`.
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+    #if os(macOS)
+    /// Shows the Mac's Open panel over the key window and processes what the person picks.
+    @MainActor func present() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = Self.supportedTypes
+        panel.prompt = "Attach"
+        let coordinator = Coordinator(self)
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            if response == .OK { coordinator.handlePicked(panel.urls) }
+        }
+        if let window = NSApplication.shared.keyWindow { panel.beginSheetModal(for: window, completionHandler: handle) }
+        else { panel.begin(completionHandler: handle) }
     }
+    #endif
 
     /// The coordinator class to handle delegate methods from the document picker.
-    class Coordinator: NSObject, UIDocumentPickerDelegate {
+    class Coordinator: NSObject {
         var parent: DocumentPicker
 
         init(_ parent: DocumentPicker) {
             self.parent = parent
         }
 
-        /// Called when the user finishes picking documents.
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+
+        /// Reads, converts and attaches the picked files (shared by the iOS picker and the Mac Open panel).
+        func handlePicked(_ urls: [URL]) {
             parent.selectedFileData.removeAll()
             parent.selectedFilenames.removeAll()
             
@@ -186,3 +192,30 @@ struct DocumentPicker: UIViewControllerRepresentable {
         }
     }
 }
+
+#if !os(macOS)
+extension DocumentPicker: UIViewControllerRepresentable {
+    /// Creates the `UIDocumentPickerViewController` instance.
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: Self.supportedTypes, asCopy: true)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = true
+        return picker
+    }
+
+    /// Updates the view controller. This is not needed for the document picker.
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    /// Creates the coordinator that will handle delegate callbacks from the `UIDocumentPickerViewController`.
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+}
+
+extension DocumentPicker.Coordinator: UIDocumentPickerDelegate {
+    /// Called when the user finishes picking documents.
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        handlePicked(urls)
+    }
+}
+#endif

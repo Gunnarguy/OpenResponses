@@ -4,21 +4,21 @@
   "name": "Batch jobs",
   "aliases": ["Batch Jobs", "Batch API Jobs", "Submit New Batch Job", "Upload JSONL Batch", "Active and Historical Batches", "Save Results", "Save Errors"],
   "purpose": "Manages OpenAI Batch jobs: JSONL input upload, job creation, status polling, cancellation, and download of complete result and error files to disk.",
-  "revision": "457a9fe",
+  "revision": "7a8e389",
   "verified_on": "2026-11-22",
   "entry_points": ["SettingsHomeView.batchJobsLink"],
   "files": [
     {"path": "OpenResponses/Core/Services/BatchService.swift", "role": "primary", "blob": "7dd55c48f8bcbc0181096c0dbcf62626d274d2cd"},
     {"path": "OpenResponses/Core/Models/BatchModels.swift", "role": "primary", "blob": "186414fa0bf58843e98d7ddcf18282eff3a4062e"},
-    {"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "role": "primary", "blob": "cf33edb743abe00c290c4fe3a9fa4edc384a2673"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "045985d8fe32501a854221a89d7db3529bf1abc0"},
+    {"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "role": "primary", "blob": "5150e7ebf5d5088490d17e50173c2c45f1ecaa41"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "f77e5b36a8e96028aa0ce19bb109562461bfe694"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "3011d3eabe63d5f3c25de997f77349a99c37ec0a"},
     {"path": "OpenResponses/Core/Services/ResourcePagination.swift", "role": "shared", "blob": "5d478f1f4155dd12568fd28109a3ce3ec71610c2"},
     {"path": "OpenResponsesTests/AppCompletionTests.swift", "role": "test", "blob": "c7027f7046a134f241d6046d55cdf1a291850a55"}
   ],
   "nodes": [
-    {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 11, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
-    {"id": "SettingsHomeView.batchJobsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 334, "match": "case .batch: BatchJobsView()", "status": "VERIFIED"},
+    {"id": "SettingsHomeView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 13, "match": "struct SettingsHomeView: View {", "status": "VERIFIED"},
+    {"id": "SettingsHomeView.batchJobsLink", "kind": "entry", "path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 501, "match": "case .batch: BatchJobsView()", "status": "VERIFIED"},
     {"id": "BatchJobsView", "kind": "view", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 3, "match": "struct BatchJobsView: View {", "status": "VERIFIED"},
     {"id": "BatchJobsView.uploadAndSubmitBatch", "kind": "function", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 265, "match": "    private func uploadAndSubmitBatch(fileURL: URL) {", "status": "VERIFIED"},
     {"id": "BatchJobsView.downloadResults", "kind": "function", "path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 246, "match": "    private func downloadResults(fileId: String, isErrorFile: Bool = false) {", "status": "VERIFIED"},
@@ -45,8 +45,8 @@
     {"id": "test:BatchServiceTests", "kind": "test", "path": "OpenResponsesTests/AppCompletionTests.swift", "line": 267, "match": "    func testBatchDownloadPreservesCompleteErrorFile() async throws {", "status": "VERIFIED"}
   ],
   "edges": [
-    {"from": "SettingsHomeView.batchJobsLink", "type": "calls", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 334, "match": "case .batch: BatchJobsView()"}]},
-    {"from": "SettingsHomeView", "type": "renders", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 334, "match": "case .batch: BatchJobsView()"}]},
+    {"from": "SettingsHomeView.batchJobsLink", "type": "calls", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 501, "match": "case .batch: BatchJobsView()"}]},
+    {"from": "SettingsHomeView", "type": "renders", "to": "BatchJobsView", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 501, "match": "case .batch: BatchJobsView()"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.uploadAndSubmitBatch", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 184, "match": "                    uploadAndSubmitBatch(fileURL: url)"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.downloadResults", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 107, "match": "                                        downloadResults(fileId: outputFileId)"}]},
     {"from": "BatchJobsView", "type": "calls", "to": "BatchJobsView.loadJobs", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 152, "match": "        .onAppear { loadJobs() }"}]},
@@ -87,7 +87,6 @@
       {"from": "BatchService", "type": "depends_on", "to": "feature:files-vector-stores", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/BatchService.swift", "line": 101, "match": "try await ResourcePagination.list(path: \"/batches\", as: BatchJob.self)"}], "note": "via ResourcePagination"},
       {"from": "BatchService", "type": "depends_on", "to": "feature:native-runner", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Services/BatchService.swift", "line": 130, "match": "var request = try ResponsesAPIClient().request(path: \"/files/\\(fileId)/content\", method: \"GET\")"}], "note": "via ResponsesAPIClient"},
       {"from": "BatchInputLine", "type": "depends_on", "to": "feature:models", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Core/Models/BatchModels.swift", "line": 41, "match": "let body: [String: AnyCodable]"}], "note": "via AnyCodable"},
-      {"from": "BatchJobsView", "type": "depends_on", "to": "feature:app-shell", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 158, "match": "ShareSheet(items: [file.url])"}], "note": "via ShareSheet"},
       {"from": "BatchJobsView", "type": "depends_on", "to": "feature:chat-turn", "status": "INFERRED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/BatchJobsView.swift", "line": 278, "match": "let openaiFile = try await OpenAIService().uploadFile("}], "note": "via OpenAIService"}
     ],
     "edges_omitted": 0

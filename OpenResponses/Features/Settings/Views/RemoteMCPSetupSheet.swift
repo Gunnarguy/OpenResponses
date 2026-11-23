@@ -24,7 +24,7 @@ struct RemoteMCPSetupSheet: View {
                 Section {
                     TextField("Name", text: $name)
                     TextField("https://provider.example/mcp", text: $serverURL)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .platformKeyboard(.url).platformCapitalization(.never).autocorrectionDisabled()
                     Picker("Connection", selection: $authentication) {
                         ForEach(Authentication.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
@@ -33,8 +33,8 @@ struct RemoteMCPSetupSheet: View {
                 }
                 if authentication == .apiKey {
                     Section {
-                        TextField("Header name", text: $header).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        SecureField("API key", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField("Header name", text: $header).platformCapitalization(.never).autocorrectionDisabled()
+                        SecureField("API key", text: $token).platformCapitalization(.never).autocorrectionDisabled()
                     } header: { Text("Advanced authentication") } footer: {
                         Text("Only for servers that explicitly support API keys. For hosted Notion and other OAuth services, choose Account sign-in.")
                     }
@@ -55,7 +55,7 @@ struct RemoteMCPSetupSheet: View {
                     Text("The connection is saved securely on this device. OpenAI receives its authorization when you use it in chat or discover tools. Tool calls ask for your approval by default.")
                 }
             }
-            .navigationTitle("Add Custom Server").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Add Custom Server").inlineNavigationTitle()
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .onDisappear { flow.cancel() }
         }

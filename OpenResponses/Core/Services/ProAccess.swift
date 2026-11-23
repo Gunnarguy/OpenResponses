@@ -51,7 +51,14 @@ nonisolated enum ProAccess {
 
     /// The App Group's defaults, shared with the share extension; the app's own defaults if the group is missing
     /// (an unsigned build), so the app still works on its own.
-    static var defaults: UserDefaults { UserDefaults(suiteName: SharedInbox.appGroupID) ?? .standard }
+    static var defaults: UserDefaults {
+        #if os(macOS)
+        // The Mac app has no share extension and no App Group; it keeps Pro's state in its own defaults.
+        .standard
+        #else
+        UserDefaults(suiteName: SharedInbox.appGroupID) ?? .standard
+        #endif
+    }
 
     static var isUnlocked: Bool { defaults.bool(forKey: unlockedKey) }
 

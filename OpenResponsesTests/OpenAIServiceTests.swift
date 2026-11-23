@@ -1467,7 +1467,8 @@ final class ProAccessTests: XCTestCase {
 
         let transaction = try await session.buyProduct(identifier: ProAccess.productID)
         // StoreKit can deliver the entitlement a moment after buyProduct returns.
-        for _ in 0..<20 where !store.isPro {
+        // Up to 10 s: on a freshly booted simulator the purchase took longer than 2 s to reach currentEntitlements.
+        for _ in 0..<100 where !store.isPro {
             await store.refresh()
             if !store.isPro { try await Task.sleep(nanoseconds: 100_000_000) }
         }
@@ -1489,7 +1490,7 @@ final class ProAccessTests: XCTestCase {
 
         try session.refundTransaction(identifier: UInt(transaction.id))
         // As with the purchase, the refund reaches currentEntitlements a moment later.
-        for _ in 0..<20 where store.isPro {
+        for _ in 0..<100 where store.isPro {
             await store.refresh()
             if store.isPro { try await Task.sleep(nanoseconds: 100_000_000) }
         }

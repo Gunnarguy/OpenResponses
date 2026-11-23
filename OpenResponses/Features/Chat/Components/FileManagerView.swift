@@ -790,13 +790,13 @@ HStack(spacing: 8) {
                 }
             }
             .navigationTitle("File Manager")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .leadingBar) {
                     Button("Done") { dismiss() }
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button {
                         Task { await loadData() }
                     } label: {
@@ -847,77 +847,92 @@ HStack(spacing: 8) {
             Text("Are you sure you want to delete '\(store.name ?? "this vector store")'? This action cannot be undone.")
         }
         .sheet(isPresented: $showingCreateVectorStore) {
-            CreateVectorStoreView { name, selectedFileIds, expiresAfterDays in
-                Task {
-                    await createVectorStore(name: name, fileIds: selectedFileIds, expiresAfterDays: expiresAfterDays)
+            Group {
+                CreateVectorStoreView { name, selectedFileIds, expiresAfterDays in
+                    Task {
+                        await createVectorStore(name: name, fileIds: selectedFileIds, expiresAfterDays: expiresAfterDays)
+                    }
                 }
+                .environmentObject(FileManagerStore(files: files))
             }
-            .environmentObject(FileManagerStore(files: files))
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(item: $selectedVectorStore) { store in
-            VectorStoreDetailView(
-                vectorStore: store,
-                files: vectorStoreFiles,
-                allFiles: files,
-                onRemoveFile: { fileId in
-                    Task {
-                        await removeFileFromVectorStore(store.id, fileId: fileId)
-                    }
-                },
-                onRequestFileUpload: {
-                    // Use pending mechanism to avoid presentation conflicts
-                    AppLogger.log("📤 VectorStore detail requested file upload - queuing request", category: .fileManager, level: .info)
-                    pendingFilePickerRequest = store
-                    selectedVectorStore = nil // This will trigger the dismissal
-                },
-                onUpdate: { updatedStore in
-                    Task {
-                        await updateVectorStore(updatedStore)
-                    }
-                },
-                onDelete: {
-                    Task {
-                        await deleteVectorStore(store)
-                    }
-                },
-                onAddExistingFiles: { fileIds in
-                    Task {
-                        // Add each selected file to the vector store
-                        for fileId in fileIds {
-                            if let file = files.first(where: { $0.id == fileId }) {
-                                await addFileToVectorStore(file, vectorStore: store)
-                            }
+            Group {
+                VectorStoreDetailView(
+                    vectorStore: store,
+                    files: vectorStoreFiles,
+                    allFiles: files,
+                    onRemoveFile: { fileId in
+                        Task {
+                            await removeFileFromVectorStore(store.id, fileId: fileId)
                         }
-                        // Refresh the vector store files list
-                        await loadVectorStoreFiles(store.id)
+                    },
+                    onRequestFileUpload: {
+                        // Use pending mechanism to avoid presentation conflicts
+                        AppLogger.log("📤 VectorStore detail requested file upload - queuing request", category: .fileManager, level: .info)
+                        pendingFilePickerRequest = store
+                        selectedVectorStore = nil // This will trigger the dismissal
+                    },
+                    onUpdate: { updatedStore in
+                        Task {
+                            await updateVectorStore(updatedStore)
+                        }
+                    },
+                    onDelete: {
+                        Task {
+                            await deleteVectorStore(store)
+                        }
+                    },
+                    onAddExistingFiles: { fileIds in
+                        Task {
+                            // Add each selected file to the vector store
+                            for fileId in fileIds {
+                                if let file = files.first(where: { $0.id == fileId }) {
+                                    await addFileToVectorStore(file, vectorStore: store)
+                                }
+                            }
+                            // Refresh the vector store files list
+                            await loadVectorStoreFiles(store.id)
+                        }
                     }
-                }
-            )
+                )
+            }
+            .macSheetFrame(width: 680, height: 640)
         }
         .sheet(item: $vectorStoreToEdit) { store in
-            EditVectorStoreView(
-                store: store,
-                onUpdate: { updatedStore in
-                    Task {
-                        await updateVectorStore(updatedStore)
+            Group {
+                EditVectorStoreView(
+                    store: store,
+                    onUpdate: { updatedStore in
+                        Task {
+                            await updateVectorStore(updatedStore)
+                        }
                     }
-                }
-            )
+                )
+            }
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showingQuickUpload) {
-            QuickUploadView(
-                vectorStores: vectorStores,
-                isPresented: $showingQuickUpload,
-                onUpload: { vectorStore in
-                    targetVectorStoreForUpload = vectorStore
-                    // Don't dismiss here - let parent handle it
-                }
-            )
+            Group {
+                QuickUploadView(
+                    vectorStores: vectorStores,
+                    isPresented: $showingQuickUpload,
+                    onUpload: { vectorStore in
+                        targetVectorStoreForUpload = vectorStore
+                        // Don't dismiss here - let parent handle it
+                    }
+                )
+            }
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showingUploadSummary) {
-            if let summary = uploadSummary {
-                UploadSummaryView(summary: summary)
+            Group {
+                if let summary = uploadSummary {
+                    UploadSummaryView(summary: summary)
+                }
             }
+            .macSheetFrame(width: 560, height: 620)
         }
         .overlay {
             if isUploading {
@@ -1758,7 +1773,7 @@ struct QuickUploadView: View {
                 }
             }
             .navigationTitle("Quick Upload")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { isPresented = false }
@@ -2105,7 +2120,7 @@ struct EditVectorStoreView: View {
 
                 Section(header: Text("Expiration (days, optional)"), footer: Text("Leave blank for no expiration.")) {
                     TextField("e.g. 30", text: $expiresAfterDays)
-                        .keyboardType(.numberPad)
+                        .platformKeyboard(.numberPad)
                 }
 
                 Section(header: Text("Metadata")) {
@@ -2338,30 +2353,36 @@ struct VectorStoreDetailView: View {
                 }
             }
             .navigationTitle("Vector Store")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Done") {
                         dismiss()
                     }
                 }
             }
             .sheet(isPresented: $showingEditSheet) {
-                EditVectorStoreView(store: vectorStore) { updatedStore in
-                    onUpdate?(updatedStore)
+                Group {
+                    EditVectorStoreView(store: vectorStore) { updatedStore in
+                        onUpdate?(updatedStore)
+                    }
                 }
+                .macSheetFrame(width: 560, height: 620)
             }
             .sheet(isPresented: $showingAssociateFiles) {
-                NavigationStack {
-                    AssociateExistingFilesView(
-                        availableFiles: availableFiles,
-                        selectedFileIds: $selectedExistingFiles,
-                        onAssociate: {
-                            onAddExistingFiles?(Array(selectedExistingFiles))
-                            selectedExistingFiles.removeAll()
-                        }
-                    )
+                Group {
+                    NavigationStack {
+                        AssociateExistingFilesView(
+                            availableFiles: availableFiles,
+                            selectedFileIds: $selectedExistingFiles,
+                            onAssociate: {
+                                onAddExistingFiles?(Array(selectedExistingFiles))
+                                selectedExistingFiles.removeAll()
+                            }
+                        )
+                    }
                 }
+                .macSheetFrame(width: 560, height: 620)
             }
             .confirmationDialog(
                 "Delete Vector Store",
@@ -2484,7 +2505,7 @@ struct CreateVectorStoreView: View {
                 }
                 Section(header: Text("Expiration (days, optional)"), footer: Text("Leave blank for no expiration. The store will expire after this many days from creation.")) {
                     TextField("e.g. 30", text: $expiresAfterDays)
-                        .keyboardType(.numberPad)
+                        .platformKeyboard(.numberPad)
                 }
                 Section(header: Text("Files to Include")) {
                     if fileStore.files.isEmpty {
@@ -2641,7 +2662,7 @@ struct AssociateExistingFilesView: View {
             }
         }
         .navigationTitle("Add Existing Files")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
@@ -2729,9 +2750,9 @@ struct VectorStoreSelectorView: View {
                 }
             }
             .navigationTitle("Select Vector Store")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Cancel") {
                         dismiss()
                     }
@@ -3124,7 +3145,7 @@ struct UploadSummaryView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Upload Summary")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

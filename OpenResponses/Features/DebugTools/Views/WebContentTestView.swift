@@ -21,7 +21,7 @@ struct WebContentTestView: View {
             }
             .navigationTitle("Web Content Test")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Menu("Add Test", systemImage: "plus") {
                         Button("Add gunzino.me") {
                             addTestMessage(url: "https://gunzino.me")

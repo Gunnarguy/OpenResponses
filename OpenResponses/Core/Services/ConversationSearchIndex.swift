@@ -1,3 +1,6 @@
+#if arch(x86_64)
+import Accelerate
+#endif
 import CryptoKit
 import Foundation
 import NaturalLanguage
@@ -201,6 +204,38 @@ actor ConversationSearchIndex {
         return Double(dot / (normA.squareRoot() * normB.squareRoot()))
     }
 
+    #if arch(x86_64)
+    // Swift has no Float16 on Intel Macs (the Mac Catalyst archive builds x86_64 too, 2026-11-22). Accelerate's
+    // vImage converts to and from the same IEEE 754 half-precision bits, so an index reads the same on every device.
+    nonisolated static func pack(_ vector: [Double]) -> Data {
+        guard !vector.isEmpty else { return Data() }
+        var floats = vector.map { Float($0) }
+        var halves = [UInt16](repeating: 0, count: floats.count)
+        floats.withUnsafeMutableBufferPointer { source in
+            halves.withUnsafeMutableBufferPointer { destination in
+                var src = vImage_Buffer(data: source.baseAddress, height: 1, width: vImagePixelCount(source.count), rowBytes: source.count * MemoryLayout<Float>.size)
+                var dst = vImage_Buffer(data: destination.baseAddress, height: 1, width: vImagePixelCount(destination.count), rowBytes: destination.count * MemoryLayout<UInt16>.size)
+                _ = vImageConvert_PlanarFtoPlanar16F(&src, &dst, vImage_Flags(kvImageNoFlags))
+            }
+        }
+        return halves.withUnsafeBufferPointer { Data(buffer: $0) }
+    }
+
+    nonisolated static func unpack(_ data: Data) -> [Float] {
+        var halves = [UInt16](repeating: 0, count: data.count / MemoryLayout<UInt16>.size)
+        guard !halves.isEmpty else { return [] }
+        _ = halves.withUnsafeMutableBytes { data.copyBytes(to: $0) }
+        var floats = [Float](repeating: 0, count: halves.count)
+        halves.withUnsafeMutableBufferPointer { source in
+            floats.withUnsafeMutableBufferPointer { destination in
+                var src = vImage_Buffer(data: source.baseAddress, height: 1, width: vImagePixelCount(source.count), rowBytes: source.count * MemoryLayout<UInt16>.size)
+                var dst = vImage_Buffer(data: destination.baseAddress, height: 1, width: vImagePixelCount(destination.count), rowBytes: destination.count * MemoryLayout<Float>.size)
+                _ = vImageConvert_Planar16FtoPlanarF(&src, &dst, vImage_Flags(kvImageNoFlags))
+            }
+        }
+        return floats
+    }
+    #else
     nonisolated static func pack(_ vector: [Double]) -> Data {
         let halves = vector.map { Float16(Float($0)) }
         return halves.withUnsafeBufferPointer { Data(buffer: $0) }
@@ -212,4 +247,5 @@ actor ConversationSearchIndex {
         _ = halves.withUnsafeMutableBytes { data.copyBytes(to: $0) }
         return halves.map(Float.init)
     }
+    #endif
 }

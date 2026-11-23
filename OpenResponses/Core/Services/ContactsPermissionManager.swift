@@ -37,11 +37,13 @@ nonisolated public final class ContactsPermissionManager: Sendable {
             throw ContactsAccessError.permissionDenied
         default:
             // Handle .limited for iOS 18+ and @unknown cases
+            #if !os(macOS)
             if #available(iOS 18.0, *) {
                 if status == .limited {
                     return
                 }
             }
+            #endif
             throw ContactsAccessError.unknownAuthorizationStatus
         }
     }
@@ -59,9 +61,11 @@ nonisolated public final class ContactsPermissionManager: Sendable {
         // Check if we have adequate access
         var hasAccess = status == .authorized
         
+        #if !os(macOS)
         if #available(iOS 18.0, *) {
             hasAccess = hasAccess || status == .limited
         }
+        #endif
         
         if !hasAccess {
             try await requestAccess()

@@ -247,9 +247,7 @@ struct VoiceModeView: View {
         .onDisappear {
             service.disconnect()
         }
-        .sheet(isPresented: $showSettings) {
-            VoiceModeSettingsSheet()
-        }
+        .sheet(isPresented: $showSettings) { Group { VoiceModeSettingsSheet() }.macSheetFrame(width: 560, height: 620) }
     }
     
     private func disconnectAndClose() {

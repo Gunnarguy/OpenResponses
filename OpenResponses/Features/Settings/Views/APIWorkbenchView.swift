@@ -203,14 +203,14 @@ struct APIWorkbenchView: View {
                 Picker("Endpoint", selection: Binding(get: { endpoint }, set: selectEndpoint)) {
                     ForEach(Endpoint.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.disabled(session.isRunning)
-                if endpoint.needsID { TextField(endpoint.idPlaceholder, text: $resourceID).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                if endpoint.needsID { TextField(endpoint.idPlaceholder, text: $resourceID).platformCapitalization(.never).autocorrectionDisabled() }
                 if endpoint == .responses {
                     Picker("Transport", selection: $transport) {
                         ForEach(APIWorkbenchSession.Transport.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }.pickerStyle(.segmented).disabled(session.isRunning)
                 }
                 if endpoint.method == "POST" {
-                    JSONCodeEditor(text: $requestText, label: "Request JSON").font(.system(.caption, design: .monospaced)).frame(minHeight: 240).autocorrectionDisabled().textInputAutocapitalization(.never)
+                    JSONCodeEditor(text: $requestText, label: "Request JSON").font(.system(.caption, design: .monospaced)).frame(minHeight: 240).autocorrectionDisabled().platformCapitalization(.never)
                         .disabled(session.isRunning)
                 }
                 HStack {
@@ -401,7 +401,7 @@ struct APIWorkbenchView: View {
 
     private func authorizeNetwork(_ action: NetworkAction) -> Bool {
         guard !exploreModeEnabled else {
-            utilityStatus = "Demo Mode is offline. Turn it off in Settings → General to make live requests."
+            utilityStatus = "Demo Mode is offline. Turn off Demo Mode at the top of Settings to make live requests."
             return false
         }
         guard let key = KeychainService.shared.load(forKey: "openAIKey"), !key.isEmpty else {

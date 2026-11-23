@@ -10,7 +10,9 @@ import SwiftUI
 @main
 struct OpenResponsesApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    #if !os(macOS)
     @State private var storageBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    #endif
     @StateObject private var chatViewModel = AppContainer.shared.makeChatViewModel()
 
     init() {
@@ -25,6 +27,10 @@ struct OpenResponsesApp: App {
                 .appTextSize()
                 .onChange(of: scenePhase) { _, phase in
                     guard phase != .active else { return }
+                    #if os(macOS)
+                    // A Mac app keeps running in the background, so there is no task to ask the system for.
+                    Task { await chatViewModel.flushConversationStorage() }
+                    #else
                     if storageBackgroundTask == .invalid {
                         storageBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save conversations") {
                             if storageBackgroundTask != .invalid {
@@ -40,9 +46,28 @@ struct OpenResponsesApp: App {
                             storageBackgroundTask = .invalid
                         }
                     }
+                    #endif
                 }
         }
+        #if os(macOS)
+        .defaultSize(width: 1180, height: 800)
+        .commands {
+            OpenResponsesCommands(chatViewModel: chatViewModel)
+            SidebarCommands()
+            ToolbarCommands()
+        }
+        #else
         .commands { OpenResponsesCommands(chatViewModel: chatViewModel) }
+        #endif
+
+        #if os(macOS)
+        // Settings… and ⌘, open this window, as in every Mac app (OpenIntelligence does the same).
+        Settings {
+            SettingsHomeView()
+                .environmentObject(chatViewModel)
+        }
+        .windowResizability(.contentMinSize)
+        #endif
     }
 }
 
@@ -56,11 +81,14 @@ struct OpenResponsesCommands: Commands {
                 .keyboardShortcut("n")
                 .disabled(chatViewModel.isStreaming)
         }
+        #if !os(macOS)
+        // iPad shows this as a keyboard shortcut; the Mac's Settings scene provides Settings… and ⌘, itself.
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") {
                 NotificationCenter.default.post(name: NSNotification.Name("ShowFullSettings"), object: nil)
             }
             .keyboardShortcut(",")
         }
+        #endif
     }
 }

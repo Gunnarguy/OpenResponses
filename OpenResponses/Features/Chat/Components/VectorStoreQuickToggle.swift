@@ -128,8 +128,11 @@ struct VectorStoreQuickToggle: View {
             }
         }
         .sheet(isPresented: $showFileManager) {
-            FileManagerView(initialTab: .vectorStores)
-                .environmentObject(viewModel)
+            Group {
+                FileManagerView(initialTab: .vectorStores)
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 760, height: 640)
         }
         .onAppear {
             loadVectorStores()

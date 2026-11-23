@@ -8,7 +8,9 @@ import NaturalLanguage
 #if os(macOS)
 import AppKit
 #else
+#if canImport(UIKit)
 import UIKit
+#endif
 #endif
 
 /// Universal file converter that transforms unsupported file types into OpenAI-compatible formats
@@ -832,6 +834,15 @@ class FileConverterService {
             
             // Get page as image
             let pageRect = page.bounds(for: .mediaBox)
+            #if os(macOS)
+            let image = renderPlatformImage(size: pageRect.size) { context in
+                context.setFillColor(CGColor(gray: 1, alpha: 1))
+                context.fill(pageRect)
+                context.translateBy(x: 0, y: pageRect.size.height)
+                context.scaleBy(x: 1.0, y: -1.0)
+                page.draw(with: .mediaBox, to: context)
+            }
+            #else
             let renderer = UIGraphicsImageRenderer(size: pageRect.size)
             let image = renderer.image { ctx in
                 UIColor.white.set()
@@ -842,6 +853,7 @@ class FileConverterService {
                 
                 page.draw(with: .mediaBox, to: ctx.cgContext)
             }
+            #endif
             
             // Perform OCR using Vision
             guard let cgImage = image.cgImage else { continue }
@@ -1168,6 +1180,51 @@ class FileConverterService {
         
         // Create PDF data
         let pdfData = NSMutableData()
+        #if os(macOS)
+        let pageWidth: CGFloat = 612.0  // 8.5 inches * 72 points/inch
+        let pageHeight: CGFloat = 792.0 // 11 inches * 72 points/inch
+        let margin: CGFloat = 72.0      // 1 inch margins
+        var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        let textRect = CGRect(x: margin, y: margin, width: pageWidth - 2*margin, height: pageHeight - 2*margin)
+        let info: [CFString: Any] = [
+            kCGPDFContextTitle: originalFilename,
+            kCGPDFContextAuthor: "OpenResponses",
+            kCGPDFContextCreator: "OpenResponses File Converter",
+            kCGPDFContextSubject: "Converted from \(originalFilename)"
+        ]
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData),
+              let pdf = CGContext(consumer: consumer, mediaBox: &mediaBox, info as CFDictionary) else {
+            throw FileConversionError.conversionFailed("Could not create a PDF context")
+        }
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4.0
+        paragraphStyle.alignment = .left
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12.0), .paragraphStyle: paragraphStyle, .foregroundColor: NSColor.black
+        ]
+        let footerAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 9.0), .foregroundColor: NSColor.gray]
+        let lines = content.components(separatedBy: .newlines)
+        let lineHeight = ("A" as NSString).size(withAttributes: attributes).height + 4.0
+        let linesPerPage = max(1, Int((textRect.height / lineHeight).rounded(.down)))
+        var currentLine = 0
+        repeat {
+            pdf.beginPDFPage(nil)
+            NSGraphicsContext.saveGraphicsState()
+            // Top-left origin, as UIKit's PDF context draws, so text runs down the page.
+            pdf.translateBy(x: 0, y: pageHeight)
+            pdf.scaleBy(x: 1, y: -1)
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: pdf, flipped: true)
+            let endLine = min(currentLine + linesPerPage, lines.count)
+            (lines[currentLine..<endLine].joined(separator: "\n") as NSString).draw(in: textRect, withAttributes: attributes)
+            let footerText = "Page \((currentLine / linesPerPage) + 1) • \(originalFilename)"
+            (footerText as NSString).draw(in: CGRect(x: margin, y: pageHeight - margin + 20, width: pageWidth - 2*margin, height: 20),
+                                          withAttributes: footerAttributes)
+            NSGraphicsContext.restoreGraphicsState()
+            pdf.endPDFPage()
+            currentLine = endLine
+        } while currentLine < lines.count
+        pdf.closePDF()
+        #else
         
         // Setup PDF context
         UIGraphicsBeginPDFContextToData(pdfData, .zero, [
@@ -1231,6 +1288,8 @@ class FileConverterService {
         }
         
         UIGraphicsEndPDFContext()
+        
+        #endif
         
         AppLogger.log("   ✅ PDF created with \(pdfData.length) bytes", category: .fileManager, level: .info)
         

@@ -1,6 +1,8 @@
 import AppIntents
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 import UniformTypeIdentifiers
 
 // Shortcuts, Siri and the Action button (3.1).

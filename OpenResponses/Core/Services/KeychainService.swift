@@ -31,11 +31,17 @@ nonisolated class KeychainService: @unchecked Sendable {
     private var inMemoryStore: [String: String] = [:]
 
     private func baseQuery(forKey key: String) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainServiceName,
             kSecAttrAccount as String: key,
         ]
+        #if os(macOS)
+        // The data protection keychain, as on iPhone and iPad, so the key is this app's only and the accessibility
+        // attribute applies; without it a Mac item goes to the file-based login keychain.
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return query
     }
 
     private func logKeychainFailure(_ operation: String, status: OSStatus, key: String) {

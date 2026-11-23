@@ -67,7 +67,7 @@ struct APIInspectorView: View {
             }
             .navigationTitle("API Inspector")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Clear") {
                         analyticsService.clearRequestHistory()
                     }

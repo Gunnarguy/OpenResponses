@@ -1,5 +1,7 @@
 import AuthenticationServices
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Uses the provider's system sign-in sheet and browser cookies; never asks for a provider password.
 @MainActor
@@ -50,8 +52,12 @@ final class MCPWebAuthentication: NSObject, ASWebAuthenticationPresentationConte
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        #if os(macOS)
+        NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #else
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .filter { $0.activationState == .foregroundActive }
             .flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor()
+        #endif
     }
 }

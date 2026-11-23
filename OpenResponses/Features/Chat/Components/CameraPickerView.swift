@@ -1,6 +1,17 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
+#if os(macOS)
+/// The Mac has no photo-taking picker; the chat hides the camera there, and this stands in so the shared code builds.
+struct CameraPickerView: View {
+    let onImageCaptured: (UIImage) -> Void
+    var body: some View { EmptyView() }
+}
+
+func isCameraAvailable() -> Bool { false }
+#else
 /// A SwiftUI wrapper for UIImagePickerController to capture photos using the camera
 struct CameraPickerView: UIViewControllerRepresentable {
     let onImageCaptured: (UIImage) -> Void
@@ -48,17 +59,24 @@ func isCameraAvailable() -> Bool {
     UIImagePickerController.isSourceTypeAvailable(.camera)
 }
 
+#endif
+
+#if !os(macOS)
 // MARK: - Preview
 
 #Preview {
     Text("Camera Preview")
         .sheet(isPresented: .constant(true)) {
-            if isCameraAvailable() {
-                CameraPickerView { image in
-                    print("Captured image: \(image.size)")
+            Group {
+                if isCameraAvailable() {
+                    CameraPickerView { image in
+                        print("Captured image: \(image.size)")
+                    }
+                } else {
+                    Text("Camera not available on this device")
                 }
-            } else {
-                Text("Camera not available on this device")
             }
+            .macSheetFrame(width: 560, height: 620)
         }
 }
+#endif

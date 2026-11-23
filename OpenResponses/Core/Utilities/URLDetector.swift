@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Utility for detecting and extracting URLs from text messages
 struct URLDetector {

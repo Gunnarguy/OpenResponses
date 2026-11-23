@@ -104,7 +104,7 @@ struct RequestInspectorView: View {
                 .padding()
             }
             .navigationTitle("Request Inspector")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {

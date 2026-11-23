@@ -27,9 +27,9 @@ struct NotionConnectionView: View {
                 .padding()
             }
             .navigationTitle("Notion Integration")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -66,7 +66,7 @@ struct NotionConnectionView: View {
             SecureField("Paste your Integration Token (e.g. ntn_…)", text: $viewModel.tokenInput)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
+                .platformCapitalization(.never)
             
             Button {
                 viewModel.connect()

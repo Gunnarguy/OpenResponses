@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// The app's own text size, chosen in Settings → Text Size. "Same as iPhone" follows the system setting;
 /// any other choice overrides it inside OpenResponses only.
@@ -55,6 +57,10 @@ struct AppTextSizeModifier: ViewModifier {
     }
 
     private func apply() {
+        #if os(macOS)
+        // Mac apps follow the system's text size (System Settings > Accessibility > Display); there is no window
+        // content-size trait to override, and Settings hides the Text Size page on the Mac.
+        #else
         let windows = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows)
@@ -65,6 +71,7 @@ struct AppTextSizeModifier: ViewModifier {
                 window.traitOverrides.remove(UITraitPreferredContentSizeCategory.self)
             }
         }
+        #endif
     }
 }
 
@@ -128,6 +135,6 @@ struct TextSizeSettingsView: View {
             }
         }
         .navigationTitle("Text Size")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
     }
 }

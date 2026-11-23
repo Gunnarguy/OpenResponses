@@ -64,38 +64,62 @@ struct ChatView: View {
                 }
             }
         }
+        #if os(macOS)
+        // The Mac attaches through the Open panel over the window, not a sheet.
+        .onChange(of: showFilePicker) { _, show in
+            guard show else { return }
+            showFilePicker = false
+            DocumentPicker(selectedFileData: $viewModel.pendingFileData, selectedFilenames: $viewModel.pendingFileNames).present()
+        }
+        .onChange(of: showImagePicker) { _, show in
+            guard show else { return }
+            showImagePicker = false
+            MacImagePicker.present { images in viewModel.attachImages(images) }
+        }
+        #else
         .sheet(isPresented: $showFilePicker) {
-            DocumentPicker(
-                selectedFileData: $viewModel.pendingFileData,
-                selectedFilenames: $viewModel.pendingFileNames
-            )
+            Group {
+                DocumentPicker(
+                    selectedFileData: $viewModel.pendingFileData,
+                    selectedFilenames: $viewModel.pendingFileNames
+                )
+            }
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showImagePicker) {
-            NavigationStack {
-                ImagePickerView { selectedImages in
-                    if !selectedImages.isEmpty {
-                        viewModel.attachImages(selectedImages)
+            Group {
+                NavigationStack {
+                    ImagePickerView { selectedImages in
+                        if !selectedImages.isEmpty {
+                            viewModel.attachImages(selectedImages)
+                        }
                     }
-                }
-                .navigationTitle("Select Images")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showImagePicker = false
+                    .navigationTitle("Select Images")
+                    .inlineNavigationTitle()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                showImagePicker = false
+                            }
                         }
                     }
                 }
             }
+            .macSheetFrame(width: 560, height: 620)
         }
+        #endif
 
         .sheet(item: $viewModel.pendingAIDataSharingConsent) { _ in
-            AIDataSharingConsentSheet()
-                .environmentObject(viewModel)
+            Group {
+                AIDataSharingConsentSheet()
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 520, height: 600)
         }
         // Local Python: dismissing the sheet counts as "Don't Run".
         .sheet(item: $viewModel.pendingPythonRun, onDismiss: { viewModel.resolvePythonRun(approved: false) }) { request in
             PythonRunApprovalSheet(request: request) { approved in viewModel.resolvePythonRun(approved: approved) }
+                .macSheetFrame(width: 600, height: 620)
         }
         // Safety approval sheet for computer-use actions
         .sheet(
@@ -106,50 +130,60 @@ struct ChatView: View {
         ) {
             SafetyApprovalSheet()
                 .environmentObject(viewModel)
+                .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showCameraPicker) {
-            if isCameraAvailable() {
-                CameraPickerView { capturedImage in
-                    viewModel.attachImages([capturedImage])
+            Group {
+                if isCameraAvailable() {
+                    CameraPickerView { capturedImage in
+                        viewModel.attachImages([capturedImage])
+                    }
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "camera.slash")
+                            .font(.largeTitle)
+                            .foregroundColor(.secondary)
+                        Text("Camera not available")
+                            .font(.headline)
+                        Text("This device doesn't have a camera or camera access is restricted.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Dismiss") { showCameraPicker = false }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
                 }
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "camera.slash")
-                        .font(.largeTitle)
-                        .foregroundColor(.secondary)
-                    Text("Camera not available")
-                        .font(.headline)
-                    Text("This device doesn't have a camera or camera access is restricted.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Dismiss") { showCameraPicker = false }
-                        .buttonStyle(.borderedProminent)
-                }
-                .padding()
             }
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showVectorStoreUpload) {
-            VectorStoreSmartUploadView(
-                onUploadComplete: { successCount, failedCount in
-                    if successCount > 0 {
-                        uploadSuccessMessage = "✅ Successfully uploaded \(successCount) file\(successCount == 1 ? "" : "s") to vector store\(failedCount > 0 ? " (\(failedCount) failed)" : "")"
+            Group {
+                VectorStoreSmartUploadView(
+                    onUploadComplete: { successCount, failedCount in
+                        if successCount > 0 {
+                            uploadSuccessMessage = "✅ Successfully uploaded \(successCount) file\(successCount == 1 ? "" : "s") to vector store\(failedCount > 0 ? " (\(failedCount) failed)" : "")"
+                        }
+                    },
+                    onManageVectorStores: {
+                        showVectorStoreUpload = false
+                        // Small delay to allow smooth sheet transition
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(400))
+                            showFileManager = true
+                        }
                     }
-                },
-                onManageVectorStores: {
-                    showVectorStoreUpload = false
-                    // Small delay to allow smooth sheet transition
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(400))
-                        showFileManager = true
-                    }
-                }
-            )
-                .environmentObject(viewModel)
+                )
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 560, height: 620)
         }
         .sheet(isPresented: $showFileManager) {
-            FileManagerView(initialTab: .vectorStores)
-                .environmentObject(viewModel)
+            Group {
+                FileManagerView(initialTab: .vectorStores)
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 760, height: 640)
         }
         .alert(
             "Upload Complete",
@@ -308,7 +342,7 @@ struct ChatView: View {
         Text("AI responses can be inaccurate or outdated. Verify critical details and keep sensitive data out of prompts.")
             .font(.footnote)
             .foregroundStyle(Color.accessibleSecondaryText)
-            .fixedSize(horizontal: false, vertical: true)
+            .growsVerticallyOnIOS()
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal)

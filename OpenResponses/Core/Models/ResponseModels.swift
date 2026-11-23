@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Response model for delete response operation
 struct DeleteResponseResult: Codable {

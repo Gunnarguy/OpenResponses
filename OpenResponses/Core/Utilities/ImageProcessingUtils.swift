@@ -1,4 +1,6 @@
+#if canImport(UIKit)
 import UIKit
+#endif
 import Foundation
 
 /// Utility class for optimizing image processing and memory management
@@ -17,12 +19,23 @@ class ImageProcessingUtils {
         let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
         
         // Resize the image
+        #if !os(macOS)
+        // UIKit's draw(in:) honors the photo's orientation; keep it on iPhone and iPad.
         UIGraphicsBeginImageContextWithOptions(newSize, false, 0.0)
         image.draw(in: CGRect(origin: .zero, size: newSize))
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        
         return resizedImage ?? image
+        #else
+        guard let cgImage = image.cgImage else { return image }
+        return renderPlatformImage(size: newSize) { context in
+            // CoreGraphics draws images bottom-up; flip so the picture is upright in the top-left-origin context.
+            context.translateBy(x: 0, y: newSize.height)
+            context.scaleBy(x: 1, y: -1)
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
+        }
+        #endif
     }
     
     /// Processes base64 image data efficiently with memory management
@@ -50,29 +63,24 @@ class ImageProcessingUtils {
     
     /// Creates a placeholder image for loading states
     static func createPlaceholderImage(size: CGSize = CGSize(width: 300, height: 200)) -> UIImage {
-        UIGraphicsBeginImageContextWithOptions(size, false, 0.0)
-        let context = UIGraphicsGetCurrentContext()
-        
-        // Fill with light gray background
-        context?.setFillColor(UIColor.systemGray6.cgColor)
-        context?.fill(CGRect(origin: .zero, size: size))
-        
-        // Add loading icon
-        let iconSize: CGFloat = 40
-        let iconRect = CGRect(
-            x: (size.width - iconSize) / 2,
-            y: (size.height - iconSize) / 2,
-            width: iconSize,
-            height: iconSize
-        )
-        
-        context?.setFillColor(UIColor.systemGray3.cgColor)
-        context?.fillEllipse(in: iconRect)
-        
-        let placeholderImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return placeholderImage ?? UIImage()
+        let background = UIColor.systemGray6.cgColor
+        let icon = UIColor.systemGray3.cgColor
+        return renderPlatformImage(size: size) { context in
+            // Fill with light gray background
+            context.setFillColor(background)
+            context.fill(CGRect(origin: .zero, size: size))
+
+            // Add loading icon
+            let iconSize: CGFloat = 40
+            let iconRect = CGRect(
+                x: (size.width - iconSize) / 2,
+                y: (size.height - iconSize) / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            context.setFillColor(icon)
+            context.fillEllipse(in: iconRect)
+        }
     }
 }
 

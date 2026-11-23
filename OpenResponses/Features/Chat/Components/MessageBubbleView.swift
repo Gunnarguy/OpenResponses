@@ -1,6 +1,15 @@
 import SwiftUI
 
 struct MessageBubbleView: View {
+    /// Three quarters of the screen on iPhone and iPad; a readable line length in a Mac window.
+    static var maxBubbleWidth: CGFloat {
+        #if os(macOS)
+        720
+        #else
+        UIScreen.main.bounds.width * 0.75
+        #endif
+    }
+
     let message: ChatMessage
     let onDelete: () -> Void
     var isStreaming: Bool = false
@@ -140,7 +149,7 @@ struct MessageBubbleView: View {
             .foregroundColor(foregroundColor(for: message.role))
             .font(font(for: message.role))
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .leading)
+            .frame(maxWidth: Self.maxBubbleWidth, alignment: .leading)
             .contextMenu {
                 if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button {

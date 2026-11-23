@@ -63,7 +63,7 @@ struct WebContentView: View {
             // Action buttons
             HStack {
                 Button("Open in Safari") {
-                    UIApplication.shared.open(url)
+                    openExternalURL(url)
                 }
                 .font(.caption)
                 .foregroundColor(.blue)
@@ -95,26 +95,42 @@ struct WebContentView: View {
     }
 }
 
-/// UIViewRepresentable wrapper for WKWebView
-struct WebView: UIViewRepresentable {
+#if os(macOS)
+extension WebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
+    func updateNSView(_ webView: WKWebView, context: Context) { updateWebView(webView, coordinator: context.coordinator) }
+}
+#else
+extension WebView: UIViewRepresentable {
+    func makeUIView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
+    func updateUIView(_ webView: WKWebView, context: Context) { updateWebView(webView, coordinator: context.coordinator) }
+}
+#endif
+
+/// WKWebView for SwiftUI: an NSView on the Mac, a UIView on iPhone and iPad (the conformances are above).
+struct WebView {
     let url: URL
     @Binding var isLoading: Bool
     @Binding var error: String?
 
-    func makeUIView(context: Context) -> WKWebView {
+    fileprivate func makeWebView(coordinator: Coordinator) -> WKWebView {
         let config = WKWebViewConfiguration()
 
         // Configure for better experience and ad blocking
+        #if !os(macOS)
         config.allowsInlineMediaPlayback = true
+        #endif
         config.mediaTypesRequiringUserActionForPlayback = []
         config.suppressesIncrementalRendering = false
 
         // Create the web view with enhanced configuration
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        webView.uiDelegate = context.coordinator
+        webView.navigationDelegate = coordinator
+        webView.uiDelegate = coordinator
+        #if !os(macOS)
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
+        #endif
 
         // Set a proper desktop user agent to avoid mobile redirects/ads
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -128,18 +144,18 @@ struct WebView: UIViewRepresentable {
         webView.load(request)
 
         // Keep track of the requested URL in coordinator
-        context.coordinator.lastRequestedURL = url
+        coordinator.lastRequestedURL = url
 
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    fileprivate func updateWebView(_ webView: WKWebView, coordinator: Coordinator) {
         // Only load if the requested URL has actually changed.
-        // Comparing with context.coordinator.lastRequestedURL prevents infinite reload loops
+        // Comparing with coordinator.lastRequestedURL prevents infinite reload loops
         // triggered by SwiftUI updates (such as scroll events or streaming state changes)
         // while the page is still loading or has redirected.
-        if context.coordinator.lastRequestedURL != url {
-            context.coordinator.lastRequestedURL = url
+        if coordinator.lastRequestedURL != url {
+            coordinator.lastRequestedURL = url
             let request = createRequest(for: url)
             webView.load(request)
         }
@@ -260,7 +276,7 @@ struct WebView: UIViewRepresentable {
                let currentHost = url.host?.lowercased(),
                currentHost != originalHost && !currentHost.hasSuffix(".\(originalHost)") && !originalHost.hasSuffix(".\(currentHost)") {
                 // This is a user click to a completely external domain - open in Safari
-                UIApplication.shared.open(url)
+                openExternalURL(url)
                 return .cancel
             }
 

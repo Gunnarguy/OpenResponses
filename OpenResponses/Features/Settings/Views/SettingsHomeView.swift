@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Settings, laid out like the system Settings app: one list of named pages, each row showing what is set now, and a
 /// search field that finds any option by name.
@@ -23,8 +25,15 @@ struct SettingsHomeView: View {
     @State private var resetConfirm = false
     @State private var showingFiles = false
     @ObservedObject private var proStore = ProStore.shared
+    #if os(macOS)
+    @State private var macPage: SettingsPage? = .model
+    #endif
 
     var body: some View {
+        Group {
+            #if os(macOS)
+            macSettings
+            #else
         NavigationStack(path: $path) {
             Form {
                 if searchText.isEmpty {
@@ -34,7 +43,7 @@ struct SettingsHomeView: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search settings")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -45,6 +54,8 @@ struct SettingsHomeView: View {
                 destination(for: page)
             }
         }
+            #endif
+        }
         .onAppear(perform: refreshKeyStatus)
         .onReceive(NotificationCenter.default.publisher(for: .openAIKeyDidChange)) { _ in refreshKeyStatus() }
         .sheet(isPresented: $showingPromptLibrary) {
@@ -52,11 +63,13 @@ struct SettingsHomeView: View {
                 library: promptLibrary,
                 createPromptFromCurrentSettings: { viewModel.activePrompt }
             )
+            .environmentObject(viewModel)
+            .macSheetFrame(width: 640, height: 620)
         }
-        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet() }
-        .sheet(isPresented: $showingAbout) { AboutView() }
-        .sheet(isPresented: $showingFiles) { FileManagerView().environmentObject(viewModel) }
-        .sheet(item: $proStore.paywall) { feature in ProPaywallView(store: proStore, feature: feature) }
+        .sheet(isPresented: $showingVoiceSettings) { VoiceModeSettingsSheet().environmentObject(viewModel).macSheetFrame(width: 520, height: 600) }
+        .sheet(isPresented: $showingAbout) { AboutView().environmentObject(viewModel).macSheetFrame(width: 520, height: 620) }
+        .sheet(isPresented: $showingFiles) { FileManagerView().environmentObject(viewModel).macSheetFrame(width: 760, height: 640) }
+        .sheet(item: $proStore.paywall) { feature in ProPaywallView(store: proStore, feature: feature).environmentObject(viewModel).macSheetFrame(width: 480, height: 600) }
     }
 
     private func refreshKeyStatus() {
@@ -176,9 +189,12 @@ struct SettingsHomeView: View {
             NavigationLink(value: SettingsPage.privacy) {
                 SettingsRow("Privacy & Safety", icon: "hand.raised.fill", tint: .blue, value: prompt.storeResponses ? "Stored on OpenAI" : "Not stored")
             }
+            #if !os(macOS)
+            // Mac apps follow the system's text size, so the Mac has no Text Size page.
             NavigationLink(value: SettingsPage.textSize) {
                 SettingsRow("Text Size", icon: "textformat.size", tint: .blue, value: AppTextSize.summary(textSizeSetting))
             }
+            #endif
             Button { showingAbout = true } label: {
                 SettingsRow("About, Licenses & Rating", icon: "info.circle.fill", tint: .gray, value: nil)
             }
@@ -198,6 +214,151 @@ struct SettingsHomeView: View {
                  : "A one-time purchase for Shortcuts and Siri, the share sheet and the 12-hour prompt cache. Everything else stays free.")
         }
     }
+
+    #if os(macOS)
+    // MARK: Mac
+
+    /// Settings on the Mac, in its own window like System Settings: pages in a sidebar with search, the chosen page
+    /// on the right. Rows that open a sheet (Voice, Files, Prompt Library, About, Pro) stay buttons in the sidebar.
+    private var macSettings: some View {
+        NavigationSplitView {
+            List(selection: $macPage) {
+                if searchText.isEmpty {
+                    macSidebarRows
+                } else {
+                    macSearchRows
+                }
+            }
+            .listStyle(.sidebar)
+            .searchable(text: $searchText, placement: .sidebar, prompt: "Search settings")
+            .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 320)
+            .safeAreaInset(edge: .bottom) { macSidebarFooter.background(.bar) }
+            .toolbar(removing: .sidebarToggle)
+            // Sheet pages are rows like the rest; choosing one opens its sheet and keeps the page that was showing.
+            .onChange(of: macPage) { old, new in
+                guard let new else { return }
+                if Self.macSheetPages.contains(new) {
+                    macPage = old
+                    open(new)
+                } else if !searchText.isEmpty {
+                    searchText = ""
+                }
+            }
+        } detail: {
+            NavigationStack(path: $path) {
+                Group {
+                    if let macPage {
+                        destination(for: macPage)
+                    } else {
+                        ContentUnavailableView("Choose a setting", systemImage: "gearshape")
+                    }
+                }
+                .navigationDestination(for: SettingsPage.self) { page in destination(for: page) }
+            }
+            // Every page's Form is grouped, as Mac settings are; an unstyled Form is two columns and doesn't scroll.
+            .formStyle(.grouped)
+            .focusEffectDisabled()
+            .id(macPage)
+        }
+        .frame(minWidth: 820, idealWidth: 960, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
+    }
+
+    private func macRow(_ title: LocalizedStringKey, icon: String, tint: Color, page: SettingsPage) -> some View {
+        Label { Text(title) } icon: { SettingsIconTile(icon: icon, tint: tint) }
+            .tag(page)
+    }
+
+    /// Pages that open as a sheet rather than in the detail column.
+    private static let macSheetPages: Set<SettingsPage> = [.voice, .about, .promptLibrary, .files]
+
+    @ViewBuilder
+    private var macSidebarRows: some View {
+        Section {
+            macRow("OpenAI API Key", icon: hasApiKey ? "key.fill" : "key.slash", tint: hasApiKey ? .green : .red, page: .account)
+        }
+        Section("Assistant") {
+            macRow("Model & Reasoning", icon: "cpu", tint: .blue, page: .model)
+            macRow("Instructions", icon: "text.quote", tint: .indigo, page: .instructions)
+            macRow("Response Format", icon: "text.alignleft", tint: .teal, page: .responseFormat)
+            macRow("Voice", icon: "waveform", tint: .pink, page: .voice)
+        }
+        Section("What the assistant can do") {
+            macRow("Tools", icon: "wrench.and.screwdriver.fill", tint: .orange, page: .tools)
+            macRow("Agents & Tool Calling", icon: "person.3.fill", tint: .purple, page: .agents)
+            if AppFeatureFlags.isMCPAvailable {
+                macRow("Connectors", icon: "link", tint: .cyan, page: .connections)
+            }
+            macRow("Files & Vector Stores", icon: "folder.fill", tint: .brown, page: .files)
+        }
+        Section("Presets") {
+            macRow("Prompt Library", icon: "books.vertical.fill", tint: .mint, page: .promptLibrary)
+        }
+        Section("Developer") {
+            macRow("API Workbench", icon: "hammer.fill", tint: .gray, page: .workbench)
+            macRow("Decisions", icon: "checklist", tint: .green, page: .decisions)
+            macRow("Batch Jobs", icon: "clock.arrow.circlepath", tint: .blue, page: .batch)
+            macRow("Request Options", icon: "slider.horizontal.3", tint: .gray, page: .developer)
+        }
+        Section {
+            macRow("Privacy & Safety", icon: "hand.raised.fill", tint: .blue, page: .privacy)
+            macRow("About, Licenses & Rating", icon: "info.circle.fill", tint: .gray, page: .about)
+
+        }
+    }
+
+    @ViewBuilder
+    private var macSearchRows: some View {
+        let matches = SettingsSearchIndex.matches(searchText)
+        if matches.isEmpty {
+            Text("No settings match “\(searchText)”").foregroundStyle(.secondary)
+        } else {
+            ForEach(matches) { entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.title)
+                    Text(entry.location).font(.caption).foregroundStyle(.secondary)
+                }
+                .tag(entry.page)
+            }
+        }
+    }
+
+    /// OpenResponses Pro, Demo Mode and Reset, which on iPhone sit in the list, at the foot of the Mac sidebar.
+    private var macSidebarFooter: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            Button { proStore.message = nil; proStore.paywall = .shortcuts } label: {
+                Label(proStore.isPro ? "OpenResponses Pro: Unlocked" : "OpenResponses Pro…",
+                      systemImage: proStore.isPro ? "checkmark.seal.fill" : "sparkles")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("settings.pro")
+            if !hasApiKey || viewModel.exploreModeEnabled {
+                Toggle("Demo Mode", isOn: Binding(
+                    get: { viewModel.exploreModeEnabled },
+                    set: { viewModel.setExploreModeEnabled($0) }
+                ))
+                .help("Try the app with built-in answers. Nothing is sent to OpenAI.")
+                if viewModel.exploreModeEnabled {
+                    HStack {
+                        Button("Start Demo") { viewModel.startExploreDemoConversation() }
+                        Button("Exit Demo", role: .destructive) { viewModel.exitExploreDemo() }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            Button("Reset All Prompt Settings…", role: .destructive) { resetConfirm = true }
+                .controlSize(.small)
+                .alert("Reset Prompt Settings?", isPresented: $resetConfirm) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Reset", role: .destructive) { viewModel.resetToDefaultPrompt() }
+                } message: {
+                    Text("Restore the model, instructions, tools and options to their defaults. Your API key, conversations and voice choice are kept.")
+                }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
+    }
+    #endif
 
     // MARK: Summaries shown on the root rows
 
@@ -287,7 +448,13 @@ struct SettingsHomeView: View {
         case .about: showingAbout = true
         case .promptLibrary: showingPromptLibrary = true
         case .files: showingFiles = true
-        default: path = [page]
+        default:
+            #if os(macOS)
+            macPage = page
+            path = []
+            #else
+            path = [page]
+            #endif
         }
     }
 
@@ -439,6 +606,10 @@ struct SettingsSearchIndex {
     static func matches(_ query: String) -> [Entry] {
         let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return [] }
+        #if os(macOS)
+        // The Mac has no Text Size page (Mac apps follow the system's text size).
+        let entries = entries.filter { $0.page != .textSize }
+        #endif
         return entries.filter { entry in
             let haystack = (entry.title + " " + entry.location + " " + entry.keywords).lowercased()
             return words.allSatisfy { haystack.contains($0) }
@@ -512,7 +683,7 @@ private struct AccountPage: View {
             Section {
                 HStack(spacing: 8) {
                     SecureField("sk-...", text: $apiKey)
-                        .textInputAutocapitalization(.never)
+                        .platformCapitalization(.never)
                         .disableAutocorrection(true)
                         .submitLabel(.done)
                         .onSubmit { commit(apiKey) }
@@ -644,10 +815,10 @@ private struct PrivacyPage: View {
 
             Section {
                 TextField("Safety identifier", text: $viewModel.activePrompt.safetyIdentifier)
-                    .textInputAutocapitalization(.never)
+                    .platformCapitalization(.never)
                     .disableAutocorrection(true)
                 TextField("Prompt cache key", text: $viewModel.activePrompt.promptCacheKey)
-                    .textInputAutocapitalization(.never)
+                    .platformCapitalization(.never)
                     .disableAutocorrection(true)
             } header: {
                 Text("Identity and caching")
@@ -896,9 +1067,7 @@ private struct ToolsTab: View {
                 Text("Connect Notion, Linear, Slack, Figma and thousands of other services so the assistant can use them.")
             }
         }
-        .sheet(isPresented: $showingFileManager) {
-            FileManagerView().environmentObject(viewModel)
-        }
+        .sheet(isPresented: $showingFileManager) { Group { FileManagerView().environmentObject(viewModel) }.macSheetFrame(width: 760, height: 640) }
         .onChange(of: viewModel.activePrompt.modernOptions) { _, _ in viewModel.saveActivePrompt() }
         .onDisappear { viewModel.saveActivePrompt() }
         .onAppear {
@@ -1267,7 +1436,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                         .foregroundColor(.secondary)
 
                     TextField("e.g., nytimes.com, bbc.com", text: $viewModel.activePrompt.webSearchAllowedDomains.bound)
-                        .textInputAutocapitalization(.never)
+                        .platformCapitalization(.never)
 .autocorrectionDisabled()
     .font(.callout)
     .padding(8)
@@ -1285,7 +1454,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                         .foregroundColor(.secondary)
 
                     TextField("e.g., reddit.com, twitter.com", text: $viewModel.activePrompt.webSearchBlockedDomains.bound)
-                        .textInputAutocapitalization(.never)
+                        .platformCapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.callout)
                         .padding(8)
@@ -1332,7 +1501,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             TextField("US", text: $viewModel.activePrompt.userLocationCountry.bound)
-                                .textInputAutocapitalization(.characters)
+                                .platformCapitalization(.characters)
                                 .autocorrectionDisabled()
                                 .frame(width: 60)
                                 .font(.callout)
@@ -1346,7 +1515,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             TextField("San Francisco", text: $viewModel.activePrompt.userLocationCity.bound)
-                                .textInputAutocapitalization(.words)
+                                .platformCapitalization(.words)
                                 .font(.callout)
                                 .padding(6)
                                 .background(Color(.systemGray6))
@@ -1360,7 +1529,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             TextField("California", text: $viewModel.activePrompt.userLocationRegion.bound)
-                                .textInputAutocapitalization(.words)
+                                .platformCapitalization(.words)
                                 .font(.callout)
                                 .padding(6)
                                 .background(Color(.systemGray6))
@@ -1372,7 +1541,7 @@ Text("Higher = better quality, slower response, may cost more tokens.")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             TextField("America/Los_Angeles", text: $viewModel.activePrompt.userLocationTimezone.bound)
-.textInputAutocapitalization(.never)
+.platformCapitalization(.never)
 .autocorrectionDisabled()
     .font(.callout)
     .padding(6)

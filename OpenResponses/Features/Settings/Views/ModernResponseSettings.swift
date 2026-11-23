@@ -280,7 +280,7 @@ struct CustomToolSections: View {
         }
         if viewModel.activePrompt.enableCustomTool {
             Section("Definition") {
-                TextField("Tool name", text: $viewModel.activePrompt.customToolName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("Tool name", text: $viewModel.activePrompt.customToolName).platformCapitalization(.never).autocorrectionDisabled()
                 TextField("What the tool does", text: $viewModel.activePrompt.customToolDescription, axis: .vertical)
                 if modern {
                     Picker("Input format", selection: $viewModel.activePrompt.currentOptions.customToolFormat) {
@@ -304,7 +304,7 @@ struct CustomToolSections: View {
                     Text("Post to a webhook").tag("webhook")
                 }
                 if viewModel.activePrompt.customToolExecutionType == "webhook" {
-                    TextField("Webhook URL", text: $viewModel.activePrompt.customToolWebhookURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Webhook URL", text: $viewModel.activePrompt.customToolWebhookURL).platformKeyboard(.url).platformCapitalization(.never).autocorrectionDisabled()
                 }
             } header: {
                 Text("Execution")
@@ -358,7 +358,12 @@ struct SettingsToggleLabel: View {
 struct SettingsIconTile: View {
     let icon: String
     let tint: Color
+    #if os(macOS)
+    /// System Settings on the Mac draws its sidebar tiles at about 20 points.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 20
+    #else
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 29
+    #endif
 
     var body: some View {
         Image(systemName: icon)

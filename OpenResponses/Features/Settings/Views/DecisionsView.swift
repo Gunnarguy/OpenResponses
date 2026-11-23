@@ -1,6 +1,8 @@
 import PhotosUI
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// A playground for POST /v1/decisions: write input, ask typed questions, read the probabilities.
 /// Questions are saved on this device in UserDefaults; the input text and image are not saved.
@@ -106,7 +108,7 @@ struct DecisionsView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .trailingBar) {
                 Menu {
                     Section("Examples") {
                         ForEach(DecisionsRequest.examples, id: \.title) { example in
@@ -123,7 +125,9 @@ struct DecisionsView: View {
                     Image(systemName: "ellipsis.circle").accessibilityLabel("More")
                 }
             }
+            #if !os(macOS)
             ToolbarItem(placement: .topBarTrailing) { EditButton() }
+            #endif
         }
         .onAppear(perform: restore)
         .onChange(of: request.questions) { _, questions in
@@ -198,16 +202,28 @@ struct DecisionsView: View {
         let longest = max(image.size.width, image.size.height)
         let scale = longest > maxSide ? maxSide / longest : 1
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+        #if os(macOS)
+        // A 1x bitmap of exactly `size` pixels; Retina backing would double it.
+        guard let source = image.cgImage,
+              let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(source, in: CGRect(origin: .zero, size: size))
+        guard let resized = context.makeImage().map({ NSImage(cgImage: $0) }),
+              let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
+        #else
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
         guard let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
+        #endif
         return "data:image/jpeg;base64," + jpeg.base64EncodedString()
     }
 
     private func requestRun() {
         guard !exploreModeEnabled else {
-            status = "Demo Mode is offline. Turn it off in Settings → General to make live requests."
+            status = "Demo Mode is offline. Turn off Demo Mode at the top of Settings to make live requests."
             return
         }
         guard let key = KeychainService.shared.load(forKey: "openAIKey"), !key.isEmpty else {
@@ -361,7 +377,7 @@ struct DecisionQuestionEditor: View {
                     ForEach(DecisionQuestionKind.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 TextField("Name (optional)", text: $question.name)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .platformCapitalization(.never).autocorrectionDisabled()
                     .font(.body.monospaced())
                 TextField("Instructions", text: $question.instructions, axis: .vertical).lineLimit(2...8)
             } footer: {
@@ -373,7 +389,7 @@ struct DecisionQuestionEditor: View {
                     ForEach($question.options) { $option in
                         VStack(alignment: .leading) {
                             TextField(question.kind == .choice ? "Value" : "Label", text: $option.value)
-                                .textInputAutocapitalization(.never)
+                                .platformCapitalization(.never)
                             TextField("When it applies (optional)", text: $option.detail, axis: .vertical)
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
@@ -396,7 +412,9 @@ struct DecisionQuestionEditor: View {
             }
         }
         .navigationTitle(question.kind.title)
+        #if !os(macOS)
         .toolbar { if question.kind != .predicate { EditButton() } }
+        #endif
     }
 }
 

@@ -66,9 +66,9 @@ struct VoiceModeSettingsSheet: View {
                 }
             }
             .navigationTitle("Voice Mode Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Done") {
                         dismiss()
                     }

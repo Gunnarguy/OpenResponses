@@ -51,7 +51,7 @@ struct AIDataSharingConsentSheet: View {
                 .padding()
             }
             .navigationTitle("Before You Send")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
         }
         .interactiveDismissDisabled()
     }

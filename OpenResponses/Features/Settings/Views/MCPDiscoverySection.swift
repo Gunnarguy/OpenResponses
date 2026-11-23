@@ -117,7 +117,7 @@ struct MCPDiscoverySection: View {
         } header: {
             Label("Tool Discovery", systemImage: "network")
         } footer: {
-            Text(exploreModeEnabled ? "Demo Mode is offline. Turn it off in Settings → General to discover tools." : "Fetches tool definitions through OpenAI without calling tools. Discovery uses your API account. Account sign-in is handled separately.")
+            Text(exploreModeEnabled ? "Demo Mode is offline. Turn off Demo Mode at the top of Settings to discover tools." : "Fetches tool definitions through OpenAI without calling tools. Discovery uses your API account. Account sign-in is handled separately.")
         }
         .onChange(of: identity) { _, _ in discovery.reset() }
         .onDisappear { discovery.cancelIfLoading() }

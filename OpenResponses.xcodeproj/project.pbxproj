@@ -14,7 +14,7 @@
 		39C12FDEB00246F794F850F8 /* ConversationSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F56D912DD6645E7945C0052 /* ConversationSearchIndexTests.swift */; };
 		6123040F55944460857DB121 /* AppCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E087B791B144CAB9EDAC80 /* AppCompletionTests.swift */; };
 		714546EDCD77489AB24E9DCD /* MCPApprovalUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D743E152BC8F46C2BAC5E326 /* MCPApprovalUtilsTests.swift */; };
-		B019263C30B021EB000E5B0F /* OpenResponsesShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B019263230B021EB000E5B0F /* OpenResponsesShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B019263C30B021EB000E5B0F /* OpenResponsesShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B019263230B021EB000E5B0F /* OpenResponsesShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B0D1A0902F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A02F2F5C2C00A1B100 /* FunctionOutputSummarizerTests.swift */; };
 		B0D1A0912F2F5C2C00A1B100 /* OpenAIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A12F2F5C2C00A1B100 /* OpenAIServiceTests.swift */; };
 		B0D1A0922F2F5C2C00A1B100 /* OpenResponsesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1A0A22F2F5C2C00A1B100 /* OpenResponsesTests.swift */; };
@@ -131,6 +131,9 @@
 			membershipExceptions = (
 				Info.plist,
 			);
+			platformFiltersByRelativePath = {
+				"Resources/UI/Launch Screen.storyboard" = (ios, );
+			};
 			target = B06DB4522E0FB40B00C7BDB3 /* OpenResponses */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -540,6 +543,7 @@
 /* Begin PBXTargetDependency section */
 		B019263B30B021EB000E5B0F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = B019263130B021EB000E5B0F /* OpenResponsesShare */;
 			targetProxy = B019263A30B021EB000E5B0F /* PBXContainerItemProxy */;
 		};
@@ -581,7 +585,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -615,7 +619,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -788,16 +792,20 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = Gunndamental.OpenResponses;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				"SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY[sdk=macosx*]" = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -844,16 +852,20 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = Gunndamental.OpenResponses;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				"SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY[sdk=macosx*]" = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

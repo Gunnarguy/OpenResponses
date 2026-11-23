@@ -7,6 +7,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 import UniformTypeIdentifiers
 
 struct ConversationTransferDocument: Codable {
@@ -268,7 +271,7 @@ struct ConversationExportView: View {
                 }
             }
             .navigationTitle("Export & Import")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -367,12 +370,30 @@ struct ConversationExportView: View {
     // MARK: - Helpers
     
     private func shareFile(url: URL) {
+        #if os(macOS)
+        // The Mac saves the export where the person chooses, through the Save panel.
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = url.lastPathComponent
+        panel.canCreateDirectories = true
+        let save: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let destination = panel.url else { return }
+            do {
+                if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+                try FileManager.default.copyItem(at: url, to: destination)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        if let window = NSApplication.shared.keyWindow { panel.beginSheetModal(for: window, completionHandler: save) }
+        else { panel.begin(completionHandler: save) }
+        #else
         let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootVC = windowScene.windows.first?.rootViewController {
             rootVC.present(activityVC, animated: true)
         }
+        #endif
     }
     
     private func formatDate(_ date: Date) -> String {

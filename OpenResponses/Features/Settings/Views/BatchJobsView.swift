@@ -139,9 +139,9 @@ struct BatchJobsView: View {
             }
         }
         .navigationTitle("Batch Jobs")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .trailingBar) {
                 Button {
                     loadJobs()
                 } label: {

@@ -29,7 +29,7 @@ struct PromptLibraryView: View {
             }
             .navigationTitle("Preset Library")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button(action: {
                         promptToEdit = nil
                         showingAddEditPrompt = true
@@ -42,13 +42,15 @@ struct PromptLibraryView: View {
                         identifier: AccessibilityUtils.Identifier.addPresetButton
                     )
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
+                #if !os(macOS)
+                ToolbarItem(placement: .leadingBar) {
                     EditButton()
                         .accessibilityConfiguration(
                             hint: AccessibilityUtils.Hint.editMode,
                             identifier: AccessibilityUtils.Identifier.editButton
                         )
                 }
+                #endif
             }
             .sheet(isPresented: $showingAddEditPrompt, onDismiss: {
                 // Reload after add/edit to reflect latest saved presets
@@ -59,6 +61,7 @@ struct PromptLibraryView: View {
                     promptToEdit: $promptToEdit,
                     createPromptFromCurrentSettings: createPromptFromCurrentSettings
                 )
+                .macSheetFrame(width: 560, height: 620)
             }
         }
         .onAppear {

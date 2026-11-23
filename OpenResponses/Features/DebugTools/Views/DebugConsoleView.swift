@@ -73,9 +73,9 @@ struct DebugConsoleView: View {
                 .background(Color(.systemBackground))
             }
             .navigationTitle("Debug Console")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button("Clear") {
                         consoleLogger.clearLogs()
                     }

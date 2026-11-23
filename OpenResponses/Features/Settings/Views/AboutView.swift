@@ -49,7 +49,7 @@ struct AboutView: View {
                 .padding()
             }
             .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

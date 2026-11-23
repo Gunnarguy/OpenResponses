@@ -66,7 +66,7 @@ struct VectorStoreSmartUploadView: View {
                 }
             }
             .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(isUploading ? "Stop" : "Done") {
@@ -106,8 +106,11 @@ struct VectorStoreSmartUploadView: View {
         .interactiveDismissDisabled(isUploading)
         .onDisappear { uploadTask?.cancel() }
         .sheet(isPresented: $showingCreateStore) {
-            CreateVectorStoreSimpleView()
-                .environmentObject(viewModel)
+            Group {
+                CreateVectorStoreSimpleView()
+                    .environmentObject(viewModel)
+            }
+            .macSheetFrame(width: 560, height: 620)
         }
     }
     
@@ -724,7 +727,7 @@ struct CreateVectorStoreSimpleView: View {
                 }
             }
             .navigationTitle("New Vector Store")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

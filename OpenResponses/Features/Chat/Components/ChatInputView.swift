@@ -174,7 +174,7 @@ struct ChatInputView: View {
                     onSend()
                 }
             }
-            .textInputAutocapitalization(.sentences)
+            .platformCapitalization(.sentences)
             .disableAutocorrection(false)
             .padding(.vertical, 6)
             .accessibilityConfiguration(

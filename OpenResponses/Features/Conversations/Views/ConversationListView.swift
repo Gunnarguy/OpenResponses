@@ -90,12 +90,12 @@ struct ConversationListView: View {
             }
             .task(id: query) { await runSearch() }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .leadingBar) {
                     Button("Close") {
                         isPresented = false
                     }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .trailingBar) {
                     Button(action: {
                         viewModel.createNewConversation()
                         isPresented = false

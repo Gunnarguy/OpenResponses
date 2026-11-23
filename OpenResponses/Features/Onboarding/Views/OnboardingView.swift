@@ -37,6 +37,14 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Page content
+            #if os(macOS)
+            // macOS has no paging TabView; show the current page and let Back and Next move between them.
+            OnboardingPageView(page: pages[currentPage])
+                .id(currentPage)
+                .transition(.opacity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.easeInOut, value: currentPage)
+            #else
             TabView(selection: $currentPage) {
                 ForEach(0..<pages.count, id: \.self) { index in
                     OnboardingPageView(page: pages[index])
@@ -45,6 +53,7 @@ struct OnboardingView: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             .animation(.easeInOut, value: currentPage)
+            #endif
 
             // Custom page indicator and buttons
             VStack(spacing: 20) {

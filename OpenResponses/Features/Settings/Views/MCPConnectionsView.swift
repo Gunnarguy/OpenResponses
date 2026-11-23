@@ -117,11 +117,9 @@ struct MCPConnectionsView: View {
         }
         .searchable(text: $query, prompt: "Search connectors")
         .navigationTitle("Connectors")
-        .sheet(item: $selectedProvider) { provider in
-            NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) }
-        }
-        .sheet(isPresented: $showingCustom) { RemoteMCPSetupSheet().environmentObject(viewModel) }
-        .sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { NotionConnectionView() }
+        .sheet(item: $selectedProvider) { provider in Group { NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) } }.macSheetFrame(width: 560, height: 620) }
+        .sheet(isPresented: $showingCustom) { Group { RemoteMCPSetupSheet().environmentObject(viewModel) }.macSheetFrame(width: 560, height: 620) }
+        .sheet(isPresented: $showingNotionToken, onDismiss: refreshNotionToken) { Group { NotionConnectionView() }.macSheetFrame(width: 560, height: 620) }
         .confirmationDialog("Remove the Notion integration token?", isPresented: $confirmingTokenRemoval, titleVisibility: .visible) {
             Button("Remove Token", role: .destructive) {
                 _ = KeychainService.shared.delete(forKey: "notionApiKey")
@@ -367,7 +365,7 @@ struct MCPProviderDetailView: View {
                         .font(.callout).foregroundStyle(.secondary)
                     DisclosureGroup("Connect with a key or token", isExpanded: $showingKey) {
                         SecureField("Key or token", text: $token)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .platformCapitalization(.never).autocorrectionDisabled()
                         Button("Connect with This Key") { connectWithKey() }
                             .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Text("Sent as the Authorization header. Stored in this iPhone's Keychain.")
@@ -403,7 +401,7 @@ struct MCPProviderDetailView: View {
                 }
             }
         }
-        .navigationTitle(provider.name).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(provider.name).inlineNavigationTitle()
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         .onDisappear { flow.cancel() }
     }
@@ -507,10 +505,8 @@ struct MCPConnectionDetailView: View {
                 } footer: { Text("Disconnect removes this account from this device. To revoke the provider’s grant as well, use the connected-app settings in your provider account.") }
             } else { ContentUnavailableView("Connection removed", systemImage: "link.badge.plus") }
         }
-        .navigationTitle(connection?.name ?? "Connection").navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $addingAccount) { provider in
-            NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) }
-        }
+        .navigationTitle(connection?.name ?? "Connection").inlineNavigationTitle()
+        .sheet(item: $addingAccount) { provider in Group { NavigationStack { MCPProviderDetailView(provider: provider, viewModel: viewModel) } }.macSheetFrame(width: 560, height: 620) }
         .onDisappear { task?.cancel(); flow.cancel(); loading = false }
         .onChange(of: demo) { _, enabled in if enabled { task?.cancel(); flow.cancel(); loading = false } }
         .alert("Before You Send", isPresented: $showingConsent) {
