@@ -55,18 +55,23 @@ jobs:
         # Signed ad hoc ("Sign to Run Locally"; no certificate or account needed), not CODE_SIGNING_ALLOWED=NO:
         # an unsigned test host can't see StoreKit's test environment, so the Pro purchase test found no
         # transaction at all (run 45094038015; reproduced locally 2026-11-23, unsigned fails, signed passes).
+        # The runner's simulator is new every time, and the first StoreKit test run on a new simulator also sees
+        # no transactions (run 45243865014 skipped it; reproduced locally: missed once, then passed twice). So the
+        # purchase test runs once as a warm-up that may miss, and the real run requires it to pass.
         run: |
           set -o pipefail
-          xcodebuild test \
-            -project OpenResponses.xcodeproj \
-            -scheme OpenResponses \
-            -destination "platform=iOS Simulator,id=$TEST_SIMULATOR_ID" \
+          COMMON=(-project OpenResponses.xcodeproj -scheme OpenResponses
+            -destination "platform=iOS Simulator,id=$TEST_SIMULATOR_ID" -derivedDataPath DerivedData)
+          xcodebuild build-for-testing "${COMMON[@]}" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
+          xcodebuild test-without-building "${COMMON[@]}" \
+            -only-testing:OpenResponsesTests/ProAccessTests/testPurchaseUnlocksAndRefundLocksAgain \
+            || echo "StoreKit warm-up run missed, as expected on a new simulator"
+          TEST_RUNNER_REQUIRE_STOREKIT=1 xcodebuild test-without-building "${COMMON[@]}" \
             -only-testing:OpenResponsesTests \
             -skip-testing:OpenResponsesTests/BrowserLiveSiteTests \
             -parallel-testing-enabled NO \
-            -derivedDataPath DerivedData \
-            -resultBundlePath TestResults.xcresult \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=
+            -resultBundlePath TestResults.xcresult
 
       - name: Preserve test results
         if: always()

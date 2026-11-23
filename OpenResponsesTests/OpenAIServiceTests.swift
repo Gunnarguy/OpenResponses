@@ -1482,11 +1482,18 @@ final class ProAccessTests: XCTestCase {
             }
             let latest = await Transaction.latest(for: ProAccess.productID)
             // No record at all, not even in StoreKit's own Transaction.latest, means the test host can't see the
-            // StoreKit test environment, not that ProStore misread it. That happens when the app is built with
-            // CODE_SIGNING_ALLOWED=NO (reproduced 2026-11-23: fails unsigned every time, passes signed, CI run
-            // 45094038015). CI signs ad hoc for this reason.
+            // StoreKit test environment, not that ProStore misread it. Two causes, both reproduced 2026-11-23:
+            // the app was built with CODE_SIGNING_ALLOWED=NO (fails every time; CI run 45094038015), or this is
+            // the first run on a newly created simulator (the same ad hoc build missed on a new simulator and
+            // passed on its next two runs; CI run 45243865014 skipped here). CI signs ad hoc, runs this test once
+            // to warm the simulator up, then sets TEST_RUNNER_REQUIRE_STOREKIT=1 so a miss fails the run.
             if seen.isEmpty, latest == nil {
-                throw XCTSkip("StoreKit testing sees no transactions in this test host; build it signed (ad hoc is enough)")
+                let why = "StoreKit testing sees no transactions in this test host: build it signed (ad hoc is enough), and on a new simulator run the test once first"
+                if ProcessInfo.processInfo.environment["REQUIRE_STOREKIT"] == "1" {
+                    XCTFail(why)
+                    return
+                }
+                throw XCTSkip(why)
             }
             XCTFail("No Pro entitlement after buying \(transaction.productID): currentEntitlements=\(seen), latest=\(String(describing: latest))")
         }
