@@ -635,6 +635,7 @@ struct SettingsSearchIndex {
         Entry(title: "Voice", location: "Voice", page: .voice, keywords: "realtime live audio speak talk voice"),
         Entry(title: "Text Size", location: "Text Size", page: .textSize, keywords: "font text size bigger smaller larger dynamic type readable zoom"),
         Entry(title: "Web Search", location: "Tools", page: .tools, keywords: "internet browse search domains location"),
+        Entry(title: "Web Page Previews", location: "Tools", page: .tools, keywords: "preview link page embed inline webpage show hide"),
         Entry(title: "File Search", location: "Tools", page: .tools, keywords: "vector store documents rag hybrid"),
         Entry(title: "Code Interpreter", location: "Tools", page: .tools, keywords: "python sandbox charts memory"),
         Entry(title: "Local Python", location: "Tools", page: .tools, keywords: "python pyodide device offline code"),
@@ -852,6 +853,7 @@ private struct ToolsTab: View {
     @AppStorage("hasShownComputerUseDisclosure") private var hasShownComputerUseDisclosure = false
     @State private var showComputerUseDisclosure = false
     @State private var showWebSearchAdvanced = false
+    @AppStorage(WebPagePreviews.storageKey) private var showWebPagePreviews = WebPagePreviews.defaultValue
     @State private var showWebSearchLocation = false
     @State private var showImageGenAdvanced = false
 
@@ -935,6 +937,11 @@ private struct ToolsTab: View {
                         webSearchOptions
                     }
                     .font(.subheadline)
+                }
+
+                Toggle(isOn: $showWebPagePreviews) {
+                    SettingsToggleLabel("Web page previews", icon: "rectangle.on.rectangle", tint: .blue,
+                                        detail: "Shows each web page an answer links to, loaded, under the answer. Off, the links stay in the text.")
                 }
             } header: {
                 Text("Search")
@@ -1847,7 +1854,7 @@ private struct AdvancedTab: View {
             } header: {
                 Text("Include in each response")
             } footer: {
-                Text("Extra data the API returns with each answer, shown in the message details. Logprobs are not available on reasoning models.")
+                Text("Extra data the API returns with each answer, shown in the message details. Logprobs are not available on reasoning models. Web page previews under answers are switched in Tools, under Search.")
             }
 
             Section {

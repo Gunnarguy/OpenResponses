@@ -7,6 +7,7 @@ This changelog records implemented application behavior. Version 2.6 includes co
 **Marketing version:** 3.2 in all four `MARKETING_VERSION` lines, moved on 2026-11-23 after macOS 3.1 went live; 3.2 created for iOS and macOS in App Store Connect the same day.
 
 - **Mac: no Take Photo.** The Mac's attachment menu listed Take Photo, which only opened "Camera not available" because the Mac has no photo-taking picker. It is now left out on the Mac (`ChatInputView.accessoryButtons`). Found 2026-11-23 by the documentation audit; macOS 3.1 build 60, on the App Store, still has the item.
+- **Web page previews can be turned off** ([issue #78](https://github.com/Gunnarguy/OpenResponses/issues/78)). An answer that links to a web page shows that page, loaded, under the answer (`WebContentView`, 300 points tall per link). Turning off every Response Includes switch didn't hide them, because those switches only choose what the API returns (`include[]`). New switch: Settings → Tools → Search → Web page previews (`WebPagePreviews`, stored as `showWebPagePreviews`, on by default so nothing changes for anyone who leaves it). Off, the links stay in the answer's text and the pages aren't loaded. The Response Includes footer now points to the switch. Tests: `WebPagePreviewsTests`, 4.
 
 ## 3.1 — released November 23, 2026 on iPhone and iPad (build 57) and Mac (build 60)
 

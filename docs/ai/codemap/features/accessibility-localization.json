@@ -4,7 +4,7 @@
   "name": "Accessibility and Localization",
   "aliases": ["Message input", "Send message", "Stop streaming", "Add preset", "Edit mode", "API Key", "Type your message here to chat with the AI assistant"],
   "purpose": "Accessibility helpers, hints, identifiers, UI test hooks, localized string catalog, and Info.plist privacy build descriptions.",
-  "revision": "88baac2",
+  "revision": "d8f6a29",
   "verified_on": "2026-11-23",
   "entry_points": ["AccessibilityUtils", "View.accessibilityConfiguration", "LocalizableStrings"],
   "files": [
@@ -13,7 +13,7 @@
     {"path": "OpenResponses.xcodeproj/project.pbxproj", "role": "shared", "blob": "fad1fb31df8abf04981b8b46c37ddfd065779253"},
     {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "d67cab8cf1eab7bc8c955b00c01704ed774cb951"},
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "01894fd0c608c3abe3d010f337bdce93c0ef3c5f"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "f77e5b36a8e96028aa0ce19bb109562461bfe694"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "6454f266456533ace0943446bf01c88229f8ffa1"},
     {"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "role": "shared", "blob": "91456a328ad4613c6f549ddcb096201745f78fdc"},
     {"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "role": "test", "blob": "5bb878a5fed36b71b46ffae9721e5ed1862c278b"},
     {"path": "scripts/ui_tests.sh", "role": "shared", "blob": "848190c93e102a52938e9c438f40e205b3c1c63d"}
@@ -45,9 +45,9 @@
     {"from": "PromptLibraryView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 42, "match": "                        identifier: AccessibilityUtils.Identifier.addPresetButton"}]},
     {"from": "PromptLibraryView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 41, "match": "                        hint: AccessibilityUtils.Hint.addPreset,"}]},
     {"from": "PromptLibraryView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/PromptLibraryView.swift", "line": 39, "match": "                    .accessibilityConfiguration("}]},
-    {"from": "onboarding-keys:SettingsHomeView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 692, "match": "        identifier: AccessibilityUtils.Identifier.apiKeyField"}]},
-    {"from": "onboarding-keys:SettingsHomeView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 691, "match": "        hint: AccessibilityUtils.Hint.apiKeyField,"}]},
-    {"from": "onboarding-keys:SettingsHomeView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 690, "match": "    .accessibilityConfiguration("}]},
+    {"from": "onboarding-keys:SettingsHomeView", "to": "AccessibilityUtils.Identifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 693, "match": "        identifier: AccessibilityUtils.Identifier.apiKeyField"}]},
+    {"from": "onboarding-keys:SettingsHomeView", "to": "AccessibilityUtils.Hint", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 692, "match": "        hint: AccessibilityUtils.Hint.apiKeyField,"}]},
+    {"from": "onboarding-keys:SettingsHomeView", "to": "View.accessibilityConfiguration", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "line": 691, "match": "    .accessibilityConfiguration("}]},
     {"from": "View.accessibilityConfiguration", "to": "AccessibilityConfigurationModifier", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Core/Utilities/AccessibilityUtils.swift", "line": 62, "match": "            .modifier(AccessibilityConfigurationModifier("}]},
     {"from": "AccessibilityUtils", "to": "test:OpenResponsesUITests", "type": "tested_by", "status": "INFERRED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 26, "match": "        app.launch()"}], "note": "the UI test launches the app; no assertion names an accessibility identifier"},
     {"from": "AccessibilityUtils", "type": "tested_by", "to": "test:OpenResponsesUITests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesUITests/OpenResponsesUITests.swift", "line": 64, "match": "func testChatScreenPassesTheAccessibilityAudit() throws {"}]}

@@ -1,6 +1,20 @@
 import SwiftUI
 import WebKit
 
+/// Settings → Tools → Web page previews: whether an answer that links to a web page shows that page, loaded,
+/// under the answer. On by default (the behavior before the switch existed). The Response Includes switches in
+/// Request Options don't control this: they choose what the API returns, not what the chat shows (issue #78).
+enum WebPagePreviews {
+    static let storageKey = "showWebPagePreviews"
+    static let defaultValue = true
+
+    /// The pages to show under a message: its detected links when previews are on, none when they are off.
+    static func urls(for message: ChatMessage, enabled: Bool) -> [URL] {
+        guard enabled else { return [] }
+        return message.webURLs ?? []
+    }
+}
+
 /// A SwiftUI view that embeds web content directly in chat messages
 struct WebContentView: View {
     let url: URL

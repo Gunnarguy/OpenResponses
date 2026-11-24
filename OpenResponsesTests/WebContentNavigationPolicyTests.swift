@@ -87,3 +87,31 @@ final class WebContentNavigationPolicyTests: XCTestCase {
         XCTAssertNotNil(errorString, "the main page on a blocked scheme still says why")
     }
 }
+
+/// Issue #78: Settings → Tools → Web page previews hides the loaded pages under answers; the Response Includes
+/// switches never did, because they only choose what the API returns.
+final class WebPagePreviewsTests: XCTestCase {
+    private let links = [URL(string: "https://www.bernama.com/en/news.php?id=1")!,
+                         URL(string: "https://example.com/article")!]
+
+    func testPreviewsOnShowEveryDetectedLink() {
+        let message = ChatMessage(role: .assistant, text: "See these.", webURLs: links)
+        XCTAssertEqual(WebPagePreviews.urls(for: message, enabled: true), links)
+    }
+
+    func testPreviewsOffShowNothingButKeepTheLinks() {
+        let message = ChatMessage(role: .assistant, text: "See these.", webURLs: links)
+        XCTAssertEqual(WebPagePreviews.urls(for: message, enabled: false), [])
+        XCTAssertEqual(message.webURLs, links, "turning previews off hides them; the saved message keeps its links")
+    }
+
+    func testMessageWithoutLinksShowsNothing() {
+        let message = ChatMessage(role: .assistant, text: "No links.")
+        XCTAssertEqual(WebPagePreviews.urls(for: message, enabled: true), [])
+    }
+
+    func testPreviewsDefaultOnUnderTheirOwnKey() {
+        XCTAssertTrue(WebPagePreviews.defaultValue, "people who never touch the switch keep the previews they had")
+        XCTAssertEqual(WebPagePreviews.storageKey, "showWebPagePreviews")
+    }
+}

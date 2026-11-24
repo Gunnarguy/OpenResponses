@@ -4,7 +4,7 @@
   "name": "OpenResponses Pro (In-App Purchase)",
   "aliases": ["OpenResponses Pro", "Pro", "In-App Purchase", "IAP", "StoreKit", "paywall", "Unlock", "Restore Purchases", "proUnlocked", "Gunndamental.OpenResponses.pro"],
   "purpose": "A one-time non-consumable purchase (USD 4.99) that unlocks the 3.1 features that run outside the chat: the Ask OpenResponses and New Chat shortcuts, the share sheet entry and the 12-hour prompt cache lifetime. ProStore reads StoreKit 2 entitlements and records the result in the App Group so the share extension can read it; ProPaywallView is the Buy and Restore sheet. Everything from 2.9 and 3.0 stays free.",
-  "revision": "88baac2",
+  "revision": "d8f6a29",
   "verified_on": "2026-11-23",
   "entry_points": ["ProStore", "ProPaywallView", "ProAccess"],
   "files": [
@@ -15,7 +15,7 @@
     {"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "role": "shared", "blob": "67f418c794939ae4df43e749c29d374dbbef077d"},
     {"path": "OpenResponsesShare/ShareViewController.swift", "role": "shared", "blob": "f41e054d2e5d5bb05a6d3216d4738e064ddfa8da"},
     {"path": "OpenResponses/App/ContentView.swift", "role": "shared", "blob": "cf4749697c82a7f62bc4b8be8bf4ca970682f6f6"},
-    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "f77e5b36a8e96028aa0ce19bb109562461bfe694"},
+    {"path": "OpenResponses/Features/Settings/Views/SettingsHomeView.swift", "role": "shared", "blob": "6454f266456533ace0943446bf01c88229f8ffa1"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "3011d3eabe63d5f3c25de997f77349a99c37ec0a"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"}
   ],

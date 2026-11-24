@@ -19,6 +19,7 @@ struct MessageBubbleView: View {
     @ScaledMetric private var cornerRadius: CGFloat = 16
 
     @State private var showCopied: Bool = false
+    @AppStorage(WebPagePreviews.storageKey) private var showWebPagePreviews = WebPagePreviews.defaultValue
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -136,9 +137,10 @@ struct MessageBubbleView: View {
                     }
                 }
 
-                // Web content (if any URLs in the message)
-                if let webURLs = message.webURLs {
-                    ForEach(webURLs, id: \.self) { url in
+                // Web page previews (links in the answer), unless turned off in Settings → Tools
+                let previewURLs = WebPagePreviews.urls(for: message, enabled: showWebPagePreviews)
+                if !previewURLs.isEmpty {
+                    ForEach(previewURLs, id: \.self) { url in
                         WebContentView(url: url)
                             .padding(.vertical, 4)
                     }

@@ -4,7 +4,7 @@
   "name": "Chat Turn",
   "aliases": ["Sending a message", "streaming the answer", "Stop streaming", "Message input", "Send"],
   "purpose": "Sends a user message and streams the assistant's answer with SSE event decoding, delta buffering, and cancellation.",
-  "revision": "88baac2",
+  "revision": "d8f6a29",
   "verified_on": "2026-11-23",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
@@ -23,7 +23,7 @@
     {"path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "role": "test", "blob": "d10b76c10db426ba92ac36251724e65c1b5e4a9c"},
     {"path": "OpenResponsesTests/StreamingTerminationTests.swift", "role": "test", "blob": "24264432f19b9d2547aa6dbca2cfdb8f203e6c81"},
     {"path": "OpenResponsesTests/OpenAIServiceTests.swift", "role": "test", "blob": "f1e209df02c929deb7db1b09b55a4d022e9e7829"},
-    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "fbdbc4a32658709c39fc92b3cb769378660fec09"}
+    {"path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "role": "shared", "blob": "f18f3f741dd9e713dd68186689a2ba7c52e160f7"}
   ],
   "nodes": [
     {"id": "ChatView", "kind": "view", "path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 4, "match": "struct ChatView: View {", "status": "VERIFIED"},
@@ -56,7 +56,7 @@
     {"id": "state:lastTextItemIds", "kind": "state", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 82, "match": "    var lastTextItemIds: [UUID: String] = [:]", "status": "VERIFIED"},
     {"id": "ToolRowsTextAndFilesTests", "kind": "test", "path": "OpenResponsesTests/StreamingEventDecodingTests.swift", "line": 1178, "match": "final class ToolRowsTextAndFilesTests: XCTestCase {", "status": "VERIFIED"},
     {"id": "ChatViewModel.textIsOnlyFunctionOutputSummaries", "kind": "function", "path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 262, "match": "    func textIsOnlyFunctionOutputSummaries(_ text: String, for messageId: UUID) -> Bool {", "status": "VERIFIED", "note": "clears the failure note when the answer starts"},
-    {"id": "InlineMarkdown", "kind": "util", "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 389, "match": "enum InlineMarkdown {", "status": "VERIFIED", "note": "reasoning summaries render inline Markdown"}
+    {"id": "InlineMarkdown", "kind": "util", "path": "OpenResponses/Features/Chat/Components/MessageBubbleView.swift", "line": 391, "match": "enum InlineMarkdown {", "status": "VERIFIED", "note": "reasoning summaries render inline Markdown"}
   ],
   "edges": [
     {"from": "ChatView", "to": "ChatInputView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 311, "match": "            ChatInputView("}]},
