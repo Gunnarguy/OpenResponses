@@ -23,7 +23,7 @@ The first audit ran on 2026-11-20 and its reports are the baseline:
    Read the changelog first (https://developers.openai.com/api/docs/changelog) from the date of the
    last report forward, then only the reference pages those entries touch. Search results can exceed
    100,000 characters: pass `limit` 5 or fewer and fetch pages by URL.
-3. **Apple.** Load the `sosumi` MCP tools. Read the App Intents, SwiftUI, UIKit and Mac Catalyst
+3. **Apple.** Load the `sosumi` MCP tools. Read the App Intents, SwiftUI, UIKit, AppKit and StoreKit
    "updates" pages (`/documentation/updates/<framework>`) and the newest WWDC "What's new" session
    transcripts for anything the app could use.
 4. **Check the app before calling anything missing.** Grep for the API field, event type, model name

@@ -10,7 +10,9 @@ Drafted 2026-11-22 at Gunnar's word ("should probably update all of the OpenResp
 | iPad 12.9" (`APP_IPAD_PRO_3GEN_129`) | 10 | iPad Air 13-inch simulator, 2026-01-09 |
 | Custom product pages | 0 | |
 
-3.0 has been live since 2026-11-20 21:24 UTC (iTunes lookup `currentVersionReleaseDate`).
+3.0 went live 2026-11-20 21:24 UTC (iTunes lookup `currentVersionReleaseDate`).
+
+**Update 2026-11-23 (App Store Connect API):** iOS 3.1 is live with a new set: iPhone 6.7" (`APP_IPHONE_67`) 8, iPhone 6.5" (`APP_IPHONE_65`) 8, iPad 12.9" (`APP_IPAD_PRO_3GEN_129`) 6. Custom product pages: still 0. macOS 3.1 went live the same day (build 60).
 
 ## Apple's rules (developer.apple.com, read 2026-11-22)
 
@@ -56,12 +58,12 @@ Each page is a separate audience, with its own first three screenshots and promo
 | See every request | developers comparing the API's models | Request Inspector, API Workbench, model menu | now (3.0 features) |
 | Connectors | people who use MCP servers or Notion | Connectors, a Notion tool step, Settings search | now (3.0 features) |
 | Decisions | people trying the Decisions API | Decisions, Workbench "Create decision" | now (3.0 features) |
-| Shortcuts and the share sheet | iPhone people who live in Shortcuts | Shortcuts, share sheet, Pro sheet | after 3.1 is live |
-| Mac | Mac users | the Mac app | after 3.1 is live and the Mac build is signed |
+| Shortcuts and the share sheet | iPhone people who live in Shortcuts | Shortcuts, share sheet, Pro sheet | now (3.1 is live since 2026-11-23) |
+| Mac | Mac users | the Mac app | now (macOS 3.1 is live since 2026-11-23) |
 
 The links would go where each audience already is: the README and docs (`GitHub_Repo` tag), gunnarguy.me (`Portfolio_Site`), and per-platform post tags. Each link keeps the campaign token form in the machine map and adds the page's ID parameter.
 
 ## Waiting for Gunnar
 
-- Pick the screenshots to upload, and to which version (3.0's live listing, 3.1, or both).
+- Done 2026-11-22: the 3.1 screenshot set (counts above) went up with 3.1.
 - Say which custom product pages to create. Creating and submitting them is outward-facing.

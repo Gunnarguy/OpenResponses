@@ -1,5 +1,7 @@
 # Production Checklist
 
+> **Historical record (2.6 era).** This page describes the 2.5 to 2.6 release as of September 2026 and is kept for its evidence. The current release is 3.1 (iPhone and iPad live November 23, 2026; Mac in App Review): see [CHANGELOG.md](../CHANGELOG.md), [README.md](../README.md) and [docs/ai/STATE.md](ai/STATE.md).
+
 > For v2.6, use the [current release plan](AppStoreReleasePlan.md), [294-test validation ledger](releases/v2.6/Validation.md) and [live ASC reconciliation](releases/v2.6/ASCStatus.md). This is a reusable manual checklist, not a record that every item passed.
 
 

@@ -1,5 +1,7 @@
 # Minimal Viable App-Store Submission Tracker
 
+> **Historical record (1.0, November 2025).** This page describes the first 1.0 submission and is kept for its evidence. The current release is 3.1 (iPhone and iPad live November 23, 2026; Mac in App Review): see [CHANGELOG.md](../CHANGELOG.md), [README.md](../README.md) and [docs/ai/STATE.md](ai/STATE.md).
+
 **Last updated:** 2025-11-11 (evening)
 
 ## Mission

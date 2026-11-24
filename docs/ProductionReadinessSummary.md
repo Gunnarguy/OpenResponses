@@ -1,5 +1,7 @@
 # Production Readiness Summary
 
+> **Historical record (1.0, November 2025).** This page describes the first 1.0 submission and is kept for its evidence. The current release is 3.1 (iPhone and iPad live November 23, 2026; Mac in App Review): see [CHANGELOG.md](../CHANGELOG.md), [README.md](../README.md) and [docs/ai/STATE.md](ai/STATE.md).
+
 **Status:** ✅ Ready for TestFlight Beta  
 **Date:** November 8, 2025  
 **Version:** 1.0.0 (Build 1)  

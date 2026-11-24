@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-09-29 (v2.8: automatic model-list requests and the MCP sign-in page)
+Last updated: 2026-11-23 (v3.1: the share sheet, Shortcuts and the OpenResponses Pro purchase; earlier, v2.8: automatic model-list requests and the MCP sign-in page)
 
 OpenResponses is a native iOS client for the OpenAI Responses API, built with a local-first design philosophy. We believe that your data belongs on your device. This Privacy Policy details what information is collected, what data stays local, what data is transmitted over the network, and how you retain complete control over your credentials and chat histories.
 
@@ -21,6 +21,8 @@ The following information is persisted within the app’s local sandboxed direct
 2. **Conversation History:** Saved prompts, active chat threads, model settings presets, and execution statistics reside in the local directory as JSON files via `ConversationStorageService`. Optional OpenAI storage is separate from these local files. Device backup behavior is governed by your operating-system settings.
 3. **Diagnostic Traces:** App logs and request/event inspection are local diagnostic surfaces. Raw exports can include conversation or tool data; review them before sharing. Targeted redaction does not make every possible diagnostic export public-safe.
 4. **Security-Scoped Bookmarks:** When you import files or folders for processing, Apple generates security-scoped bookmarks stored on-device to retain access permissions across launches.
+5. **Share sheet and New Chat items (from version 3.1):** Text, links, images and files you save from the share sheet, or pass to the "New Chat in OpenResponses" shortcut, are written to an inbox on the device (the App Group `group.Gunndamental.OpenResponses` on iPhone and iPad, the app's own Application Support folder on the Mac) and stay there until the app next comes forward, opens them as an unsent new chat and deletes them from the inbox. Nothing is sent from the share sheet or by New Chat.
+6. **OpenResponses Pro state (from version 3.1):** Whether Pro is unlocked is stored on the device (in the shared container on iPhone and iPad, in the app's own container on the Mac), decided from StoreKit's current entitlements. The purchase itself is handled by Apple; the app never sees payment details.
 
 ---
 
@@ -38,6 +40,8 @@ To execute live requests and tools, the app uses HTTPS or secure WebSockets. Dem
 | OpenAI model list (automatic, 2.8) | With a saved key, once per launch the app asks OpenAI which models the key can use (GET /models). Only the API key is sent. | Skipped in Explore Demo. |
 | OpenAI docs site (automatic, 2.8) | When the key's model list includes a model the app does not know, the app reads that model's public page on developers.openai.com, at most once a week, for its settings. No personal data, chat content or key is sent. | Skipped in Explore Demo. |
 | gunzino.me sign-in page (2.8) | monday.com, Airtable, Intercom and Vercel return their sign-in result to a static page at gunzino.me/openresponses/oauth/callback.html, which passes it straight to the app. The page loads and sends nothing else. | Only for those providers' sign-in. |
+| Apple App Store (3.1) | At each launch the app asks StoreKit for the Pro product's price and for your current entitlements, and listens for transaction updates. Buying or restoring OpenResponses Pro goes through Apple's StoreKit, which handles payment and your Apple Account. The app receives only the Pro product's details and its transactions. | Buy and Restore Purchases are explicit taps; the launch checks carry no chat content, key or file. |
+| Shortcuts and Siri (3.1) | "Ask OpenResponses" sends your question, the chosen preset's settings and any attached file to OpenAI like a chat message, and returns the answer to the shortcut. | The same Allow & Send consent as the chat; the tools the app runs itself are off for shortcuts. |
 | Notion and configured third-party handlers | Authentication and the data needed for enabled reads/writes. | User configuration, service permissions and enabled tools. |
 | Apple Calendar, Reminders and Contacts | Authorized local framework access; information returned by enabled tools may be sent to the model for the requested task. | System permissions and integration/tool controls. |
 | Browser websites / OpenAI browser context | On-device WKWebView requests go to visited sites; page content/screenshots and action results may be sent to OpenAI as tool context. | Opt-in tools, Stop, execution limits and API-provided safety decisions. No separate local-network bridge is required. |

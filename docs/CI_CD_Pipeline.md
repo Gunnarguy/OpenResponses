@@ -1,5 +1,7 @@
 # OpenResponses CI/CD and delivery evidence
 
+> **Update 2026-11-23:** the Build & Test row below is current (run 45250471857 on `88baac2`: 408 tests, 4 skipped, 0 failures). Xcode Cloud now has two workflows on every push to `main` without `[ci skip]`: "Default" (Archive - iOS) and "Mac Release" (Archive - macOS, created November 22, 2026). The rest of this page is the September 8, 2026 record from 2.6.
+
 **Verified:** September 8, 2026 against [the checked-in workflow](../.github/workflows/ci.yml) and the [live ASC/Xcode Cloud snapshot](releases/v2.6/ASCStatus.md).
 
 ## GitHub Actions
@@ -8,7 +10,7 @@ The repository currently contains `.github/workflows/ci.yml`, triggered by pushe
 
 | Job | Actual checked-in behavior |
 | --- | --- |
-| Build & Test | macOS 26, Xcode 26.6 (17F113) pinned by the setup action, `xcodebuild test`, a dynamically selected available iPhone simulator, signing disabled. Executes unit/integration tests and uploads the xcresult bundle. |
+| Build & Test | The `xcode-27` image with Xcode 27.0 pinned by the setup action (the same Xcode as the Xcode Cloud archive), a dynamically selected available iPhone simulator. Since November 23, 2026: `build-for-testing` signed ad hoc (an unsigned test host can't see StoreKit's test environment), one warm-up run of the Pro purchase test (a new simulator's first StoreKit run sees no transactions), then `test-without-building` with `TEST_RUNNER_REQUIRE_STOREKIT=1`, skipping `BrowserLiveSiteTests`. Uploads the xcresult bundle. Also runs by hand: `gh workflow run ci.yml --ref main`. |
 | Lint | Installs/runs SwiftLint on macOS 26; lint step has `continue-on-error: true`. |
 | Security Scan | Ubuntu scan for a specific API-key-shaped pattern in Swift/JSON. This is a narrow pattern check, not an exhaustive secret audit. |
 | Docs Check | Requires README, LICENSE and PRIVACY files. It does not validate the complete release dossier or all Markdown links. |

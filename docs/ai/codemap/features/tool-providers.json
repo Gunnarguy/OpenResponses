@@ -4,8 +4,8 @@
   "name": "Tool provider hub",
   "aliases": ["tool providers", "Google providers", "Gmail integration", "Drive scaffolding", "ToolHub", "TokenStore"],
   "purpose": "Provides the architecture and hub for third-party tool integrations, TokenStore persistence, and scaffolding for Google services.",
-  "revision": "bd8027e",
-  "verified_on": "2026-09-28",
+  "revision": "88baac2",
+  "verified_on": "2026-11-23",
   "entry_points": ["ToolConnectionsView"],
   "files": [
     {"path": "OpenResponses/Core/ToolProviders/ToolHub.swift", "role": "primary", "blob": "ef3c501cbd725d1322f996643016474d752c00b9"},
@@ -55,12 +55,12 @@
     {"from": "OAuthError", "type": "tested_by", "to": "test:OAuthCallbackValidationTests", "status": "VERIFIED", "evidence": [{"path": "OpenResponsesTests/OAuthCallbackValidationTests.swift", "line": 23, "match": "XCTAssertEqual(OAuthError.invalidCallbackScheme.localizedDescription, \"The OAuth redirect callback scheme is invalid or unexpected.\")"}]}
   ],
   "docs": [
-    {"path": "ROADMAP.md", "section": "Broader integrations", "quote": "- Broader provider integrations beyond existing implemented handlers; scaffolding does not equal a complete Gmail/Drive client.", "claim": "Scaffolding exists but does not equal a complete client for Gmail/Drive.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/ToolProviders/GoogleProviders.swift", "line": 217, "match": "public final class GmailProvider: ToolProvider, GmailReadable {"}, "note": "GmailProvider exists but implements a minimal scaffolding."}
+    {"path": "ROADMAP.md", "section": "Longer-term ideas", "quote": "broader provider integrations beyond existing implemented handlers; scaffolding does not equal a complete Gmail/Drive client", "claim": "Scaffolding exists but does not equal a complete client for Gmail/Drive.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/ToolProviders/GoogleProviders.swift", "line": 217, "match": "public final class GmailProvider: ToolProvider, GmailReadable {"}, "note": "GmailProvider exists but implements a minimal scaffolding."}
   ],
   "unknowns": ["ToolConnectionsView (ToolConnectionsView.swift line 5) has no callers in the workspace outside its preview; its body forwards to MCPConnectionsView.", "ToolConnectionsViewModel (ToolConnectionsView.swift line 17) is referenced by no type in the workspace, including ToolConnectionsView in the same file. It is the only caller of ToolHub.shared and GoogleProviders outside previews and tests, making the entire ToolHub and Google provider scaffolding unreachable at run time.", "GoogleConfig (GoogleConfig.swift line 5) contains placeholder client ID '<GOOGLE_IOS_CLIENT_ID>'; Google provider scaffolding is incomplete and cannot authenticate in production."],
   "related": ["apple-integrations", "notion", "mcp-connections"],
   "derived": {
-    "generated_by": "codemap 1.0.0 derive: declarations, type references and test mentions; edges are INFERRED",
+    "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",
     "nodes": [
       {"id": "NotionReadable", "kind": "model", "path": "OpenResponses/Core/ToolProviders/ToolProvider.swift", "line": 17, "match": "public protocol NotionReadable {", "status": "VERIFIED"},
       {"id": "GmailReadable", "kind": "model", "path": "OpenResponses/Core/ToolProviders/ToolProvider.swift", "line": 20, "match": "public protocol GmailReadable {", "status": "VERIFIED"},

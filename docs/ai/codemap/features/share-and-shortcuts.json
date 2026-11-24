@@ -2,10 +2,10 @@
   "schema": "codemap/1",
   "id": "share-and-shortcuts",
   "name": "Share sheet, Shortcuts and the Mac",
-  "aliases": ["Share sheet", "share extension", "Shortcuts", "Siri", "App Intents", "Ask OpenResponses", "New Chat in OpenResponses", "Action button", "SharedInbox", "App Group", "Mac Catalyst", "New Chat menu command", "Command-Return"],
-  "purpose": "Gets text and files into the chat from outside it: the OpenResponsesShare extension and the New Chat shortcut write to SharedInbox in the App Group, and the app opens them as a new unsent chat when it becomes active. Ask OpenResponses answers one question in the background with a preset, with client-run tools off. Also the Mac Catalyst menu commands.",
-  "revision": "7a8e389",
-  "verified_on": "2026-11-22",
+  "aliases": ["Share sheet", "share extension", "Shortcuts", "Siri", "App Intents", "Ask OpenResponses", "New Chat in OpenResponses", "Action button", "SharedInbox", "App Group", "New Chat menu command", "Command-Return", "Mac menu commands"],
+  "purpose": "Gets text and files into the chat from outside it: the OpenResponsesShare extension and the New Chat shortcut write to SharedInbox in the App Group, and the app opens them as a new unsent chat when it becomes active. Ask OpenResponses answers one question in the background with a preset, with client-run tools off. Also the app's menu commands (OpenResponsesCommands), used by the native Mac app and hardware keyboards.",
+  "revision": "88baac2",
+  "verified_on": "2026-11-23",
   "entry_points": ["AskOpenResponsesIntent", "NewChatIntent", "ShareViewController", "OpenResponsesCommands"],
   "files": [
     {"path": "OpenResponses/App/Intents/OpenResponsesIntents.swift", "role": "primary", "blob": "67f418c794939ae4df43e749c29d374dbbef077d"},
@@ -44,7 +44,7 @@
     {"from": "ChatViewModel.takeSharedInbox", "to": "SharedInbox", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 5585, "match": "let deliveries = inbox.pending()"}]}
   ],
   "docs": [],
-  "unknowns": ["Device builds need the App Group group.Gunndamental.OpenResponses registered: on 2026-11-20 Xcode was signed out and the App Store Connect API key failed xcodebuild authentication, so the share extension has run only in the simulator build.", "The Mac Catalyst build has been launched unsigned on this Mac; it has not been signed, sandboxed or submitted."],
+  "unknowns": ["The share sheet and the shortcuts have not been seen end to end on the App Store build (3.1 live 2026-11-23); a Debug build on Gunnar's iPhone carried the App Group on the app and the extension (codesign, 2026-11-20).", "The native Mac app (macOS 3.1, build 60) is in App Review; on the Mac there is no share extension and no App Group, and the shortcut inbox lives in the app's own container."],
   "related": ["app-shell", "attachments", "chat-ui", "request-settings", "onboarding-keys", "pro-purchase"],
   "derived": {
     "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",

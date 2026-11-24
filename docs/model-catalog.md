@@ -10,7 +10,7 @@ settings from OpenAI's docs site.
 | GET /models with the user's key | Which models the account can use, and each one's `shutdown_date` | Once per launch (`ChatViewModel.refreshAccountModels`) |
 | The model's page on OpenAI's docs site, `https://developers.openai.com/api/docs/models/<id>.md` | Reasoning efforts, a summary, and whether the Responses API supports it, for a model the built-in list does not name | The first time the account lists the model, again after 7 days, at most 3 pages per launch |
 
-A new general-purpose model (for example `gpt-6.2-sol`) appears at the top of the chat status bar menu and the request
+A new general-purpose model that the built-in list does not name yet (since 3.1 the list has `gpt-6.2-sol`, so a later one such as a `gpt-6.3` release) appears at the top of the chat status bar menu and the request
 settings menu at the next launch after the account lists it. Until its page has been read, its reasoning options start
 at low (GPT-6 Astra and GPT-6.1 Sol reject `none` with HTTP 400), pro mode is on, and async tool calls are on for
 versions after 6.0. A page that says the Responses API does not support the model takes it out of the menus. A page
@@ -28,10 +28,10 @@ privacy policy at https://gunndamental.com/openresponses/privacy/ describes both
 ```json
 {
   "schema": 1,
-  "revision": 1,
-  "updated": "2026-09-29",
+  "revision": 2,
+  "updated": "2026-11-20",
   "notes": "free text",
-  "defaultModel": "gpt-6-sol",
+  "defaultModel": "gpt-6.2-sol",
   "current": [
     {"id": "gpt-6.1-sol", "summary": "Near-Astra performance at a lower cost", "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"], "pro": true, "asyncTools": true, "released": "2026-09-29"}
   ],

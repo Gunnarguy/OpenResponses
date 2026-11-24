@@ -12,8 +12,9 @@ We actively patch security vulnerabilities for the main branch and official tagg
 
 | Version | Status | Notes |
 | :--- | :--- | :--- |
-| **v2.6 source** | **Current development candidate** | See the release dossier for tested source and delivery status. |
-| **v2.5** | **Released in ASC** | Uploaded build 4; verified September 8. |
+| **v3.1** | **Current release** | iPhone and iPad build 57, live November 23, 2026; macOS build 60, live the same day. |
+| **v3.0** | **Previous release** | Build 56, live November 20, 2026. |
+| **v2.5 to v2.9** | **Released** | Superseded by 3.x; see [CHANGELOG.md](CHANGELOG.md). |
 | **Earlier versions** | **Historical** | No separate maintenance commitment is established by this version table. |
 
 ---

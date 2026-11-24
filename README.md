@@ -17,15 +17,20 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge">
 </p>
 
-## Version 3.0 (in development)
+## Version 3.1
 
-Version 3.0 adds a screen for OpenAI's Decisions API (`POST /v1/decisions`): **Settings → Decisions (under Developer)**. Write some text or add a photo, ask yes-or-no, choice and score questions, and read back a probability for each answer instead of a written reply. It runs on `gpt-6-luna`, the only model Decisions accepts, and only the input is billed ($0.10 per million tokens). The API Workbench has a matching "Create decision" endpoint. 3.0 also fills in a function call's step with its arguments while the model writes them, and Calendar and Reminders accept dates and times with no time-zone offset. It is also the first version that asks for an App Store rating, with Apple's own sheet after a finished answer, and About has a "Rate OpenResponses" link. See the [3.0 release notes](docs/ReleaseNotes_3.0.0.md) and the [changelog](CHANGELOG.md).
+Version 3.1 adds GPT-6.2 and takes OpenResponses outside the chat. GPT-6.2 Sol is the default for new presets, with GPT-6.2 Astra and GPT-6.1 Terra in every model menu, and on GPT-6.2 the system prompt goes in as a developer message the API can cache. "Ask OpenResponses" answers from Siri, Spotlight, the Action button or the Shortcuts app without opening the app, "New Chat in OpenResponses" opens a chat with your text and files in it, and the share sheet takes text, links, images and files into a new chat, unsent. Those and a 12-hour prompt cache lifetime are **OpenResponses Pro**, a one-time USD 4.99 purchase (Settings → OpenResponses Pro); everything that was already in the app stays free, and so do the new models and fixes. 3.1 is also the first version on the Mac, as a native macOS app. See the [3.1 release notes](docs/ReleaseNotes_3.1.0.md), its [What's New](fastlane/metadata/en-US/release_notes.txt) and the [changelog](CHANGELOG.md).
+
+**App Store, checked November 23, 2026:** iPhone and iPad 3.1 is live (`READY_FOR_SALE`, build **57**, the Xcode Cloud run 57 archive of commit `3c59e7f`), and the Pro purchase is approved. The Mac app, macOS 3.1 build **60**, was approved the same day and is live too (`READY_FOR_SALE`); one Pro purchase covers iPhone, iPad and Mac.
+
+## Version 3.0
+
+
+Version 3.0 adds a screen for OpenAI's Decisions API (`POST /v1/decisions`): **Settings → Decisions (under Developer)**. Write some text or add a photo, ask yes-or-no, choice and score questions, and read back a probability for each answer instead of a written reply. It runs on `gpt-6-luna`, the only model Decisions accepts, and only the input is billed ($0.10 per million tokens). The API Workbench has a matching "Create decision" endpoint. 3.0 also fills in a function call's step with its arguments while the model writes them, and Calendar and Reminders accept dates and times with no time-zone offset. It is also the first version that asks for an App Store rating, with Apple's own sheet after a finished answer, and About has a "Rate OpenResponses" link. See the [3.0 release notes](docs/ReleaseNotes_3.0.0.md) and the [changelog](CHANGELOG.md). It went live November 20, 2026 as build **56**, the Xcode Cloud run 56 archive of commit `2b70581`.
 
 ## Version 2.9
 
-Version 2.9 is about seeing what the assistant is doing while it uses its tools. Each tool step shows a spinner while it works and says Completed or Failed when it's done, steps have their real names (Code Interpreter instead of `code_interpreter_call`), and a Code Interpreter step shows the Python it ran. A chart from Code Interpreter shows once, each file it makes is listed once, and reasoning summaries show their formatting instead of raw asterisks. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md), its [What's New](fastlane/metadata/en-US/release_notes.txt) and the [changelog](CHANGELOG.md).
-
-**App Store, checked October 2:** version 2.9 is live. App Store Connect reports 2.9 `READY_FOR_SALE` with build **54**, the Xcode Cloud run 54 archive of commit `baff2fc`, and the public store lookup carries a release timestamp of 2026-10-02T16:24:23Z (09:24 Pacific).
+Version 2.9 is about seeing what the assistant is doing while it uses its tools. Each tool step shows a spinner while it works and says Completed or Failed when it's done, steps have their real names (Code Interpreter instead of `code_interpreter_call`), and a Code Interpreter step shows the Python it ran. A chart from Code Interpreter shows once, each file it makes is listed once, and reasoning summaries show their formatting instead of raw asterisks. See the [2.9 release notes](docs/ReleaseNotes_2.9.0.md) and the [changelog](CHANGELOG.md). It went live October 2, 2026 as build **54**, the Xcode Cloud run 54 archive of commit `baff2fc`.
 
 ## Version 2.8
 
@@ -57,12 +62,13 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 
 | Dimension | Detail |
 |---|---|
-| Platform | iOS 17.0+ and iPadOS 17.0+ (iPhone and iPad) |
+| Platform | iOS 17.0+ and iPadOS 17.0+ (iPhone and iPad); macOS 14.0+ (native Mac app, since 3.1) |
 | Language | Swift |
 | UI | SwiftUI |
 | Architecture | MVVM-S |
 | Primary APIs | OpenAI Responses API, OpenAI Decisions API, Notion API, EventKit, Contacts |
 | Storage | Keychain, sandboxed JSON files |
+| Price | Free; OpenResponses Pro is a one-time USD 4.99 In-App Purchase for Shortcuts and Siri, the share sheet and the 12-hour prompt cache |
 | App Store | [Download](https://apps.apple.com/app/apple-store/id6757338355?pt=127101782&ct=GitHub_Repo&mt=8) |
 | Status | Active |
 | License | [MIT](LICENSE) |
@@ -75,6 +81,7 @@ OpenResponses is a native SwiftUI Playground for OpenAI Responses API. It functi
 * **Asynchronous SSE Streaming:** Uses Swift Concurrency (`AsyncThrowingStream`) to parse Server-Sent Events line-by-line, dispatching UI updates to the `@MainActor` to avoid layout race conditions.
 * **Realtime Voice WebSockets:** Includes Voice Mode using `wss://` for bi-directional 24kHz PCM16 audio streaming (Direct BYOK WebSocket mode).
 * **Developer Labs:** Batch job management with complete output/error exports, defaulting to the Responses endpoint. Decisions (3.0) asks typed questions about text or a photo and shows the probability of each answer. Assistants, fine-tuning and published prompts were removed in 2.7 after OpenAI shut them down or deprecated them.
+* **Outside the Chat (3.1, OpenResponses Pro):** App Intents for Shortcuts, Siri, Spotlight and the Action button ("Ask OpenResponses" returns an answer as text; "New Chat in OpenResponses" opens an unsent chat), a share extension that hands text, links, images and files to the app through an App Group, and the 12-hour prompt cache lifetime in Request Options. See [Shortcuts, share sheet and Mac](docs/share-shortcuts-mac.md) and [OpenResponses Pro](docs/pro-purchase.md).
 * **Secure Keychain Storage:** API keys, Notion tokens, and custom Model Context Protocol (MCP) headers are stored inside the secure iOS Keychain. Request inspection/logging includes targeted credential redaction; keys are transmitted to the relevant service when needed for authentication.
 * **On-device Browser Automation:** Persistent WKWebView with serialized DOM and screenshot actions, precise element references, cancellation, deadlines, and per-turn limits. Pending computer safety checks pause both tool paths. See [browser execution](docs/browser-execution.md).
 * **Local Ingestion & OCR:** Extracts text from PDFs using `PDFKit` and recognizes text in image attachments using the native `Vision` OCR framework locally on-device.
@@ -250,7 +257,7 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | Document | Purpose |
 |---|---|
 | [2.6 release dossier](docs/releases/v2.6/README.md) | Complete release documentation and evidence index |
-| [Changelog](CHANGELOG.md) | Detailed categorized 2.5 → 2.9 changes |
+| [Changelog](CHANGELOG.md) | Every release from 2.5 to 3.1, with its tests |
 | [Architecture](ARCHITECTURE.md) | System design, data flow, and service boundaries |
 | [Security](SECURITY.md) | Secret handling, local storage, and release checks |
 | [Privacy](PRIVACY.md) | Data storage, API transmission, and user controls |
@@ -259,13 +266,15 @@ For details, refer to [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 | [Case Study](docs/CASE_STUDY.md) | Engineering retrospective and implementation notes |
 | [Contributing](CONTRIBUTING.md) | Local development setup and contribution guidelines |
 | [Release Notes (v2.8.0)](docs/ReleaseNotes_2.8.0.md) | Summary of changes, fixes, and updates in version 2.8.0 |
-| [Release Notes (v2.9.0)](docs/ReleaseNotes_2.9.0.md) | Version 2.9.0, the version on the App Store, with its [What's New](fastlane/metadata/en-US/release_notes.txt) |
+| [Release Notes (v2.9.0)](docs/ReleaseNotes_2.9.0.md) | Summary of version 2.9.0 |
+| [Release Notes (v3.0.0)](docs/ReleaseNotes_3.0.0.md) | Summary of version 3.0.0 |
+| [Release Notes (v3.1.0)](docs/ReleaseNotes_3.1.0.md) | Version 3.1.0, the version on the App Store, with its [What's New](fastlane/metadata/en-US/release_notes.txt) |
 
 ---
 
 ## Roadmap
 
-The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6, 2.7, 2.8 and 2.9 have shipped, and 3.0, with the Decisions screen, is in development. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md) and [release plan](docs/AppStoreReleasePlan.md).
+The completed 2.6 source includes current-model native orchestration, Workbench, voice recovery, hosted MCP discovery, browser/search hardening, full job exports and persistence fixes. Versions 2.6 through 3.1 have shipped on iPhone and iPad, and 3.1 is also the first Mac version. Remaining work includes broader physical voice/accessibility/device checks, private MCP OAuth coverage and account-dependent service validation. See the [current roadmap](ROADMAP.md); planned work and its status are kept in the project's Notion roadmap.
 
 ---
 

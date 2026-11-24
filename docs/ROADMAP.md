@@ -1,5 +1,7 @@
 # OpenResponses roadmap reference
 
+> **Historical record (2.6 era).** This page describes the 2.5 to 2.6 release as of September 2026 and is kept for its evidence. The current release is 3.1 (iPhone and iPad live November 23, 2026; Mac in App Review): see [CHANGELOG.md](../CHANGELOG.md), [README.md](../README.md) and [docs/ai/STATE.md](ai/STATE.md).
+
 **Updated:** September 8, 2026. The [root roadmap](../ROADMAP.md) is the current roadmap. The [2.6 release dossier](releases/v2.6/README.md) is the detailed implementation/release record, and the [release plan](AppStoreReleasePlan.md) tracks delivery gates.
 
 The earlier phase tables on this page are superseded. In particular:

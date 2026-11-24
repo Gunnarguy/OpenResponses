@@ -1,5 +1,9 @@
 # OpenResponses App Store package
 
+> **Update 2026-11-23:** iOS 3.1 is live (approved November 23, 2026, build 57) with the OpenResponses Pro In-App Purchase approved; macOS 3.1, the first Mac version (build 60), was approved and is live the same day. Store text: `fastlane/metadata/en-US` (What's New `release_notes.txt`), reviewer notes `fastlane/metadata/review_information/notes.txt`, [3.1 release notes](docs/ReleaseNotes_3.1.0.md), [Pro](docs/pro-purchase.md).
+
+> **Update 2026-11-20:** 3.0 is live (released November 20, 2026, build 56): [3.0 release notes](docs/ReleaseNotes_3.0.0.md).
+
 > **Update 2026-10-02:** 2.9 is live (released October 2, 2026, build 54). The project now declares 3.0.
 
 > **Update 2026-10-01:** 2.9 is submitted for review: [release notes](docs/ReleaseNotes_2.9.0.md), What's New and promotional text in `fastlane/metadata/en-US` (identical to App Store Connect). The description, keywords and URLs are unchanged from 2.8.
@@ -14,7 +18,7 @@
 
 > **Update 2026-09-23:** 2.6 is live on the App Store (released 2026-09-09, per Apple's public lookup). The status below predates the release.
 
-The current package is for **v2.6** and was reconciled with live ASC on September 8, 2026. Start with the [complete release dossier](docs/releases/v2.6/README.md).
+Below is the **v2.6** package as reconciled with live ASC on September 8, 2026, kept as a record; the updates above give the current state. Start with the [complete release dossier](docs/releases/v2.6/README.md).
 
 - [Full What's New](docs/ReleaseNotes_2.6.0.md) and [detailed changelog](CHANGELOG.md).
 - [Store metadata and paste-ready sources](docs/AppStoreMetadata.md).

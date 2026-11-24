@@ -1,5 +1,7 @@
 # OpenResponses 2.6 release plan
 
+> **Historical record (2.6 era).** This page describes the 2.5 to 2.6 release as of September 2026 and is kept for its evidence. The current release is 3.1 (iPhone and iPad live November 23, 2026; Mac in App Review): see [CHANGELOG.md](../CHANGELOG.md), [README.md](../README.md) and [docs/ai/STATE.md](ai/STATE.md).
+
 > **Update 2026-09-23:** 2.6 is live on the App Store (released 2026-09-09, per Apple's public lookup). The status below predates the release.
 
 **Reconciled:** September 8, 2026 against the working tree, final local test/device artifacts, and live App Store Connect/Xcode Cloud records.

@@ -4,7 +4,7 @@
   "name": "OpenResponses Pro (In-App Purchase)",
   "aliases": ["OpenResponses Pro", "Pro", "In-App Purchase", "IAP", "StoreKit", "paywall", "Unlock", "Restore Purchases", "proUnlocked", "Gunndamental.OpenResponses.pro"],
   "purpose": "A one-time non-consumable purchase (USD 4.99) that unlocks the 3.1 features that run outside the chat: the Ask OpenResponses and New Chat shortcuts, the share sheet entry and the 12-hour prompt cache lifetime. ProStore reads StoreKit 2 entitlements and records the result in the App Group so the share extension can read it; ProPaywallView is the Buy and Restore sheet. Everything from 2.9 and 3.0 stays free.",
-  "revision": "00adb4a",
+  "revision": "88baac2",
   "verified_on": "2026-11-23",
   "entry_points": ["ProStore", "ProPaywallView", "ProAccess"],
   "files": [
@@ -43,7 +43,7 @@
   "docs": [
     {"path": "docs/pro-purchase.md", "section": "How it works", "quote": "compiled into the app and the share extension: product ID `Gunndamental.OpenResponses.pro`", "claim": "The product ID lives in ProAccess.", "status": "CONFIRMED", "evidence": {"path": "OpenResponses/Core/Services/ProAccess.swift", "line": 12, "match": "static let productID = \"Gunndamental.OpenResponses.pro\""}}
   ],
-  "unknowns": ["The product is not yet created in App Store Connect (waits for Gunnar's yes); until it is, a build that asks the real App Store gets no product and the Buy button stays disabled.", "No real purchase or restore has been made on a device; the purchase and refund path is covered only by StoreKitTest in ProAccessTests."],
+  "unknowns": ["No real purchase or restore has been made on a device; the purchase and refund path is covered by StoreKitTest in ProAccessTests (locally and in GitHub CI run 45250471857). The product (6838132013) is APPROVED and live with iOS 3.1 since 2026-11-23."],
   "related": ["share-and-shortcuts", "request-settings", "app-shell"],
   "derived": {
     "generated_by": "codemap 1.1.0 derive: declarations, type references and test mentions; edges are INFERRED",

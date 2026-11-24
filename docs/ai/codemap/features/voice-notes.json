@@ -4,7 +4,7 @@
   "name": "Voice Notes",
   "aliases": ["microphone button", "transcribe", "gpt-transcribe", "message field", "audio", "Microphone Access Required", "Allow & Send", "Before You Send", "Voice Note"],
   "purpose": "Records voice notes using the microphone button and transcribes them with gpt-transcribe into the message input field after data-sharing consent.",
-  "revision": "00adb4a",
+  "revision": "88baac2",
   "verified_on": "2026-11-23",
   "entry_points": ["ChatView", "ChatInputView"],
   "files": [
@@ -12,7 +12,7 @@
     {"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "role": "shared", "blob": "01894fd0c608c3abe3d010f337bdce93c0ef3c5f"},
     {"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "role": "shared", "blob": "9086cbe728d84630fbae9338e02e3fd37a7b8d4a"},
     {"path": "OpenResponses/Core/Services/OpenAIService.swift", "role": "shared", "blob": "3011d3eabe63d5f3c25de997f77349a99c37ec0a"},
-    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "9c6b78417ed7544fe666443fd01d4332ec23bfe6"},
+    {"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "role": "shared", "blob": "d67cab8cf1eab7bc8c955b00c01704ed774cb951"},
     {"path": "OpenResponses/Features/Chat/Components/AttachmentPills.swift", "role": "shared", "blob": "40cc8a959440cba2c76a1599a3e155025da025f9"},
     {"path": "OpenResponses/Features/Chat/Components/AIDataSharingConsentSheet.swift", "role": "shared", "blob": "09f670dd8615b2c6ffb5475e44efb1d2b63f32a7"},
     {"path": "OpenResponses/Core/Models/CurrentModelCatalog.swift", "role": "shared", "blob": "a6da79cdccc5fdab4cf6be1740adcf4d9c151295"},
@@ -38,7 +38,7 @@
   "edges": [
     {"from": "ChatView", "to": "ChatInputView", "type": "renders", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 311, "match": "            ChatInputView("}]},
     {"from": "ChatView", "to": "ChatViewModel.transcribeVoiceNote", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Views/ChatView.swift", "line": 325, "match": "                        guard let text = await viewModel.transcribeVoiceNote(audioData), !text.isEmpty else { return }"}]},
-    {"from": "ChatInputView", "to": "VoiceRecorderService", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 124, "match": "                                voiceRecorder.startRecording { data in"}]},
+    {"from": "ChatInputView", "to": "VoiceRecorderService", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/Components/ChatInputView.swift", "line": 128, "match": "                                voiceRecorder.startRecording { data in"}]},
     {"from": "ChatViewModel.transcribeVoiceNote", "to": "ChatViewModel.hasApprovedAIDataSharingConsent", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 506, "match": "        guard hasApprovedAIDataSharingConsent else {"}]},
     {"from": "ChatViewModel.hasApprovedAIDataSharingConsent", "to": "defaults:aiDataSharingConsentVersion", "type": "reads", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 487, "match": "        UserDefaults.standard.integer(forKey: AppFeatureFlags.aiDataSharingConsentVersionKey) >= AppFeatureFlags.aiDataSharingConsentVersion"}]},
     {"from": "ChatViewModel.transcribeVoiceNote", "to": "OpenAIService.transcribeVoiceNote", "type": "calls", "status": "VERIFIED", "evidence": [{"path": "OpenResponses/Features/Chat/ViewModels/ChatViewModel.swift", "line": 514, "match": "            return try await service.transcribeVoiceNote(audio)"}]},

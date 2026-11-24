@@ -7,11 +7,11 @@
 import sys, time
 sys.path.insert(0, sys.path[0])
 from asc import call
-APP, VERSION, PRODUCT = "6757338355", "1e4281fc-a6c5-4870-a02b-bd98bc82667e", "02676c39-e39d-49e8-af7f-412bc7c32473"
-MARKETING = "3.1"  # 3.0 was 4d37e25a-abb9-4a0c-a98b-b26853b58bc0
+APP, VERSION, PRODUCT = "6757338355", "bfbf1a42-5601-488d-af52-f8c575914e78", "02676c39-e39d-49e8-af7f-412bc7c32473"
+MARKETING = "3.2"  # iOS 3.1 was 1e4281fc-a6c5-4870-a02b-bd98bc82667e, 3.0 was 4d37e25a-abb9-4a0c-a98b-b26853b58bc0; macOS 3.2 is 5cbaabc0-7df0-4fbc-ad13-c083036df393
 # A first In-App Purchase goes to App Review with the app version: its draft version is a second item in the same review
 # submission (App Store Connect API 4.4.1 "Working with In-App Purchase versions", read 2026-11-22).
-IAP_VERSIONS = ["b572ee50-953d-4d19-87c3-87b7675d3cc9"]  # OpenResponses Pro (In-App Purchase 6838132013), version 1
+IAP_VERSIONS = []  # OpenResponses Pro (In-App Purchase 6838132013, version b572ee50) was approved with 3.1; list a new draft version here only if one is made
 OPEN = {"READY_FOR_REVIEW", "WAITING_FOR_REVIEW", "IN_REVIEW", "UNRESOLVED_ISSUES"}
 
 def builds():

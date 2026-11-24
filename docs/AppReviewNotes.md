@@ -1,5 +1,7 @@
 # App Review notes: OpenResponses 2.8
 
+> **Historical record (2.8).** These are the 2.8 reviewer notes. The notes sent with the current version (3.1) are `fastlane/metadata/review_information/notes.txt`.
+
 **Updated:** September 29, 2026, for 2.8. The notes sent to App Review are in App Store Connect under App Review Information; the 2.8 additions are below, and the older sections still apply.
 
 ## New in 2.8

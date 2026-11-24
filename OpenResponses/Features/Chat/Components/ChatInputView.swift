@@ -73,11 +73,15 @@ struct ChatInputView: View {
     private var accessoryButtons: some View {
         // Attachment menu button - shows popover near the paperclip
         Menu {
+            #if !os(macOS)
+            // The Mac has no photo-taking picker (CameraPickerView is empty there), so the item would only open
+            // "Camera not available".
             Button {
                 onTakePhoto()
             } label: {
                 Label("Take Photo", systemImage: "camera")
             }
+            #endif
 
             Button {
                 onSelectPhotos()
